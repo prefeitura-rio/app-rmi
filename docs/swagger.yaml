@@ -1,0 +1,425 @@
+basePath: /api/v1
+definitions:
+  handlers.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  handlers.HealthResponse:
+    properties:
+      services:
+        additionalProperties:
+          type: string
+        type: object
+      status:
+        type: string
+      timestamp:
+        type: string
+    type: object
+  handlers.SuccessResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  models.CadastroUpdate:
+    properties:
+      contato:
+        allOf:
+        - $ref: '#/definitions/models.ContatoUpdate'
+        description: Contact information
+      endereco:
+        allOf:
+        - $ref: '#/definitions/models.EnderecoUpdate'
+        description: Address information
+    type: object
+  models.Citizen:
+    properties:
+      contato:
+        $ref: '#/definitions/models.Contato'
+      cpf:
+        type: string
+      endereco:
+        $ref: '#/definitions/models.Endereco'
+      fazenda:
+        $ref: '#/definitions/models.Fazenda'
+      nome:
+        type: string
+      origens:
+        items:
+          $ref: '#/definitions/models.Origens'
+        type: array
+      profissional:
+        $ref: '#/definitions/models.Profissional'
+      saude:
+        $ref: '#/definitions/models.Saude'
+    type: object
+  models.ClinicaFamilia:
+    properties:
+      ap:
+        type: string
+      cap:
+        type: string
+      codigo:
+        type: string
+      endereco:
+        type: string
+      nome:
+        type: string
+    type: object
+  models.Contato:
+    properties:
+      emails:
+        items:
+          $ref: '#/definitions/models.Email'
+        type: array
+      telefones:
+        items:
+          $ref: '#/definitions/models.Telefone'
+        type: array
+    type: object
+  models.ContatoUpdate:
+    properties:
+      emails:
+        description: List of email addresses
+        items:
+          $ref: '#/definitions/models.EmailUpdate'
+        type: array
+      telefones:
+        description: List of phone numbers
+        items:
+          $ref: '#/definitions/models.TelefoneUpdate'
+        type: array
+    type: object
+  models.Email:
+    properties:
+      email:
+        type: string
+      observacoes:
+        type: string
+      tipo:
+        type: string
+    type: object
+  models.EmailUpdate:
+    properties:
+      email:
+        description: |-
+          Valid email address
+          example: "user@example.com"
+        type: string
+      observacoes:
+        description: |-
+          Optional notes about the email
+          example: "Email principal"
+          max: 200
+        maxLength: 200
+        type: string
+      tipo:
+        description: |-
+          Email type must be one of: PESSOAL, COMERCIAL
+          example: "PESSOAL"
+          enum: PESSOAL,COMERCIAL
+        enum:
+        - PESSOAL
+        - COMERCIAL
+        type: string
+    type: object
+  models.Endereco:
+    properties:
+      bairro:
+        type: string
+      cep:
+        type: string
+      cidade:
+        type: string
+      codigo_ibge:
+        type: string
+      complemento:
+        type: string
+      latitude:
+        type: string
+      logradouro:
+        type: string
+      longitude:
+        type: string
+      numero:
+        type: string
+      tipo_endereco:
+        type: string
+      uf:
+        type: string
+    type: object
+  models.EnderecoUpdate:
+    properties:
+      bairro:
+        description: |-
+          Neighborhood
+          example: "Centro"
+          min: 3 max: 100
+        maxLength: 100
+        minLength: 3
+        type: string
+      cep:
+        description: |-
+          ZIP code (8 digits)
+          example: "20000000"
+          min: 8 max: 8
+        type: string
+      cidade:
+        description: |-
+          City name
+          example: "Rio de Janeiro"
+          min: 3 max: 100
+        maxLength: 100
+        minLength: 3
+        type: string
+      complemento:
+        description: |-
+          Additional address information
+          example: "Apto 101"
+          max: 100
+        maxLength: 100
+        type: string
+      logradouro:
+        description: |-
+          Street name
+          example: "Rua das Flores"
+          min: 3 max: 200
+        maxLength: 200
+        minLength: 3
+        type: string
+      numero:
+        description: |-
+          Street number
+          example: "123"
+          max: 10
+        maxLength: 10
+        type: string
+      tipo_endereco:
+        description: |-
+          Address type must be one of: RESIDENCIAL, COMERCIAL
+          example: "RESIDENCIAL"
+          enum: RESIDENCIAL,COMERCIAL
+        enum:
+        - RESIDENCIAL
+        - COMERCIAL
+        type: string
+      uf:
+        description: |-
+          State abbreviation (2 letters)
+          example: "RJ"
+          min: 2 max: 2
+        type: string
+    type: object
+  models.EquipeSaudeFamilia:
+    properties:
+      agente_vinculo:
+        type: string
+      area_atuacao:
+        type: string
+      codigo:
+        type: string
+      microarea:
+        type: string
+      nome:
+        type: string
+    type: object
+  models.Fazenda:
+    properties:
+      inscricao_estadual:
+        type: string
+      nome_fazenda:
+        type: string
+    type: object
+  models.Origens:
+    properties:
+      data_origem:
+        type: string
+      origem:
+        type: string
+    type: object
+  models.Profissional:
+    properties:
+      cargo:
+        type: string
+      data_admissao:
+        type: string
+      empresa:
+        type: string
+      profissao:
+        type: string
+    type: object
+  models.Saude:
+    properties:
+      clinica_familia:
+        $ref: '#/definitions/models.ClinicaFamilia'
+      equipe_saude_familia:
+        $ref: '#/definitions/models.EquipeSaudeFamilia'
+      numero_cartao_sus:
+        type: string
+    type: object
+  models.Telefone:
+    properties:
+      ddd:
+        type: string
+      numero:
+        type: string
+      observacoes:
+        type: string
+      tipo:
+        type: string
+    type: object
+  models.TelefoneUpdate:
+    properties:
+      ddd:
+        description: |-
+          DDD (area code) must be exactly 2 digits
+          example: "21"
+          min: 2 max: 2
+        type: string
+      numero:
+        description: |-
+          Phone number must be 8 or 9 digits
+          example: "999887766"
+          min: 8 max: 9
+        maxLength: 9
+        minLength: 8
+        type: string
+      observacoes:
+        description: |-
+          Optional notes about the phone number
+          example: "Horário comercial"
+          max: 200
+        maxLength: 200
+        type: string
+      tipo:
+        description: |-
+          Phone type must be one of: RESIDENCIAL, COMERCIAL, CELULAR
+          example: "CELULAR"
+          enum: RESIDENCIAL,COMERCIAL,CELULAR
+        enum:
+        - RESIDENCIAL
+        - COMERCIAL
+        - CELULAR
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: API for managing citizen data with self-declared information. This
+    API provides endpoints for retrieving and updating citizen information, with support
+    for caching and data validation. Self-declared data takes precedence over base
+    data when available.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  title: RMI API
+  version: "1.0"
+paths:
+  /citizen/{cpf}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves citizen data by CPF, combining base data with any self-declared
+        updates. Self-declared data takes precedence over base data. Results are cached
+        using Redis with configurable TTL.
+      parameters:
+      - description: Citizen CPF (11 digits)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Complete citizen data
+          schema:
+            $ref: '#/definitions/models.Citizen'
+        "400":
+          description: Invalid CPF format
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Citizen not found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Get citizen data
+      tags:
+      - citizen
+  /citizen/{cpf}/self-declared:
+    put:
+      consumes:
+      - application/json
+      description: Updates or creates self-declared information for a citizen. Only
+        specific fields (address and contact) can be updated. All fields are optional,
+        and only provided fields will be updated.
+      parameters:
+      - description: Citizen CPF (11 digits)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: Update Data
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.CadastroUpdate'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data updated successfully
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Invalid request body or validation errors
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Update self-declared data
+      tags:
+      - citizen
+  /health:
+    get:
+      description: Checks the health of the API and its dependencies (MongoDB and
+        Redis). Returns detailed status for each service.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: All services are healthy
+          schema:
+            $ref: '#/definitions/handlers.HealthResponse'
+        "503":
+          description: One or more services are unhealthy
+          schema:
+            $ref: '#/definitions/handlers.HealthResponse'
+      summary: Health check endpoint
+      tags:
+      - health
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
+tags:
+- description: Operations about citizens
+  name: citizen
+- description: Health check operations
+  name: health
