@@ -1,0 +1,44 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rmi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rmi
+  template:
+    metadata:
+      labels:
+        app: rmi
+    spec:
+      containers:
+        - name: rmi
+          image: ghcr.io/prefeitura-rio/app-rmi:stable
+          envFrom:
+            - secretRef:
+                name: rmi-secrets
+          # resources:
+          #   requests:
+          #     cpu: 500m
+          #     memory: 2Gi
+          #   limits:
+          #     cpu: 500m
+          #     memory: 2Gi
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: rmi
+  name: rmi
+spec:
+  ports:
+    - name: "80"
+      port: 80
+      targetPort: 8080
+  selector:
+    app: rmi
