@@ -30,7 +30,7 @@ jobs:
       - name: Extract metadata for Docker tags
         id: meta
         run: |
-          IMAGE_NAME="ghcr.io/${{ github.repository_owner }}/typesense-client"
+          IMAGE_NAME="ghcr.io/${{ github.repository_owner }}/app-rmi"
           if [ "${GITHUB_REF##*/}" == "main" ]; then
             COMMIT_HASH=${{ github.sha }}
             TAG1="stable"
