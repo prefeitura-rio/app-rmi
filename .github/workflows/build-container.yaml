@@ -21,6 +21,37 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      - name: Install swag
+        run: |
+          mkdir -p bin
+          GOBIN="$PWD/bin" go install github.com/swaggo/swag/cmd/swag@latest
+          echo "$PWD/bin" >> $GITHUB_PATH
+
+      - name: Generate Swagger v2
+        run: swag init -g cmd/api/main.go
+
+      - name: Install swagger2openapi
+        run: npm install -g swagger2openapi
+
+      - name: Convert to OpenAPI v3
+        run: swagger2openapi docs/swagger.json -o docs/openapi-v3.json
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'github-actions@github.com'
+
+      - name: Commit and push OpenAPI v3
+        run: |
+          git add docs/openapi-v3.json
+          git commit -m "chore: update OpenAPI v3 documentation" || echo "No changes to commit"
+          git push
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
