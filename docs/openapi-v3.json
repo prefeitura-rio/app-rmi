@@ -225,6 +225,221 @@
                 }
             }
         },
+        "/citizen/{cpf}/firstlogin": {
+            "get": {
+                "description": "Checks if this is the user's first login",
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Get first login status",
+                "parameters": [
+                    {
+                        "description": "CPF number",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/models.UserConfigResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Sets the first login status to false for a user",
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Update first login status",
+                "parameters": [
+                    {
+                        "description": "CPF number",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/models.UserConfigResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/{cpf}/optin": {
+            "get": {
+                "description": "Checks if the user has opted in for notifications",
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Get opt-in status",
+                "parameters": [
+                    {
+                        "description": "CPF number",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/models.UserConfigOptInResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Updates the user's opt-in status for notifications",
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Update opt-in status",
+                "parameters": [
+                    {
+                        "description": "CPF number",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/models.UserConfigOptInResponse"
+                            }
+                        }
+                    },
+                    "description": "Opt-in status",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/models.UserConfigOptInResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/{cpf}/phone": {
             "put": {
                 "description": "Updates or creates the self-declared phone for a citizen by CPF. Only the phone field is updated (stored as pending until verified).",
@@ -832,6 +1047,22 @@
                     },
                     "valor": {
                         "type": "string"
+                    }
+                }
+            },
+            "models.UserConfigOptInResponse": {
+                "type": "object",
+                "properties": {
+                    "optin": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "models.UserConfigResponse": {
+                "type": "object",
+                "properties": {
+                    "firstlogin": {
+                        "type": "boolean"
                     }
                 }
             }
