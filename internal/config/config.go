@@ -18,12 +18,18 @@ type Config struct {
 	MongoDatabase string `json:"mongo_database"`
 
 	// Redis configuration
-	RedisAddr     string `json:"redis_addr"`
-	RedisPassword string `json:"redis_password"`
-	RedisDB       int    `json:"redis_db"`
+	RedisURI      string        `json:"redis_uri"`
+	RedisPassword string        `json:"redis_password"`
+	RedisDB       int          `json:"redis_db"`
+	RedisTTL      time.Duration `json:"redis_ttl"`
 
-	// Cache configuration
-	CacheTTL time.Duration `json:"cache_ttl"`
+	// Collection names
+	CitizenCollection      string `json:"mongo_citizen_collection"`
+	SelfDeclaredCollection string `json:"mongo_self_declared_collection"`
+	PhoneVerificationCollection string `json:"mongo_phone_verification_collection"`
+
+	// Phone verification configuration
+	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
 }
 
 var (
@@ -42,9 +48,20 @@ func LoadConfig() error {
 		return fmt.Errorf("invalid REDIS_DB: %w", err)
 	}
 
-	cacheTTL, err := time.ParseDuration(getEnvOrDefault("CACHE_TTL", "1h"))
+	redisTTL, err := time.ParseDuration(getEnvOrDefault("REDIS_TTL", "60m"))
 	if err != nil {
-		return fmt.Errorf("invalid CACHE_TTL: %w", err)
+		return fmt.Errorf("invalid REDIS_TTL: %w", err)
+	}
+
+	// Check if MONGODB_CITIZEN_COLLECTION is set
+	citizenCollection := os.Getenv("MONGODB_CITIZEN_COLLECTION")
+	if citizenCollection == "" {
+		return fmt.Errorf("MONGODB_CITIZEN_COLLECTION environment variable is required")
+	}
+
+	phoneVerificationTTL, err := time.ParseDuration(getEnvOrDefault("PHONE_VERIFICATION_TTL", "5m"))
+	if err != nil {
+		return fmt.Errorf("invalid PHONE_VERIFICATION_TTL: %w", err)
 	}
 
 	AppConfig = &Config{
@@ -57,12 +74,18 @@ func LoadConfig() error {
 		MongoDatabase: getEnvOrDefault("MONGODB_DATABASE", "rmi"),
 
 		// Redis configuration
-		RedisAddr:     getEnvOrDefault("REDIS_ADDR", "localhost:6379"),
+		RedisURI:      getEnvOrDefault("REDIS_URI", "redis://localhost:6379"),
 		RedisPassword: getEnvOrDefault("REDIS_PASSWORD", ""),
 		RedisDB:       redisDB,
+		RedisTTL:      redisTTL,
 
-		// Cache configuration
-		CacheTTL: cacheTTL,
+		// Collection names
+		CitizenCollection:      citizenCollection,
+		SelfDeclaredCollection: getEnvOrDefault("MONGODB_SELF_DECLARED_COLLECTION", "self_declared"),
+		PhoneVerificationCollection: getEnvOrDefault("MONGODB_PHONE_VERIFICATION_COLLECTION", "phone_verifications"),
+
+		// Phone verification configuration
+		PhoneVerificationTTL: phoneVerificationTTL,
 	}
 
 	return nil

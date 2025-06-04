@@ -35,7 +35,7 @@ import (
 // @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
 
 // @host      localhost:8080
-// @BasePath  /api/v1
+// @BasePath  /v1
 
 // @securityDefinitions.apikey ApiKeyAuth
 // @in header
@@ -81,13 +81,18 @@ func main() {
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// API v1 routes
-	v1 := router.Group("/api/v1")
+	v1 := router.Group("/v1")
 	{
 		// Health check endpoint
 		v1.GET("/health", handlers.HealthCheck)
 		
 		v1.GET("/citizen/:cpf", handlers.GetCitizenData)
-		v1.PUT("/citizen/:cpf/self-declared", handlers.UpdateSelfDeclaredData)
+		v1.PUT("/citizen/:cpf/address", handlers.UpdateSelfDeclaredAddress)
+		v1.PUT("/citizen/:cpf/phone", handlers.UpdateSelfDeclaredPhone)
+		v1.PUT("/citizen/:cpf/email", handlers.UpdateSelfDeclaredEmail)
+
+		// Change phone validation endpoint to /citizen/:cpf/phone/validate
+		v1.POST("/citizen/:cpf/phone/validate", handlers.ValidatePhoneVerification)
 	}
 
 	// Swagger documentation

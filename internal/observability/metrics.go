@@ -42,6 +42,24 @@ var (
 		[]string{"status"},
 	)
 
+	// PhoneVerificationRequests tracks phone verification requests
+	PhoneVerificationRequests = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "app_rmi_phone_verification_requests_total",
+			Help: "Number of phone verification requests",
+		},
+		[]string{"status"},
+	)
+
+	// PhoneVerificationValidations tracks phone verification validations
+	PhoneVerificationValidations = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "app_rmi_phone_verification_validations_total",
+			Help: "Number of phone verification validations",
+		},
+		[]string{"status"},
+	)
+
 	// ActiveConnections tracks active connections
 	ActiveConnections = promauto.NewGauge(
 		prometheus.GaugeOpts{

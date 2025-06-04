@@ -1,4 +1,4 @@
-basePath: /api/v1
+basePath: /v1
 definitions:
   handlers.ErrorResponse:
     properties:
@@ -21,232 +21,175 @@ definitions:
       message:
         type: string
     type: object
-  models.CadastroUpdate:
-    properties:
-      contato:
-        allOf:
-        - $ref: '#/definitions/models.ContatoUpdate'
-        description: Contact information
-      endereco:
-        allOf:
-        - $ref: '#/definitions/models.EnderecoUpdate'
-        description: Address information
-    type: object
   models.Citizen:
     properties:
-      contato:
-        $ref: '#/definitions/models.Contato'
       cpf:
         type: string
+      cpf_particao:
+        type: integer
+      datalake:
+        $ref: '#/definitions/models.Datalake'
+      documentos:
+        $ref: '#/definitions/models.Documentos'
+      email:
+        $ref: '#/definitions/models.Email'
       endereco:
         $ref: '#/definitions/models.Endereco'
-      fazenda:
-        $ref: '#/definitions/models.Fazenda'
+      mae:
+        $ref: '#/definitions/models.Mae'
+      menor_idade:
+        type: boolean
+      nascimento:
+        $ref: '#/definitions/models.Nascimento'
       nome:
         type: string
-      origens:
-        items:
-          $ref: '#/definitions/models.Origens'
-        type: array
-      profissional:
-        $ref: '#/definitions/models.Profissional'
+      nome_social:
+        type: string
+      obito:
+        $ref: '#/definitions/models.Obito'
+      raca:
+        type: string
+      row_number:
+        type: integer
       saude:
         $ref: '#/definitions/models.Saude'
+      sexo:
+        type: string
+      telefone:
+        $ref: '#/definitions/models.Telefone'
     type: object
   models.ClinicaFamilia:
     properties:
-      ap:
+      id_cnes:
         type: string
-      cap:
-        type: string
-      codigo:
-        type: string
-      endereco:
-        type: string
+      indicador:
+        type: boolean
       nome:
         type: string
+      telefone:
+        type: string
     type: object
-  models.Contato:
+  models.Datalake:
     properties:
-      emails:
-        items:
-          $ref: '#/definitions/models.Email'
-        type: array
-      telefones:
-        items:
-          $ref: '#/definitions/models.Telefone'
-        type: array
+      last_updated:
+        type: string
     type: object
-  models.ContatoUpdate:
+  models.Documentos:
     properties:
-      emails:
-        description: List of email addresses
+      cns:
         items:
-          $ref: '#/definitions/models.EmailUpdate'
-        type: array
-      telefones:
-        description: List of phone numbers
-        items:
-          $ref: '#/definitions/models.TelefoneUpdate'
+          type: string
         type: array
     type: object
   models.Email:
     properties:
-      email:
-        type: string
-      observacoes:
-        type: string
-      tipo:
-        type: string
+      alternativo:
+        items:
+          type: integer
+        type: array
+      indicador:
+        type: boolean
+      principal:
+        $ref: '#/definitions/models.EmailPrincipal'
     type: object
-  models.EmailUpdate:
+  models.EmailPrincipal:
     properties:
-      email:
-        description: |-
-          Valid email address
-          example: "user@example.com"
+      origem:
         type: string
-      observacoes:
-        description: |-
-          Optional notes about the email
-          example: "Email principal"
-          max: 200
-        maxLength: 200
+      sistema:
         type: string
-      tipo:
-        description: |-
-          Email type must be one of: PESSOAL, COMERCIAL
-          example: "PESSOAL"
-          enum: PESSOAL,COMERCIAL
-        enum:
-        - PESSOAL
-        - COMERCIAL
+      valor:
         type: string
     type: object
   models.Endereco:
     properties:
-      bairro:
-        type: string
-      cep:
-        type: string
-      cidade:
-        type: string
-      codigo_ibge:
-        type: string
-      complemento:
-        type: string
-      latitude:
-        type: string
-      logradouro:
-        type: string
-      longitude:
-        type: string
-      numero:
-        type: string
-      tipo_endereco:
-        type: string
-      uf:
-        type: string
+      alternativo:
+        items:
+          type: integer
+        type: array
+      indicador:
+        type: boolean
+      principal:
+        $ref: '#/definitions/models.EnderecoPrincipal'
     type: object
-  models.EnderecoUpdate:
+  models.EnderecoPrincipal:
     properties:
       bairro:
-        description: |-
-          Neighborhood
-          example: "Centro"
-          min: 3 max: 100
-        maxLength: 100
-        minLength: 3
         type: string
       cep:
-        description: |-
-          ZIP code (8 digits)
-          example: "20000000"
-          min: 8 max: 8
-        type: string
-      cidade:
-        description: |-
-          City name
-          example: "Rio de Janeiro"
-          min: 3 max: 100
-        maxLength: 100
-        minLength: 3
         type: string
       complemento:
-        description: |-
-          Additional address information
-          example: "Apto 101"
-          max: 100
-        maxLength: 100
+        type: string
+      estado:
         type: string
       logradouro:
-        description: |-
-          Street name
-          example: "Rua das Flores"
-          min: 3 max: 200
-        maxLength: 200
-        minLength: 3
+        type: string
+      municipio:
         type: string
       numero:
-        description: |-
-          Street number
-          example: "123"
-          max: 10
-        maxLength: 10
         type: string
-      tipo_endereco:
-        description: |-
-          Address type must be one of: RESIDENCIAL, COMERCIAL
-          example: "RESIDENCIAL"
-          enum: RESIDENCIAL,COMERCIAL
-        enum:
-        - RESIDENCIAL
-        - COMERCIAL
+      origem:
         type: string
-      uf:
-        description: |-
-          State abbreviation (2 letters)
-          example: "RJ"
-          min: 2 max: 2
+      sistema:
+        type: string
+      tipo_logradouro:
         type: string
     type: object
   models.EquipeSaudeFamilia:
     properties:
-      agente_vinculo:
+      id_ine:
         type: string
-      area_atuacao:
+      indicador:
+        type: boolean
+      nome:
         type: string
-      codigo:
+      telefone:
         type: string
-      microarea:
-        type: string
+    type: object
+  models.Mae:
+    properties:
+      cpf:
+        type: integer
       nome:
         type: string
     type: object
-  models.Fazenda:
+  models.Nascimento:
     properties:
-      inscricao_estadual:
+      data:
         type: string
-      nome_fazenda:
+      municipio:
+        type: string
+      municipio_id:
+        type: string
+      pais:
+        type: string
+      pais_id:
+        type: string
+      uf:
         type: string
     type: object
-  models.Origens:
+  models.Obito:
     properties:
-      data_origem:
-        type: string
-      origem:
-        type: string
+      ano:
+        type: integer
+      indicador:
+        type: boolean
     type: object
-  models.Profissional:
+  models.PhoneVerificationValidateRequest:
     properties:
-      cargo:
+      code:
         type: string
-      data_admissao:
+      ddd:
         type: string
-      empresa:
+      ddi:
         type: string
-      profissao:
+      valor:
         type: string
+    required:
+    - code
+    - ddd
+    - ddi
+    - valor
     type: object
   models.Saude:
     properties:
@@ -254,52 +197,75 @@ definitions:
         $ref: '#/definitions/models.ClinicaFamilia'
       equipe_saude_familia:
         $ref: '#/definitions/models.EquipeSaudeFamilia'
-      numero_cartao_sus:
+    type: object
+  models.SelfDeclaredAddressInput:
+    properties:
+      bairro:
         type: string
+      cep:
+        type: string
+      complemento:
+        type: string
+      estado:
+        type: string
+      logradouro:
+        type: string
+      municipio:
+        type: string
+      numero:
+        type: string
+      tipo_logradouro:
+        type: string
+    required:
+    - bairro
+    - cep
+    - estado
+    - logradouro
+    - municipio
+    - numero
+    type: object
+  models.SelfDeclaredEmailInput:
+    properties:
+      valor:
+        type: string
+    required:
+    - valor
+    type: object
+  models.SelfDeclaredPhoneInput:
+    properties:
+      ddd:
+        type: string
+      ddi:
+        type: string
+      valor:
+        type: string
+    required:
+    - ddd
+    - ddi
+    - valor
     type: object
   models.Telefone:
     properties:
-      ddd:
-        type: string
-      numero:
-        type: string
-      observacoes:
-        type: string
-      tipo:
-        type: string
+      alternativo:
+        items:
+          type: integer
+        type: array
+      indicador:
+        type: boolean
+      principal:
+        $ref: '#/definitions/models.TelefonePrincipal'
     type: object
-  models.TelefoneUpdate:
+  models.TelefonePrincipal:
     properties:
       ddd:
-        description: |-
-          DDD (area code) must be exactly 2 digits
-          example: "21"
-          min: 2 max: 2
         type: string
-      numero:
-        description: |-
-          Phone number must be 8 or 9 digits
-          example: "999887766"
-          min: 8 max: 9
-        maxLength: 9
-        minLength: 8
+      ddi:
         type: string
-      observacoes:
-        description: |-
-          Optional notes about the phone number
-          example: "Horário comercial"
-          max: 200
-        maxLength: 200
+      origem:
         type: string
-      tipo:
-        description: |-
-          Phone type must be one of: RESIDENCIAL, COMERCIAL, CELULAR
-          example: "CELULAR"
-          enum: RESIDENCIAL,COMERCIAL,CELULAR
-        enum:
-        - RESIDENCIAL
-        - COMERCIAL
-        - CELULAR
+      sistema:
+        type: string
+      valor:
         type: string
     type: object
 host: localhost:8080
@@ -355,43 +321,163 @@ paths:
       summary: Get citizen data
       tags:
       - citizen
-  /citizen/{cpf}/self-declared:
+  /citizen/{cpf}/address:
     put:
       consumes:
       - application/json
-      description: Updates or creates self-declared information for a citizen. Only
-        specific fields (address and contact) can be updated. All fields are optional,
-        and only provided fields will be updated.
+      description: Updates or creates the self-declared address for a citizen by CPF.
+        Only the address field is updated.
       parameters:
-      - description: Citizen CPF (11 digits)
+      - description: CPF number
         in: path
-        maxLength: 11
-        minLength: 11
         name: cpf
         required: true
         type: string
-      - description: Update Data
+      - description: Self-declared address
         in: body
         name: data
         required: true
         schema:
-          $ref: '#/definitions/models.CadastroUpdate'
+          $ref: '#/definitions/models.SelfDeclaredAddressInput'
       produces:
       - application/json
       responses:
         "200":
-          description: Data updated successfully
+          description: OK
           schema:
             $ref: '#/definitions/handlers.SuccessResponse'
         "400":
-          description: Invalid request body or validation errors
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal server error
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Update self-declared data
+      summary: Update self-declared address for a citizen
+      tags:
+      - citizen
+  /citizen/{cpf}/email:
+    put:
+      consumes:
+      - application/json
+      description: Updates or creates the self-declared email for a citizen by CPF.
+        Only the email field is updated.
+      parameters:
+      - description: CPF number
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Self-declared email
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.SelfDeclaredEmailInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Update self-declared email for a citizen
+      tags:
+      - citizen
+  /citizen/{cpf}/phone:
+    put:
+      consumes:
+      - application/json
+      description: Updates or creates the self-declared phone for a citizen by CPF.
+        Only the phone field is updated (stored as pending until verified).
+      parameters:
+      - description: CPF number
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Self-declared phone
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.SelfDeclaredPhoneInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Update self-declared phone for a citizen
+      tags:
+      - citizen
+  /citizen/{cpf}/phone/validate:
+    post:
+      consumes:
+      - application/json
+      description: Validates the verification code sent to the phone number
+      parameters:
+      - description: CPF number
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Verification code and phone
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.PhoneVerificationValidateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Validate phone verification
       tags:
       - citizen
   /health:

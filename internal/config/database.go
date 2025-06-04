@@ -9,6 +9,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/sony/gobreaker"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -80,38 +81,39 @@ func InitMongoDB() {
 
 // InitRedis initializes the Redis connection
 func InitRedis() {
+	// Initialize Redis client
 	Redis = redis.NewClient(&redis.Options{
-		Addr:         AppConfig.RedisAddr,
+		Addr:         AppConfig.RedisURI,
 		Password:     AppConfig.RedisPassword,
 		DB:           AppConfig.RedisDB,
-		PoolSize:     100,  // Adjust based on your needs
-		MinIdleConns: 10,
-		MaxRetries:   3,
-		ReadTimeout:  2 * time.Second,
-		WriteTimeout: 2 * time.Second,
+		DialTimeout:  5 * time.Second,
+		ReadTimeout:  3 * time.Second,
+		WriteTimeout: 3 * time.Second,
+		PoolSize:     10,
+		MinIdleConns: 5,
 	})
 
-	ctx := context.Background()
-	_, err := redisBreaker.Execute(func() (interface{}, error) {
-		return Redis.Ping(ctx).Result()
-	})
+	// Test Redis connection
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	if err != nil {
-		log.Fatal(err)
+	if err := Redis.Ping(ctx).Err(); err != nil {
+		observability.Logger.Error("failed to connect to Redis",
+			zap.String("uri", AppConfig.RedisURI),
+			zap.Error(err))
+		return
 	}
 
-	observability.Logger.Info("Connected to Redis",
-		zap.String("addr", AppConfig.RedisAddr),
-		zap.Int("db", AppConfig.RedisDB),
-	)
+	observability.Logger.Info("connected to Redis",
+		zap.String("uri", AppConfig.RedisURI))
 }
 
 // createIndexes creates MongoDB indexes
 func createIndexes(ctx context.Context) {
-	// Index for data_rmi collection
-	_, err := MongoDB.Collection("data_rmi").Indexes().CreateOne(ctx, mongo.IndexModel{
-		Keys: map[string]interface{}{
-			"cpf": 1,
+	// Index for citizen collection
+	_, err := MongoDB.Collection(AppConfig.CitizenCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "cpf", Value: 1},
 		},
 		Options: options.Index().SetUnique(true),
 	})
@@ -120,9 +122,21 @@ func createIndexes(ctx context.Context) {
 	}
 
 	// Index for self_declared collection
-	_, err = MongoDB.Collection("self_declared").Indexes().CreateOne(ctx, mongo.IndexModel{
-		Keys: map[string]interface{}{
-			"cpf": 1,
+	_, err = MongoDB.Collection(AppConfig.SelfDeclaredCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "cpf", Value: 1},
+		},
+		Options: options.Index().SetUnique(true),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Index for phone_verifications collection
+	_, err = MongoDB.Collection(AppConfig.PhoneVerificationCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "cpf", Value: 1},
+			{Key: "phone_number", Value: 1},
 		},
 		Options: options.Index().SetUnique(true),
 	})
