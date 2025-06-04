@@ -30,6 +30,10 @@ type Config struct {
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
+
+	// Tracing configuration
+	TracingEnabled  bool   `json:"tracing_enabled"`
+	TracingEndpoint string `json:"tracing_endpoint"`
 }
 
 var (
@@ -86,6 +90,10 @@ func LoadConfig() error {
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,
+
+		// Tracing configuration
+		TracingEnabled:  getEnvOrDefault("TRACING_ENABLED", "false") == "true",
+		TracingEndpoint: getEnvOrDefault("TRACING_ENDPOINT", "localhost:4317"),
 	}
 
 	return nil

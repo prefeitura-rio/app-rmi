@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/sony/gobreaker"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -35,7 +35,7 @@ var redisBreaker = gobreaker.NewCircuitBreaker(gobreaker.Settings{
 		return counts.Requests >= 3 && failureRatio >= 0.6
 	},
 	OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
-		observability.Logger.Warn("redis circuit breaker state changed",
+		logging.Logger.Warn("redis circuit breaker state changed",
 			zap.String("from", from.String()),
 			zap.String("to", to.String()),
 		)
@@ -73,7 +73,7 @@ func InitMongoDB() {
 	// Create indexes
 	createIndexes(ctx)
 
-	observability.Logger.Info("Connected to MongoDB",
+	logging.Logger.Info("Connected to MongoDB",
 		zap.String("uri", maskMongoURI(AppConfig.MongoURI)),
 		zap.String("database", AppConfig.MongoDatabase),
 	)
@@ -98,13 +98,13 @@ func InitRedis() {
 	defer cancel()
 
 	if err := Redis.Ping(ctx).Err(); err != nil {
-		observability.Logger.Error("failed to connect to Redis",
+		logging.Logger.Error("failed to connect to Redis",
 			zap.String("uri", AppConfig.RedisURI),
 			zap.Error(err))
 		return
 	}
 
-	observability.Logger.Info("connected to Redis",
+	logging.Logger.Info("connected to Redis",
 		zap.String("uri", AppConfig.RedisURI))
 }
 
@@ -144,7 +144,7 @@ func createIndexes(ctx context.Context) {
 		log.Fatal(err)
 	}
 
-	observability.Logger.Info("Created MongoDB indexes")
+	logging.Logger.Info("Created MongoDB indexes")
 }
 
 // maskMongoURI masks sensitive information in MongoDB URI

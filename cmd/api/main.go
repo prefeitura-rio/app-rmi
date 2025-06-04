@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/handlers"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/middleware"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -48,15 +49,17 @@ import (
 // @tag.description Health check operations
 
 func main() {
-	// Initialize observability
-	observability.InitLogger()
-	observability.InitTracer()
-	defer observability.ShutdownTracer()
+	// Initialize logger first
+	logging.InitLogger()
 
 	// Load configuration
 	if err := config.LoadConfig(); err != nil {
-		observability.Logger.Fatal("failed to load config", zap.Error(err))
+		logging.Logger.Fatal("failed to load config", zap.Error(err))
 	}
+
+	// Initialize observability
+	observability.InitTracer()
+	defer observability.ShutdownTracer()
 
 	// Initialize database connections
 	config.InitMongoDB()
@@ -109,12 +112,12 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		observability.Logger.Info("starting server",
+		logging.Logger.Info("starting server",
 			zap.Int("port", config.AppConfig.Port),
 			zap.String("environment", config.AppConfig.Environment),
 		)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			observability.Logger.Fatal("failed to start server", zap.Error(err))
+			logging.Logger.Fatal("failed to start server", zap.Error(err))
 		}
 	}()
 
@@ -124,13 +127,13 @@ func main() {
 	<-quit
 
 	// Graceful shutdown
-	observability.Logger.Info("shutting down server...")
+	logging.Logger.Info("shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		observability.Logger.Fatal("server forced to shutdown", zap.Error(err))
+		logging.Logger.Fatal("server forced to shutdown", zap.Error(err))
 	}
 
-	observability.Logger.Info("server exited gracefully")
+	logging.Logger.Info("server exited gracefully")
 } 
