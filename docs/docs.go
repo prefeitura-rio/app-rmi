@@ -193,6 +193,187 @@ const docTemplate = `{
                 }
             }
         },
+        "/citizen/{cpf}/firstlogin": {
+            "get": {
+                "description": "Checks if this is the user's first login",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Get first login status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF number",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.UserConfigResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Sets the first login status to false for a user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Update first login status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF number",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.UserConfigResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/{cpf}/optin": {
+            "get": {
+                "description": "Checks if the user has opted in for notifications",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Get opt-in status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF number",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.UserConfigOptInResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Updates the user's opt-in status for notifications",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Update opt-in status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF number",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Opt-in status",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UserConfigOptInResponse"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.UserConfigOptInResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/{cpf}/phone": {
             "put": {
                 "description": "Updates or creates the self-declared phone for a citizen by CPF. Only the phone field is updated (stored as pending until verified).",
@@ -744,6 +925,22 @@ const docTemplate = `{
                 },
                 "valor": {
                     "type": "string"
+                }
+            }
+        },
+        "models.UserConfigOptInResponse": {
+            "type": "object",
+            "properties": {
+                "optin": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "models.UserConfigResponse": {
+            "type": "object",
+            "properties": {
+                "firstlogin": {
+                    "type": "boolean"
                 }
             }
         }

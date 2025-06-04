@@ -27,6 +27,7 @@ type Config struct {
 	CitizenCollection      string `json:"mongo_citizen_collection"`
 	SelfDeclaredCollection string `json:"mongo_self_declared_collection"`
 	PhoneVerificationCollection string `json:"mongo_phone_verification_collection"`
+	UserConfigCollection   string `json:"mongo_user_config_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -87,6 +88,7 @@ func LoadConfig() error {
 		CitizenCollection:      citizenCollection,
 		SelfDeclaredCollection: getEnvOrDefault("MONGODB_SELF_DECLARED_COLLECTION", "self_declared"),
 		PhoneVerificationCollection: getEnvOrDefault("MONGODB_PHONE_VERIFICATION_COLLECTION", "phone_verifications"),
+		UserConfigCollection:   getEnvOrDefault("MONGODB_USER_CONFIG_COLLECTION", "user_config"),
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,

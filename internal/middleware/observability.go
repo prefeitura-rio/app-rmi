@@ -21,15 +21,17 @@ func RequestLogger() gin.HandlerFunc {
 		status := c.Writer.Status()
 
 		// Log request details with sensitive data masking
-		observability.Logger.Info("request completed",
-			zap.String("path", path),
-			zap.String("query", query),
-			zap.String("ip", c.ClientIP()),
-			zap.String("method", c.Request.Method),
-			zap.Int("status", status),
-			zap.Duration("latency", latency),
-			zap.String("user_agent", c.Request.UserAgent()),
-		)
+		if observability.Logger != nil {
+			observability.Logger.Info("request completed",
+				zap.String("path", path),
+				zap.String("query", query),
+				zap.String("ip", c.ClientIP()),
+				zap.String("method", c.Request.Method),
+				zap.Int("status", status),
+				zap.Duration("latency", latency),
+				zap.String("user_agent", c.Request.UserAgent()),
+			)
+		}
 
 		// Update metrics
 		observability.RequestDuration.WithLabelValues(

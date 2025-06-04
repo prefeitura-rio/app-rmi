@@ -268,6 +268,16 @@ definitions:
       valor:
         type: string
     type: object
+  models.UserConfigOptInResponse:
+    properties:
+      optin:
+        type: boolean
+    type: object
+  models.UserConfigResponse:
+    properties:
+      firstlogin:
+        type: boolean
+    type: object
 host: localhost:8080
 info:
   contact:
@@ -399,6 +409,126 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       summary: Update self-declared email for a citizen
+      tags:
+      - citizen
+  /citizen/{cpf}/firstlogin:
+    get:
+      consumes:
+      - application/json
+      description: Checks if this is the user's first login
+      parameters:
+      - description: CPF number
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserConfigResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Get first login status
+      tags:
+      - citizen
+    put:
+      consumes:
+      - application/json
+      description: Sets the first login status to false for a user
+      parameters:
+      - description: CPF number
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserConfigResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Update first login status
+      tags:
+      - citizen
+  /citizen/{cpf}/optin:
+    get:
+      consumes:
+      - application/json
+      description: Checks if the user has opted in for notifications
+      parameters:
+      - description: CPF number
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserConfigOptInResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Get opt-in status
+      tags:
+      - citizen
+    put:
+      consumes:
+      - application/json
+      description: Updates the user's opt-in status for notifications
+      parameters:
+      - description: CPF number
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Opt-in status
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.UserConfigOptInResponse'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserConfigOptInResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Update opt-in status
       tags:
       - citizen
   /citizen/{cpf}/phone:

@@ -462,6 +462,202 @@ func HealthCheck(c *gin.Context) {
 	}
 }
 
+// GetFirstLogin godoc
+// @Summary Get first login status
+// @Description Checks if this is the user's first login
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "CPF number"
+// @Success 200 {object} models.UserConfigResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /citizen/{cpf}/firstlogin [get]
+func GetFirstLogin(c *gin.Context) {
+	ctx := c.Request.Context()
+	cpf := c.Param("cpf")
+	var logger *zap.Logger
+	if observability.Logger != nil {
+		logger = observability.Logger.With(zap.String("cpf", cpf))
+		logger.Info("GetFirstLogin called", zap.String("cpf", cpf))
+	}
+
+	if !utils.ValidateCPF(cpf) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
+		return
+	}
+
+	// Get user config
+	var userConfig models.UserConfig
+	err := config.MongoDB.Collection(config.AppConfig.UserConfigCollection).FindOne(
+		ctx,
+		bson.M{"cpf": cpf},
+	).Decode(&userConfig)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			// If no config exists, it's first login
+			c.JSON(http.StatusOK, models.UserConfigResponse{FirstLogin: true})
+			return
+		}
+		if logger != nil {
+			logger.Error("failed to get user config", zap.Error(err))
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get user config"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.UserConfigResponse{FirstLogin: userConfig.FirstLogin})
+}
+
+// UpdateFirstLogin godoc
+// @Summary Update first login status
+// @Description Sets the first login status to false for a user
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "CPF number"
+// @Success 200 {object} models.UserConfigResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /citizen/{cpf}/firstlogin [put]
+func UpdateFirstLogin(c *gin.Context) {
+	ctx := c.Request.Context()
+	cpf := c.Param("cpf")
+	var logger *zap.Logger
+	if observability.Logger != nil {
+		logger = observability.Logger.With(zap.String("cpf", cpf))
+		logger.Info("UpdateFirstLogin called", zap.String("cpf", cpf))
+	}
+
+	if !utils.ValidateCPF(cpf) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
+		return
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"first_login": false,
+			"updated_at": time.Now(),
+		},
+	}
+
+	_, err := config.MongoDB.Collection(config.AppConfig.UserConfigCollection).UpdateOne(
+		ctx,
+		bson.M{"cpf": cpf},
+		update,
+		options.Update().SetUpsert(true),
+	)
+	if err != nil {
+		if logger != nil {
+			logger.Error("failed to update first login status", zap.Error(err))
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update first login status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.UserConfigResponse{FirstLogin: false})
+}
+
+// GetOptIn godoc
+// @Summary Get opt-in status
+// @Description Checks if the user has opted in for notifications
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "CPF number"
+// @Success 200 {object} models.UserConfigOptInResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /citizen/{cpf}/optin [get]
+func GetOptIn(c *gin.Context) {
+	ctx := c.Request.Context()
+	cpf := c.Param("cpf")
+	var logger *zap.Logger
+	if observability.Logger != nil {
+		logger = observability.Logger.With(zap.String("cpf", cpf))
+		logger.Info("GetOptIn called", zap.String("cpf", cpf))
+	}
+
+	if !utils.ValidateCPF(cpf) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
+		return
+	}
+
+	var userConfig models.UserConfig
+	err := config.MongoDB.Collection(config.AppConfig.UserConfigCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&userConfig)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			// If no config exists, default to opted in
+			c.JSON(http.StatusOK, models.UserConfigOptInResponse{OptIn: true})
+			return
+		}
+		if logger != nil {
+			logger.Error("failed to get user config", zap.Error(err))
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get user config"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.UserConfigOptInResponse{OptIn: userConfig.OptIn})
+}
+
+// UpdateOptIn godoc
+// @Summary Update opt-in status
+// @Description Updates the user's opt-in status for notifications
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "CPF number"
+// @Param data body models.UserConfigOptInResponse true "Opt-in status"
+// @Success 200 {object} models.UserConfigOptInResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /citizen/{cpf}/optin [put]
+func UpdateOptIn(c *gin.Context) {
+	ctx := c.Request.Context()
+	cpf := c.Param("cpf")
+	var logger *zap.Logger
+	if observability.Logger != nil {
+		logger = observability.Logger.With(zap.String("cpf", cpf))
+		logger.Info("UpdateOptIn called", zap.String("cpf", cpf))
+	}
+
+	if !utils.ValidateCPF(cpf) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
+		return
+	}
+
+	var input models.UserConfigOptInResponse
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid request body: " + err.Error()})
+		return
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"opt_in":     input.OptIn,
+			"updated_at": time.Now(),
+		},
+	}
+
+	_, err := config.MongoDB.Collection(config.AppConfig.UserConfigCollection).UpdateOne(
+		ctx,
+		bson.M{"cpf": cpf},
+		update,
+		options.Update().SetUpsert(true),
+	)
+	if err != nil {
+		if logger != nil {
+			logger.Error("failed to update opt-in status", zap.Error(err))
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update opt-in status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, input)
+}
+
 type ErrorResponse struct {
 	Error string `json:"error"`
 }

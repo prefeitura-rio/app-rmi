@@ -144,6 +144,17 @@ func createIndexes(ctx context.Context) {
 		log.Fatal(err)
 	}
 
+	// Index for user_config collection
+	_, err = MongoDB.Collection(AppConfig.UserConfigCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "cpf", Value: 1},
+		},
+		Options: options.Index().SetUnique(true),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	logging.Logger.Info("Created MongoDB indexes")
 }
 
