@@ -15,7 +15,7 @@ type Nascimento struct {
 // Mae represents mother's information
 type Mae struct {
 	Nome *string `json:"nome,omitempty" bson:"nome,omitempty"`
-	CPF  *int64  `json:"cpf,omitempty" bson:"cpf,omitempty"`
+	CPF  *string `json:"cpf,omitempty" bson:"cpf,omitempty"`
 }
 
 // Obito represents death information
