@@ -36,7 +36,7 @@ func GetCitizenData(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger.With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(zap.String("cpf", cpf))
 	logger.Info("GetCitizenData called", zap.String("cpf", cpf))
 
 	// Try to get from cache first
@@ -177,7 +177,7 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 // @Router /citizen/{cpf}/address [put]
 func UpdateSelfDeclaredAddress(c *gin.Context) {
 	cpf := c.Param("cpf")
-	logger := observability.Logger.With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(zap.String("cpf", cpf))
 	logger.Info("UpdateSelfDeclaredAddress called", zap.String("cpf", cpf))
 
 	if !utils.ValidateCPF(cpf) {
@@ -272,7 +272,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 // @Router /citizen/{cpf}/phone [put]
 func UpdateSelfDeclaredPhone(c *gin.Context) {
 	cpf := c.Param("cpf")
-	logger := observability.Logger.With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(zap.String("cpf", cpf))
 	logger.Info("UpdateSelfDeclaredPhone called", zap.String("cpf", cpf))
 
 	if !utils.ValidateCPF(cpf) {
@@ -357,7 +357,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 // @Router /citizen/{cpf}/email [put]
 func UpdateSelfDeclaredEmail(c *gin.Context) {
 	cpf := c.Param("cpf")
-	logger := observability.Logger.With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(zap.String("cpf", cpf))
 	logger.Info("UpdateSelfDeclaredEmail called", zap.String("cpf", cpf))
 
 	if !utils.ValidateCPF(cpf) {
@@ -476,11 +476,8 @@ func HealthCheck(c *gin.Context) {
 func GetFirstLogin(c *gin.Context) {
 	ctx := c.Request.Context()
 	cpf := c.Param("cpf")
-	var logger *zap.Logger
-	if observability.Logger != nil {
-		logger = observability.Logger.With(zap.String("cpf", cpf))
-		logger.Info("GetFirstLogin called", zap.String("cpf", cpf))
-	}
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger.Info("GetFirstLogin called", zap.String("cpf", cpf))
 
 	if !utils.ValidateCPF(cpf) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
@@ -500,9 +497,7 @@ func GetFirstLogin(c *gin.Context) {
 			c.JSON(http.StatusOK, models.UserConfigResponse{FirstLogin: true})
 			return
 		}
-		if logger != nil {
-			logger.Error("failed to get user config", zap.Error(err))
-		}
+		logger.Error("failed to get user config", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get user config"})
 		return
 	}
@@ -524,11 +519,8 @@ func GetFirstLogin(c *gin.Context) {
 func UpdateFirstLogin(c *gin.Context) {
 	ctx := c.Request.Context()
 	cpf := c.Param("cpf")
-	var logger *zap.Logger
-	if observability.Logger != nil {
-		logger = observability.Logger.With(zap.String("cpf", cpf))
-		logger.Info("UpdateFirstLogin called", zap.String("cpf", cpf))
-	}
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger.Info("UpdateFirstLogin called", zap.String("cpf", cpf))
 
 	if !utils.ValidateCPF(cpf) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
@@ -549,9 +541,7 @@ func UpdateFirstLogin(c *gin.Context) {
 		options.Update().SetUpsert(true),
 	)
 	if err != nil {
-		if logger != nil {
-			logger.Error("failed to update first login status", zap.Error(err))
-		}
+		logger.Error("failed to update first login status", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update first login status"})
 		return
 	}
@@ -573,11 +563,8 @@ func UpdateFirstLogin(c *gin.Context) {
 func GetOptIn(c *gin.Context) {
 	ctx := c.Request.Context()
 	cpf := c.Param("cpf")
-	var logger *zap.Logger
-	if observability.Logger != nil {
-		logger = observability.Logger.With(zap.String("cpf", cpf))
-		logger.Info("GetOptIn called", zap.String("cpf", cpf))
-	}
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger.Info("GetOptIn called", zap.String("cpf", cpf))
 
 	if !utils.ValidateCPF(cpf) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
@@ -592,9 +579,7 @@ func GetOptIn(c *gin.Context) {
 			c.JSON(http.StatusOK, models.UserConfigOptInResponse{OptIn: true})
 			return
 		}
-		if logger != nil {
-			logger.Error("failed to get user config", zap.Error(err))
-		}
+		logger.Error("failed to get user config", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get user config"})
 		return
 	}
@@ -617,11 +602,8 @@ func GetOptIn(c *gin.Context) {
 func UpdateOptIn(c *gin.Context) {
 	ctx := c.Request.Context()
 	cpf := c.Param("cpf")
-	var logger *zap.Logger
-	if observability.Logger != nil {
-		logger = observability.Logger.With(zap.String("cpf", cpf))
-		logger.Info("UpdateOptIn called", zap.String("cpf", cpf))
-	}
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger.Info("UpdateOptIn called", zap.String("cpf", cpf))
 
 	if !utils.ValidateCPF(cpf) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
@@ -648,9 +630,7 @@ func UpdateOptIn(c *gin.Context) {
 		options.Update().SetUpsert(true),
 	)
 	if err != nil {
-		if logger != nil {
-			logger.Error("failed to update opt-in status", zap.Error(err))
-		}
+		logger.Error("failed to update opt-in status", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update opt-in status"})
 		return
 	}

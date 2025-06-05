@@ -61,7 +61,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 			})
 			return
 		}
-		observability.Logger.Error("failed to find verification request", zap.Error(err))
+		observability.Logger().Error("failed to find verification request", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Error: "Failed to validate verification code",
 		})
@@ -93,7 +93,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 		options.Update().SetUpsert(true),
 	)
 	if err != nil {
-		observability.Logger.Error("failed to update self-declared data", zap.Error(err))
+		observability.Logger().Error("failed to update self-declared data", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Error: "Failed to update phone verification status",
 		})
@@ -109,7 +109,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 	// Invalidate cache
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)
 	if err := config.Redis.Del(context.Background(), cacheKey).Err(); err != nil {
-		observability.Logger.Warn("failed to invalidate cache", zap.Error(err))
+		observability.Logger().Warn("failed to invalidate cache", zap.Error(err))
 	}
 
 	c.JSON(http.StatusOK, SuccessResponse{

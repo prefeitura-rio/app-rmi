@@ -4,8 +4,10 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 )
 
-// Logger is an alias to the global logger instance
-var Logger = logging.Logger
+// Logger returns the global safe logger instance
+func Logger() *logging.SafeLogger {
+	return logging.Logger
+}
 
 // MaskCPF masks a CPF number for logging
 func MaskCPF(cpf string) string {
