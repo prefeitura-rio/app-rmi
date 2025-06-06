@@ -79,7 +79,7 @@ func LoadConfig() error {
 		MongoDatabase: getEnvOrDefault("MONGODB_DATABASE", "rmi"),
 
 		// Redis configuration
-		RedisURI:      getEnvOrDefault("REDIS_URI", "redis://localhost:6379"),
+		RedisURI:      getEnvOrDefault("REDIS_URI", "localhost:6379"),
 		RedisPassword: getEnvOrDefault("REDIS_PASSWORD", ""),
 		RedisDB:       redisDB,
 		RedisTTL:      redisTTL,
