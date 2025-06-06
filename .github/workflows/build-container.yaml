@@ -41,6 +41,25 @@ jobs:
       - name: Convert to OpenAPI v3
         run: swagger2openapi docs/swagger.json -o docs/openapi-v3.json
 
+      - name: Post-process OpenAPI v3 JSON
+        run: |
+          if [ "${GITHUB_REF##*/}" == "main" ]; then
+            SERVER_URL="https://services.app.dados.rio/rmi/v1"
+          elif [ "${GITHUB_REF##*/}" == "staging" ]; then
+            SERVER_URL="https://services.staging.app.dados.rio/rmi/v1"
+          fi
+          jq --arg url "$SERVER_URL" '.servers = [{"url": $url}] |
+              .components.securitySchemes = {
+                "bearerAuth": {
+                  "type": "http",
+                  "scheme": "bearer",
+                  "bearerFormat": "JWT"
+                }
+              } |
+              .paths |= with_entries(.value |= with_entries(.value.security = [{"bearerAuth": []}]))' \
+          docs/openapi-v3.json > docs/openapi-v3.json.tmp && \
+          mv docs/openapi-v3.json.tmp docs/openapi-v3.json
+
       - name: Configure Git
         run: |
           git config --global user.name 'GitHub Actions'
