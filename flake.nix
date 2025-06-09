@@ -27,6 +27,7 @@
             gopls
             go-tools
             just
+            k6
             mongodb
             redis
             docker
@@ -39,6 +40,7 @@
             echo "Available tools:"
             echo "- Go $(go version)"
             echo "- Just $(just --version)"
+            echo "- K6 $(k6 --version)"
             echo "- MongoDB $(mongod --version | head -n1)"
             echo "- Redis $(redis-server --version)"
             echo "- Docker $(docker --version)"

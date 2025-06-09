@@ -433,6 +433,23 @@ func HealthCheck(c *gin.Context) {
 	ctx, span := otel.Tracer("").Start(c.Request.Context(), "HealthCheck")
 	defer span.End()
 
+	// Try to get from cache first
+	cacheKey := "health:status"
+	cachedData, err := config.Redis.Get(ctx, cacheKey).Result()
+	if err == nil {
+		observability.CacheHits.WithLabelValues("health_check").Inc()
+		var health HealthResponse
+		if err := json.Unmarshal([]byte(cachedData), &health); err == nil {
+			if health.Status == "healthy" {
+				c.JSON(http.StatusOK, health)
+			} else {
+				c.JSON(http.StatusServiceUnavailable, health)
+			}
+			return
+		}
+		observability.Logger().Warn("failed to unmarshal cached health data", zap.Error(err))
+	}
+
 	health := HealthResponse{
 		Status:    "healthy",
 		Timestamp: time.Now(),
@@ -453,6 +470,18 @@ func HealthCheck(c *gin.Context) {
 		health.Services["redis"] = "unhealthy"
 	} else {
 		health.Services["redis"] = "healthy"
+	}
+
+	// Cache the result with different TTLs based on health status
+	healthJSON, err := json.Marshal(health)
+	if err == nil {
+		ttl := 5 * time.Second // Default TTL for healthy responses
+		if health.Status == "unhealthy" {
+			ttl = 1 * time.Second // Shorter TTL for unhealthy responses
+		}
+		if err := config.Redis.Set(ctx, cacheKey, healthJSON, ttl).Err(); err != nil {
+			observability.Logger().Warn("failed to cache health status", zap.Error(err))
+		}
 	}
 
 	if health.Status == "healthy" {
