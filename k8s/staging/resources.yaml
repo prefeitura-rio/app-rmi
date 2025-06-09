@@ -43,6 +43,25 @@ spec:
       restartPolicy: Always
 
 ---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: rmi-scaled-object
+spec:
+  scaleTargetRef:
+    name: rmi
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  cooldownPeriod: 10
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.istio-system.svc.cluster.local:9090
+        metricName: http_requests_total
+        threshold: "500"
+        query: sum(rate(istio_requests_total{destination_workload="rmi"}[1m]))
+
+---
 apiVersion: v1
 kind: Service
 metadata:
