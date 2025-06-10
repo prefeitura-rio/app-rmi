@@ -16,7 +16,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: SonarSource/sonarqube-scan-action@v4
+      - if: ${{ github.ref == 'refs/heads/staging' }}
+        uses: SonarSource/sonarqube-scan-action@v4
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
