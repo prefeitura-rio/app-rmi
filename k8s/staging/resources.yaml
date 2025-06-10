@@ -50,7 +50,7 @@ spec:
   scaleTargetRef:
     name: rmi
   minReplicaCount: 1
-  maxReplicaCount: 5
+  maxReplicaCount: 1
   cooldownPeriod: 10
   triggers:
     - type: prometheus
