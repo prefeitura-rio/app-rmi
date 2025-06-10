@@ -1,12 +1,13 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "description": "API for managing citizen data with self-declared information. This API provides endpoints for retrieving and updating citizen information, with support for caching and data validation. Self-declared data takes precedence over base data when available.",
-    "title": "RMI API",
+    "description": "API para gerenciamento de dados de cidadãos do Rio de Janeiro",
+    "title": "API RMI",
+    "termsOfService": "http://swagger.io/terms/",
     "contact": {
-      "name": "API Support",
-      "url": "http://www.swagger.io/support",
-      "email": "support@swagger.io"
+      "name": "Suporte RMI",
+      "url": "http://www.rio.rj.gov.br",
+      "email": "suporte@rio.rj.gov.br"
     },
     "license": {
       "name": "Apache 2.0",
@@ -17,14 +18,19 @@
   "paths": {
     "/citizen/{cpf}": {
       "get": {
-        "description": "Retrieves citizen data by CPF, combining base data with any self-declared updates. Self-declared data takes precedence over base data. Results are cached using Redis with configurable TTL.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Recupera os dados do cidadão por CPF, combinando dados base com atualizações autodeclaradas. Dados autodeclarados têm precedência sobre dados base. Os resultados são armazenados em cache usando Redis com TTL configurável.",
         "tags": [
           "citizen"
         ],
-        "summary": "Get citizen data",
+        "summary": "Obter dados do cidadão",
         "parameters": [
           {
-            "description": "Citizen CPF (11 digits)",
+            "description": "CPF do cidadão (11 dígitos)",
             "name": "cpf",
             "in": "path",
             "required": true,
@@ -37,7 +43,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Complete citizen data",
+            "description": "Dados completos do cidadão",
             "content": {
               "application/json": {
                 "schema": {
@@ -47,7 +53,27 @@
             }
           },
           "400": {
-            "description": "Invalid CPF format",
+            "description": "Formato de CPF inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
             "content": {
               "application/json": {
                 "schema": {
@@ -57,7 +83,7 @@
             }
           },
           "404": {
-            "description": "Citizen not found",
+            "description": "Cidadão não encontrado",
             "content": {
               "application/json": {
                 "schema": {
@@ -67,7 +93,7 @@
             }
           },
           "500": {
-            "description": "Internal server error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -76,24 +102,24 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/citizen/{cpf}/address": {
       "put": {
-        "description": "Updates or creates the self-declared address for a citizen by CPF. Only the address field is updated.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza ou cria o endereço autodeclarado de um cidadão por CPF. Apenas o campo de endereço é atualizado.",
         "tags": [
           "citizen"
         ],
-        "summary": "Update self-declared address for a citizen",
+        "summary": "Atualizar endereço autodeclarado",
         "parameters": [
           {
-            "description": "CPF number",
+            "description": "Número do CPF",
             "name": "cpf",
             "in": "path",
             "required": true,
@@ -110,7 +136,7 @@
               }
             }
           },
-          "description": "Self-declared address",
+          "description": "Endereço autodeclarado",
           "required": true
         },
         "responses": {
@@ -126,6 +152,26 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
             "content": {
               "application/json": {
                 "schema": {
@@ -154,24 +200,24 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/citizen/{cpf}/email": {
       "put": {
-        "description": "Updates or creates the self-declared email for a citizen by CPF. Only the email field is updated.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza ou cria o email autodeclarado de um cidadão por CPF. Apenas o campo de email é atualizado.",
         "tags": [
           "citizen"
         ],
-        "summary": "Update self-declared email for a citizen",
+        "summary": "Atualizar email autodeclarado",
         "parameters": [
           {
-            "description": "CPF number",
+            "description": "Número do CPF",
             "name": "cpf",
             "in": "path",
             "required": true,
@@ -188,7 +234,7 @@
               }
             }
           },
-          "description": "Self-declared email",
+          "description": "Email autodeclarado",
           "required": true
         },
         "responses": {
@@ -204,6 +250,26 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
             "content": {
               "application/json": {
                 "schema": {
@@ -232,24 +298,122 @@
               }
             }
           }
-        },
+        }
+      }
+    },
+    "/citizen/{cpf}/ethnicity": {
+      "put": {
         "security": [
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "description": "Atualiza ou cria a etnia autodeclarada de um cidadão por CPF. Apenas o campo de etnia é atualizado.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Atualizar etnia autodeclarada",
+        "parameters": [
+          {
+            "description": "Número do CPF",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.SelfDeclaredRacaInput"
+              }
+            }
+          },
+          "description": "Etnia autodeclarada",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/citizen/{cpf}/firstlogin": {
       "get": {
-        "description": "Checks if this is the user's first login",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Verifica se este é o primeiro login do usuário",
         "tags": [
           "citizen"
         ],
-        "summary": "Get first login status",
+        "summary": "Obter status do primeiro login",
         "parameters": [
           {
-            "description": "CPF number",
+            "description": "Número do CPF",
             "name": "cpf",
             "in": "path",
             "required": true,
@@ -279,6 +443,26 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal Server Error",
             "content": {
@@ -289,22 +473,22 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       },
       "put": {
-        "description": "Sets the first login status to false for a user",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Define o status do primeiro login como falso para um usuário",
         "tags": [
           "citizen"
         ],
-        "summary": "Update first login status",
+        "summary": "Atualizar status do primeiro login",
         "parameters": [
           {
-            "description": "CPF number",
+            "description": "Número do CPF",
             "name": "cpf",
             "in": "path",
             "required": true,
@@ -334,6 +518,26 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal Server Error",
             "content": {
@@ -344,24 +548,24 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/citizen/{cpf}/optin": {
       "get": {
-        "description": "Checks if the user has opted in for notifications",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Verifica se o usuário optou por receber notificações",
         "tags": [
           "citizen"
         ],
-        "summary": "Get opt-in status",
+        "summary": "Obter status de opt-in",
         "parameters": [
           {
-            "description": "CPF number",
+            "description": "Número do CPF",
             "name": "cpf",
             "in": "path",
             "required": true,
@@ -391,6 +595,26 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal Server Error",
             "content": {
@@ -401,22 +625,22 @@
               }
             }
           }
-        },
+        }
+      },
+      "put": {
         "security": [
           {
             "bearerAuth": []
           }
-        ]
-      },
-      "put": {
-        "description": "Updates the user's opt-in status for notifications",
+        ],
+        "description": "Atualiza o status de opt-in do usuário para notificações",
         "tags": [
           "citizen"
         ],
-        "summary": "Update opt-in status",
+        "summary": "Atualizar status de opt-in",
         "parameters": [
           {
-            "description": "CPF number",
+            "description": "Número do CPF",
             "name": "cpf",
             "in": "path",
             "required": true,
@@ -433,7 +657,7 @@
               }
             }
           },
-          "description": "Opt-in status",
+          "description": "Status de opt-in",
           "required": true
         },
         "responses": {
@@ -457,6 +681,26 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal Server Error",
             "content": {
@@ -467,24 +711,24 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/citizen/{cpf}/phone": {
       "put": {
-        "description": "Updates or creates the self-declared phone for a citizen by CPF. Only the phone field is updated (stored as pending until verified).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza ou cria o telefone autodeclarado de um cidadão por CPF. Apenas o campo de telefone é atualizado (armazenado como pendente até verificado).",
         "tags": [
           "citizen"
         ],
-        "summary": "Update self-declared phone for a citizen",
+        "summary": "Atualizar telefone autodeclarado",
         "parameters": [
           {
-            "description": "CPF number",
+            "description": "Número do CPF",
             "name": "cpf",
             "in": "path",
             "required": true,
@@ -501,7 +745,7 @@
               }
             }
           },
-          "description": "Self-declared phone",
+          "description": "Telefone autodeclarado",
           "required": true
         },
         "responses": {
@@ -517,6 +761,26 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
             "content": {
               "application/json": {
                 "schema": {
@@ -545,12 +809,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/citizen/{cpf}/phone/validate": {
@@ -633,14 +892,14 @@
     },
     "/health": {
       "get": {
-        "description": "Checks the health of the API and its dependencies (MongoDB and Redis). Returns detailed status for each service.",
+        "description": "Verifica a saúde da API e suas dependências (MongoDB e Redis). Retorna status detalhado para cada serviço.",
         "tags": [
           "health"
         ],
-        "summary": "Health check endpoint",
+        "summary": "Verificação de saúde",
         "responses": {
           "200": {
-            "description": "All services are healthy",
+            "description": "Todos os serviços estão saudáveis",
             "content": {
               "application/json": {
                 "schema": {
@@ -650,7 +909,7 @@
             }
           },
           "503": {
-            "description": "One or more services are unhealthy",
+            "description": "Um ou mais serviços estão indisponíveis",
             "content": {
               "application/json": {
                 "schema": {
@@ -1058,6 +1317,17 @@
           "ddi": {
             "type": "string"
           },
+          "valor": {
+            "type": "string"
+          }
+        }
+      },
+      "models.SelfDeclaredRacaInput": {
+        "type": "object",
+        "required": [
+          "valor"
+        ],
+        "properties": {
           "valor": {
             "type": "string"
           }
