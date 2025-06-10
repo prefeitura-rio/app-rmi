@@ -20,16 +20,19 @@ import (
 )
 
 // GetCitizenData godoc
-// @Summary Get citizen data
-// @Description Retrieves citizen data by CPF, combining base data with any self-declared updates. Self-declared data takes precedence over base data. Results are cached using Redis with configurable TTL.
+// @Summary Obter dados do cidadão
+// @Description Recupera os dados do cidadão por CPF, combinando dados base com atualizações autodeclaradas. Dados autodeclarados têm precedência sobre dados base. Os resultados são armazenados em cache usando Redis com TTL configurável.
 // @Tags citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "Citizen CPF (11 digits)" minLength(11) maxLength(11)
-// @Success 200 {object} models.Citizen "Complete citizen data"
-// @Failure 400 {object} ErrorResponse "Invalid CPF format"
-// @Failure 404 {object} ErrorResponse "Citizen not found"
-// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Param cpf path string true "CPF do cidadão (11 dígitos)" minLength(11) maxLength(11)
+// @Security BearerAuth
+// @Success 200 {object} models.Citizen "Dados completos do cidadão"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
+// @Failure 404 {object} ErrorResponse "Cidadão não encontrado"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf} [get]
 func GetCitizenData(c *gin.Context) {
 	ctx, span := otel.Tracer("").Start(c.Request.Context(), "GetCitizenData")
@@ -163,15 +166,18 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 }
 
 // UpdateSelfDeclaredAddress godoc
-// @Summary Update self-declared address for a citizen
-// @Description Updates or creates the self-declared address for a citizen by CPF. Only the address field is updated.
+// @Summary Atualizar endereço autodeclarado
+// @Description Atualiza ou cria o endereço autodeclarado de um cidadão por CPF. Apenas o campo de endereço é atualizado.
 // @Tags citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "CPF number"
-// @Param data body models.SelfDeclaredAddressInput true "Self-declared address"
+// @Param cpf path string true "Número do CPF"
+// @Param data body models.SelfDeclaredAddressInput true "Endereço autodeclarado"
+// @Security BearerAuth
 // @Success 200 {object} SuccessResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /citizen/{cpf}/address [put]
@@ -258,15 +264,18 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 }
 
 // UpdateSelfDeclaredPhone godoc
-// @Summary Update self-declared phone for a citizen
-// @Description Updates or creates the self-declared phone for a citizen by CPF. Only the phone field is updated (stored as pending until verified).
+// @Summary Atualizar telefone autodeclarado
+// @Description Atualiza ou cria o telefone autodeclarado de um cidadão por CPF. Apenas o campo de telefone é atualizado (armazenado como pendente até verificado).
 // @Tags citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "CPF number"
-// @Param data body models.SelfDeclaredPhoneInput true "Self-declared phone"
+// @Param cpf path string true "Número do CPF"
+// @Param data body models.SelfDeclaredPhoneInput true "Telefone autodeclarado"
+// @Security BearerAuth
 // @Success 200 {object} SuccessResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /citizen/{cpf}/phone [put]
@@ -343,15 +352,18 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 }
 
 // UpdateSelfDeclaredEmail godoc
-// @Summary Update self-declared email for a citizen
-// @Description Updates or creates the self-declared email for a citizen by CPF. Only the email field is updated.
+// @Summary Atualizar email autodeclarado
+// @Description Atualiza ou cria o email autodeclarado de um cidadão por CPF. Apenas o campo de email é atualizado.
 // @Tags citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "CPF number"
-// @Param data body models.SelfDeclaredEmailInput true "Self-declared email"
+// @Param cpf path string true "Número do CPF"
+// @Param data body models.SelfDeclaredEmailInput true "Email autodeclarado"
+// @Security BearerAuth
 // @Success 200 {object} SuccessResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /citizen/{cpf}/email [put]
@@ -422,12 +434,12 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 }
 
 // HealthCheck godoc
-// @Summary Health check endpoint
-// @Description Checks the health of the API and its dependencies (MongoDB and Redis). Returns detailed status for each service.
+// @Summary Verificação de saúde
+// @Description Verifica a saúde da API e suas dependências (MongoDB e Redis). Retorna status detalhado para cada serviço.
 // @Tags health
 // @Produce json
-// @Success 200 {object} HealthResponse "All services are healthy"
-// @Failure 503 {object} HealthResponse "One or more services are unhealthy"
+// @Success 200 {object} HealthResponse "Todos os serviços estão saudáveis"
+// @Failure 503 {object} HealthResponse "Um ou mais serviços estão indisponíveis"
 // @Router /health [get]
 func HealthCheck(c *gin.Context) {
 	ctx, span := otel.Tracer("").Start(c.Request.Context(), "HealthCheck")
@@ -492,14 +504,17 @@ func HealthCheck(c *gin.Context) {
 }
 
 // GetFirstLogin godoc
-// @Summary Get first login status
-// @Description Checks if this is the user's first login
+// @Summary Obter status do primeiro login
+// @Description Verifica se este é o primeiro login do usuário
 // @Tags citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "CPF number"
+// @Param cpf path string true "Número do CPF"
+// @Security BearerAuth
 // @Success 200 {object} models.UserConfigResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
 // @Failure 500 {object} ErrorResponse
 // @Router /citizen/{cpf}/firstlogin [get]
 func GetFirstLogin(c *gin.Context) {
@@ -535,14 +550,17 @@ func GetFirstLogin(c *gin.Context) {
 }
 
 // UpdateFirstLogin godoc
-// @Summary Update first login status
-// @Description Sets the first login status to false for a user
+// @Summary Atualizar status do primeiro login
+// @Description Define o status do primeiro login como falso para um usuário
 // @Tags citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "CPF number"
+// @Param cpf path string true "Número do CPF"
+// @Security BearerAuth
 // @Success 200 {object} models.UserConfigResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
 // @Failure 500 {object} ErrorResponse
 // @Router /citizen/{cpf}/firstlogin [put]
 func UpdateFirstLogin(c *gin.Context) {
@@ -579,14 +597,17 @@ func UpdateFirstLogin(c *gin.Context) {
 }
 
 // GetOptIn godoc
-// @Summary Get opt-in status
-// @Description Checks if the user has opted in for notifications
+// @Summary Obter status de opt-in
+// @Description Verifica se o usuário optou por receber notificações
 // @Tags citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "CPF number"
+// @Param cpf path string true "Número do CPF"
+// @Security BearerAuth
 // @Success 200 {object} models.UserConfigOptInResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
 // @Failure 500 {object} ErrorResponse
 // @Router /citizen/{cpf}/optin [get]
 func GetOptIn(c *gin.Context) {
@@ -617,15 +638,18 @@ func GetOptIn(c *gin.Context) {
 }
 
 // UpdateOptIn godoc
-// @Summary Update opt-in status
-// @Description Updates the user's opt-in status for notifications
+// @Summary Atualizar status de opt-in
+// @Description Atualiza o status de opt-in do usuário para notificações
 // @Tags citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "CPF number"
-// @Param data body models.UserConfigOptInResponse true "Opt-in status"
+// @Param cpf path string true "Número do CPF"
+// @Param data body models.UserConfigOptInResponse true "Status de opt-in"
+// @Security BearerAuth
 // @Success 200 {object} models.UserConfigOptInResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
 // @Failure 500 {object} ErrorResponse
 // @Router /citizen/{cpf}/optin [put]
 func UpdateOptIn(c *gin.Context) {

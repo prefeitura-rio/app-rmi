@@ -149,7 +149,7 @@ definitions:
   models.Mae:
     properties:
       cpf:
-        type: integer
+        type: string
       nome:
         type: string
     type: object
@@ -281,28 +281,26 @@ definitions:
 host: localhost:8080
 info:
   contact:
-    email: support@swagger.io
-    name: API Support
-    url: http://www.swagger.io/support
-  description: API for managing citizen data with self-declared information. This
-    API provides endpoints for retrieving and updating citizen information, with support
-    for caching and data validation. Self-declared data takes precedence over base
-    data when available.
+    email: suporte@rio.rj.gov.br
+    name: Suporte RMI
+    url: http://www.rio.rj.gov.br
+  description: API para gerenciamento de dados de cidadãos do Rio de Janeiro
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  title: RMI API
+  termsOfService: http://swagger.io/terms/
+  title: API RMI
   version: "1.0"
 paths:
   /citizen/{cpf}:
     get:
       consumes:
       - application/json
-      description: Retrieves citizen data by CPF, combining base data with any self-declared
-        updates. Self-declared data takes precedence over base data. Results are cached
-        using Redis with configurable TTL.
+      description: Recupera os dados do cidadão por CPF, combinando dados base com
+        atualizações autodeclaradas. Dados autodeclarados têm precedência sobre dados
+        base. Os resultados são armazenados em cache usando Redis com TTL configurável.
       parameters:
-      - description: Citizen CPF (11 digits)
+      - description: CPF do cidadão (11 dígitos)
         in: path
         maxLength: 11
         minLength: 11
@@ -313,37 +311,47 @@ paths:
       - application/json
       responses:
         "200":
-          description: Complete citizen data
+          description: Dados completos do cidadão
           schema:
             $ref: '#/definitions/models.Citizen'
         "400":
-          description: Invalid CPF format
+          description: Formato de CPF inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Citizen not found
+          description: Cidadão não encontrado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal server error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Get citizen data
+      security:
+      - BearerAuth: []
+      summary: Obter dados do cidadão
       tags:
       - citizen
   /citizen/{cpf}/address:
     put:
       consumes:
       - application/json
-      description: Updates or creates the self-declared address for a citizen by CPF.
-        Only the address field is updated.
+      description: Atualiza ou cria o endereço autodeclarado de um cidadão por CPF.
+        Apenas o campo de endereço é atualizado.
       parameters:
-      - description: CPF number
+      - description: Número do CPF
         in: path
         name: cpf
         required: true
         type: string
-      - description: Self-declared address
+      - description: Endereço autodeclarado
         in: body
         name: data
         required: true
@@ -360,6 +368,14 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Not Found
           schema:
@@ -368,22 +384,24 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Update self-declared address for a citizen
+      security:
+      - BearerAuth: []
+      summary: Atualizar endereço autodeclarado
       tags:
       - citizen
   /citizen/{cpf}/email:
     put:
       consumes:
       - application/json
-      description: Updates or creates the self-declared email for a citizen by CPF.
-        Only the email field is updated.
+      description: Atualiza ou cria o email autodeclarado de um cidadão por CPF. Apenas
+        o campo de email é atualizado.
       parameters:
-      - description: CPF number
+      - description: Número do CPF
         in: path
         name: cpf
         required: true
         type: string
-      - description: Self-declared email
+      - description: Email autodeclarado
         in: body
         name: data
         required: true
@@ -400,6 +418,14 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Not Found
           schema:
@@ -408,16 +434,18 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Update self-declared email for a citizen
+      security:
+      - BearerAuth: []
+      summary: Atualizar email autodeclarado
       tags:
       - citizen
   /citizen/{cpf}/firstlogin:
     get:
       consumes:
       - application/json
-      description: Checks if this is the user's first login
+      description: Verifica se este é o primeiro login do usuário
       parameters:
-      - description: CPF number
+      - description: Número do CPF
         in: path
         name: cpf
         required: true
@@ -433,19 +461,29 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Get first login status
+      security:
+      - BearerAuth: []
+      summary: Obter status do primeiro login
       tags:
       - citizen
     put:
       consumes:
       - application/json
-      description: Sets the first login status to false for a user
+      description: Define o status do primeiro login como falso para um usuário
       parameters:
-      - description: CPF number
+      - description: Número do CPF
         in: path
         name: cpf
         required: true
@@ -461,20 +499,30 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Update first login status
+      security:
+      - BearerAuth: []
+      summary: Atualizar status do primeiro login
       tags:
       - citizen
   /citizen/{cpf}/optin:
     get:
       consumes:
       - application/json
-      description: Checks if the user has opted in for notifications
+      description: Verifica se o usuário optou por receber notificações
       parameters:
-      - description: CPF number
+      - description: Número do CPF
         in: path
         name: cpf
         required: true
@@ -490,24 +538,34 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Get opt-in status
+      security:
+      - BearerAuth: []
+      summary: Obter status de opt-in
       tags:
       - citizen
     put:
       consumes:
       - application/json
-      description: Updates the user's opt-in status for notifications
+      description: Atualiza o status de opt-in do usuário para notificações
       parameters:
-      - description: CPF number
+      - description: Número do CPF
         in: path
         name: cpf
         required: true
         type: string
-      - description: Opt-in status
+      - description: Status de opt-in
         in: body
         name: data
         required: true
@@ -524,26 +582,36 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Update opt-in status
+      security:
+      - BearerAuth: []
+      summary: Atualizar status de opt-in
       tags:
       - citizen
   /citizen/{cpf}/phone:
     put:
       consumes:
       - application/json
-      description: Updates or creates the self-declared phone for a citizen by CPF.
-        Only the phone field is updated (stored as pending until verified).
+      description: Atualiza ou cria o telefone autodeclarado de um cidadão por CPF.
+        Apenas o campo de telefone é atualizado (armazenado como pendente até verificado).
       parameters:
-      - description: CPF number
+      - description: Número do CPF
         in: path
         name: cpf
         required: true
         type: string
-      - description: Self-declared phone
+      - description: Telefone autodeclarado
         in: body
         name: data
         required: true
@@ -560,6 +628,14 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Not Found
           schema:
@@ -568,7 +644,9 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Update self-declared phone for a citizen
+      security:
+      - BearerAuth: []
+      summary: Atualizar telefone autodeclarado
       tags:
       - citizen
   /citizen/{cpf}/phone/validate:
@@ -612,24 +690,28 @@ paths:
       - citizen
   /health:
     get:
-      description: Checks the health of the API and its dependencies (MongoDB and
-        Redis). Returns detailed status for each service.
+      description: Verifica a saúde da API e suas dependências (MongoDB e Redis).
+        Retorna status detalhado para cada serviço.
       produces:
       - application/json
       responses:
         "200":
-          description: All services are healthy
+          description: Todos os serviços estão saudáveis
           schema:
             $ref: '#/definitions/handlers.HealthResponse'
         "503":
-          description: One or more services are unhealthy
+          description: Um ou mais serviços estão indisponíveis
           schema:
             $ref: '#/definitions/handlers.HealthResponse'
-      summary: Health check endpoint
+      summary: Verificação de saúde
       tags:
       - health
+schemes:
+- http
+- https
 securityDefinitions:
-  ApiKeyAuth:
+  BearerAuth:
+    description: 'Tipo: Bearer token. Exemplo: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
     in: header
     name: Authorization
     type: apiKey

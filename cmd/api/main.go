@@ -24,23 +24,26 @@ import (
 	_ "github.com/prefeitura-rio/app-rmi/docs"
 )
 
-// @title           RMI API
-// @version         1.0
-// @description     API for managing citizen data with self-declared information. This API provides endpoints for retrieving and updating citizen information, with support for caching and data validation. Self-declared data takes precedence over base data when available.
+// @title API RMI
+// @version 1.0
+// @description API para gerenciamento de dados de cidadãos do Rio de Janeiro
+// @termsOfService http://swagger.io/terms/
 
-// @contact.name   API Support
-// @contact.url    http://www.swagger.io/support
-// @contact.email  support@swagger.io
+// @contact.name Suporte RMI
+// @contact.url http://www.rio.rj.gov.br
+// @contact.email suporte@rio.rj.gov.br
 
-// @license.name  Apache 2.0
-// @license.url   http://www.apache.org/licenses/LICENSE-2.0.html
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
 
-// @host      localhost:8080
-// @BasePath  /v1
+// @host localhost:8080
+// @BasePath /v1
+// @schemes http https
 
-// @securityDefinitions.apikey ApiKeyAuth
+// @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
+// @description Tipo: Bearer token. Exemplo: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 // @tag.name citizen
 // @tag.description Operations about citizens
@@ -88,20 +91,24 @@ func main() {
 	// API v1 routes
 	v1 := router.Group("/v1")
 	{
-		// Health check endpoint
+		// Health check endpoint (no auth required)
 		v1.GET("/health", handlers.HealthCheck)
 		
-		v1.GET("/citizen/:cpf", handlers.GetCitizenData)
-		v1.PUT("/citizen/:cpf/address", handlers.UpdateSelfDeclaredAddress)
-		v1.PUT("/citizen/:cpf/phone", handlers.UpdateSelfDeclaredPhone)
-		v1.PUT("/citizen/:cpf/email", handlers.UpdateSelfDeclaredEmail)
-		v1.GET("/citizen/:cpf/firstlogin", handlers.GetFirstLogin)
-		v1.PUT("/citizen/:cpf/firstlogin", handlers.UpdateFirstLogin)
-		v1.GET("/citizen/:cpf/optin", handlers.GetOptIn)
-		v1.PUT("/citizen/:cpf/optin", handlers.UpdateOptIn)
-
-		// Change phone validation endpoint to /citizen/:cpf/phone/validate
-		v1.POST("/citizen/:cpf/phone/validate", handlers.ValidatePhoneVerification)
+		// Citizen endpoints (require auth)
+		citizen := v1.Group("/citizen")
+		citizen.Use(middleware.AuthMiddleware())
+		{
+			// Endpoints that require own CPF access
+			citizen.GET("/:cpf", middleware.RequireOwnCPF(), handlers.GetCitizenData)
+			citizen.PUT("/:cpf/address", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredAddress)
+			citizen.PUT("/:cpf/phone", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredPhone)
+			citizen.PUT("/:cpf/email", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredEmail)
+			citizen.GET("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.GetFirstLogin)
+			citizen.PUT("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.UpdateFirstLogin)
+			citizen.GET("/:cpf/optin", middleware.RequireOwnCPF(), handlers.GetOptIn)
+			citizen.PUT("/:cpf/optin", middleware.RequireOwnCPF(), handlers.UpdateOptIn)
+			citizen.POST("/:cpf/phone/validate", middleware.RequireOwnCPF(), handlers.ValidatePhoneVerification)
+		}
 	}
 
 	// Swagger documentation
@@ -127,19 +134,19 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal
+	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	// Graceful shutdown
-	logging.Logger.Info("shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Create a deadline for server shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Attempt graceful shutdown
 	if err := srv.Shutdown(ctx); err != nil {
 		logging.Logger.Fatal("server forced to shutdown", zap.Error(err))
 	}
 
-	logging.Logger.Info("server exited gracefully")
+	logging.Logger.Info("server exiting")
 } 
