@@ -9,5 +9,6 @@ type SelfDeclaredData struct {
 	Email          *Email     `bson:"email,omitempty" json:"email,omitempty"`
 	Telefone       *Telefone  `bson:"telefone,omitempty" json:"telefone,omitempty"`
 	TelefonePending *Telefone `bson:"telefone_pending,omitempty" json:"telefone_pending,omitempty"`
+	Raca           *string    `bson:"raca,omitempty" json:"raca,omitempty"`
 	UpdatedAt      time.Time  `bson:"updated_at" json:"updated_at"`
 } 

@@ -149,7 +149,7 @@ definitions:
   models.Mae:
     properties:
       cpf:
-        type: integer
+        type: string
       nome:
         type: string
     type: object
@@ -242,6 +242,13 @@ definitions:
     required:
     - ddd
     - ddi
+    - valor
+    type: object
+  models.SelfDeclaredRacaInput:
+    properties:
+      valor:
+        type: string
+    required:
     - valor
     type: object
   models.Telefone:
@@ -409,6 +416,46 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       summary: Update self-declared email for a citizen
+      tags:
+      - citizen
+  /citizen/{cpf}/ethnicity:
+    put:
+      consumes:
+      - application/json
+      description: Updates or creates the self-declared ethnicity for a citizen by
+        CPF. Only the ethnicity field is updated.
+      parameters:
+      - description: CPF number
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Self-declared ethnicity
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.SelfDeclaredRacaInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Update self-declared ethnicity for a citizen
       tags:
       - citizen
   /citizen/{cpf}/firstlogin:

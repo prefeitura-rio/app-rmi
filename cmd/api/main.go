@@ -95,6 +95,7 @@ func main() {
 		v1.PUT("/citizen/:cpf/address", handlers.UpdateSelfDeclaredAddress)
 		v1.PUT("/citizen/:cpf/phone", handlers.UpdateSelfDeclaredPhone)
 		v1.PUT("/citizen/:cpf/email", handlers.UpdateSelfDeclaredEmail)
+		v1.PUT("/citizen/:cpf/ethnicity", handlers.UpdateSelfDeclaredRaca)
 		v1.GET("/citizen/:cpf/firstlogin", handlers.GetFirstLogin)
 		v1.PUT("/citizen/:cpf/firstlogin", handlers.UpdateFirstLogin)
 		v1.GET("/citizen/:cpf/optin", handlers.GetOptIn)

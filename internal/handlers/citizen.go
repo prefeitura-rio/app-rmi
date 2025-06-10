@@ -77,6 +77,7 @@ func GetCitizenData(c *gin.Context) {
 			zap.Any("email", selfDeclared.Email),
 			zap.Any("telefone", selfDeclared.Telefone),
 			zap.Any("endereco", selfDeclared.Endereco),
+			zap.Any("raca", selfDeclared.Raca),
 			zap.Any("raw_data", selfDeclared))
 
 		// Merge self-declared data
@@ -107,6 +108,10 @@ func GetCitizenData(c *gin.Context) {
 			}
 			citizen.Telefone.Principal = selfDeclared.Telefone.Principal
 			citizen.Telefone.Indicador = utils.BoolPtr(true)
+		}
+		if selfDeclared.Raca != nil {
+			logger.Info("merging raca", zap.Any("raca", selfDeclared.Raca))
+			citizen.Raca = selfDeclared.Raca
 		}
 	} else if err != mongo.ErrNoDocuments {
 		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
@@ -158,6 +163,9 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 		}
 		citizen.Telefone.Principal = selfDeclared.Telefone.Principal
 		citizen.Telefone.Indicador = utils.BoolPtr(true)
+	}
+	if selfDeclared.Raca != nil {
+		citizen.Raca = selfDeclared.Raca
 	}
 	return &citizen, nil
 }
@@ -419,6 +427,73 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 		logger.Warn("failed to invalidate cache", zap.Error(err))
 	}
 	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared email updated successfully"})
+}
+
+// UpdateSelfDeclaredRaca godoc
+// @Summary Update self-declared ethnicity for a citizen
+// @Description Updates or creates the self-declared ethnicity for a citizen by CPF. Only the ethnicity field is updated.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "CPF number"
+// @Param data body models.SelfDeclaredRacaInput true "Self-declared ethnicity"
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /citizen/{cpf}/ethnicity [put]
+func UpdateSelfDeclaredRaca(c *gin.Context) {
+	cpf := c.Param("cpf")
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger.Info("UpdateSelfDeclaredRaca called", zap.String("cpf", cpf))
+
+	if !utils.ValidateCPF(cpf) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
+		return
+	}
+
+	var input models.SelfDeclaredRacaInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid request body: " + err.Error()})
+		return
+	}
+
+	// Sanity check: compare with current merged data
+	current, err := getMergedCitizenData(c, cpf)
+	if err != nil {
+		logger.Error("failed to fetch current data for comparison", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to check current data: " + err.Error()})
+		return
+	}
+	if current.Raca != nil && *current.Raca == input.Valor {
+		c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: ethnicity matches current data"})
+		return
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"raca":       input.Valor,
+			"updated_at": time.Now(),
+		},
+	}
+
+	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
+		c,
+		bson.M{"cpf": cpf},
+		update,
+		options.Update().SetUpsert(true),
+	)
+	if err != nil {
+		logger.Error("failed to update self-declared ethnicity", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update ethnicity: " + err.Error()})
+		return
+	}
+
+	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	if err := config.Redis.Del(context.Background(), cacheKey).Err(); err != nil {
+		logger.Warn("failed to invalidate cache", zap.Error(err))
+	}
+	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared ethnicity updated successfully"})
 }
 
 // HealthCheck godoc

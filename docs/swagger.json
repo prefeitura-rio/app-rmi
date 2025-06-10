@@ -187,6 +187,65 @@
                 }
             }
         },
+        "/citizen/{cpf}/ethnicity": {
+            "put": {
+                "description": "Updates or creates the self-declared ethnicity for a citizen by CPF. Only the ethnicity field is updated.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Update self-declared ethnicity for a citizen",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF number",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Self-declared ethnicity",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SelfDeclaredRacaInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/{cpf}/firstlogin": {
             "get": {
                 "description": "Checks if this is the user's first login",
@@ -743,7 +802,7 @@
             "type": "object",
             "properties": {
                 "cpf": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "nome": {
                     "type": "string"
@@ -880,6 +939,17 @@
                 "ddi": {
                     "type": "string"
                 },
+                "valor": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SelfDeclaredRacaInput": {
+            "type": "object",
+            "required": [
+                "valor"
+            ],
+            "properties": {
                 "valor": {
                     "type": "string"
                 }
