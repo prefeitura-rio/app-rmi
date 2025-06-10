@@ -11,9 +11,9 @@ const docTemplate = `{
         "title": "{{.Title}}",
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
-            "name": "Suporte IPLANRIO/DIA",
-            "url": "https://discord.gg/myFqCKr3",
-            "email": "gabriel.milan@prefeitura.rio"
+            "name": "Suporte RMI",
+            "url": "http://www.rio.rj.gov.br",
+            "email": "suporte@rio.rj.gov.br"
         },
         "license": {
             "name": "Apache 2.0",
@@ -247,7 +247,12 @@ const docTemplate = `{
         },
         "/citizen/{cpf}/ethnicity": {
             "put": {
-                "description": "Updates or creates the self-declared ethnicity for a citizen by CPF. Only the ethnicity field is updated.",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza ou cria a etnia autodeclarada de um cidadão por CPF. Apenas o campo de etnia é atualizado.",
                 "consumes": [
                     "application/json"
                 ],
@@ -257,17 +262,17 @@ const docTemplate = `{
                 "tags": [
                     "citizen"
                 ],
-                "summary": "Update self-declared ethnicity for a citizen",
+                "summary": "Atualizar etnia autodeclarada",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "CPF number",
+                        "description": "Número do CPF",
                         "name": "cpf",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Self-declared ethnicity",
+                        "description": "Etnia autodeclarada",
                         "name": "data",
                         "in": "body",
                         "required": true,
@@ -285,6 +290,18 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }

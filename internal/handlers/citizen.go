@@ -442,15 +442,18 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 }
 
 // UpdateSelfDeclaredRaca godoc
-// @Summary Update self-declared ethnicity for a citizen
-// @Description Updates or creates the self-declared ethnicity for a citizen by CPF. Only the ethnicity field is updated.
+// @Summary Atualizar etnia autodeclarada
+// @Description Atualiza ou cria a etnia autodeclarada de um cidadão por CPF. Apenas o campo de etnia é atualizado.
 // @Tags citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "CPF number"
-// @Param data body models.SelfDeclaredRacaInput true "Self-declared ethnicity"
+// @Param cpf path string true "Número do CPF"
+// @Param data body models.SelfDeclaredRacaInput true "Etnia autodeclarada"
+// @Security BearerAuth
 // @Success 200 {object} SuccessResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /citizen/{cpf}/ethnicity [put]

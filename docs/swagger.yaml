@@ -450,15 +450,15 @@ paths:
     put:
       consumes:
       - application/json
-      description: Updates or creates the self-declared ethnicity for a citizen by
-        CPF. Only the ethnicity field is updated.
+      description: Atualiza ou cria a etnia autodeclarada de um cidadão por CPF. Apenas
+        o campo de etnia é atualizado.
       parameters:
-      - description: CPF number
+      - description: Número do CPF
         in: path
         name: cpf
         required: true
         type: string
-      - description: Self-declared ethnicity
+      - description: Etnia autodeclarada
         in: body
         name: data
         required: true
@@ -475,6 +475,14 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Not Found
           schema:
@@ -483,7 +491,9 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Update self-declared ethnicity for a citizen
+      security:
+      - BearerAuth: []
+      summary: Atualizar etnia autodeclarada
       tags:
       - citizen
   /citizen/{cpf}/firstlogin:
