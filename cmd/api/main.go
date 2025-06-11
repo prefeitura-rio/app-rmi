@@ -26,7 +26,7 @@ import (
 
 // @title API RMI
 // @version 1.0
-// @description API para gerenciamento de dados de cidadãos do Rio de Janeiro
+// @description API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autodeclaração de informações e verificação de contato.
 // @termsOfService http://swagger.io/terms/
 
 // @contact.name Suporte RMI
@@ -46,10 +46,10 @@ import (
 // @description Tipo: Bearer token. Exemplo: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 // @tag.name citizen
-// @tag.description Operations about citizens
+// @tag.description Operações relacionadas a cidadãos, incluindo consulta e atualização de dados autodeclarados
 
 // @tag.name health
-// @tag.description Health check operations
+// @tag.description Operações de verificação de saúde da API
 
 func main() {
 	// Initialize logger first
@@ -109,6 +109,12 @@ func main() {
 			citizen.GET("/:cpf/optin", middleware.RequireOwnCPF(), handlers.GetOptIn)
 			citizen.PUT("/:cpf/optin", middleware.RequireOwnCPF(), handlers.UpdateOptIn)
 			citizen.POST("/:cpf/phone/validate", middleware.RequireOwnCPF(), handlers.ValidatePhoneVerification)
+		}
+
+		// Public citizen endpoints (no auth required)
+		public := v1.Group("/citizen")
+		{
+			public.GET("/ethnicity/options", handlers.GetEthnicityOptions)
 		}
 	}
 

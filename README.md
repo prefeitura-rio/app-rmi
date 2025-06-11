@@ -1,77 +1,87 @@
-# Citizen Data API
+# API RMI
 
-API for managing citizen data with self-declared information. This API provides endpoints for retrieving and updating citizen information, with support for caching and data validation.
+API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autodeclaração de informações e verificação de contato.
 
-## Features
+## Funcionalidades
 
-- 🔍 Citizen data retrieval by CPF
-- 🔄 Self-declared data updates with validation
-- 📱 Phone number verification via WhatsApp
-- 💾 Redis caching for improved performance
-- 📊 Prometheus metrics for monitoring
-- 🔍 OpenTelemetry tracing for request tracking
-- 📝 Structured logging with Zap
+- 🔍 Consulta de dados do cidadão por CPF
+- 🔄 Atualização de dados autodeclarados com validação
+- 📱 Verificação de número de telefone via WhatsApp
+- 💾 Cache Redis para melhor performance
+- 📊 Métricas Prometheus para monitoramento
+- 🔍 Rastreamento de requisições com OpenTelemetry
+- 📝 Logs estruturados com Zap
 
-## Environment Variables
+## Variáveis de Ambiente
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| PORT | Port to run the server on | 8080 | No |
-| MONGODB_URI | MongoDB connection string | mongodb://localhost:27017 | Yes |
-| MONGODB_DATABASE | MongoDB database name | citizen_data | No |
-| MONGODB_CITIZEN_COLLECTION | Collection name for citizen data | citizens | No |
-| MONGODB_SELF_DECLARED_COLLECTION | Collection name for self-declared data | self_declared | No |
-| MONGODB_PHONE_VERIFICATION_COLLECTION | Collection name for phone verification data | phone_verifications | No |
-| REDIS_URI | Redis connection string | redis://localhost:6379 | Yes |
-| REDIS_TTL | TTL for Redis cache in minutes | 60 | No |
-| PHONE_VERIFICATION_TTL | TTL for phone verification codes (e.g., "15m", "1h") | 15m | No |
-| WHATSAPP_API_URL | WhatsApp API URL for sending verification codes | http://localhost:3000 | Yes |
-| WHATSAPP_API_KEY | API key for WhatsApp service | | Yes |
-| WHATSAPP_TEMPLATE_NAME | Template name for verification messages | verification_code | No |
-| WHATSAPP_NAMESPACE | Namespace for WhatsApp templates | citizen_verification | No |
-| WHATSAPP_LANGUAGE | Language for WhatsApp messages | pt_BR | No |
-| LOG_LEVEL | Logging level (debug, info, warn, error) | info | No |
-| METRICS_PORT | Port for Prometheus metrics | 9090 | No |
-| TRACING_ENABLED | Enable OpenTelemetry tracing | false | No |
-| TRACING_ENDPOINT | OpenTelemetry collector endpoint | http://localhost:4317 | No |
+| Variável | Descrição | Padrão | Obrigatório |
+|----------|-----------|---------|------------|
+| PORT | Porta do servidor | 8080 | Não |
+| MONGODB_URI | String de conexão MongoDB | mongodb://localhost:27017 | Sim |
+| MONGODB_DATABASE | Nome do banco de dados MongoDB | citizen_data | Não |
+| MONGODB_CITIZEN_COLLECTION | Nome da coleção de dados do cidadão | citizens | Não |
+| MONGODB_SELF_DECLARED_COLLECTION | Nome da coleção de dados autodeclarados | self_declared | Não |
+| MONGODB_PHONE_VERIFICATION_COLLECTION | Nome da coleção de verificação de telefone | phone_verifications | Não |
+| REDIS_URI | String de conexão Redis | redis://localhost:6379 | Sim |
+| REDIS_TTL | TTL do cache Redis em minutos | 60 | Não |
+| PHONE_VERIFICATION_TTL | TTL dos códigos de verificação de telefone (ex: "15m", "1h") | 15m | Não |
+| WHATSAPP_API_URL | URL da API WhatsApp para envio de códigos | http://localhost:3000 | Sim |
+| WHATSAPP_API_KEY | Chave da API do serviço WhatsApp | | Sim |
+| WHATSAPP_TEMPLATE_NAME | Nome do template para mensagens | verification_code | Não |
+| WHATSAPP_NAMESPACE | Namespace para templates WhatsApp | citizen_verification | Não |
+| WHATSAPP_LANGUAGE | Idioma das mensagens WhatsApp | pt_BR | Não |
+| LOG_LEVEL | Nível de log (debug, info, warn, error) | info | Não |
+| METRICS_PORT | Porta para métricas Prometheus | 9090 | Não |
+| TRACING_ENABLED | Habilitar rastreamento OpenTelemetry | false | Não |
+| TRACING_ENDPOINT | Endpoint do coletor OpenTelemetry | http://localhost:4317 | Não |
 
-## API Endpoints
+## Endpoints da API
 
 ### GET /citizen/{cpf}
-Retrieves citizen data by CPF, combining base data with any self-declared updates.
-- Self-declared data takes precedence over base data
-- Results are cached using Redis with configurable TTL
+Recupera os dados do cidadão por CPF, combinando dados base com atualizações autodeclaradas.
+- Dados autodeclarados têm precedência sobre dados base
+- Resultados são armazenados em cache usando Redis com TTL configurável
 
 ### PUT /citizen/{cpf}/address
-Updates or creates the self-declared address for a citizen.
-- Only the address field is updated
-- Address is automatically validated
+Atualiza ou cria o endereço autodeclarado de um cidadão.
+- Apenas o campo de endereço é atualizado
+- Endereço é validado automaticamente
 
 ### PUT /citizen/{cpf}/phone
-Updates or creates the self-declared phone for a citizen.
-- Only the phone field is updated
-- Phone number requires verification via WhatsApp
-- Verification code is sent to the provided number
+Atualiza ou cria o telefone autodeclarado de um cidadão.
+- Apenas o campo de telefone é atualizado
+- Número de telefone requer verificação via WhatsApp
+- Código de verificação é enviado para o número fornecido
 
 ### PUT /citizen/{cpf}/email
-Updates or creates the self-declared email for a citizen.
-- Only the email field is updated
-- Email is automatically validated
+Atualiza ou cria o email autodeclarado de um cidadão.
+- Apenas o campo de email é atualizado
+- Email é validado automaticamente
 
-### POST /citizen/{cpf}/phone/verify
-Validates a phone number using a verification code.
-- Code is sent via WhatsApp when phone is updated
-- Code expires after configured TTL (default: 15 minutes)
-- Phone is marked as verified after successful validation
+### PUT /citizen/{cpf}/ethnicity
+Atualiza ou cria a etnia autodeclarada de um cidadão.
+- Apenas o campo de etnia é atualizado
+- Valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/ethnicity/options
 
-## Data Models
+### GET /citizen/ethnicity/options
+Retorna a lista de opções válidas de etnia para autodeclaração.
+- Usado para validar as atualizações de etnia autodeclarada
+- Não requer autenticação
+
+### POST /citizen/{cpf}/phone/validate
+Valida um número de telefone usando um código de verificação.
+- Código é enviado via WhatsApp quando o telefone é atualizado
+- Código expira após o TTL configurado (padrão: 15 minutos)
+- Telefone é marcado como verificado após validação bem-sucedida
+
+## Modelos de Dados
 
 ### Citizen
-Main data model containing all citizen information:
-- Basic information (name, CPF, etc.)
-- Contact information (address, phone, email)
-- Health information
-- Metadata (last update, etc.)
+Modelo principal contendo todas as informações do cidadão:
+- Informações básicas (nome, CPF, etc.)
+- Informações de contato (endereço, telefone, email)
+- Informações de saúde
+- Metadados (última atualização, etc.)
 
 ### SelfDeclaredData
 Stores self-declared updates to citizen data:

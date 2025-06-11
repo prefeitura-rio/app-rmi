@@ -291,7 +291,8 @@ info:
     email: suporte@rio.rj.gov.br
     name: Suporte RMI
     url: http://www.rio.rj.gov.br
-  description: API para gerenciamento de dados de cidadãos do Rio de Janeiro
+  description: API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo
+    autodeclaração de informações e verificação de contato.
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
@@ -451,7 +452,8 @@ paths:
       consumes:
       - application/json
       description: Atualiza ou cria a etnia autodeclarada de um cidadão por CPF. Apenas
-        o campo de etnia é atualizado.
+        o campo de etnia é atualizado. O valor deve ser uma das opções válidas retornadas
+        pelo endpoint /citizen/ethnicity/options.
       parameters:
       - description: Número do CPF
         in: path
@@ -468,11 +470,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Etnia atualizada com sucesso
           schema:
             $ref: '#/definitions/handlers.SuccessResponse'
         "400":
-          description: Bad Request
+          description: Formato de CPF inválido ou valor de etnia inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -484,11 +486,11 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Cidadão não encontrado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -742,7 +744,31 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Validate phone verification
+      tags:
+      - citizen
+  /citizen/ethnicity/options:
+    get:
+      consumes:
+      - application/json
+      description: Retorna a lista de opções válidas de etnia para autodeclaração.
+        Esta lista é usada para validar as atualizações de etnia autodeclarada.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de opções de etnia válidas
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Listar opções de etnia
       tags:
       - citizen
   /health:
@@ -774,7 +800,8 @@ securityDefinitions:
     type: apiKey
 swagger: "2.0"
 tags:
-- description: Operations about citizens
+- description: Operações relacionadas a cidadãos, incluindo consulta e atualização
+    de dados autodeclarados
   name: citizen
-- description: Health check operations
+- description: Operações de verificação de saúde da API
   name: health

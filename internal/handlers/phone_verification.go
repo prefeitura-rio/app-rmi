@@ -24,6 +24,7 @@ import (
 // @Produce json
 // @Param cpf path string true "CPF number"
 // @Param data body models.PhoneVerificationValidateRequest true "Verification code and phone"
+// @Security BearerAuth
 // @Success 200 {object} SuccessResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse

@@ -24,6 +24,38 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/citizen/ethnicity/options": {
+            "get": {
+                "description": "Retorna a lista de opções válidas de etnia para autodeclaração. Esta lista é usada para validar as atualizações de etnia autodeclarada.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Listar opções de etnia",
+                "responses": {
+                    "200": {
+                        "description": "Lista de opções de etnia válidas",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/{cpf}": {
             "get": {
                 "security": [
@@ -252,7 +284,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Atualiza ou cria a etnia autodeclarada de um cidadão por CPF. Apenas o campo de etnia é atualizado.",
+                "description": "Atualiza ou cria a etnia autodeclarada de um cidadão por CPF. Apenas o campo de etnia é atualizado. O valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/ethnicity/options.",
                 "consumes": [
                     "application/json"
                 ],
@@ -283,13 +315,13 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Etnia atualizada com sucesso",
                         "schema": {
                             "$ref": "#/definitions/handlers.SuccessResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Formato de CPF inválido ou valor de etnia inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -307,13 +339,13 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "Cidadão não encontrado",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Erro interno do servidor",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -648,6 +680,11 @@ const docTemplate = `{
         },
         "/citizen/{cpf}/phone/validate": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Validates the verification code sent to the phone number",
                 "consumes": [
                     "application/json"
@@ -1179,11 +1216,11 @@ const docTemplate = `{
     },
     "tags": [
         {
-            "description": "Operations about citizens",
+            "description": "Operações relacionadas a cidadãos, incluindo consulta e atualização de dados autodeclarados",
             "name": "citizen"
         },
         {
-            "description": "Health check operations",
+            "description": "Operações de verificação de saúde da API",
             "name": "health"
         }
     ]
@@ -1196,7 +1233,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/v1",
 	Schemes:          []string{"http", "https"},
 	Title:            "API RMI",
-	Description:      "API para gerenciamento de dados de cidadãos do Rio de Janeiro",
+	Description:      "API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autodeclaração de informações e verificação de contato.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

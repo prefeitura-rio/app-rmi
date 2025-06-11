@@ -13,10 +13,6 @@
           inherit system;
           config = {
             allowUnfree = true;
-            # Explicitly allow MongoDB
-            allowUnfreePredicate = pkg: builtins.elem (pkgs.lib.getName pkg) [
-              "mongodb"
-            ];
           };
         };
 
@@ -36,8 +32,6 @@
             jq
             just
             k6
-            mongodb
-            redis
             docker
             docker-compose
             gotools  # Includes swag

@@ -443,72 +443,78 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 
 // UpdateSelfDeclaredRaca godoc
 // @Summary Atualizar etnia autodeclarada
-// @Description Atualiza ou cria a etnia autodeclarada de um cidadão por CPF. Apenas o campo de etnia é atualizado.
+// @Description Atualiza ou cria a etnia autodeclarada de um cidadão por CPF. Apenas o campo de etnia é atualizado. O valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/ethnicity/options.
 // @Tags citizen
 // @Accept json
 // @Produce json
 // @Param cpf path string true "Número do CPF"
 // @Param data body models.SelfDeclaredRacaInput true "Etnia autodeclarada"
 // @Security BearerAuth
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} SuccessResponse "Etnia atualizada com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou valor de etnia inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado"
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse "Cidadão não encontrado"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/ethnicity [put]
 func UpdateSelfDeclaredRaca(c *gin.Context) {
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "UpdateSelfDeclaredRaca")
+	defer span.End()
+
 	cpf := c.Param("cpf")
 	logger := observability.Logger().With(zap.String("cpf", cpf))
-	logger.Info("UpdateSelfDeclaredRaca called", zap.String("cpf", cpf))
 
-	if !utils.ValidateCPF(cpf) {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
-		return
-	}
-
+	// Parse input
 	var input models.SelfDeclaredRacaInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid request body: " + err.Error()})
+		logger.Error("failed to parse input", zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid input format"})
 		return
 	}
 
-	// Sanity check: compare with current merged data
-	current, err := getMergedCitizenData(c, cpf)
-	if err != nil {
-		logger.Error("failed to fetch current data for comparison", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to check current data: " + err.Error()})
-		return
-	}
-	if current.Raca != nil && *current.Raca == input.Valor {
-		c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: ethnicity matches current data"})
+	// Validate ethnicity
+	if !models.IsValidEthnicity(input.Valor) {
+		logger.Error("invalid ethnicity value", zap.String("value", input.Valor))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid ethnicity value"})
 		return
 	}
 
-	update := bson.M{
-		"$set": bson.M{
-			"raca":       input.Valor,
-			"updated_at": time.Now(),
-		},
+	// Get existing self-declared data
+	var selfDeclared models.SelfDeclaredData
+	err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&selfDeclared)
+	if err != nil && err != mongo.ErrNoDocuments {
+		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
+		logger.Error("failed to get self-declared data", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
 	}
 
+	// Update ethnicity
+	selfDeclared.CPF = cpf
+	selfDeclared.Raca = &input.Valor
+
+	// Upsert the document
+	opts := options.Update().SetUpsert(true)
 	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
-		c,
+		ctx,
 		bson.M{"cpf": cpf},
-		update,
-		options.Update().SetUpsert(true),
+		bson.M{"$set": selfDeclared},
+		opts,
 	)
 	if err != nil {
-		logger.Error("failed to update self-declared ethnicity", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update ethnicity: " + err.Error()})
+		observability.DatabaseOperations.WithLabelValues("update", "error").Inc()
+		logger.Error("failed to update self-declared data", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
 		return
 	}
+	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+	observability.SelfDeclaredUpdates.WithLabelValues("success").Inc()
 
+	// Invalidate cache
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)
-	if err := config.Redis.Del(context.Background(), cacheKey).Err(); err != nil {
-		logger.Warn("failed to invalidate cache", zap.Error(err))
-	}
-	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared ethnicity updated successfully"})
+	config.Redis.Del(ctx, cacheKey)
+
+	c.JSON(http.StatusOK, SuccessResponse{Message: "ethnicity updated successfully"})
 }
 
 // HealthCheck godoc
@@ -769,6 +775,26 @@ func UpdateOptIn(c *gin.Context) {
 	c.JSON(http.StatusOK, input)
 }
 
+// GetEthnicityOptions godoc
+// @Summary Listar opções de etnia
+// @Description Retorna a lista de opções válidas de etnia para autodeclaração. Esta lista é usada para validar as atualizações de etnia autodeclarada.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Success 200 {array} string "Lista de opções de etnia válidas"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/ethnicity/options [get]
+func GetEthnicityOptions(c *gin.Context) {
+	_, span := otel.Tracer("").Start(c.Request.Context(), "GetEthnicityOptions")
+	defer span.End()
+
+	logger := observability.Logger()
+	logger.Info("GetEthnicityOptions called")
+
+	options := models.ValidEthnicityOptions()
+	c.JSON(http.StatusOK, options)
+}
+
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
@@ -781,4 +807,12 @@ type HealthResponse struct {
 	Status    string            `json:"status"`
 	Timestamp time.Time         `json:"timestamp"`
 	Services  map[string]string `json:"services"`
-} 
+}
+
+type UserConfigResponse struct {
+	FirstLogin bool `json:"first_login"`
+}
+
+type UserConfigOptInResponse struct {
+	OptIn bool `json:"opt_in"`
+}

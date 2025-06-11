@@ -126,4 +126,26 @@ type Citizen struct {
 	Datalake     *Datalake  `json:"datalake,omitempty" bson:"datalake,omitempty"`
 	CPFParticao  int64      `json:"cpf_particao" bson:"cpf_particao"`
 	RowNumber    *int32     `json:"row_number,omitempty" bson:"row_number,omitempty"`
+}
+
+// ValidEthnicityOptions returns a list of valid ethnicity options
+func ValidEthnicityOptions() []string {
+	return []string{
+		"branca",
+		"preta",
+		"parda",
+		"amarela",
+		"indigena",
+		"outra",
+	}
+}
+
+// IsValidEthnicity checks if a given ethnicity value is valid
+func IsValidEthnicity(value string) bool {
+	for _, valid := range ValidEthnicityOptions() {
+		if valid == value {
+			return true
+		}
+	}
+	return false
 } 
