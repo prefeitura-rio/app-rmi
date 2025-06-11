@@ -29,14 +29,31 @@ dev: swagger
     fi
     air
 
-# Run tests
+# Run tests with a specific CPF
+test-cpf cpf:
+    go test -v ./... -cpf={{cpf}}
+
+# Run tests with default CPF
 test:
     go test -v ./...
 
 # Run tests with coverage
 test-coverage:
     go test -v -coverprofile=coverage.out ./...
-    go tool cover -html=coverage.out -o coverage.html
+    go tool cover -html=coverage.out
+
+# Run tests with race detection
+test-race:
+    go test -race -v ./...
+
+# Run tests with a specific CPF and race detection
+test-cpf-race cpf:
+    go test -race -v ./... -cpf={{cpf}}
+
+# Run tests with a specific CPF and coverage
+test-cpf-coverage cpf:
+    go test -v -coverprofile=coverage.out ./... -cpf={{cpf}}
+    go tool cover -html=coverage.out
 
 # Clean test cache and coverage files
 clean:

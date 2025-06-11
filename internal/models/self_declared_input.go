@@ -19,4 +19,8 @@ type SelfDeclaredPhoneInput struct {
 	DDI   string `json:"ddi" binding:"required"`
 	DDD   string `json:"ddd" binding:"required"`
 	Valor string `json:"valor" binding:"required"`
+}
+
+type SelfDeclaredRacaInput struct {
+	Valor string `json:"valor" binding:"required"`
 } 

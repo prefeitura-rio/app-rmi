@@ -19,6 +19,13 @@
             ];
           };
         };
+
+        # Create a Python environment with required packages
+        pythonEnv = pkgs.python3.withPackages (ps: with ps; [
+          pandas
+          matplotlib
+          seaborn
+        ]);
       in
       {
         devShells.default = pkgs.mkShell {
@@ -26,6 +33,7 @@
             go
             gopls
             go-tools
+            jq
             just
             k6
             mongodb
@@ -33,6 +41,7 @@
             docker
             docker-compose
             gotools  # Includes swag
+            pythonEnv  # Add Python environment with plotting packages
           ];
 
           shellHook = ''
@@ -44,6 +53,7 @@
             echo "- MongoDB $(mongod --version | head -n1)"
             echo "- Redis $(redis-server --version)"
             echo "- Docker $(docker --version)"
+            echo "- Python $(python3 --version)"
             echo ""
             echo "To see available commands, run: just"
 

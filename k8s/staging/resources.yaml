@@ -12,6 +12,7 @@ spec:
       labels:
         app: rmi
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: rmi
           image: ghcr.io/prefeitura-rio/app-rmi:stable
@@ -20,6 +21,7 @@ spec:
                 name: rmi-secrets
           resources:
             requests:
+              ephemeral-storage: 100Mi
               cpu: 1000m
               memory: 256Mi
             limits:

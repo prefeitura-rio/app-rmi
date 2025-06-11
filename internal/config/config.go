@@ -35,6 +35,9 @@ type Config struct {
 	// Tracing configuration
 	TracingEnabled  bool   `json:"tracing_enabled"`
 	TracingEndpoint string `json:"tracing_endpoint"`
+
+	// Authorization configuration
+	AdminGroup string `json:"admin_group"`
 }
 
 var (
@@ -96,6 +99,9 @@ func LoadConfig() error {
 		// Tracing configuration
 		TracingEnabled:  getEnvOrDefault("TRACING_ENABLED", "false") == "true",
 		TracingEndpoint: getEnvOrDefault("TRACING_ENDPOINT", "localhost:4317"),
+
+		// Authorization configuration
+		AdminGroup: getEnvOrDefault("ADMIN_GROUP", "rmi-admin"),
 	}
 
 	return nil
