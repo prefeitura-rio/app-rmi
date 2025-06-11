@@ -348,8 +348,8 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	}
 	// Send code via WhatsApp
 	if input.DDI != "" && input.DDD != "" && input.Valor != "" {
-		message := fmt.Sprintf("Seu código de verificação é: %s", code)
-		err = utils.SendWhatsAppMessage(input.DDI, input.DDD, input.Valor, message)
+		phone := fmt.Sprintf("%s%s%s", input.DDI, input.DDD, input.Valor)
+		err = utils.SendVerificationCode(c.Request.Context(), phone, code)
 		if err != nil {
 			logger.Error("failed to send WhatsApp message", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to send verification code: " + err.Error()})

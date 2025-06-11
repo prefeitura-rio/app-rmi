@@ -32,6 +32,15 @@ type Config struct {
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
 
+	// WhatsApp configuration
+	WhatsAppEnabled      bool   `json:"whatsapp_enabled"`
+	WhatsAppBaseURL      string `json:"whatsapp_base_url"`
+	WhatsAppUsername     string `json:"whatsapp_username"`
+	WhatsAppPassword     string `json:"whatsapp_password"`
+	WhatsAppHSMID        string `json:"whatsapp_hsm_id"`
+	WhatsAppCostCenterID string `json:"whatsapp_cost_center_id"`
+	WhatsAppCampaignName string `json:"whatsapp_campaign_name"`
+
 	// Tracing configuration
 	TracingEnabled  bool   `json:"tracing_enabled"`
 	TracingEndpoint string `json:"tracing_endpoint"`
@@ -72,6 +81,46 @@ func LoadConfig() error {
 		return fmt.Errorf("invalid PHONE_VERIFICATION_TTL: %w", err)
 	}
 
+	// WhatsApp configuration
+	whatsappEnabled := os.Getenv("WHATSAPP_ENABLED")
+	if whatsappEnabled == "" {
+		whatsappEnabled = "true" // Default to enabled
+	}
+	whatsappEnabledBool, err := strconv.ParseBool(whatsappEnabled)
+	if err != nil {
+		return fmt.Errorf("invalid WHATSAPP_ENABLED value: %w", err)
+	}
+
+	whatsappBaseURL := os.Getenv("WHATSAPP_API_BASE_URL")
+	if whatsappBaseURL == "" {
+		return fmt.Errorf("WHATSAPP_API_BASE_URL is required")
+	}
+
+	whatsappUsername := os.Getenv("WHATSAPP_API_USERNAME")
+	if whatsappUsername == "" {
+		return fmt.Errorf("WHATSAPP_API_USERNAME is required")
+	}
+
+	whatsappPassword := os.Getenv("WHATSAPP_API_PASSWORD")
+	if whatsappPassword == "" {
+		return fmt.Errorf("WHATSAPP_API_PASSWORD is required")
+	}
+
+	whatsappHSMID := os.Getenv("WHATSAPP_HSM_ID")
+	if whatsappHSMID == "" {
+		return fmt.Errorf("WHATSAPP_HSM_ID is required")
+	}
+
+	whatsappCostCenterID := os.Getenv("WHATSAPP_COST_CENTER_ID")
+	if whatsappCostCenterID == "" {
+		return fmt.Errorf("WHATSAPP_COST_CENTER_ID is required")
+	}
+
+	whatsappCampaignName := os.Getenv("WHATSAPP_CAMPAIGN_NAME")
+	if whatsappCampaignName == "" {
+		return fmt.Errorf("WHATSAPP_CAMPAIGN_NAME is required")
+	}
+
 	AppConfig = &Config{
 		// Server configuration
 		Port:        port,
@@ -95,6 +144,15 @@ func LoadConfig() error {
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,
+
+		// WhatsApp configuration
+		WhatsAppEnabled:      whatsappEnabledBool,
+		WhatsAppBaseURL:      whatsappBaseURL,
+		WhatsAppUsername:     whatsappUsername,
+		WhatsAppPassword:     whatsappPassword,
+		WhatsAppHSMID:        whatsappHSMID,
+		WhatsAppCostCenterID: whatsappCostCenterID,
+		WhatsAppCampaignName: whatsappCampaignName,
 
 		// Tracing configuration
 		TracingEnabled:  getEnvOrDefault("TRACING_ENABLED", "false") == "true",

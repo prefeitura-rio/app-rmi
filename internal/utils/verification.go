@@ -1,9 +1,12 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"time"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
 )
 
 // GenerateVerificationCode generates a random 6-digit verification code
@@ -16,10 +19,17 @@ func GenerateVerificationCode() string {
 	return code
 }
 
-// SendWhatsAppMessage sends a message via WhatsApp
-// Now accepts DDI, DDD, phone, and message
-func SendWhatsAppMessage(ddi, ddd, phone, message string) error {
-	// For now, just log the message
-	fmt.Printf("Sending WhatsApp message to +%s%s%s: %s\n", ddi, ddd, phone, message)
-	return nil
+// SendVerificationCode sends a verification code to a single phone number
+func SendVerificationCode(ctx context.Context, phone string, code string) error {
+	vars := map[string]interface{}{
+		"codigo": code,
+		"nome": "Fulaninho",
+	}
+	
+	return SendWhatsAppMessage(
+		ctx,
+		[]string{phone},
+		config.AppConfig.WhatsAppHSMID,
+		[]map[string]interface{}{vars},
+	)
 } 

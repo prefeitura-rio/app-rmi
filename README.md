@@ -25,11 +25,13 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | REDIS_URI | String de conexão Redis | redis://localhost:6379 | Sim |
 | REDIS_TTL | TTL do cache Redis em minutos | 60 | Não |
 | PHONE_VERIFICATION_TTL | TTL dos códigos de verificação de telefone (ex: "15m", "1h") | 15m | Não |
-| WHATSAPP_API_URL | URL da API WhatsApp para envio de códigos | http://localhost:3000 | Sim |
-| WHATSAPP_API_KEY | Chave da API do serviço WhatsApp | | Sim |
-| WHATSAPP_TEMPLATE_NAME | Nome do template para mensagens | verification_code | Não |
-| WHATSAPP_NAMESPACE | Namespace para templates WhatsApp | citizen_verification | Não |
-| WHATSAPP_LANGUAGE | Idioma das mensagens WhatsApp | pt_BR | Não |
+| WHATSAPP_ENABLED | Habilita/desabilita o envio de mensagens WhatsApp | true | Não |
+| WHATSAPP_API_BASE_URL | URL base da API do WhatsApp | - | Sim |
+| WHATSAPP_API_USERNAME | Usuário da API do WhatsApp | - | Sim |
+| WHATSAPP_API_PASSWORD | Senha da API do WhatsApp | - | Sim |
+| WHATSAPP_HSM_ID | ID do template HSM do WhatsApp | - | Sim |
+| WHATSAPP_COST_CENTER_ID | ID do centro de custo do WhatsApp | - | Sim |
+| WHATSAPP_CAMPAIGN_NAME | Nome da campanha do WhatsApp | - | Sim |
 | LOG_LEVEL | Nível de log (debug, info, warn, error) | info | Não |
 | METRICS_PORT | Porta para métricas Prometheus | 9090 | Não |
 | TRACING_ENABLED | Habilitar rastreamento OpenTelemetry | false | Não |
