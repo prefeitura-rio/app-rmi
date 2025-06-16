@@ -23,10 +23,10 @@ spec:
             requests:
               ephemeral-storage: 100Mi
               cpu: 1000m
-              memory: 256Mi
+              memory: 512Mi
             limits:
               cpu: 2000m
-              memory: 512Mi
+              memory: 1024Mi
           readinessProbe:
             httpGet:
               path: /v1/health
