@@ -14,9 +14,9 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // GetCitizenData godoc
@@ -76,7 +76,7 @@ func GetCitizenData(c *gin.Context) {
 	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&selfDeclared)
 	if err == nil {
 		observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
-		logger.Info("found self-declared data", 
+		logger.Info("found self-declared data",
 			zap.Any("email", selfDeclared.Email),
 			zap.Any("telefone", selfDeclared.Telefone),
 			zap.Any("endereco", selfDeclared.Endereco),
@@ -206,7 +206,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	}
 
 	// Sanity check: compare with current merged data
-	current, err := getMergedCitizenData(c, cpf)
+	current, err := getMergedCitizenData(c.Request.Context(), cpf)
 	if err != nil {
 		logger.Error("failed to fetch current data for comparison", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to check current data: " + err.Error()})
@@ -232,22 +232,22 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	endereco := models.Endereco{
 		Indicador: utils.BoolPtr(true),
 		Principal: &models.EnderecoPrincipal{
-			Bairro:        &input.Bairro,
-			CEP:           &input.CEP,
-			Complemento:   input.Complemento,
-			Estado:        &input.Estado,
-			Logradouro:    &input.Logradouro,
-			Municipio:     &input.Municipio,
-			Numero:        &input.Numero,
+			Bairro:         &input.Bairro,
+			CEP:            &input.CEP,
+			Complemento:    input.Complemento,
+			Estado:         &input.Estado,
+			Logradouro:     &input.Logradouro,
+			Municipio:      &input.Municipio,
+			Numero:         &input.Numero,
 			TipoLogradouro: input.TipoLogradouro,
-			Origem:        &origem,
-			Sistema:       &sistema,
+			Origem:         &origem,
+			Sistema:        &sistema,
 		},
 	}
 
 	update := bson.M{
 		"$set": bson.M{
-			"endereco":    endereco,
+			"endereco":   endereco,
 			"updated_at": time.Now(),
 		},
 	}
@@ -264,8 +264,9 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		return
 	}
 
+	// Invalidate cache
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)
-	if err := config.Redis.Del(context.Background(), cacheKey).Err(); err != nil {
+	if err := config.Redis.Del(c.Request.Context(), cacheKey).Err(); err != nil {
 		logger.Warn("failed to invalidate cache", zap.Error(err))
 	}
 	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared address updated successfully"})
@@ -304,7 +305,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	}
 
 	// Sanity check: compare with current merged data
-	current, err := getMergedCitizenData(c, cpf)
+	current, err := getMergedCitizenData(c.Request.Context(), cpf)
 	if err != nil {
 		logger.Error("failed to fetch current data for comparison", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to check current data: " + err.Error()})
@@ -326,7 +327,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	// Generate verification code and store in phone_verifications collection
 	code := utils.GenerateVerificationCode()
 	verification := models.PhoneVerification{
-		CPF:      cpf,
+		CPF: cpf,
 		Telefone: &models.Telefone{
 			Indicador: utils.BoolPtr(false),
 			Principal: &models.TelefonePrincipal{
@@ -336,9 +337,9 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 			},
 		},
 		PhoneNumber: fullPhone,
-		Code:     code,
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(config.AppConfig.PhoneVerificationTTL),
+		Code:        code,
+		CreatedAt:   time.Now(),
+		ExpiresAt:   time.Now().Add(config.AppConfig.PhoneVerificationTTL),
 	}
 	_, err = verColl.InsertOne(c, verification)
 	if err != nil {
@@ -392,7 +393,7 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 	}
 
 	// Sanity check: compare with current merged data
-	current, err := getMergedCitizenData(c, cpf)
+	current, err := getMergedCitizenData(c.Request.Context(), cpf)
 	if err != nil {
 		logger.Error("failed to fetch current data for comparison", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to check current data: " + err.Error()})
@@ -434,8 +435,9 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 		return
 	}
 
+	// Invalidate cache
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)
-	if err := config.Redis.Del(context.Background(), cacheKey).Err(); err != nil {
+	if err := config.Redis.Del(c.Request.Context(), cacheKey).Err(); err != nil {
 		logger.Warn("failed to invalidate cache", zap.Error(err))
 	}
 	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared email updated successfully"})
@@ -512,7 +514,7 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 
 	// Invalidate cache
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)
-	config.Redis.Del(ctx, cacheKey)
+	config.Redis.Del(c.Request.Context(), cacheKey)
 
 	c.JSON(http.StatusOK, SuccessResponse{Message: "ethnicity updated successfully"})
 }
@@ -661,7 +663,7 @@ func UpdateFirstLogin(c *gin.Context) {
 	update := bson.M{
 		"$set": bson.M{
 			"first_login": false,
-			"updated_at": time.Now(),
+			"updated_at":  time.Now(),
 		},
 	}
 

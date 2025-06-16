@@ -172,4 +172,8 @@ docs:
         open http://localhost:8080/swagger/index.html
     else
         echo "Please open http://localhost:8080/swagger/index.html in your browser"
-    fi 
+    fi
+
+load-test base_url cpf_csv token_file oauth_config:
+    #!/usr/bin/env sh
+    k6 run -e BASE_URL={{base_url}} -e CPF_CSV={{cpf_csv}} -e TOKEN_FILE={{token_file}} -e OAUTH_CONFIG={{oauth_config}} scripts/load_test/load-test.js 

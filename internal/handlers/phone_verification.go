@@ -48,10 +48,10 @@ func ValidatePhoneVerification(c *gin.Context) {
 	err := config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection).FindOne(
 		context.Background(),
 		bson.M{
-			"cpf": cpf,
-			"code": req.Code,
+			"cpf":          cpf,
+			"code":         req.Code,
 			"phone_number": fullPhone,
-			"expires_at": bson.M{"$gt": time.Now()},
+			"expires_at":   bson.M{"$gt": time.Now()},
 		},
 	).Decode(&verification)
 
@@ -82,7 +82,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 	}
 	update := bson.M{
 		"$set": bson.M{
-			"telefone": verification.Telefone,
+			"telefone":   verification.Telefone,
 			"updated_at": time.Now(),
 		},
 	}
@@ -109,11 +109,11 @@ func ValidatePhoneVerification(c *gin.Context) {
 
 	// Invalidate cache
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)
-	if err := config.Redis.Del(context.Background(), cacheKey).Err(); err != nil {
+	if err := config.Redis.Del(c.Request.Context(), cacheKey).Err(); err != nil {
 		observability.Logger().Warn("failed to invalidate cache", zap.Error(err))
 	}
 
 	c.JSON(http.StatusOK, SuccessResponse{
 		Message: "Phone number verified successfully",
 	})
-} 
+}

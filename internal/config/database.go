@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/sony/gobreaker"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -21,7 +22,7 @@ var (
 	// MongoDB client
 	MongoDB *mongo.Database
 	// Redis client
-	Redis *redis.Client
+	Redis *redisclient.Client
 )
 
 // Circuit breaker for Redis
@@ -82,7 +83,7 @@ func InitMongoDB() {
 // InitRedis initializes the Redis connection
 func InitRedis() {
 	// Initialize Redis client
-	Redis = redis.NewClient(&redis.Options{
+	redisClient := redis.NewClient(&redis.Options{
 		Addr:         AppConfig.RedisURI,
 		Password:     AppConfig.RedisPassword,
 		DB:           AppConfig.RedisDB,
@@ -92,6 +93,9 @@ func InitRedis() {
 		PoolSize:     10,
 		MinIdleConns: 5,
 	})
+
+	// Wrap with traced client
+	Redis = redisclient.NewClient(redisClient)
 
 	// Test Redis connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -162,4 +166,4 @@ func createIndexes(ctx context.Context) {
 func maskMongoURI(uri string) string {
 	// Implementation to mask username/password in URI
 	return "mongodb://****:****@" + uri[strings.LastIndex(uri, "@")+1:]
-} 
+}
