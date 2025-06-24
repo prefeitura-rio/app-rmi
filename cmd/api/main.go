@@ -116,6 +116,9 @@ func main() {
 		{
 			public.GET("/ethnicity/options", handlers.GetEthnicityOptions)
 		}
+
+		// Endpoint de validação de telefone
+		v1.POST("/validate/phone", handlers.ValidatePhoneNumber)
 	}
 
 	// Swagger documentation
