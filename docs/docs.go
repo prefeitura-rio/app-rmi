@@ -767,6 +767,46 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/validate/phone": {
+            "post": {
+                "description": "Valida DDI, DDD e número para qualquer telefone internacional.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validation"
+                ],
+                "summary": "Valida número de telefone",
+                "parameters": [
+                    {
+                        "description": "Telefone a ser validado",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.PhoneValidationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.PhoneValidationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -792,6 +832,53 @@ const docTemplate = `{
                 },
                 "timestamp": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.PhoneValidationRequest": {
+            "description": "Estrutura de entrada contendo o número de telefone a ser validado.",
+            "type": "object",
+            "required": [
+                "phone"
+            ],
+            "properties": {
+                "phone": {
+                    "description": "Número de telefone em formato internacional ou nacional.\nexample: \"+55 11 99988-7766\"",
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.PhoneValidationResponse": {
+            "description": "Resultado da validação, contendo a decomposição (DDI, DDD, número) quando válida.",
+            "type": "object",
+            "properties": {
+                "ddd": {
+                    "description": "DDD (código de área)",
+                    "type": "string"
+                },
+                "ddi": {
+                    "description": "DDI (código do país)",
+                    "type": "string"
+                },
+                "e164": {
+                    "description": "Representação E.164 do número",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Mensagem de retorno.",
+                    "type": "string"
+                },
+                "numero": {
+                    "description": "Número do assinante",
+                    "type": "string"
+                },
+                "region": {
+                    "description": "Região ISO 3166-1 alpha-2",
+                    "type": "string"
+                },
+                "valid": {
+                    "description": "Indica se o número é válido.",
+                    "type": "boolean"
                 }
             }
         },

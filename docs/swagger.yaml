@@ -16,6 +16,43 @@ definitions:
       timestamp:
         type: string
     type: object
+  handlers.PhoneValidationRequest:
+    description: Estrutura de entrada contendo o número de telefone a ser validado.
+    properties:
+      phone:
+        description: |-
+          Número de telefone em formato internacional ou nacional.
+          example: "+55 11 99988-7766"
+        type: string
+    required:
+    - phone
+    type: object
+  handlers.PhoneValidationResponse:
+    description: Resultado da validação, contendo a decomposição (DDI, DDD, número)
+      quando válida.
+    properties:
+      ddd:
+        description: DDD (código de área)
+        type: string
+      ddi:
+        description: DDI (código do país)
+        type: string
+      e164:
+        description: Representação E.164 do número
+        type: string
+      message:
+        description: Mensagem de retorno.
+        type: string
+      numero:
+        description: Número do assinante
+        type: string
+      region:
+        description: Região ISO 3166-1 alpha-2
+        type: string
+      valid:
+        description: Indica se o número é válido.
+        type: boolean
+    type: object
   handlers.SuccessResponse:
     properties:
       message:
@@ -789,6 +826,32 @@ paths:
       summary: Verificação de saúde
       tags:
       - health
+  /validate/phone:
+    post:
+      consumes:
+      - application/json
+      description: Valida DDI, DDD e número para qualquer telefone internacional.
+      parameters:
+      - description: Telefone a ser validado
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.PhoneValidationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.PhoneValidationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Valida número de telefone
+      tags:
+      - validation
 schemes:
 - http
 - https
