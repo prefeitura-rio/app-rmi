@@ -118,14 +118,75 @@ type Citizen struct {
 	MenorIdade   *bool      `json:"menor_idade,omitempty" bson:"menor_idade,omitempty"`
 	Raca         *string    `json:"raca,omitempty" bson:"raca,omitempty"`
 	Obito        *Obito     `json:"obito,omitempty" bson:"obito,omitempty"`
-	Documentos   *Documentos `json:"documentos,omitempty" bson:"documentos,omitempty"`
 	Endereco     *Endereco  `json:"endereco,omitempty" bson:"endereco,omitempty"`
 	Email        *Email     `json:"email,omitempty" bson:"email,omitempty"`
 	Telefone     *Telefone  `json:"telefone,omitempty" bson:"telefone,omitempty"`
-	Saude        *Saude     `json:"saude,omitempty" bson:"saude,omitempty"`
-	Datalake     *Datalake  `json:"datalake,omitempty" bson:"datalake,omitempty"`
-	CPFParticao  int64      `json:"cpf_particao" bson:"cpf_particao"`
-	RowNumber    *int32     `json:"row_number,omitempty" bson:"row_number,omitempty"`
+	// Internal fields excluded from API response
+	Documentos   *Documentos `json:"-" bson:"documentos,omitempty"`
+	Saude        *Saude     `json:"-" bson:"saude,omitempty"`
+	Datalake     *Datalake  `json:"-" bson:"datalake,omitempty"`
+	CPFParticao  int64      `json:"-" bson:"cpf_particao"`
+	RowNumber    *int32     `json:"-" bson:"row_number,omitempty"`
+}
+
+// CitizenWallet represents the citizen's wallet data
+type CitizenWallet struct {
+	CPF        string      `json:"cpf" bson:"cpf"`
+	Documentos *Documentos `json:"documentos,omitempty" bson:"documentos,omitempty"`
+	Saude      *Saude      `json:"saude,omitempty" bson:"saude,omitempty"`
+}
+
+// MaintenanceRequest represents a maintenance request
+type MaintenanceRequest struct {
+	ID                           string     `json:"id" bson:"_id"`
+	CPF                          string     `json:"cpf" bson:"cpf"`
+	OrigemOcorrencia             string     `json:"origem_ocorrencia" bson:"origem_ocorrencia"`
+	IDChamado                    string     `json:"id_chamado" bson:"id_chamado"`
+	IDOrigemOcorrencia           string     `json:"id_origem_ocorrencia" bson:"id_origem_ocorrencia"`
+	DataInicio                   *time.Time `json:"data_inicio" bson:"data_inicio"`
+	DataFim                      *time.Time `json:"data_fim" bson:"data_fim"`
+	IDBairro                     string     `json:"id_bairro" bson:"id_bairro"`
+	IDTerritorialidade           string     `json:"id_territorialidade" bson:"id_territorialidade"`
+	IDLogradouro                 string     `json:"id_logradouro" bson:"id_logradouro"`
+	NumeroLogradouro             *int       `json:"numero_logradouro" bson:"numero_logradouro"`
+	IDUnidadeOrganizacional      string     `json:"id_unidade_organizacional" bson:"id_unidade_organizacional"`
+	NomeUnidadeOrganizacional    string     `json:"nome_unidade_organizacional" bson:"nome_unidade_organizacional"`
+	IDUnidadeOrganizacionalMae   string     `json:"id_unidade_organizacional_mae" bson:"id_unidade_organizacional_mae"`
+	UnidadeOrganizacionalOuvidoria string   `json:"unidade_organizacional_ouvidoria" bson:"unidade_organizacional_ouvidoria"`
+	Categoria                    string     `json:"categoria" bson:"categoria"`
+	IDTipo                       string     `json:"id_tipo" bson:"id_tipo"`
+	Tipo                         string     `json:"tipo" bson:"tipo"`
+	IDSubtipo                    string     `json:"id_subtipo" bson:"id_subtipo"`
+	Subtipo                      string     `json:"subtipo" bson:"subtipo"`
+	Status                       string     `json:"status" bson:"status"`
+	Longitude                    *float64   `json:"longitude" bson:"longitude"`
+	Latitude                     *float64   `json:"latitude" bson:"latitude"`
+	DataAlvoFinalizacao          *time.Time `json:"data_alvo_finalizacao" bson:"data_alvo_finalizacao"`
+	DataAlvoDiagnostico          *time.Time `json:"data_alvo_diagnostico" bson:"data_alvo_diagnostico"`
+	DataRealDiagnostico          *time.Time `json:"data_real_diagnostico" bson:"data_real_diagnostico"`
+	TempoPrazo                   *string    `json:"tempo_prazo" bson:"tempo_prazo"`
+	PrazoUnidade                 string     `json:"prazo_unidade" bson:"prazo_unidade"`
+	PrazoTipo                    string     `json:"prazo_tipo" bson:"prazo_tipo"`
+	DentroPrazo                  string     `json:"dentro_prazo" bson:"dentro_prazo"`
+	Situacao                     string     `json:"situacao" bson:"situacao"`
+	TipoSituacao                 string     `json:"tipo_situacao" bson:"tipo_situacao"`
+	JustificativaStatus          *string    `json:"justificativa_status" bson:"justificativa_status"`
+	Reclamacoes                  *int       `json:"reclamacoes" bson:"reclamacoes"`
+	Descricao                    string     `json:"descricao" bson:"descricao"`
+	// Internal fields excluded from API response
+	CPFParticao                  int64      `json:"-" bson:"cpf_particao"`
+	DataParticao                 *time.Time `json:"-" bson:"data_particao"`
+}
+
+// PaginatedMaintenanceRequests represents a paginated response of maintenance requests
+type PaginatedMaintenanceRequests struct {
+	Data       []MaintenanceRequest `json:"data"`
+	Pagination struct {
+		Page       int `json:"page"`
+		PerPage    int `json:"per_page"`
+		Total      int `json:"total"`
+		TotalPages int `json:"total_pages"`
+	} `json:"pagination"`
 }
 
 // ValidEthnicityOptions returns a list of valid ethnicity options

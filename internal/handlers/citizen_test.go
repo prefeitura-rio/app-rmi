@@ -39,6 +39,8 @@ func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/v1/citizen/:cpf", GetCitizenData)
+	r.GET("/v1/citizen/:cpf/wallet", GetCitizenWallet)
+	r.GET("/v1/citizen/:cpf/maintenance-request", GetMaintenanceRequests)
 	r.PUT("/v1/citizen/:cpf/address", UpdateSelfDeclaredAddress)
 	r.PUT("/v1/citizen/:cpf/phone", UpdateSelfDeclaredPhone)
 	r.PUT("/v1/citizen/:cpf/email", UpdateSelfDeclaredEmail)
@@ -55,6 +57,26 @@ func TestGetCitizenData(t *testing.T) {
 	r := setupRouter()
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/v1/citizen/"+cpfTest, nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK && w.Code != http.StatusNotFound {
+		t.Errorf("expected 200 or 404, got %d", w.Code)
+	}
+}
+
+func TestGetCitizenWallet(t *testing.T) {
+	r := setupRouter()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/v1/citizen/"+cpfTest+"/wallet", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK && w.Code != http.StatusNotFound {
+		t.Errorf("expected 200 or 404, got %d", w.Code)
+	}
+}
+
+func TestGetMaintenanceRequests(t *testing.T) {
+	r := setupRouter()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/v1/citizen/"+cpfTest+"/maintenance-request", nil)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK && w.Code != http.StatusNotFound {
 		t.Errorf("expected 200 or 404, got %d", w.Code)

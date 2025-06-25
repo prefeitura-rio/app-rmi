@@ -62,12 +62,6 @@ definitions:
     properties:
       cpf:
         type: string
-      cpf_particao:
-        type: integer
-      datalake:
-        $ref: '#/definitions/models.Datalake'
-      documentos:
-        $ref: '#/definitions/models.Documentos'
       email:
         $ref: '#/definitions/models.Email'
       endereco:
@@ -86,14 +80,19 @@ definitions:
         $ref: '#/definitions/models.Obito'
       raca:
         type: string
-      row_number:
-        type: integer
-      saude:
-        $ref: '#/definitions/models.Saude'
       sexo:
         type: string
       telefone:
         $ref: '#/definitions/models.Telefone'
+    type: object
+  models.CitizenWallet:
+    properties:
+      cpf:
+        type: string
+      documentos:
+        $ref: '#/definitions/models.Documentos'
+      saude:
+        $ref: '#/definitions/models.Saude'
     type: object
   models.ClinicaFamilia:
     properties:
@@ -104,11 +103,6 @@ definitions:
       nome:
         type: string
       telefone:
-        type: string
-    type: object
-  models.Datalake:
-    properties:
-      last_updated:
         type: string
     type: object
   models.Documentos:
@@ -190,6 +184,79 @@ definitions:
       nome:
         type: string
     type: object
+  models.MaintenanceRequest:
+    properties:
+      categoria:
+        type: string
+      cpf:
+        type: string
+      data_alvo_diagnostico:
+        type: string
+      data_alvo_finalizacao:
+        type: string
+      data_fim:
+        type: string
+      data_inicio:
+        type: string
+      data_real_diagnostico:
+        type: string
+      dentro_prazo:
+        type: string
+      descricao:
+        type: string
+      id:
+        type: string
+      id_bairro:
+        type: string
+      id_chamado:
+        type: string
+      id_logradouro:
+        type: string
+      id_origem_ocorrencia:
+        type: string
+      id_subtipo:
+        type: string
+      id_territorialidade:
+        type: string
+      id_tipo:
+        type: string
+      id_unidade_organizacional:
+        type: string
+      id_unidade_organizacional_mae:
+        type: string
+      justificativa_status:
+        type: string
+      latitude:
+        type: number
+      longitude:
+        type: number
+      nome_unidade_organizacional:
+        type: string
+      numero_logradouro:
+        type: integer
+      origem_ocorrencia:
+        type: string
+      prazo_tipo:
+        type: string
+      prazo_unidade:
+        type: string
+      reclamacoes:
+        type: integer
+      situacao:
+        type: string
+      status:
+        type: string
+      subtipo:
+        type: string
+      tempo_prazo:
+        type: string
+      tipo:
+        type: string
+      tipo_situacao:
+        type: string
+      unidade_organizacional_ouvidoria:
+        type: string
+    type: object
   models.Nascimento:
     properties:
       data:
@@ -211,6 +278,24 @@ definitions:
         type: integer
       indicador:
         type: boolean
+    type: object
+  models.PaginatedMaintenanceRequests:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.MaintenanceRequest'
+        type: array
+      pagination:
+        properties:
+          page:
+            type: integer
+          per_page:
+            type: integer
+          total:
+            type: integer
+          total_pages:
+            type: integer
+        type: object
     type: object
   models.PhoneVerificationValidateRequest:
     properties:
@@ -271,13 +356,13 @@ definitions:
   models.SelfDeclaredPhoneInput:
     properties:
       ddd:
+        description: DDD é obrigatório somente quando o DDI é 55 (Brasil)
         type: string
       ddi:
         type: string
       valor:
         type: string
     required:
-    - ddd
     - ddi
     - valor
     type: object
@@ -612,6 +697,58 @@ paths:
       summary: Atualizar status do primeiro login
       tags:
       - citizen
+  /citizen/{cpf}/maintenance-request:
+    get:
+      consumes:
+      - application/json
+      description: Recupera os chamados do 1746 de um cidadão por CPF com paginação.
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: 'Número da página (padrão: 1)'
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 10, máximo: 100)'
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista paginada de chamados do 1746
+          schema:
+            $ref: '#/definitions/models.PaginatedMaintenanceRequests'
+        "400":
+          description: Formato de CPF inválido ou parâmetros de paginação inválidos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter chamados do 1746 do cidadão
+      tags:
+      - citizen
   /citizen/{cpf}/optin:
     get:
       consumes:
@@ -784,6 +921,52 @@ paths:
       security:
       - BearerAuth: []
       summary: Validate phone verification
+      tags:
+      - citizen
+  /citizen/{cpf}/wallet:
+    get:
+      consumes:
+      - application/json
+      description: Recupera os dados da carteira do cidadão por CPF, incluindo informações
+        de saúde e outros dados da carteira.
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Dados da carteira do cidadão
+          schema:
+            $ref: '#/definitions/models.CitizenWallet'
+        "400":
+          description: Formato de CPF inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Cidadão não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter dados da carteira do cidadão
       tags:
       - citizen
   /citizen/ethnicity/options:

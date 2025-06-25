@@ -473,6 +473,84 @@ const docTemplate = `{
                 }
             }
         },
+        "/citizen/{cpf}/maintenance-request": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Recupera os chamados do 1746 de um cidadão por CPF com paginação.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Obter chamados do 1746 do cidadão",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Número da página (padrão: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Itens por página (padrão: 10, máximo: 100)",
+                        "name": "per_page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista paginada de chamados do 1746",
+                        "schema": {
+                            "$ref": "#/definitions/models.PaginatedMaintenanceRequests"
+                        }
+                    },
+                    "400": {
+                        "description": "Formato de CPF inválido ou parâmetros de paginação inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/{cpf}/optin": {
             "get": {
                 "security": [
@@ -742,6 +820,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/citizen/{cpf}/wallet": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Recupera os dados da carteira do cidadão por CPF, incluindo informações de saúde e outros dados da carteira.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Obter dados da carteira do cidadão",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Dados da carteira do cidadão",
+                        "schema": {
+                            "$ref": "#/definitions/models.CitizenWallet"
+                        }
+                    },
+                    "400": {
+                        "description": "Formato de CPF inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Cidadão não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Verifica a saúde da API e suas dependências (MongoDB e Redis). Retorna status detalhado para cada serviço.",
@@ -896,15 +1043,6 @@ const docTemplate = `{
                 "cpf": {
                     "type": "string"
                 },
-                "cpf_particao": {
-                    "type": "integer"
-                },
-                "datalake": {
-                    "$ref": "#/definitions/models.Datalake"
-                },
-                "documentos": {
-                    "$ref": "#/definitions/models.Documentos"
-                },
                 "email": {
                     "$ref": "#/definitions/models.Email"
                 },
@@ -932,17 +1070,25 @@ const docTemplate = `{
                 "raca": {
                     "type": "string"
                 },
-                "row_number": {
-                    "type": "integer"
-                },
-                "saude": {
-                    "$ref": "#/definitions/models.Saude"
-                },
                 "sexo": {
                     "type": "string"
                 },
                 "telefone": {
                     "$ref": "#/definitions/models.Telefone"
+                }
+            }
+        },
+        "models.CitizenWallet": {
+            "type": "object",
+            "properties": {
+                "cpf": {
+                    "type": "string"
+                },
+                "documentos": {
+                    "$ref": "#/definitions/models.Documentos"
+                },
+                "saude": {
+                    "$ref": "#/definitions/models.Saude"
                 }
             }
         },
@@ -959,14 +1105,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "telefone": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.Datalake": {
-            "type": "object",
-            "properties": {
-                "last_updated": {
                     "type": "string"
                 }
             }
@@ -1093,6 +1231,116 @@ const docTemplate = `{
                 }
             }
         },
+        "models.MaintenanceRequest": {
+            "type": "object",
+            "properties": {
+                "categoria": {
+                    "type": "string"
+                },
+                "cpf": {
+                    "type": "string"
+                },
+                "data_alvo_diagnostico": {
+                    "type": "string"
+                },
+                "data_alvo_finalizacao": {
+                    "type": "string"
+                },
+                "data_fim": {
+                    "type": "string"
+                },
+                "data_inicio": {
+                    "type": "string"
+                },
+                "data_real_diagnostico": {
+                    "type": "string"
+                },
+                "dentro_prazo": {
+                    "type": "string"
+                },
+                "descricao": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "id_bairro": {
+                    "type": "string"
+                },
+                "id_chamado": {
+                    "type": "string"
+                },
+                "id_logradouro": {
+                    "type": "string"
+                },
+                "id_origem_ocorrencia": {
+                    "type": "string"
+                },
+                "id_subtipo": {
+                    "type": "string"
+                },
+                "id_territorialidade": {
+                    "type": "string"
+                },
+                "id_tipo": {
+                    "type": "string"
+                },
+                "id_unidade_organizacional": {
+                    "type": "string"
+                },
+                "id_unidade_organizacional_mae": {
+                    "type": "string"
+                },
+                "justificativa_status": {
+                    "type": "string"
+                },
+                "latitude": {
+                    "type": "number"
+                },
+                "longitude": {
+                    "type": "number"
+                },
+                "nome_unidade_organizacional": {
+                    "type": "string"
+                },
+                "numero_logradouro": {
+                    "type": "integer"
+                },
+                "origem_ocorrencia": {
+                    "type": "string"
+                },
+                "prazo_tipo": {
+                    "type": "string"
+                },
+                "prazo_unidade": {
+                    "type": "string"
+                },
+                "reclamacoes": {
+                    "type": "integer"
+                },
+                "situacao": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subtipo": {
+                    "type": "string"
+                },
+                "tempo_prazo": {
+                    "type": "string"
+                },
+                "tipo": {
+                    "type": "string"
+                },
+                "tipo_situacao": {
+                    "type": "string"
+                },
+                "unidade_organizacional_ouvidoria": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Nascimento": {
             "type": "object",
             "properties": {
@@ -1124,6 +1372,34 @@ const docTemplate = `{
                 },
                 "indicador": {
                     "type": "boolean"
+                }
+            }
+        },
+        "models.PaginatedMaintenanceRequests": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MaintenanceRequest"
+                    }
+                },
+                "pagination": {
+                    "type": "object",
+                    "properties": {
+                        "page": {
+                            "type": "integer"
+                        },
+                        "per_page": {
+                            "type": "integer"
+                        },
+                        "total": {
+                            "type": "integer"
+                        },
+                        "total_pages": {
+                            "type": "integer"
+                        }
+                    }
                 }
             }
         },
@@ -1212,12 +1488,12 @@ const docTemplate = `{
         "models.SelfDeclaredPhoneInput": {
             "type": "object",
             "required": [
-                "ddd",
                 "ddi",
                 "valor"
             ],
             "properties": {
                 "ddd": {
+                    "description": "DDD é obrigatório somente quando o DDI é 55 (Brasil)",
                     "type": "string"
                 },
                 "ddi": {

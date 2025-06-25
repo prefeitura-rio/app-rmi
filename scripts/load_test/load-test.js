@@ -56,7 +56,7 @@ const statusCounts = {
 // Test configuration
 export const options = {
   stages: [
-    { duration: '5m', target: 1000 },
+    // { duration: '5m', target: 1000 },
     { duration: '5m', target: 5000 },
     // { duration: '5m', target: 10000 },
     { duration: '15m', target: 5000 },

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -795,6 +797,187 @@ func GetEthnicityOptions(c *gin.Context) {
 
 	options := models.ValidEthnicityOptions()
 	c.JSON(http.StatusOK, options)
+}
+
+// GetCitizenWallet godoc
+// @Summary Obter dados da carteira do cidadão
+// @Description Recupera os dados da carteira do cidadão por CPF, incluindo informações de saúde e outros dados da carteira.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "CPF do cidadão (11 dígitos)" minLength(11) maxLength(11)
+// @Security BearerAuth
+// @Success 200 {object} models.CitizenWallet "Dados da carteira do cidadão"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
+// @Failure 404 {object} ErrorResponse "Cidadão não encontrado"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/{cpf}/wallet [get]
+func GetCitizenWallet(c *gin.Context) {
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "GetCitizenWallet")
+	defer span.End()
+
+	cpf := c.Param("cpf")
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger.Info("GetCitizenWallet called", zap.String("cpf", cpf))
+
+	// Try to get from cache first
+	cacheKey := fmt.Sprintf("citizen_wallet:%s", cpf)
+	cachedData, err := config.Redis.Get(ctx, cacheKey).Result()
+	if err == nil {
+		observability.CacheHits.WithLabelValues("get_citizen_wallet").Inc()
+		var wallet models.CitizenWallet
+		if err := json.Unmarshal([]byte(cachedData), &wallet); err == nil {
+			c.JSON(http.StatusOK, wallet)
+			return
+		}
+		logger.Warn("failed to unmarshal cached wallet data", zap.Error(err))
+	}
+
+	// Get base data
+	var citizen models.Citizen
+	err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			observability.DatabaseOperations.WithLabelValues("find", "not_found").Inc()
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "citizen not found"})
+			return
+		}
+		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
+		logger.Error("failed to get citizen data", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
+
+	// Create wallet response
+	wallet := models.CitizenWallet{
+		CPF:        cpf,
+		Documentos: citizen.Documentos,
+		Saude:      citizen.Saude,
+	}
+
+	// Cache the result
+	if jsonData, err := json.Marshal(wallet); err == nil {
+		config.Redis.Set(ctx, cacheKey, jsonData, config.AppConfig.RedisTTL)
+	}
+
+	c.JSON(http.StatusOK, wallet)
+}
+
+// GetMaintenanceRequests godoc
+// @Summary Obter chamados do 1746 do cidadão
+// @Description Recupera os chamados do 1746 de um cidadão por CPF com paginação.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "CPF do cidadão (11 dígitos)" minLength(11) maxLength(11)
+// @Param page query int false "Número da página (padrão: 1)" minimum(1)
+// @Param per_page query int false "Itens por página (padrão: 10, máximo: 100)" minimum(1) maximum(100)
+// @Security BearerAuth
+// @Success 200 {object} models.PaginatedMaintenanceRequests "Lista paginada de chamados do 1746"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou parâmetros de paginação inválidos"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/{cpf}/maintenance-request [get]
+func GetMaintenanceRequests(c *gin.Context) {
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "GetMaintenanceRequests")
+	defer span.End()
+
+	cpf := c.Param("cpf")
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger.Info("GetMaintenanceRequests called", zap.String("cpf", cpf))
+
+	// Parse pagination parameters
+	page := 1
+	if pageStr := c.Query("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		} else {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid page parameter"})
+			return
+		}
+	}
+
+	perPage := 10
+	if perPageStr := c.Query("per_page"); perPageStr != "" {
+		if pp, err := strconv.Atoi(perPageStr); err == nil && pp > 0 && pp <= 100 {
+			perPage = pp
+		} else {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid per_page parameter (must be between 1 and 100)"})
+			return
+		}
+	}
+
+	// Calculate skip value
+	skip := (page - 1) * perPage
+
+	// Try to get from cache first (include pagination in cache key)
+	cacheKey := fmt.Sprintf("maintenance_requests:%s:page_%d_per_%d", cpf, page, perPage)
+	cachedData, err := config.Redis.Get(ctx, cacheKey).Result()
+	if err == nil {
+		observability.CacheHits.WithLabelValues("get_maintenance_requests").Inc()
+		var response models.PaginatedMaintenanceRequests
+		if err := json.Unmarshal([]byte(cachedData), &response); err == nil {
+			c.JSON(http.StatusOK, response)
+			return
+		}
+		logger.Warn("failed to unmarshal cached maintenance requests data", zap.Error(err))
+	}
+
+	// Get total count
+	total, err := config.MongoDB.Collection(config.AppConfig.MaintenanceRequestCollection).CountDocuments(ctx, bson.M{"cpf": cpf})
+	if err != nil {
+		observability.DatabaseOperations.WithLabelValues("count", "error").Inc()
+		logger.Error("failed to count maintenance requests", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	// Get maintenance requests with pagination
+	opts := options.Find().
+		SetSkip(int64(skip)).
+		SetLimit(int64(perPage)).
+		SetSort(bson.D{{Key: "data_inicio", Value: -1}}) // Sort by data_inicio descending (newest first)
+
+	cursor, err := config.MongoDB.Collection(config.AppConfig.MaintenanceRequestCollection).Find(ctx, bson.M{"cpf": cpf}, opts)
+	if err != nil {
+		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
+		logger.Error("failed to get maintenance requests", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var requests []models.MaintenanceRequest
+	if err = cursor.All(ctx, &requests); err != nil {
+		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
+		logger.Error("failed to decode maintenance requests", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
+
+	// Calculate total pages
+	totalPages := int(math.Ceil(float64(total) / float64(perPage)))
+
+	// Create response
+	response := models.PaginatedMaintenanceRequests{
+		Data: requests,
+	}
+	response.Pagination.Page = page
+	response.Pagination.PerPage = perPage
+	response.Pagination.Total = int(total)
+	response.Pagination.TotalPages = totalPages
+
+	// Cache the result
+	if jsonData, err := json.Marshal(response); err == nil {
+		config.Redis.Set(ctx, cacheKey, jsonData, config.AppConfig.RedisTTL)
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 type ErrorResponse struct {

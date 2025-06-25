@@ -28,6 +28,7 @@ type Config struct {
 	SelfDeclaredCollection string `json:"mongo_self_declared_collection"`
 	PhoneVerificationCollection string `json:"mongo_phone_verification_collection"`
 	UserConfigCollection   string `json:"mongo_user_config_collection"`
+	MaintenanceRequestCollection string `json:"mongo_maintenance_request_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -74,6 +75,12 @@ func LoadConfig() error {
 	citizenCollection := os.Getenv("MONGODB_CITIZEN_COLLECTION")
 	if citizenCollection == "" {
 		return fmt.Errorf("MONGODB_CITIZEN_COLLECTION environment variable is required")
+	}
+
+	// Check if MONGODB_MAINTENANCE_REQUEST_COLLECTION is set
+	maintenanceRequestCollection := os.Getenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	if maintenanceRequestCollection == "" {
+		return fmt.Errorf("MONGODB_MAINTENANCE_REQUEST_COLLECTION environment variable is required")
 	}
 
 	phoneVerificationTTL, err := time.ParseDuration(getEnvOrDefault("PHONE_VERIFICATION_TTL", "5m"))
@@ -141,6 +148,7 @@ func LoadConfig() error {
 		SelfDeclaredCollection: getEnvOrDefault("MONGODB_SELF_DECLARED_COLLECTION", "self_declared"),
 		PhoneVerificationCollection: getEnvOrDefault("MONGODB_PHONE_VERIFICATION_COLLECTION", "phone_verifications"),
 		UserConfigCollection:   getEnvOrDefault("MONGODB_USER_CONFIG_COLLECTION", "user_config"),
+		MaintenanceRequestCollection: maintenanceRequestCollection,
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,

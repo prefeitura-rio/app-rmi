@@ -22,6 +22,8 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | MONGODB_CITIZEN_COLLECTION | Nome da coleção de dados do cidadão | citizens | Não |
 | MONGODB_SELF_DECLARED_COLLECTION | Nome da coleção de dados autodeclarados | self_declared | Não |
 | MONGODB_PHONE_VERIFICATION_COLLECTION | Nome da coleção de verificação de telefone | phone_verifications | Não |
+| MONGODB_MAINTENANCE_REQUEST_COLLECTION | Nome da coleção de chamados do 1746 | - | Sim |
+| MONGODB_USER_CONFIG_COLLECTION | Nome da coleção de configurações do usuário | user_config | Não |
 | REDIS_URI | String de conexão Redis | redis://localhost:6379 | Sim |
 | REDIS_TTL | TTL do cache Redis em minutos | 60 | Não |
 | PHONE_VERIFICATION_TTL | TTL dos códigos de verificação de telefone (ex: "15m", "1h") | 15m | Não |
@@ -43,6 +45,22 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 Recupera os dados do cidadão por CPF, combinando dados base com atualizações autodeclaradas.
 - Dados autodeclarados têm precedência sobre dados base
 - Resultados são armazenados em cache usando Redis com TTL configurável
+- Campos internos (cpf_particao, datalake, row_number, documentos, saude) são excluídos da resposta
+
+### GET /citizen/{cpf}/wallet
+Recupera os dados da carteira do cidadão por CPF.
+- Inclui informações de saúde (saude)
+- Inclui documentos (documentos)
+- Resultados são armazenados em cache usando Redis com TTL configurável
+
+### GET /citizen/{cpf}/maintenance-request
+Recupera os chamados do 1746 de um cidadão por CPF com paginação.
+- Suporta paginação com parâmetros `page` e `per_page`
+- Ordenação por data de início (mais recentes primeiro)
+- Resultados são armazenados em cache usando Redis com TTL configurável
+- Parâmetros de paginação:
+  - `page`: Número da página (padrão: 1, mínimo: 1)
+  - `per_page`: Itens por página (padrão: 10, máximo: 100)
 
 ### PUT /citizen/{cpf}/address
 Atualiza ou cria o endereço autodeclarado de um cidadão.

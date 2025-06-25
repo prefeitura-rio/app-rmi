@@ -100,6 +100,8 @@ func main() {
 		{
 			// Endpoints that require own CPF access
 			citizen.GET("/:cpf", middleware.RequireOwnCPF(), handlers.GetCitizenData)
+			citizen.GET("/:cpf/wallet", middleware.RequireOwnCPF(), handlers.GetCitizenWallet)
+			citizen.GET("/:cpf/maintenance-request", middleware.RequireOwnCPF(), handlers.GetMaintenanceRequests)
 			citizen.PUT("/:cpf/address", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredAddress)
 			citizen.PUT("/:cpf/phone", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredPhone)
 			citizen.PUT("/:cpf/email", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredEmail)
