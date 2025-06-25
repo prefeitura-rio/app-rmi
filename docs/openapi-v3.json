@@ -1439,12 +1439,12 @@
       "models.SelfDeclaredPhoneInput": {
         "type": "object",
         "required": [
-          "ddd",
           "ddi",
           "valor"
         ],
         "properties": {
           "ddd": {
+            "description": "DDD é obrigatório somente quando o DDI é 55 (Brasil)",
             "type": "string"
           },
           "ddi": {
