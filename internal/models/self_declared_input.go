@@ -17,7 +17,8 @@ type SelfDeclaredEmailInput struct {
 
 type SelfDeclaredPhoneInput struct {
 	DDI   string `json:"ddi" binding:"required"`
-	DDD   string `json:"ddd" binding:"required"`
+	// DDD é obrigatório somente quando o DDI é 55 (Brasil)
+	DDD   string `json:"ddd" binding:"required_if=DDI 55"`
 	Valor string `json:"valor" binding:"required"`
 }
 

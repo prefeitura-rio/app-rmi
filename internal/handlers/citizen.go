@@ -347,8 +347,8 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to start phone verification: " + err.Error()})
 		return
 	}
-	// Send code via WhatsApp
-	if input.DDI != "" && input.DDD != "" && input.Valor != "" {
+	// Envia código via WhatsApp (DDD pode ser vazio para números internacionais)
+	if input.DDI != "" && input.Valor != "" {
 		phone := fmt.Sprintf("%s%s%s", input.DDI, input.DDD, input.Valor)
 		err = utils.SendVerificationCode(c.Request.Context(), phone, code)
 		if err != nil {
