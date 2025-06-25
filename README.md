@@ -11,6 +11,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 - 📊 Métricas Prometheus para monitoramento
 - 🔍 Rastreamento de requisições com OpenTelemetry
 - 📝 Logs estruturados com Zap
+- 🗂️ Gerenciamento automático de índices MongoDB
 
 ## Variáveis de Ambiente
 
@@ -38,6 +39,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | METRICS_PORT | Porta para métricas Prometheus | 9090 | Não |
 | TRACING_ENABLED | Habilitar rastreamento OpenTelemetry | false | Não |
 | TRACING_ENDPOINT | Endpoint do coletor OpenTelemetry | http://localhost:4317 | Não |
+| INDEX_MAINTENANCE_INTERVAL | Intervalo para verificação de índices (ex: "1h", "24h") | 1h | Não |
 
 ## Endpoints da API
 
@@ -145,6 +147,27 @@ Structured logging with Zap:
 - Performance monitoring
 - Audit trail
 
+### Index Management
+The API automatically manages MongoDB indexes to ensure optimal query performance:
+- **Automatic Index Creation**: Creates required indexes on startup if they don't exist
+- **Periodic Verification**: Checks for indexes at configurable intervals and recreates them if missing
+- **Multi-Instance Safe**: Uses MongoDB's `createIndex` with background building and duplicate key error handling
+- **Collection Overwrite Protection**: Ensures indexes exist after BigQuery/Airbyte collection overwrites
+- **Configurable Interval**: Set via `INDEX_MAINTENANCE_INTERVAL` environment variable (default: 1h)
+
+**Managed Indexes:**
+- `citizen` collection: Unique index on `cpf` field (`cpf_1`)
+- `maintenance_request` collection: Index on `cpf` field (`cpf_1`)
+- `self_declared` collection: Unique index on `cpf` field (`cpf_1`)
+- `phone_verifications` collection: Unique compound index on `cpf` and `phone_number` (`cpf_1_phone_number_1`)
+- `user_config` collection: Unique index on `cpf` field (`cpf_1`)
+
+**Safety Features:**
+- **Background Index Building**: Indexes are built in the background, allowing other operations to continue
+- **Duplicate Key Handling**: Gracefully handles cases where another instance creates the same index
+- **Error Recovery**: Failed index creation doesn't crash the application
+- **Concurrent Safety**: Multiple API instances can run index maintenance simultaneously without conflicts
+
 ## Development
 
 ### Prerequisites
@@ -170,4 +193,4 @@ go test ./...
 
 ## License
 
-MIT 
+MIT

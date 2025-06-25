@@ -48,6 +48,9 @@ type Config struct {
 
 	// Authorization configuration
 	AdminGroup string `json:"admin_group"`
+
+	// Index maintenance configuration
+	IndexMaintenanceInterval time.Duration `json:"index_maintenance_interval"`
 }
 
 var (
@@ -128,6 +131,11 @@ func LoadConfig() error {
 		return fmt.Errorf("WHATSAPP_CAMPAIGN_NAME is required")
 	}
 
+	indexMaintenanceInterval, err := time.ParseDuration(getEnvOrDefault("INDEX_MAINTENANCE_INTERVAL", "1h"))
+	if err != nil {
+		return fmt.Errorf("invalid INDEX_MAINTENANCE_INTERVAL: %w", err)
+	}
+
 	AppConfig = &Config{
 		// Server configuration
 		Port:        port,
@@ -168,6 +176,9 @@ func LoadConfig() error {
 
 		// Authorization configuration
 		AdminGroup: getEnvOrDefault("ADMIN_GROUP", "rmi-admin"),
+
+		// Index maintenance configuration
+		IndexMaintenanceInterval: indexMaintenanceInterval,
 	}
 
 	return nil
