@@ -853,9 +853,11 @@ func GetCitizenWallet(c *gin.Context) {
 
 	// Create wallet response
 	wallet := models.CitizenWallet{
-		CPF:        cpf,
-		Documentos: citizen.Documentos,
-		Saude:      citizen.Saude,
+		CPF:               cpf,
+		Documentos:        citizen.Documentos,
+		Saude:             citizen.Saude,
+		AssistenciaSocial: citizen.AssistenciaSocial,
+		Educacao:          citizen.Educacao,
 	}
 
 	// Cache the result

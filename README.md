@@ -51,8 +51,10 @@ Recupera os dados do cidadão por CPF, combinando dados base com atualizações 
 
 ### GET /citizen/{cpf}/wallet
 Recupera os dados da carteira do cidadão por CPF.
-- Inclui informações de saúde (saude)
-- Inclui documentos (documentos)
+- Inclui informações de saúde (`saude`)
+- Inclui documentos (`documentos`)
+- Inclui assistência social (`assistencia_social`)
+- Inclui educação (`educacao`)
 - Resultados são armazenados em cache usando Redis com TTL configurável
 
 ### GET /citizen/{cpf}/maintenance-request

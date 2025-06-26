@@ -82,24 +82,74 @@ type Telefone struct {
 
 // ClinicaFamilia represents family clinic information
 type ClinicaFamilia struct {
-	Indicador *bool   `json:"indicador,omitempty" bson:"indicador,omitempty"`
-	IDCNES    *string `json:"id_cnes,omitempty" bson:"id_cnes,omitempty"`
-	Nome      *string `json:"nome,omitempty" bson:"nome,omitempty"`
-	Telefone  *string `json:"telefone,omitempty" bson:"telefone,omitempty"`
+	Indicador           *bool   `json:"indicador,omitempty" bson:"indicador,omitempty"`
+	IDCNES              *string `json:"id_cnes,omitempty" bson:"id_cnes,omitempty"`
+	Nome                *string `json:"nome,omitempty" bson:"nome,omitempty"`
+	Telefone            *string `json:"telefone,omitempty" bson:"telefone,omitempty"`
+	Email               *string `json:"email,omitempty" bson:"email,omitempty"`
+	Endereco            *string `json:"endereco,omitempty" bson:"endereco,omitempty"`
+	HorarioAtendimento  *string `json:"horario_atendimento,omitempty" bson:"horario_atendimento,omitempty"`
 }
 
 // EquipeSaudeFamilia represents family health team information
 type EquipeSaudeFamilia struct {
-	Indicador *bool                `json:"indicador,omitempty" bson:"indicador,omitempty"`
-	IDINE     *string              `json:"id_ine,omitempty" bson:"id_ine,omitempty"`
-	Nome      *string              `json:"nome,omitempty" bson:"nome,omitempty"`
-	Telefone  *string              `json:"telefone,omitempty" bson:"telefone,omitempty"`
+	Indicador  *bool     `json:"indicador,omitempty" bson:"indicador,omitempty"`
+	IDINE      *string   `json:"id_ine,omitempty" bson:"id_ine,omitempty"`
+	Nome       *string   `json:"nome,omitempty" bson:"nome,omitempty"`
+	Telefone   *string   `json:"telefone,omitempty" bson:"telefone,omitempty"`
+	Medicos    []string  `json:"medicos,omitempty" bson:"medicos,omitempty"`
+	Enfermeiros []string `json:"enfermeiros,omitempty" bson:"enfermeiros,omitempty"`
 }
 
 // Saude represents health information
 type Saude struct {
 	ClinicaFamilia      *ClinicaFamilia      `json:"clinica_familia,omitempty" bson:"clinica_familia,omitempty"`
 	EquipeSaudeFamilia  *EquipeSaudeFamilia  `json:"equipe_saude_familia,omitempty" bson:"equipe_saude_familia,omitempty"`
+}
+
+// CadUnico represents CadÚnico information
+type CadUnico struct {
+	Indicador                    *bool      `json:"indicador,omitempty" bson:"indicador,omitempty"`
+	DataCadastro                 *time.Time `json:"data_cadastro,omitempty" bson:"data_cadastro,omitempty"`
+	DataUltimaAtualizacao        *time.Time `json:"data_ultima_atualizacao,omitempty" bson:"data_ultima_atualizacao,omitempty"`
+	DataLimiteCadastroAtual      *time.Time `json:"data_limite_cadastro_atual,omitempty" bson:"data_limite_cadastro_atual,omitempty"`
+	StatusCadastral              *string    `json:"status_cadastral,omitempty" bson:"status_cadastral,omitempty"`
+}
+
+// CRAS represents CRAS information
+type CRAS struct {
+	Nome      *string `json:"nome,omitempty" bson:"nome,omitempty"`
+	Endereco  *string `json:"endereco,omitempty" bson:"endereco,omitempty"`
+	Telefone  *string `json:"telefone,omitempty" bson:"telefone,omitempty"`
+}
+
+// AssistenciaSocial represents social assistance information
+type AssistenciaSocial struct {
+	CadUnico *CadUnico `json:"cadunico,omitempty" bson:"cadunico,omitempty"`
+	CRAS     *CRAS     `json:"cras,omitempty" bson:"cras,omitempty"`
+}
+
+// Aluno represents student information
+type Aluno struct {
+	Indicador  *bool    `json:"indicador,omitempty" bson:"indicador,omitempty"`
+	Conceito   *string  `json:"conceito,omitempty" bson:"conceito,omitempty"`
+	Frequencia *float64 `json:"frequencia,omitempty" bson:"frequencia,omitempty"`
+}
+
+// Escola represents school information
+type Escola struct {
+	Nome                  *string `json:"nome,omitempty" bson:"nome,omitempty"`
+	HorarioFuncionamento  *string `json:"horario_funcionamento,omitempty" bson:"horario_funcionamento,omitempty"`
+	Telefone              *string `json:"telefone,omitempty" bson:"telefone,omitempty"`
+	Email                 *string `json:"email,omitempty" bson:"email,omitempty"`
+	Whatsapp              *string `json:"whatsapp,omitempty" bson:"whatsapp,omitempty"`
+	Endereco              *string `json:"endereco,omitempty" bson:"endereco,omitempty"`
+}
+
+// Educacao represents education information
+type Educacao struct {
+	Aluno  *Aluno  `json:"aluno,omitempty" bson:"aluno,omitempty"`
+	Escola *Escola `json:"escola,omitempty" bson:"escola,omitempty"`
 }
 
 // Datalake represents datalake information
@@ -122,18 +172,22 @@ type Citizen struct {
 	Email        *Email     `json:"email,omitempty" bson:"email,omitempty"`
 	Telefone     *Telefone  `json:"telefone,omitempty" bson:"telefone,omitempty"`
 	// Internal fields excluded from API response
-	Documentos   *Documentos `json:"-" bson:"documentos,omitempty"`
-	Saude        *Saude     `json:"-" bson:"saude,omitempty"`
-	Datalake     *Datalake  `json:"-" bson:"datalake,omitempty"`
-	CPFParticao  int64      `json:"-" bson:"cpf_particao"`
-	RowNumber    *int32     `json:"-" bson:"row_number,omitempty"`
+	Documentos         *Documentos         `json:"-" bson:"documentos,omitempty"`
+	Saude              *Saude              `json:"-" bson:"saude,omitempty"`
+	AssistenciaSocial  *AssistenciaSocial  `json:"-" bson:"assistencia_social,omitempty"`
+	Educacao           *Educacao           `json:"-" bson:"educacao,omitempty"`
+	Datalake           *Datalake           `json:"-" bson:"datalake,omitempty"`
+	CPFParticao        int64               `json:"-" bson:"cpf_particao"`
+	RowNumber          *int32              `json:"-" bson:"row_number,omitempty"`
 }
 
 // CitizenWallet represents the citizen's wallet data
 type CitizenWallet struct {
-	CPF        string      `json:"cpf" bson:"cpf"`
-	Documentos *Documentos `json:"documentos,omitempty" bson:"documentos,omitempty"`
-	Saude      *Saude      `json:"saude,omitempty" bson:"saude,omitempty"`
+	CPF                string              `json:"cpf" bson:"cpf"`
+	Documentos         *Documentos         `json:"documentos,omitempty" bson:"documentos,omitempty"`
+	Saude              *Saude              `json:"saude,omitempty" bson:"saude,omitempty"`
+	AssistenciaSocial  *AssistenciaSocial  `json:"assistencia_social,omitempty" bson:"assistencia_social,omitempty"`
+	Educacao           *Educacao           `json:"educacao,omitempty" bson:"educacao,omitempty"`
 }
 
 // MaintenanceRequest represents a maintenance request
