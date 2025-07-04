@@ -597,7 +597,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Recupera os chamados do 1746 de um cidadão por CPF com paginação.",
+        "description": "Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado individual.",
         "tags": [
           "citizen"
         ],
@@ -1366,6 +1366,9 @@
       "models.Citizen": {
         "type": "object",
         "properties": {
+          "_id": {
+            "type": "string"
+          },
           "cpf": {
             "type": "string"
           },
@@ -1561,7 +1564,7 @@
           "enfermeiros": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/models.ProfissionalSaude"
             }
           },
           "id_ine": {
@@ -1573,7 +1576,7 @@
           "medicos": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/models.ProfissionalSaude"
             }
           },
           "nome": {
@@ -1678,9 +1681,10 @@
           "id_unidade_organizacional_mae": {
             "type": "string"
           },
-          "justificativa_status": {
-            "type": "string"
+          "indicador": {
+            "type": "boolean"
           },
+          "justificativa_status": {},
           "latitude": {
             "type": "number"
           },
@@ -1714,14 +1718,18 @@
           "subtipo": {
             "type": "string"
           },
-          "tempo_prazo": {
-            "type": "string"
-          },
+          "tempo_prazo": {},
           "tipo": {
             "type": "string"
           },
           "tipo_situacao": {
             "type": "string"
+          },
+          "total_chamados": {
+            "type": "integer"
+          },
+          "total_fechados": {
+            "type": "integer"
           },
           "unidade_organizacional_ouvidoria": {
             "type": "string"
@@ -1809,6 +1817,17 @@
             "type": "string"
           },
           "valor": {
+            "type": "string"
+          }
+        }
+      },
+      "models.ProfissionalSaude": {
+        "type": "object",
+        "properties": {
+          "id_profissional_sus": {
+            "type": "string"
+          },
+          "nome": {
             "type": "string"
           }
         }
