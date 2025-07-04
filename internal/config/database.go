@@ -9,7 +9,6 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
-	"github.com/sony/gobreaker"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -24,24 +23,6 @@ var (
 	// Redis client
 	Redis *redisclient.Client
 )
-
-// Circuit breaker for Redis
-var redisBreaker = gobreaker.NewCircuitBreaker(gobreaker.Settings{
-	Name:        "redis",
-	MaxRequests: 3,
-	Interval:    10 * time.Second,
-	Timeout:     60 * time.Second,
-	ReadyToTrip: func(counts gobreaker.Counts) bool {
-		failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
-		return counts.Requests >= 3 && failureRatio >= 0.6
-	},
-	OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
-		logging.Logger.Warn("redis circuit breaker state changed",
-			zap.String("from", from.String()),
-			zap.String("to", to.String()),
-		)
-	},
-})
 
 // InitMongoDB initializes the MongoDB connection
 func InitMongoDB() {
@@ -287,12 +268,9 @@ func startIndexMaintenance() {
 			logger.Error("initial index check failed", zap.Error(err))
 		}
 
-		for {
-			select {
-			case <-ticker.C:
-				if err := ensureIndexes(); err != nil {
-					logger.Error("periodic index check failed", zap.Error(err))
-				}
+		for range ticker.C {
+			if err := ensureIndexes(); err != nil {
+				logger.Error("periodic index check failed", zap.Error(err))
 			}
 		}
 	}()

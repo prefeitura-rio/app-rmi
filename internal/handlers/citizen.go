@@ -870,7 +870,7 @@ func GetCitizenWallet(c *gin.Context) {
 
 // GetMaintenanceRequests godoc
 // @Summary Obter chamados do 1746 do cidadão
-// @Description Recupera os chamados do 1746 de um cidadão por CPF com paginação.
+// @Description Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado individual.
 // @Tags citizen
 // @Accept json
 // @Produce json
@@ -938,11 +938,11 @@ func GetMaintenanceRequests(c *gin.Context) {
 		return
 	}
 
-	// Get maintenance requests with pagination
+	// Get maintenance request documents with pagination
 	opts := options.Find().
 		SetSkip(int64(skip)).
 		SetLimit(int64(perPage)).
-		SetSort(bson.D{{Key: "data_inicio", Value: -1}}) // Sort by data_inicio descending (newest first)
+		SetSort(bson.D{{Key: "chamados_1746.data.data_inicio", Value: -1}}) // Sort by data_inicio descending (newest first)
 
 	cursor, err := config.MongoDB.Collection(config.AppConfig.MaintenanceRequestCollection).Find(ctx, bson.M{"cpf": cpf}, opts)
 	if err != nil {
@@ -953,14 +953,21 @@ func GetMaintenanceRequests(c *gin.Context) {
 	}
 	defer cursor.Close(ctx)
 
-	var requests []models.MaintenanceRequest
-	if err = cursor.All(ctx, &requests); err != nil {
+	var docs []models.MaintenanceRequestDocument
+	if err = cursor.All(ctx, &docs); err != nil {
 		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
-		logger.Error("failed to decode maintenance requests", zap.Error(err))
+		logger.Error("failed to decode maintenance request documents", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
 		return
 	}
 	observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
+
+	// Convert documents to MaintenanceRequest format for backward compatibility
+	var requests []models.MaintenanceRequest
+	for _, doc := range docs {
+		request := doc.ConvertToMaintenanceRequest()
+		requests = append(requests, *request)
+	}
 
 	// Calculate total pages
 	totalPages := int(math.Ceil(float64(total) / float64(perPage)))

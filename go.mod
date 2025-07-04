@@ -17,7 +17,6 @@ require (
 require (
 	github.com/gin-contrib/cors v1.7.5
 	github.com/prometheus/client_golang v1.19.0
-	github.com/sony/gobreaker v0.5.0
 	go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo v0.49.0
 	go.opentelemetry.io/otel v1.24.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.24.0

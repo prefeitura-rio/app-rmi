@@ -97,8 +97,14 @@ type EquipeSaudeFamilia struct {
 	IDINE      *string   `json:"id_ine,omitempty" bson:"id_ine,omitempty"`
 	Nome       *string   `json:"nome,omitempty" bson:"nome,omitempty"`
 	Telefone   *string   `json:"telefone,omitempty" bson:"telefone,omitempty"`
-	Medicos    []string  `json:"medicos,omitempty" bson:"medicos,omitempty"`
-	Enfermeiros []string `json:"enfermeiros,omitempty" bson:"enfermeiros,omitempty"`
+	Medicos    []ProfissionalSaude `json:"medicos,omitempty" bson:"medicos,omitempty"`
+	Enfermeiros []ProfissionalSaude `json:"enfermeiros,omitempty" bson:"enfermeiros,omitempty"`
+}
+
+// ProfissionalSaude represents a healthcare professional
+type ProfissionalSaude struct {
+	IDProfissionalSUS *string `json:"id_profissional_sus,omitempty" bson:"id_profissional_sus,omitempty"`
+	Nome             *string `json:"nome,omitempty" bson:"nome,omitempty"`
 }
 
 // Saude represents health information
@@ -159,6 +165,7 @@ type Datalake struct {
 
 // Citizen represents the complete citizen data
 type Citizen struct {
+	ID           string     `json:"_id,omitempty" bson:"_id,omitempty"`
 	CPF          string     `json:"cpf" bson:"cpf"`
 	Nome         *string    `json:"nome,omitempty" bson:"nome,omitempty"`
 	NomeSocial   *string    `json:"nome_social,omitempty" bson:"nome_social,omitempty"`
@@ -190,7 +197,84 @@ type CitizenWallet struct {
 	Educacao           *Educacao           `json:"educacao,omitempty" bson:"educacao,omitempty"`
 }
 
-// MaintenanceRequest represents a maintenance request
+// MaintenanceRequestDocument represents the new document structure for 1746 calls
+type MaintenanceRequestDocument struct {
+	ID           string                      `json:"_id" bson:"_id"`
+	CPF          string                      `json:"cpf" bson:"cpf"`
+	Chamados1746 MaintenanceRequestChamados `json:"chamados_1746" bson:"chamados_1746"`
+}
+
+// MaintenanceRequestChamados represents the chamados_1746 object
+type MaintenanceRequestChamados struct {
+	Chamado      MaintenanceRequestChamado      `json:"chamado" bson:"chamado"`
+	Data         MaintenanceRequestData         `json:"data" bson:"data"`
+	Estatisticas MaintenanceRequestEstatisticas `json:"estatisticas" bson:"estatisticas"`
+	Localidade   MaintenanceRequestLocalidade   `json:"localidade" bson:"localidade"`
+	Prazo        MaintenanceRequestPrazo        `json:"prazo" bson:"prazo"`
+	Status       MaintenanceRequestStatus       `json:"status" bson:"status"`
+}
+
+// MaintenanceRequestChamado represents the chamado object
+type MaintenanceRequestChamado struct {
+	Categoria                      string `json:"categoria" bson:"categoria"`
+	Descricao                      *string `json:"descricao" bson:"descricao"`
+	IDChamado                      string `json:"id_chamado" bson:"id_chamado"`
+	IDOrigemOcorrencia             string `json:"id_origem_ocorrencia" bson:"id_origem_ocorrencia"`
+	IDSubtipo                      string `json:"id_subtipo" bson:"id_subtipo"`
+	IDTipo                         string `json:"id_tipo" bson:"id_tipo"`
+	IDUnidadeOrganizacional        string `json:"id_unidade_organizacional" bson:"id_unidade_organizacional"`
+	IDUnidadeOrganizacionalMae     string `json:"id_unidade_organizacional_mae" bson:"id_unidade_organizacional_mae"`
+	Indicador                      bool   `json:"indicador" bson:"indicador"`
+	NomeUnidadeOrganizacional      string `json:"nome_unidade_organizacional" bson:"nome_unidade_organizacional"`
+	OrigemOcorrencia               string `json:"origem_ocorrencia" bson:"origem_ocorrencia"`
+	Reclamacoes                    int    `json:"reclamacoes" bson:"reclamacoes"`
+	Subtipo                        string `json:"subtipo" bson:"subtipo"`
+	Tipo                           string `json:"tipo" bson:"tipo"`
+	UnidadeOrganizacionalOuvidoria string `json:"unidade_organizacional_ouvidoria" bson:"unidade_organizacional_ouvidoria"`
+}
+
+// MaintenanceRequestData represents the data object
+type MaintenanceRequestData struct {
+	DataAlvoDiagnostico   *string `json:"data_alvo_diagnostico" bson:"data_alvo_diagnostico"`
+	DataAlvoFinalizacao   *string `json:"data_alvo_finalizacao" bson:"data_alvo_finalizacao"`
+	DataFim               *string `json:"data_fim" bson:"data_fim"`
+	DataInicio            string  `json:"data_inicio" bson:"data_inicio"`
+	DataRealDiagnostico   *string `json:"data_real_diagnostico" bson:"data_real_diagnostico"`
+}
+
+// MaintenanceRequestEstatisticas represents the estatisticas object
+type MaintenanceRequestEstatisticas struct {
+	TotalChamados int `json:"total_chamados" bson:"total_chamados"`
+	TotalFechados int `json:"total_fechados" bson:"total_fechados"`
+}
+
+// MaintenanceRequestLocalidade represents the localidade object
+type MaintenanceRequestLocalidade struct {
+	IDBairro           *string  `json:"id_bairro" bson:"id_bairro"`
+	IDLogradouro       *string  `json:"id_logradouro" bson:"id_logradouro"`
+	IDTerritorialidade *string  `json:"id_territorialidade" bson:"id_territorialidade"`
+	Latitude           *float64 `json:"latitude" bson:"latitude"`
+	Longitude          *float64 `json:"longitude" bson:"longitude"`
+	NumeroLogradouro   *int     `json:"numero_logradouro" bson:"numero_logradouro"`
+}
+
+// MaintenanceRequestPrazo represents the prazo object
+type MaintenanceRequestPrazo struct {
+	DentroPrazo   string      `json:"dentro_prazo" bson:"dentro_prazo"`
+	PrazoTipo     string      `json:"prazo_tipo" bson:"prazo_tipo"`
+	PrazoUnidade  string      `json:"prazo_unidade" bson:"prazo_unidade"`
+	TempoPrazo    interface{} `json:"tempo_prazo" bson:"tempo_prazo"` // Can be null
+}
+
+// MaintenanceRequestStatus represents the status object
+type MaintenanceRequestStatus struct {
+	JustificativaStatus interface{} `json:"justificativa_status" bson:"justificativa_status"` // Can be null
+	Situacao            string      `json:"situacao" bson:"situacao"`
+	Status              string      `json:"status" bson:"status"`
+	TipoSituacao        string      `json:"tipo_situacao" bson:"tipo_situacao"`
+}
+
+// MaintenanceRequest represents a maintenance request (for backward compatibility)
 type MaintenanceRequest struct {
 	ID                           string     `json:"id" bson:"_id"`
 	CPF                          string     `json:"cpf" bson:"cpf"`
@@ -199,9 +283,9 @@ type MaintenanceRequest struct {
 	IDOrigemOcorrencia           string     `json:"id_origem_ocorrencia" bson:"id_origem_ocorrencia"`
 	DataInicio                   *time.Time `json:"data_inicio" bson:"data_inicio"`
 	DataFim                      *time.Time `json:"data_fim" bson:"data_fim"`
-	IDBairro                     string     `json:"id_bairro" bson:"id_bairro"`
-	IDTerritorialidade           string     `json:"id_territorialidade" bson:"id_territorialidade"`
-	IDLogradouro                 string     `json:"id_logradouro" bson:"id_logradouro"`
+	IDBairro                     *string    `json:"id_bairro" bson:"id_bairro"`
+	IDTerritorialidade           *string    `json:"id_territorialidade" bson:"id_territorialidade"`
+	IDLogradouro                 *string    `json:"id_logradouro" bson:"id_logradouro"`
 	NumeroLogradouro             *int       `json:"numero_logradouro" bson:"numero_logradouro"`
 	IDUnidadeOrganizacional      string     `json:"id_unidade_organizacional" bson:"id_unidade_organizacional"`
 	NomeUnidadeOrganizacional    string     `json:"nome_unidade_organizacional" bson:"nome_unidade_organizacional"`
@@ -218,18 +302,85 @@ type MaintenanceRequest struct {
 	DataAlvoFinalizacao          *time.Time `json:"data_alvo_finalizacao" bson:"data_alvo_finalizacao"`
 	DataAlvoDiagnostico          *time.Time `json:"data_alvo_diagnostico" bson:"data_alvo_diagnostico"`
 	DataRealDiagnostico          *time.Time `json:"data_real_diagnostico" bson:"data_real_diagnostico"`
-	TempoPrazo                   *string    `json:"tempo_prazo" bson:"tempo_prazo"`
+	TempoPrazo                   interface{} `json:"tempo_prazo" bson:"tempo_prazo"`
 	PrazoUnidade                 string     `json:"prazo_unidade" bson:"prazo_unidade"`
 	PrazoTipo                    string     `json:"prazo_tipo" bson:"prazo_tipo"`
 	DentroPrazo                  string     `json:"dentro_prazo" bson:"dentro_prazo"`
 	Situacao                     string     `json:"situacao" bson:"situacao"`
 	TipoSituacao                 string     `json:"tipo_situacao" bson:"tipo_situacao"`
-	JustificativaStatus          *string    `json:"justificativa_status" bson:"justificativa_status"`
-	Reclamacoes                  *int       `json:"reclamacoes" bson:"reclamacoes"`
-	Descricao                    string     `json:"descricao" bson:"descricao"`
-	// Internal fields excluded from API response
-	CPFParticao                  int64      `json:"-" bson:"cpf_particao"`
-	DataParticao                 *time.Time `json:"-" bson:"data_particao"`
+	JustificativaStatus          interface{} `json:"justificativa_status" bson:"justificativa_status"`
+	Reclamacoes                  int        `json:"reclamacoes" bson:"reclamacoes"`
+	Descricao                    *string    `json:"descricao" bson:"descricao"`
+	Indicador                    bool       `json:"indicador" bson:"indicador"`
+	TotalChamados                int        `json:"total_chamados" bson:"total_chamados"`
+	TotalFechados                int        `json:"total_fechados" bson:"total_fechados"`
+}
+
+// ConvertToMaintenanceRequest converts a MaintenanceRequestDocument to a MaintenanceRequest for backward compatibility
+func (doc *MaintenanceRequestDocument) ConvertToMaintenanceRequest() *MaintenanceRequest {
+	// Helper function to parse time from string
+	parseTime := func(timeStr *string) *time.Time {
+		if timeStr == nil || *timeStr == "" {
+			return nil
+		}
+		// Try multiple time formats
+		formats := []string{
+			time.RFC3339,
+			"2006-01-02T15:04:05Z07:00",
+			"2006-01-02T15:04:05",
+			"2006-01-02 15:04:05",
+			"2006-01-02",
+		}
+		for _, format := range formats {
+			if t, err := time.Parse(format, *timeStr); err == nil {
+				return &t
+			}
+		}
+		return nil
+	}
+
+	chamado := doc.Chamados1746
+	
+	return &MaintenanceRequest{
+		ID:                           doc.ID,
+		CPF:                          doc.CPF,
+		OrigemOcorrencia:             chamado.Chamado.OrigemOcorrencia,
+		IDChamado:                    chamado.Chamado.IDChamado,
+		IDOrigemOcorrencia:           chamado.Chamado.IDOrigemOcorrencia,
+		DataInicio:                   parseTime(&chamado.Data.DataInicio),
+		DataFim:                      parseTime(chamado.Data.DataFim),
+		IDBairro:                     chamado.Localidade.IDBairro,
+		IDTerritorialidade:           chamado.Localidade.IDTerritorialidade,
+		IDLogradouro:                 chamado.Localidade.IDLogradouro,
+		NumeroLogradouro:             chamado.Localidade.NumeroLogradouro,
+		IDUnidadeOrganizacional:      chamado.Chamado.IDUnidadeOrganizacional,
+		NomeUnidadeOrganizacional:    chamado.Chamado.NomeUnidadeOrganizacional,
+		IDUnidadeOrganizacionalMae:   chamado.Chamado.IDUnidadeOrganizacionalMae,
+		UnidadeOrganizacionalOuvidoria: chamado.Chamado.UnidadeOrganizacionalOuvidoria,
+		Categoria:                    chamado.Chamado.Categoria,
+		IDTipo:                       chamado.Chamado.IDTipo,
+		Tipo:                         chamado.Chamado.Tipo,
+		IDSubtipo:                    chamado.Chamado.IDSubtipo,
+		Subtipo:                      chamado.Chamado.Subtipo,
+		Status:                       chamado.Status.Status,
+		Longitude:                    chamado.Localidade.Longitude,
+		Latitude:                     chamado.Localidade.Latitude,
+		DataAlvoFinalizacao:          parseTime(chamado.Data.DataAlvoFinalizacao),
+		DataAlvoDiagnostico:          parseTime(chamado.Data.DataAlvoDiagnostico),
+		DataRealDiagnostico:          parseTime(chamado.Data.DataRealDiagnostico),
+		TempoPrazo:                   chamado.Prazo.TempoPrazo,
+		PrazoUnidade:                 chamado.Prazo.PrazoUnidade,
+		PrazoTipo:                    chamado.Prazo.PrazoTipo,
+		DentroPrazo:                  chamado.Prazo.DentroPrazo,
+		Situacao:                     chamado.Status.Situacao,
+		TipoSituacao:                 chamado.Status.TipoSituacao,
+		JustificativaStatus:          chamado.Status.JustificativaStatus,
+		Reclamacoes:                  chamado.Chamado.Reclamacoes,
+		Descricao:                    chamado.Chamado.Descricao,
+		Indicador:                    chamado.Chamado.Indicador,
+		TotalChamados:                chamado.Estatisticas.TotalChamados,
+		TotalFechados:                chamado.Estatisticas.TotalFechados,
+	}
 }
 
 // PaginatedMaintenanceRequests represents a paginated response of maintenance requests
