@@ -51,3 +51,4 @@ Thumbs.db
 # Local development
 data/
 tmp/ 
+.direnv
