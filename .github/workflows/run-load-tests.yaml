@@ -1,0 +1,55 @@
+name: K6 Load Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    environment: k6
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: latest
+
+      - name: Run k6 load tests
+        run: |
+          k6 run k6/load_test.js \
+            --vus ${{ vars.VIRTUAL_USERS }} \
+            --duration ${{ vars.DURATION }} \
+            --out json=load-test-results.json
+        env:
+          KEYCLOAK_CLIENT_ID: ${{ vars.KEYCLOAK_CLIENT_ID }}
+          KEYCLOAK_CLIENT_SECRET: ${{ secrets.KEYCLOAK_CLIENT_SECRET }}
+          KEYCLOAK_ISSUER: ${{ vars.KEYCLOAK_ISSUER }}
+          TARGET_URL: ${{ vars.TARGET_URL }}
+
+      - name: Upload k6 results
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-load-test-results
+          path: load-test-results.json
+          retention-days: 30
+
+      - name: Parse and display results
+        run: |
+          echo "## K6 Load Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "load-test-results.json" ]; then
+            echo "### Test Summary" >> $GITHUB_STEP_SUMMARY
+            echo "- **Virtual Users**: ${{ vars.VIRTUAL_USERS }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Duration**: ${{ vars.DURATION }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Target**: ${{ vars.TARGET_URL }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Results" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "Load test completed. Results saved to artifacts." >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ No results file found" >> $GITHUB_STEP_SUMMARY
+          fi
