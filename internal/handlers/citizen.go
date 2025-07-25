@@ -349,6 +349,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to start phone verification: " + err.Error()})
 		return
 	}
+
 	// Envia código via WhatsApp (DDD pode ser vazio para números internacionais)
 	if input.DDI != "" && input.Valor != "" {
 		phone := fmt.Sprintf("%s%s%s", input.DDI, input.DDD, input.Valor)
@@ -502,7 +503,10 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
 		ctx,
 		bson.M{"cpf": cpf},
-		bson.M{"$set": selfDeclared},
+		bson.M{"$set": bson.M{
+			"raca":       input.Valor,
+			"updated_at": time.Now(),
+		}},
 		opts,
 	)
 	if err != nil {

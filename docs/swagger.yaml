@@ -58,8 +58,48 @@ definitions:
       message:
         type: string
     type: object
+  models.Aluno:
+    properties:
+      conceito:
+        type: string
+      frequencia:
+        type: number
+      indicador:
+        type: boolean
+    type: object
+  models.AssistenciaSocial:
+    properties:
+      cadunico:
+        $ref: '#/definitions/models.CadUnico'
+      cras:
+        $ref: '#/definitions/models.CRAS'
+    type: object
+  models.CRAS:
+    properties:
+      endereco:
+        type: string
+      nome:
+        type: string
+      telefone:
+        type: string
+    type: object
+  models.CadUnico:
+    properties:
+      data_cadastro:
+        type: string
+      data_limite_cadastro_atual:
+        type: string
+      data_ultima_atualizacao:
+        type: string
+      indicador:
+        type: boolean
+      status_cadastral:
+        type: string
+    type: object
   models.Citizen:
     properties:
+      _id:
+        type: string
       cpf:
         type: string
       email:
@@ -87,15 +127,25 @@ definitions:
     type: object
   models.CitizenWallet:
     properties:
+      assistencia_social:
+        $ref: '#/definitions/models.AssistenciaSocial'
       cpf:
         type: string
       documentos:
         $ref: '#/definitions/models.Documentos'
+      educacao:
+        $ref: '#/definitions/models.Educacao'
       saude:
         $ref: '#/definitions/models.Saude'
     type: object
   models.ClinicaFamilia:
     properties:
+      email:
+        type: string
+      endereco:
+        type: string
+      horario_atendimento:
+        type: string
       id_cnes:
         type: string
       indicador:
@@ -111,6 +161,13 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  models.Educacao:
+    properties:
+      aluno:
+        $ref: '#/definitions/models.Aluno'
+      escola:
+        $ref: '#/definitions/models.Escola'
     type: object
   models.Email:
     properties:
@@ -128,6 +185,8 @@ definitions:
       origem:
         type: string
       sistema:
+        type: string
+      updated_at:
         type: string
       valor:
         type: string
@@ -165,16 +224,41 @@ definitions:
         type: string
       tipo_logradouro:
         type: string
+      updated_at:
+        type: string
     type: object
   models.EquipeSaudeFamilia:
     properties:
+      enfermeiros:
+        items:
+          $ref: '#/definitions/models.ProfissionalSaude'
+        type: array
       id_ine:
         type: string
       indicador:
         type: boolean
+      medicos:
+        items:
+          $ref: '#/definitions/models.ProfissionalSaude'
+        type: array
       nome:
         type: string
       telefone:
+        type: string
+    type: object
+  models.Escola:
+    properties:
+      email:
+        type: string
+      endereco:
+        type: string
+      horario_funcionamento:
+        type: string
+      nome:
+        type: string
+      telefone:
+        type: string
+      whatsapp:
         type: string
     type: object
   models.Mae:
@@ -224,8 +308,9 @@ definitions:
         type: string
       id_unidade_organizacional_mae:
         type: string
-      justificativa_status:
-        type: string
+      indicador:
+        type: boolean
+      justificativa_status: {}
       latitude:
         type: number
       longitude:
@@ -248,12 +333,15 @@ definitions:
         type: string
       subtipo:
         type: string
-      tempo_prazo:
-        type: string
+      tempo_prazo: {}
       tipo:
         type: string
       tipo_situacao:
         type: string
+      total_chamados:
+        type: integer
+      total_fechados:
+        type: integer
       unidade_organizacional_ouvidoria:
         type: string
     type: object
@@ -312,6 +400,13 @@ definitions:
     - ddd
     - ddi
     - valor
+    type: object
+  models.ProfissionalSaude:
+    properties:
+      id_profissional_sus:
+        type: string
+      nome:
+        type: string
     type: object
   models.Saude:
     properties:
@@ -393,6 +488,8 @@ definitions:
       origem:
         type: string
       sistema:
+        type: string
+      updated_at:
         type: string
       valor:
         type: string
@@ -702,6 +799,7 @@ paths:
       consumes:
       - application/json
       description: Recupera os chamados do 1746 de um cidadão por CPF com paginação.
+        Cada documento representa um chamado individual.
       parameters:
       - description: CPF do cidadão (11 dígitos)
         in: path

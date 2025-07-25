@@ -480,7 +480,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Recupera os chamados do 1746 de um cidadão por CPF com paginação.",
+                "description": "Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado individual.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1037,9 +1037,71 @@ const docTemplate = `{
                 }
             }
         },
+        "models.Aluno": {
+            "type": "object",
+            "properties": {
+                "conceito": {
+                    "type": "string"
+                },
+                "frequencia": {
+                    "type": "number"
+                },
+                "indicador": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "models.AssistenciaSocial": {
+            "type": "object",
+            "properties": {
+                "cadunico": {
+                    "$ref": "#/definitions/models.CadUnico"
+                },
+                "cras": {
+                    "$ref": "#/definitions/models.CRAS"
+                }
+            }
+        },
+        "models.CRAS": {
+            "type": "object",
+            "properties": {
+                "endereco": {
+                    "type": "string"
+                },
+                "nome": {
+                    "type": "string"
+                },
+                "telefone": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.CadUnico": {
+            "type": "object",
+            "properties": {
+                "data_cadastro": {
+                    "type": "string"
+                },
+                "data_limite_cadastro_atual": {
+                    "type": "string"
+                },
+                "data_ultima_atualizacao": {
+                    "type": "string"
+                },
+                "indicador": {
+                    "type": "boolean"
+                },
+                "status_cadastral": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Citizen": {
             "type": "object",
             "properties": {
+                "_id": {
+                    "type": "string"
+                },
                 "cpf": {
                     "type": "string"
                 },
@@ -1081,11 +1143,17 @@ const docTemplate = `{
         "models.CitizenWallet": {
             "type": "object",
             "properties": {
+                "assistencia_social": {
+                    "$ref": "#/definitions/models.AssistenciaSocial"
+                },
                 "cpf": {
                     "type": "string"
                 },
                 "documentos": {
                     "$ref": "#/definitions/models.Documentos"
+                },
+                "educacao": {
+                    "$ref": "#/definitions/models.Educacao"
                 },
                 "saude": {
                     "$ref": "#/definitions/models.Saude"
@@ -1095,6 +1163,15 @@ const docTemplate = `{
         "models.ClinicaFamilia": {
             "type": "object",
             "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "endereco": {
+                    "type": "string"
+                },
+                "horario_atendimento": {
+                    "type": "string"
+                },
                 "id_cnes": {
                     "type": "string"
                 },
@@ -1117,6 +1194,17 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "models.Educacao": {
+            "type": "object",
+            "properties": {
+                "aluno": {
+                    "$ref": "#/definitions/models.Aluno"
+                },
+                "escola": {
+                    "$ref": "#/definitions/models.Escola"
                 }
             }
         },
@@ -1144,6 +1232,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "sistema": {
+                    "type": "string"
+                },
+                "updated_at": {
                     "type": "string"
                 },
                 "valor": {
@@ -1200,22 +1291,60 @@ const docTemplate = `{
                 },
                 "tipo_logradouro": {
                     "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
         "models.EquipeSaudeFamilia": {
             "type": "object",
             "properties": {
+                "enfermeiros": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ProfissionalSaude"
+                    }
+                },
                 "id_ine": {
                     "type": "string"
                 },
                 "indicador": {
                     "type": "boolean"
                 },
+                "medicos": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ProfissionalSaude"
+                    }
+                },
                 "nome": {
                     "type": "string"
                 },
                 "telefone": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Escola": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "endereco": {
+                    "type": "string"
+                },
+                "horario_funcionamento": {
+                    "type": "string"
+                },
+                "nome": {
+                    "type": "string"
+                },
+                "telefone": {
+                    "type": "string"
+                },
+                "whatsapp": {
                     "type": "string"
                 }
             }
@@ -1291,9 +1420,10 @@ const docTemplate = `{
                 "id_unidade_organizacional_mae": {
                     "type": "string"
                 },
-                "justificativa_status": {
-                    "type": "string"
+                "indicador": {
+                    "type": "boolean"
                 },
+                "justificativa_status": {},
                 "latitude": {
                     "type": "number"
                 },
@@ -1327,14 +1457,18 @@ const docTemplate = `{
                 "subtipo": {
                     "type": "string"
                 },
-                "tempo_prazo": {
-                    "type": "string"
-                },
+                "tempo_prazo": {},
                 "tipo": {
                     "type": "string"
                 },
                 "tipo_situacao": {
                     "type": "string"
+                },
+                "total_chamados": {
+                    "type": "integer"
+                },
+                "total_fechados": {
+                    "type": "integer"
                 },
                 "unidade_organizacional_ouvidoria": {
                     "type": "string"
@@ -1422,6 +1556,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "valor": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ProfissionalSaude": {
+            "type": "object",
+            "properties": {
+                "id_profissional_sus": {
+                    "type": "string"
+                },
+                "nome": {
                     "type": "string"
                 }
             }
@@ -1545,6 +1690,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "sistema": {
+                    "type": "string"
+                },
+                "updated_at": {
                     "type": "string"
                 },
                 "valor": {
