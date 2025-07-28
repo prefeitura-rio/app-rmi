@@ -1501,6 +1501,9 @@
           "sistema": {
             "type": "string"
           },
+          "updated_at": {
+            "type": "string"
+          },
           "valor": {
             "type": "string"
           }
@@ -1554,6 +1557,9 @@
             "type": "string"
           },
           "tipo_logradouro": {
+            "type": "string"
+          },
+          "updated_at": {
             "type": "string"
           }
         }
@@ -1951,6 +1957,9 @@
             "type": "string"
           },
           "sistema": {
+            "type": "string"
+          },
+          "updated_at": {
             "type": "string"
           },
           "valor": {
