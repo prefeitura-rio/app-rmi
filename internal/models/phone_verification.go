@@ -8,7 +8,7 @@ import (
 
 // PhoneVerification represents a phone verification request
 type PhoneVerification struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
+	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	CPF        string            `bson:"cpf" json:"cpf"`
 	Telefone   *Telefone         `bson:"telefone" json:"telefone"`
 	PhoneNumber string           `bson:"phone_number" json:"phone_number"`

@@ -27,17 +27,17 @@ type PhoneValidationResponse struct {
 	// Indica se o número é válido.
 	Valid bool `json:"valid"`
 	// Mensagem de retorno.
-	Message string `json:"message,omitempty"`
+	Message string `json:"message"`
 	// DDI (código do país)
-	DDI string `json:"ddi,omitempty"`
+	DDI string `json:"ddi"`
 	// DDD (código de área)
-	DDD string `json:"ddd,omitempty"`
+	DDD string `json:"ddd"`
 	// Número do assinante
-	Numero string `json:"numero,omitempty"`
+	Numero string `json:"numero"`
 	// Representação E.164 do número
-	E164 string `json:"e164,omitempty"`
+	E164 string `json:"e164"`
 	// Região ISO 3166-1 alpha-2
-	Region string `json:"region,omitempty"`
+	Region string `json:"region"`
 }
 
 // ValidatePhoneNumber godoc

@@ -4,183 +4,183 @@ import "time"
 
 // Nascimento represents birth information
 type Nascimento struct {
-	Data        *time.Time `json:"data,omitempty" bson:"data,omitempty"`
-	MunicipioID *string    `json:"municipio_id,omitempty" bson:"municipio_id,omitempty"`
-	Municipio   *string    `json:"municipio,omitempty" bson:"municipio,omitempty"`
-	UF          *string    `json:"uf,omitempty" bson:"uf,omitempty"`
-	PaisID      *string    `json:"pais_id,omitempty" bson:"pais_id,omitempty"`
-	Pais        *string    `json:"pais,omitempty" bson:"pais,omitempty"`
+	Data        *time.Time `json:"data" bson:"data,omitempty"`
+	MunicipioID *string    `json:"municipio_id" bson:"municipio_id,omitempty"`
+	Municipio   *string    `json:"municipio" bson:"municipio,omitempty"`
+	UF          *string    `json:"uf" bson:"uf,omitempty"`
+	PaisID      *string    `json:"pais_id" bson:"pais_id,omitempty"`
+	Pais        *string    `json:"pais" bson:"pais,omitempty"`
 }
 
 // Mae represents mother's information
 type Mae struct {
-	Nome *string `json:"nome,omitempty" bson:"nome,omitempty"`
-	CPF  *string `json:"cpf,omitempty" bson:"cpf,omitempty"`
+	Nome *string `json:"nome" bson:"nome,omitempty"`
+	CPF  *string `json:"cpf" bson:"cpf,omitempty"`
 }
 
 // Obito represents death information
 type Obito struct {
-	Indicador *bool  `json:"indicador,omitempty" bson:"indicador,omitempty"`
-	Ano       *int32 `json:"ano,omitempty" bson:"ano,omitempty"`
+	Indicador *bool  `json:"indicador" bson:"indicador,omitempty"`
+	Ano       *int32 `json:"ano" bson:"ano,omitempty"`
 }
 
 // Documentos represents document information
 type Documentos struct {
-	CNS []string `json:"cns,omitempty" bson:"cns,omitempty"`
+	CNS []string `json:"cns" bson:"cns,omitempty"`
 }
 
 // EnderecoPrincipal represents the main address
 type EnderecoPrincipal struct {
-	Origem         *string    `json:"origem,omitempty" bson:"origem,omitempty"`
-	Sistema        *string    `json:"sistema,omitempty" bson:"sistema,omitempty"`
-	CEP            *string    `json:"cep,omitempty" bson:"cep,omitempty"`
-	Estado         *string    `json:"estado,omitempty" bson:"estado,omitempty"`
-	Municipio      *string    `json:"municipio,omitempty" bson:"municipio,omitempty"`
-	TipoLogradouro *string    `json:"tipo_logradouro,omitempty" bson:"tipo_logradouro,omitempty"`
-	Logradouro     *string    `json:"logradouro,omitempty" bson:"logradouro,omitempty"`
-	Numero         *string    `json:"numero,omitempty" bson:"numero,omitempty"`
-	Complemento    *string    `json:"complemento,omitempty" bson:"complemento,omitempty"`
-	Bairro         *string    `json:"bairro,omitempty" bson:"bairro,omitempty"`
-	UpdatedAt      *time.Time `json:"updated_at,omitempty" bson:"updated_at,omitempty"`
+	Origem         *string    `json:"origem" bson:"origem,omitempty"`
+	Sistema        *string    `json:"sistema" bson:"sistema,omitempty"`
+	CEP            *string    `json:"cep" bson:"cep,omitempty"`
+	Estado         *string    `json:"estado" bson:"estado,omitempty"`
+	Municipio      *string    `json:"municipio" bson:"municipio,omitempty"`
+	TipoLogradouro *string    `json:"tipo_logradouro" bson:"tipo_logradouro,omitempty"`
+	Logradouro     *string    `json:"logradouro" bson:"logradouro,omitempty"`
+	Numero         *string    `json:"numero" bson:"numero,omitempty"`
+	Complemento    *string    `json:"complemento" bson:"complemento,omitempty"`
+	Bairro         *string    `json:"bairro" bson:"bairro,omitempty"`
+	UpdatedAt      *time.Time `json:"updated_at" bson:"updated_at,omitempty"`
 }
 
 // Endereco represents address information
 type Endereco struct {
-	Indicador   *bool              `json:"indicador,omitempty" bson:"indicador,omitempty"`
-	Principal   *EnderecoPrincipal `json:"principal,omitempty" bson:"principal,omitempty"`
-	Alternativo []int32            `json:"alternativo,omitempty" bson:"alternativo,omitempty"`
+	Indicador   *bool              `json:"indicador" bson:"indicador,omitempty"`
+	Principal   *EnderecoPrincipal `json:"principal" bson:"principal,omitempty"`
+	Alternativo []int32            `json:"alternativo" bson:"alternativo,omitempty"`
 }
 
 // EmailPrincipal represents the main email
 type EmailPrincipal struct {
-	Origem    *string    `json:"origem,omitempty" bson:"origem,omitempty"`
-	Sistema   *string    `json:"sistema,omitempty" bson:"sistema,omitempty"`
-	Valor     *string    `json:"valor,omitempty" bson:"valor,omitempty"`
-	UpdatedAt *time.Time `json:"updated_at,omitempty" bson:"updated_at,omitempty"`
+	Origem    *string    `json:"origem" bson:"origem,omitempty"`
+	Sistema   *string    `json:"sistema" bson:"sistema,omitempty"`
+	Valor     *string    `json:"valor" bson:"valor,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at" bson:"updated_at,omitempty"`
 }
 
 // Email represents email information
 type Email struct {
-	Indicador   *bool           `json:"indicador,omitempty" bson:"indicador,omitempty"`
-	Principal   *EmailPrincipal `json:"principal,omitempty" bson:"principal,omitempty"`
-	Alternativo []int32         `json:"alternativo,omitempty" bson:"alternativo,omitempty"`
+	Indicador   *bool           `json:"indicador" bson:"indicador,omitempty"`
+	Principal   *EmailPrincipal `json:"principal" bson:"principal,omitempty"`
+	Alternativo []int32         `json:"alternativo" bson:"alternativo,omitempty"`
 }
 
 // TelefonePrincipal represents the main phone
 type TelefonePrincipal struct {
-	Origem    *string    `json:"origem,omitempty" bson:"origem,omitempty"`
-	Sistema   *string    `json:"sistema,omitempty" bson:"sistema,omitempty"`
-	DDI       *string    `json:"ddi,omitempty" bson:"ddi,omitempty"`
-	DDD       *string    `json:"ddd,omitempty" bson:"ddd,omitempty"`
-	Valor     *string    `json:"valor,omitempty" bson:"valor,omitempty"`
-	UpdatedAt *time.Time `json:"updated_at,omitempty" bson:"updated_at,omitempty"`
+	Origem    *string    `json:"origem" bson:"origem,omitempty"`
+	Sistema   *string    `json:"sistema" bson:"sistema,omitempty"`
+	DDI       *string    `json:"ddi" bson:"ddi,omitempty"`
+	DDD       *string    `json:"ddd" bson:"ddd,omitempty"`
+	Valor     *string    `json:"valor" bson:"valor,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at" bson:"updated_at,omitempty"`
 }
 
 // Telefone represents phone information
 type Telefone struct {
-	Indicador   *bool              `json:"indicador,omitempty" bson:"indicador,omitempty"`
-	Principal   *TelefonePrincipal `json:"principal,omitempty" bson:"principal,omitempty"`
-	Alternativo []int32            `json:"alternativo,omitempty" bson:"alternativo,omitempty"`
+	Indicador   *bool              `json:"indicador" bson:"indicador,omitempty"`
+	Principal   *TelefonePrincipal `json:"principal" bson:"principal,omitempty"`
+	Alternativo []int32            `json:"alternativo" bson:"alternativo,omitempty"`
 }
 
 // ClinicaFamilia represents family clinic information
 type ClinicaFamilia struct {
-	Indicador          *bool   `json:"indicador,omitempty" bson:"indicador,omitempty"`
-	IDCNES             *string `json:"id_cnes,omitempty" bson:"id_cnes,omitempty"`
-	Nome               *string `json:"nome,omitempty" bson:"nome,omitempty"`
-	Telefone           *string `json:"telefone,omitempty" bson:"telefone,omitempty"`
-	Email              *string `json:"email,omitempty" bson:"email,omitempty"`
-	Endereco           *string `json:"endereco,omitempty" bson:"endereco,omitempty"`
-	HorarioAtendimento *string `json:"horario_atendimento,omitempty" bson:"horario_atendimento,omitempty"`
+	Indicador          *bool   `json:"indicador" bson:"indicador,omitempty"`
+	IDCNES             *string `json:"id_cnes" bson:"id_cnes,omitempty"`
+	Nome               *string `json:"nome" bson:"nome,omitempty"`
+	Telefone           *string `json:"telefone" bson:"telefone,omitempty"`
+	Email              *string `json:"email" bson:"email,omitempty"`
+	Endereco           *string `json:"endereco" bson:"endereco,omitempty"`
+	HorarioAtendimento *string `json:"horario_atendimento" bson:"horario_atendimento,omitempty"`
 }
 
 // EquipeSaudeFamilia represents family health team information
 type EquipeSaudeFamilia struct {
-	Indicador   *bool               `json:"indicador,omitempty" bson:"indicador,omitempty"`
-	IDINE       *string             `json:"id_ine,omitempty" bson:"id_ine,omitempty"`
-	Nome        *string             `json:"nome,omitempty" bson:"nome,omitempty"`
-	Telefone    *string             `json:"telefone,omitempty" bson:"telefone,omitempty"`
-	Medicos     []ProfissionalSaude `json:"medicos,omitempty" bson:"medicos,omitempty"`
-	Enfermeiros []ProfissionalSaude `json:"enfermeiros,omitempty" bson:"enfermeiros,omitempty"`
+	Indicador   *bool               `json:"indicador" bson:"indicador,omitempty"`
+	IDINE       *string             `json:"id_ine" bson:"id_ine,omitempty"`
+	Nome        *string             `json:"nome" bson:"nome,omitempty"`
+	Telefone    *string             `json:"telefone" bson:"telefone,omitempty"`
+	Medicos     []ProfissionalSaude `json:"medicos" bson:"medicos,omitempty"`
+	Enfermeiros []ProfissionalSaude `json:"enfermeiros" bson:"enfermeiros,omitempty"`
 }
 
 // ProfissionalSaude represents health professional information
 type ProfissionalSaude struct {
-	IDProfissionalSUS *string `json:"id_profissional_sus,omitempty" bson:"id_profissional_sus,omitempty"`
-	Nome              *string `json:"nome,omitempty" bson:"nome,omitempty"`
+	IDProfissionalSUS *string `json:"id_profissional_sus" bson:"id_profissional_sus,omitempty"`
+	Nome              *string `json:"nome" bson:"nome,omitempty"`
 }
 
 // Saude represents health information
 type Saude struct {
-	ClinicaFamilia     *ClinicaFamilia     `json:"clinica_familia,omitempty" bson:"clinica_familia,omitempty"`
-	EquipeSaudeFamilia *EquipeSaudeFamilia `json:"equipe_saude_familia,omitempty" bson:"equipe_saude_familia,omitempty"`
+	ClinicaFamilia     *ClinicaFamilia     `json:"clinica_familia" bson:"clinica_familia,omitempty"`
+	EquipeSaudeFamilia *EquipeSaudeFamilia `json:"equipe_saude_familia" bson:"equipe_saude_familia,omitempty"`
 }
 
 // CadUnico represents CadÚnico information
 type CadUnico struct {
-	Indicador               *bool      `json:"indicador,omitempty" bson:"indicador,omitempty"`
-	DataCadastro            *time.Time `json:"data_cadastro,omitempty" bson:"data_cadastro,omitempty"`
-	DataUltimaAtualizacao   *time.Time `json:"data_ultima_atualizacao,omitempty" bson:"data_ultima_atualizacao,omitempty"`
-	DataLimiteCadastroAtual *time.Time `json:"data_limite_cadastro_atual,omitempty" bson:"data_limite_cadastro_atual,omitempty"`
-	StatusCadastral         *string    `json:"status_cadastral,omitempty" bson:"status_cadastral,omitempty"`
+	Indicador               *bool      `json:"indicador" bson:"indicador,omitempty"`
+	DataCadastro            *time.Time `json:"data_cadastro" bson:"data_cadastro,omitempty"`
+	DataUltimaAtualizacao   *time.Time `json:"data_ultima_atualizacao" bson:"data_ultima_atualizacao,omitempty"`
+	DataLimiteCadastroAtual *time.Time `json:"data_limite_cadastro_atual" bson:"data_limite_cadastro_atual,omitempty"`
+	StatusCadastral         *string    `json:"status_cadastral" bson:"status_cadastral,omitempty"`
 }
 
 // CRAS represents CRAS information
 type CRAS struct {
-	Nome     *string `json:"nome,omitempty" bson:"nome,omitempty"`
-	Endereco *string `json:"endereco,omitempty" bson:"endereco,omitempty"`
-	Telefone *string `json:"telefone,omitempty" bson:"telefone,omitempty"`
+	Nome     *string `json:"nome" bson:"nome,omitempty"`
+	Endereco *string `json:"endereco" bson:"endereco,omitempty"`
+	Telefone *string `json:"telefone" bson:"telefone,omitempty"`
 }
 
 // AssistenciaSocial represents social assistance information
 type AssistenciaSocial struct {
-	CadUnico *CadUnico `json:"cadunico,omitempty" bson:"cadunico,omitempty"`
-	CRAS     *CRAS     `json:"cras,omitempty" bson:"cras,omitempty"`
+	CadUnico *CadUnico `json:"cadunico" bson:"cadunico,omitempty"`
+	CRAS     *CRAS     `json:"cras" bson:"cras,omitempty"`
 }
 
 // Aluno represents student information
 type Aluno struct {
-	Indicador  *bool    `json:"indicador,omitempty" bson:"indicador,omitempty"`
-	Conceito   *string  `json:"conceito,omitempty" bson:"conceito,omitempty"`
-	Frequencia *float64 `json:"frequencia,omitempty" bson:"frequencia,omitempty"`
+	Indicador  *bool    `json:"indicador" bson:"indicador,omitempty"`
+	Conceito   *string  `json:"conceito" bson:"conceito,omitempty"`
+	Frequencia *float64 `json:"frequencia" bson:"frequencia,omitempty"`
 }
 
 // Escola represents school information
 type Escola struct {
-	Nome                 *string `json:"nome,omitempty" bson:"nome,omitempty"`
-	HorarioFuncionamento *string `json:"horario_funcionamento,omitempty" bson:"horario_funcionamento,omitempty"`
-	Telefone             *string `json:"telefone,omitempty" bson:"telefone,omitempty"`
-	Email                *string `json:"email,omitempty" bson:"email,omitempty"`
-	Whatsapp             *string `json:"whatsapp,omitempty" bson:"whatsapp,omitempty"`
-	Endereco             *string `json:"endereco,omitempty" bson:"endereco,omitempty"`
+	Nome                 *string `json:"nome" bson:"nome,omitempty"`
+	HorarioFuncionamento *string `json:"horario_funcionamento" bson:"horario_funcionamento,omitempty"`
+	Telefone             *string `json:"telefone" bson:"telefone,omitempty"`
+	Email                *string `json:"email" bson:"email,omitempty"`
+	Whatsapp             *string `json:"whatsapp" bson:"whatsapp,omitempty"`
+	Endereco             *string `json:"endereco" bson:"endereco,omitempty"`
 }
 
 // Educacao represents education information
 type Educacao struct {
-	Aluno  *Aluno  `json:"aluno,omitempty" bson:"aluno,omitempty"`
-	Escola *Escola `json:"escola,omitempty" bson:"escola,omitempty"`
+	Aluno  *Aluno  `json:"aluno" bson:"aluno,omitempty"`
+	Escola *Escola `json:"escola" bson:"escola,omitempty"`
 }
 
 // Datalake represents datalake information
 type Datalake struct {
-	LastUpdated *time.Time `json:"last_updated,omitempty" bson:"last_updated,omitempty"`
+	LastUpdated *time.Time `json:"last_updated" bson:"last_updated,omitempty"`
 }
 
 // Citizen represents citizen information
 type Citizen struct {
-	ID         string      `json:"_id,omitempty" bson:"_id,omitempty"`
+	ID         string      `json:"_id" bson:"_id,omitempty"`
 	CPF        string      `json:"cpf" bson:"cpf"`
-	Nome       *string     `json:"nome,omitempty" bson:"nome,omitempty"`
-	NomeSocial *string     `json:"nome_social,omitempty" bson:"nome_social,omitempty"`
-	Sexo       *string     `json:"sexo,omitempty" bson:"sexo,omitempty"`
-	Nascimento *Nascimento `json:"nascimento,omitempty" bson:"nascimento,omitempty"`
-	Mae        *Mae        `json:"mae,omitempty" bson:"mae,omitempty"`
-	MenorIdade *bool       `json:"menor_idade,omitempty" bson:"menor_idade,omitempty"`
-	Raca       *string     `json:"raca,omitempty" bson:"raca,omitempty"`
-	Obito      *Obito      `json:"obito,omitempty" bson:"obito,omitempty"`
-	Endereco   *Endereco   `json:"endereco,omitempty" bson:"endereco,omitempty"`
-	Email      *Email      `json:"email,omitempty" bson:"email,omitempty"`
-	Telefone   *Telefone   `json:"telefone,omitempty" bson:"telefone,omitempty"`
+	Nome       *string     `json:"nome" bson:"nome,omitempty"`
+	NomeSocial *string     `json:"nome_social" bson:"nome_social,omitempty"`
+	Sexo       *string     `json:"sexo" bson:"sexo,omitempty"`
+	Nascimento *Nascimento `json:"nascimento" bson:"nascimento,omitempty"`
+	Mae        *Mae        `json:"mae" bson:"mae,omitempty"`
+	MenorIdade *bool       `json:"menor_idade" bson:"menor_idade,omitempty"`
+	Raca       *string     `json:"raca" bson:"raca,omitempty"`
+	Obito      *Obito      `json:"obito" bson:"obito,omitempty"`
+	Endereco   *Endereco   `json:"endereco" bson:"endereco,omitempty"`
+	Email      *Email      `json:"email" bson:"email,omitempty"`
+	Telefone   *Telefone   `json:"telefone" bson:"telefone,omitempty"`
 	// Internal fields excluded from API response
 	Documentos        *Documentos        `json:"-" bson:"documentos,omitempty"`
 	Saude             *Saude             `json:"-" bson:"saude,omitempty"`
@@ -194,10 +194,10 @@ type Citizen struct {
 // CitizenWallet represents citizen wallet information
 type CitizenWallet struct {
 	CPF               string             `json:"cpf" bson:"cpf"`
-	Documentos        *Documentos        `json:"documentos,omitempty" bson:"documentos,omitempty"`
-	Saude             *Saude             `json:"saude,omitempty" bson:"saude,omitempty"`
-	AssistenciaSocial *AssistenciaSocial `json:"assistencia_social,omitempty" bson:"assistencia_social,omitempty"`
-	Educacao          *Educacao          `json:"educacao,omitempty" bson:"educacao,omitempty"`
+	Documentos        *Documentos        `json:"documentos" bson:"documentos,omitempty"`
+	Saude             *Saude             `json:"saude" bson:"saude,omitempty"`
+	AssistenciaSocial *AssistenciaSocial `json:"assistencia_social" bson:"assistencia_social,omitempty"`
+	Educacao          *Educacao          `json:"educacao" bson:"educacao,omitempty"`
 }
 
 // MaintenanceRequestDocument represents the new document structure for 1746 calls
