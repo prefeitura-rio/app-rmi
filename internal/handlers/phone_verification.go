@@ -72,18 +72,23 @@ func ValidatePhoneVerification(c *gin.Context) {
 	// Update self-declared data to replace the phone number with the verified one
 	origem := "self-declared"
 	sistema := "rmi"
+	now := time.Now()
 	if verification.Telefone != nil {
 		verification.Telefone.Indicador = new(bool)
 		*verification.Telefone.Indicador = true
 		if verification.Telefone.Principal != nil {
 			verification.Telefone.Principal.Origem = &origem
 			verification.Telefone.Principal.Sistema = &sistema
+			verification.Telefone.Principal.UpdatedAt = &now
 		}
 	}
 	update := bson.M{
 		"$set": bson.M{
 			"telefone":   verification.Telefone,
 			"updated_at": time.Now(),
+		},
+		"$unset": bson.M{
+			"telefone_pending": "",
 		},
 	}
 

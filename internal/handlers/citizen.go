@@ -172,6 +172,7 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 	if selfDeclared.Raca != nil {
 		citizen.Raca = selfDeclared.Raca
 	}
+	
 	return &citizen, nil
 }
 
@@ -231,6 +232,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 
 	origem := "self-declared"
 	sistema := "rmi"
+	now := time.Now()
 	endereco := models.Endereco{
 		Indicador: utils.BoolPtr(true),
 		Principal: &models.EnderecoPrincipal{
@@ -244,6 +246,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 			TipoLogradouro: input.TipoLogradouro,
 			Origem:         &origem,
 			Sistema:        &sistema,
+			UpdatedAt:      &now,
 		},
 	}
 
@@ -328,26 +331,57 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	_, _ = verColl.DeleteMany(c, bson.M{"cpf": cpf})
 	// Generate verification code and store in phone_verifications collection
 	code := utils.GenerateVerificationCode()
+	now := time.Now()
 	verification := models.PhoneVerification{
 		CPF: cpf,
 		Telefone: &models.Telefone{
 			Indicador: utils.BoolPtr(false),
 			Principal: &models.TelefonePrincipal{
-				DDD:   &input.DDD,
-				DDI:   &input.DDI,
-				Valor: &input.Valor,
+				DDD:       &input.DDD,
+				DDI:       &input.DDI,
+				Valor:     &input.Valor,
+				UpdatedAt: &now,
 			},
 		},
 		PhoneNumber: fullPhone,
 		Code:        code,
-		CreatedAt:   time.Now(),
-		ExpiresAt:   time.Now().Add(config.AppConfig.PhoneVerificationTTL),
+		CreatedAt:   now,
+		ExpiresAt:   now.Add(config.AppConfig.PhoneVerificationTTL),
 	}
 	_, err = verColl.InsertOne(c, verification)
 	if err != nil {
 		logger.Error("failed to store phone verification request", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to start phone verification: " + err.Error()})
 		return
+	}
+
+	// Store phone as pending in self-declared collection
+	pendingPhone := &models.Telefone{
+		Indicador: utils.BoolPtr(false),
+		Principal: &models.TelefonePrincipal{
+			DDD:       &input.DDD,
+			DDI:       &input.DDI,
+			Valor:     &input.Valor,
+			UpdatedAt: &now,
+		},
+	}
+	
+	update := bson.M{
+		"$set": bson.M{
+			"telefone_pending": pendingPhone,
+			"updated_at":       now,
+		},
+	}
+	
+	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
+		c,
+		bson.M{"cpf": cpf},
+		update,
+		options.Update().SetUpsert(true),
+	)
+	if err != nil {
+		logger.Error("failed to store pending phone", zap.Error(err))
+		// Don't fail the request, just log the error
 	}
 
 	// Envia código via WhatsApp (DDD pode ser vazio para números internacionais)
@@ -410,12 +444,14 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 
 	origem := "self-declared"
 	sistema := "rmi"
+	now := time.Now()
 	email := models.Email{
 		Indicador: utils.BoolPtr(true),
 		Principal: &models.EmailPrincipal{
-			Valor:   &input.Valor,
-			Origem:  &origem,
-			Sistema: &sistema,
+			Valor:     &input.Valor,
+			Origem:    &origem,
+			Sistema:   &sistema,
+			UpdatedAt: &now,
 		},
 	}
 
