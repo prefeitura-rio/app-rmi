@@ -1,55 +1,73 @@
-name: K6 Load Tests
+name: Load tests
 
 on:
   workflow_dispatch:
 
 jobs:
   load-test:
+    name: Run load tests
     runs-on: ubuntu-latest
     environment: k6
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup k6
-        uses: grafana/setup-k6-action@v1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
-          k6-version: latest
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
 
-      - name: Run k6 load tests
-        run: |
-          k6 run k6/load_test.js \
-            --vus ${{ vars.VIRTUAL_USERS }} \
-            --duration ${{ vars.DURATION }} \
-            --out json=load-test-results.json
-        env:
-          KEYCLOAK_CLIENT_ID: ${{ vars.KEYCLOAK_CLIENT_ID }}
-          KEYCLOAK_CLIENT_SECRET: ${{ secrets.KEYCLOAK_CLIENT_SECRET }}
-          KEYCLOAK_ISSUER: ${{ vars.KEYCLOAK_ISSUER }}
-          TARGET_URL: ${{ vars.TARGET_URL }}
-
-      - name: Upload k6 results
-        uses: actions/upload-artifact@v4
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
         with:
-          name: k6-load-test-results
-          path: load-test-results.json
-          retention-days: 30
+          project_id: ${{ vars.GCP_PROJECT_ID }}
 
-      - name: Parse and display results
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest
+
+      - name: Configure kubectl for GKE
+        run: gcloud container clusters get-credentials application --zone=us-central1 --project="${{ vars.GCP_PROJECT_ID }}"
+
+      - name: Verify cluster connection
+        run: ./.github/scripts/verify-cluster.sh
+
+      - name: Wait for services to be ready
+        run: ./.github/scripts/wait-for-services.sh "${{ vars.K6_NAMESPACE }}" "${{ vars.K8S_SVC }}"
+
+      - name: Create ConfigMap with k6 test script
+        run: ./.github/scripts/create-configmap.sh "${{ vars.K6_NAMESPACE }}"
+
+      - name: Create k6 TestRun resource
         run: |
-          echo "## K6 Load Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          ./.github/scripts/create-testrun.sh \
+            "${{ vars.K6_NAMESPACE }}" \
+            "${{ vars.KEYCLOAK_CLIENT_ID }}" \
+            "${{ secrets.KEYCLOAK_CLIENT_SECRET }}" \
+            "${{ vars.KEYCLOAK_ISSUER }}" \
+            "${{ vars.BASE_URL }}" \
+            "${{ vars.TEST_CPF }}" \
+            "${{ vars.TEST_SCENARIO }}" \
+            "${{ vars.DURATION }}" \
+            "${{ vars.VIRTUAL_USERS }}"
 
-          if [ -f "load-test-results.json" ]; then
-            echo "### Test Summary" >> $GITHUB_STEP_SUMMARY
-            echo "- **Virtual Users**: ${{ vars.VIRTUAL_USERS }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Duration**: ${{ vars.DURATION }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Target**: ${{ vars.TARGET_URL }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Results" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "Load test completed. Results saved to artifacts." >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ No results file found" >> $GITHUB_STEP_SUMMARY
-          fi
+      - name: Wait for test completion and get results
+        run: ./.github/scripts/monitor-test.sh "${{ vars.K6_NAMESPACE }}"
+
+      - name: Generate test summary
+        run: ./.github/scripts/generate-summary.sh "${{ vars.K6_NAMESPACE }}" "${{ vars.BASE_URL }}" "${{ env.TEST_RUN_NAME }}"
+
+      - name: Cleanup test resources
+        if: always()
+        run: ./.github/scripts/cleanup.sh "${{ vars.K6_NAMESPACE }}"
+
