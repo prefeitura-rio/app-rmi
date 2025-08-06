@@ -55,8 +55,9 @@ jobs:
             "${{ vars.KEYCLOAK_CLIENT_ID }}" \
             "${{ secrets.KEYCLOAK_CLIENT_SECRET }}" \
             "${{ vars.KEYCLOAK_ISSUER }}" \
-            "${{ vars.BASE_URL }}" \
-            "${{ vars.TEST_CPF }}" \
+            "${{ vars.BASE_URL_RMI }}" \
+            "${{ vars.BASE_URL_BUSCA }}" \
+            "${{ vars.USER }}" \
             "${{ vars.TEST_SCENARIO }}" \
             "${{ vars.DURATION }}" \
             "${{ vars.VIRTUAL_USERS }}"
@@ -65,7 +66,7 @@ jobs:
         run: ./.github/scripts/monitor-test.sh "${{ vars.K6_NAMESPACE }}"
 
       - name: Generate test summary
-        run: ./.github/scripts/generate-summary.sh "${{ vars.K6_NAMESPACE }}" "${{ vars.BASE_URL }}" "${{ env.TEST_RUN_NAME }}"
+        run: ./.github/scripts/generate-summary.sh "${{ vars.K6_NAMESPACE }}" "${{ vars.BASE_URL_RMI }}" "${{ vars.BASE_URL_BUSCA }}" "${{ env.TEST_RUN_NAME }}"
 
       - name: Cleanup test resources
         if: always()

@@ -4,7 +4,7 @@ metadata:
   name: ""
   namespace: ""
 spec:
-  parallelism: 1
+  parallelism: 10
   script:
     configMap:
       name: k6-test-script
@@ -18,9 +18,11 @@ spec:
         value: ""
       - name: KEYCLOAK_ISSUER
         value: ""
-      - name: BASE_URL
+      - name: BASE_URL_RMI
         value: ""
-      - name: TEST_CPF
+      - name: BASE_URL_BUSCA
+        value: ""
+      - name: USER
         value: ""
       - name: TEST_SCENARIO
         value: ""
@@ -28,10 +30,16 @@ spec:
         value: ""
       - name: VIRTUAL_USERS
         value: ""
+      - name: RAMP_UP_DURATION
+        value: ""
+      - name: STEADY_DURATION
+        value: ""
+      - name: RAMP_DOWN_DURATION
+        value: ""
     resources:
       limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
         cpu: 500m
         memory: 1Gi
-      requests:
-        cpu: 200m
-        memory: 512Mi

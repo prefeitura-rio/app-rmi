@@ -64,8 +64,8 @@ KEYCLOAK_CLIENT_ID=your-client-id
 KEYCLOAK_CLIENT_SECRET=your-client-secret
 
 # Test Configuration (Optional - has fallback defaults)
-BASE_URL=http://rmi.rmi.svc.cluster.local  # Default if not set
-TEST_CPF=12345678901  # Default if not set
+BASE_URL=https://services.staging.app.dados.rio/rmi/v1  # Default if not set
+USER=12345678901  # Default if not set
 TEST_SCENARIO=mixed  # Default if not set
 DURATION=30s  # Default if not set
 VIRTUAL_USERS=10  # Default if not set
@@ -83,7 +83,7 @@ All variables are configured in the GitHub k6 environment:
 - `KEYCLOAK_CLIENT_ID` - Keycloak client ID
 - `KEYCLOAK_ISSUER` - Keycloak issuer URL
 - `BASE_URL` - Base API URL (e.g., `http://rmi.rmi.svc.cluster.local`)
-- `TEST_CPF` - Test CPF (e.g., `12345678901`)
+- `USER` - Test CPF/Username (e.g., `12345678901`)
 - `TEST_SCENARIO` - Test scenario (`mixed|first_login|home_access|personal_info|wallet|legacy`)
 - `DURATION` - Test duration (e.g., `30s`, `2m`)
 - `VIRTUAL_USERS` - Number of VUs (e.g., `10`)
@@ -195,3 +195,4 @@ Authentication variables must be configured in the GitHub k6 environment. Test c
 
 **Required variables**: `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`
 **Optional variables**: All test configuration variables have safe defaults
+

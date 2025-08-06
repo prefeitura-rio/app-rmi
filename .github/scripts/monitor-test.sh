@@ -12,7 +12,7 @@ else
   echo "🔍 Found latest TestRun: $TEST_RUN_NAME"
 fi
 
-timeout 600s bash -c "
+timeout 1800s bash -c "
   while true; do
     STATUS=\$(kubectl get testrun \$TEST_RUN_NAME -n $NAMESPACE -o jsonpath='{.status.stage}')
     echo \"⏳ Current status: \$STATUS\"
