@@ -20,8 +20,7 @@ func GenerateVerificationCode() string {
 // SendVerificationCode sends a verification code to a single phone number
 func SendVerificationCode(ctx context.Context, phone string, code string) error {
 	vars := map[string]interface{}{
-		"codigo": code,
-		"nome": "Fulaninho",
+		"COD": code,
 	}
 	
 	return SendWhatsAppMessage(
