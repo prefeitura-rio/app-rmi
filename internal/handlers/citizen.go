@@ -326,74 +326,41 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 
 	// Build full phone number for unique index
 	fullPhone := input.DDI + input.DDD + input.Valor
+	
 	// Delete any previous verification for this CPF (regardless of phone number)
 	verColl := config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection)
 	_, _ = verColl.DeleteMany(c, bson.M{"cpf": cpf})
-	// Generate verification code and store in phone_verifications collection
+	
+	// Generate verification code
 	code := utils.GenerateVerificationCode()
 	now := time.Now()
-	verification := models.PhoneVerification{
-		CPF: cpf,
-		Telefone: &models.Telefone{
-			Indicador: utils.BoolPtr(false),
-			Principal: &models.TelefonePrincipal{
-				DDD:       &input.DDD,
-				DDI:       &input.DDI,
-				Valor:     &input.Valor,
-				UpdatedAt: &now,
-			},
-		},
+	expiresAt := now.Add(config.AppConfig.PhoneVerificationTTL)
+	
+	// Prepare verification data
+	verificationData := utils.PhoneVerificationData{
+		CPF:         cpf,
+		DDI:         input.DDI,
+		DDD:         input.DDD,
+		Valor:       input.Valor,
 		PhoneNumber: fullPhone,
 		Code:        code,
-		CreatedAt:   now,
-		ExpiresAt:   now.Add(config.AppConfig.PhoneVerificationTTL),
+		ExpiresAt:   expiresAt,
 	}
-	_, err = verColl.InsertOne(c, verification)
-	if err != nil {
-		logger.Error("failed to store phone verification request", zap.Error(err))
+	
+	// Create verification record with proper error handling
+	if err := utils.CreatePhoneVerification(c.Request.Context(), verificationData); err != nil {
+		logger.Error("failed to create phone verification", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to start phone verification: " + err.Error()})
 		return
 	}
-
-	// Store phone as pending in self-declared collection
-	pendingPhone := &models.Telefone{
-		Indicador: utils.BoolPtr(false),
-		Principal: &models.TelefonePrincipal{
-			DDD:       &input.DDD,
-			DDI:       &input.DDI,
-			Valor:     &input.Valor,
-			UpdatedAt: &now,
-		},
+	
+	// Update pending phone in self-declared collection
+	if err := utils.UpdateSelfDeclaredPendingPhone(c.Request.Context(), cpf, verificationData); err != nil {
+		logger.Error("failed to update pending phone", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update pending phone: " + err.Error()})
+		return
 	}
 	
-	update := bson.M{
-		"$set": bson.M{
-			"telefone_pending": pendingPhone,
-			"updated_at":       now,
-		},
-	}
-	
-	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
-		c,
-		bson.M{"cpf": cpf},
-		update,
-		options.Update().SetUpsert(true),
-	)
-	if err != nil {
-		logger.Error("failed to store pending phone", zap.Error(err))
-		// Don't fail the request, just log the error
-	}
-
-	// Envia código via WhatsApp (DDD pode ser vazio para números internacionais)
-	if input.DDI != "" && input.Valor != "" {
-		phone := fmt.Sprintf("%s%s%s", input.DDI, input.DDD, input.Valor)
-		err = utils.SendVerificationCode(c.Request.Context(), phone, code)
-		if err != nil {
-			logger.Error("failed to send WhatsApp message", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to send verification code: " + err.Error()})
-			return
-		}
-	}
 	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared phone submitted for validation. Verification code sent."})
 }
 

@@ -135,6 +135,11 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure audit_logs collection index
+	if err := ensureAuditLogsIndex(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -168,13 +173,12 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 		return nil
 	}
 
-	// Create unique index on cpf with background option for safer concurrent creation
+	// Create unique index on cpf
 	indexModel := mongo.IndexModel{
 		Keys: bson.D{{Key: "cpf", Value: 1}},
 		Options: options.Index().
 			SetName("cpf_1").
-			SetUnique(true).
-			SetBackground(true), // Allows other operations to continue while index is being built
+			SetUnique(true),
 	}
 
 	_, err = collection.Indexes().CreateOne(ctx, indexModel)
@@ -227,12 +231,11 @@ func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) erro
 		return nil
 	}
 
-	// Create non-unique index on cpf with background option for safer concurrent creation
+	// Create non-unique index on cpf
 	indexModel := mongo.IndexModel{
 		Keys: bson.D{{Key: "cpf", Value: 1}},
 		Options: options.Index().
-			SetName("cpf_1").
-			SetBackground(true), // Allows other operations to continue while index is being built
+			SetName("cpf_1"),
 	}
 
 	_, err = collection.Indexes().CreateOne(ctx, indexModel)
@@ -309,13 +312,12 @@ func ensureSelfDeclaredIndex(ctx context.Context, logger *zap.Logger) error {
 		return nil
 	}
 
-	// Create unique index on cpf with background option for safer concurrent creation
+	// Create unique index on cpf
 	indexModel := mongo.IndexModel{
 		Keys: bson.D{{Key: "cpf", Value: 1}},
 		Options: options.Index().
 			SetName("cpf_1").
-			SetUnique(true).
-			SetBackground(true), // Allows other operations to continue while index is being built
+			SetUnique(true),
 	}
 
 	_, err = collection.Indexes().CreateOne(ctx, indexModel)
@@ -338,11 +340,11 @@ func ensureSelfDeclaredIndex(ctx context.Context, logger *zap.Logger) error {
 	return nil
 }
 
-// ensurePhoneVerificationIndex creates the unique index on cpf and phone_number for phone_verifications collection
+// ensurePhoneVerificationIndex creates the required indexes for phone_verifications collection
 func ensurePhoneVerificationIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.PhoneVerificationCollection)
 	
-	// Check if index already exists
+	// Check if indexes already exist
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
 		logger.Error("failed to list indexes", zap.Error(err))
@@ -350,50 +352,80 @@ func ensurePhoneVerificationIndex(ctx context.Context, logger *zap.Logger) error
 	}
 	defer cursor.Close(ctx)
 
-	indexExists := false
+	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
 		if err := cursor.Decode(&index); err != nil {
 			continue
 		}
-		if name, ok := index["name"].(string); ok && name == "cpf_1_phone_number_1" {
-			indexExists = true
-			break
+		if name, ok := index["name"].(string); ok {
+			existingIndexes[name] = true
 		}
 	}
 
-	if indexExists {
-		logger.Debug("phone_verifications collection index already exists", 
-			zap.String("collection", AppConfig.PhoneVerificationCollection))
-		return nil
+	// Create indexes that don't exist
+	indexesToCreate := []mongo.IndexModel{}
+
+	// 1. Unique compound index on cpf and phone_number
+	if !existingIndexes["cpf_1_phone_number_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "cpf", Value: 1}, {Key: "phone_number", Value: 1}},
+			Options: options.Index().
+				SetName("cpf_1_phone_number_1").
+				SetUnique(true),
+		})
 	}
 
-	// Create unique compound index on cpf and phone_number with background option for safer concurrent creation
-	indexModel := mongo.IndexModel{
-		Keys: bson.D{{Key: "cpf", Value: 1}, {Key: "phone_number", Value: 1}},
-		Options: options.Index().
-			SetName("cpf_1_phone_number_1").
-			SetUnique(true).
-			SetBackground(true), // Allows other operations to continue while index is being built
+	// 2. TTL index on expires_at for automatic cleanup
+	if !existingIndexes["expires_at_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "expires_at", Value: 1}},
+			Options: options.Index().
+				SetName("expires_at_1").
+				SetExpireAfterSeconds(0),
+		})
 	}
 
-	_, err = collection.Indexes().CreateOne(ctx, indexModel)
-	if err != nil {
-		// Check if it's a duplicate key error (another instance created it)
-		if mongo.IsDuplicateKeyError(err) {
-			logger.Info("phone_verifications index already exists (created by another instance)", 
-				zap.String("collection", AppConfig.PhoneVerificationCollection))
-			return nil
+	// 3. Compound index for verification queries (cpf, code, phone_number, expires_at)
+	if !existingIndexes["verification_query_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{
+				{Key: "cpf", Value: 1},
+				{Key: "code", Value: 1},
+				{Key: "phone_number", Value: 1},
+				{Key: "expires_at", Value: 1},
+			},
+			Options: options.Index().
+				SetName("verification_query_1"),
+		})
+	}
+
+	// Create all missing indexes
+	for _, indexModel := range indexesToCreate {
+		_, err = collection.Indexes().CreateOne(ctx, indexModel)
+		if err != nil {
+			// Check if it's a duplicate key error (another instance created it)
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("phone_verifications index already exists (created by another instance)", 
+					zap.String("collection", AppConfig.PhoneVerificationCollection))
+				continue
+			}
+			logger.Error("failed to create phone_verifications index", 
+				zap.String("collection", AppConfig.PhoneVerificationCollection),
+				zap.Error(err))
+			return err
 		}
-		logger.Error("failed to create phone_verifications index", 
+	}
+
+	if len(indexesToCreate) > 0 {
+		logger.Info("created phone_verifications collection indexes", 
 			zap.String("collection", AppConfig.PhoneVerificationCollection),
-			zap.Error(err))
-		return err
+			zap.Int("count", len(indexesToCreate)))
+	} else {
+		logger.Debug("phone_verifications collection indexes already exist", 
+			zap.String("collection", AppConfig.PhoneVerificationCollection))
 	}
-
-	logger.Info("created phone_verifications collection index", 
-		zap.String("collection", AppConfig.PhoneVerificationCollection),
-		zap.String("index", "cpf_1_phone_number_1"))
+	
 	return nil
 }
 
@@ -427,13 +459,12 @@ func ensureUserConfigIndex(ctx context.Context, logger *zap.Logger) error {
 		return nil
 	}
 
-	// Create unique index on cpf with background option for safer concurrent creation
+	// Create unique index on cpf
 	indexModel := mongo.IndexModel{
 		Keys: bson.D{{Key: "cpf", Value: 1}},
 		Options: options.Index().
 			SetName("cpf_1").
-			SetUnique(true).
-			SetBackground(true), // Allows other operations to continue while index is being built
+			SetUnique(true),
 	}
 
 	_, err = collection.Indexes().CreateOne(ctx, indexModel)
@@ -455,3 +486,95 @@ func ensureUserConfigIndex(ctx context.Context, logger *zap.Logger) error {
 		zap.String("index", "cpf_1"))
 	return nil
 }
+
+// ensureAuditLogsIndex creates the required indexes for audit_logs collection
+func ensureAuditLogsIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection("audit_logs")
+	
+	// Check if indexes already exist
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		logger.Error("failed to list indexes", zap.Error(err))
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	existingIndexes := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existingIndexes[name] = true
+		}
+	}
+
+	// Create indexes that don't exist
+	indexesToCreate := []mongo.IndexModel{}
+
+	// 1. Index on cpf for quick citizen lookups
+	if !existingIndexes["cpf_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "cpf", Value: 1}},
+			Options: options.Index().
+				SetName("cpf_1"),
+		})
+	}
+
+	// 2. Index on timestamp for time-based queries
+	if !existingIndexes["timestamp_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "timestamp", Value: -1}},
+			Options: options.Index().
+				SetName("timestamp_1"),
+		})
+	}
+
+	// 3. Compound index on action and resource
+	if !existingIndexes["action_1_resource_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "action", Value: 1}, {Key: "resource", Value: 1}},
+			Options: options.Index().
+				SetName("action_1_resource_1"),
+		})
+	}
+
+	// 4. TTL index for automatic cleanup (keep audit logs for 1 year)
+	if !existingIndexes["timestamp_ttl"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "timestamp", Value: 1}},
+			Options: options.Index().
+				SetName("timestamp_ttl").
+				SetExpireAfterSeconds(365 * 24 * 60 * 60), // 1 year
+		})
+	}
+
+	// Create all missing indexes
+	for _, indexModel := range indexesToCreate {
+		_, err = collection.Indexes().CreateOne(ctx, indexModel)
+		if err != nil {
+			// Check if it's a duplicate key error (another instance created it)
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("audit_logs index already exists (created by another instance)", 
+					zap.String("collection", "audit_logs"))
+				continue
+			}
+			logger.Error("failed to create audit_logs index", 
+				zap.String("collection", "audit_logs"),
+				zap.Error(err))
+			return err
+		}
+	}
+
+	if len(indexesToCreate) > 0 {
+		logger.Info("created audit_logs collection indexes", 
+			zap.String("collection", "audit_logs"),
+			zap.Int("count", len(indexesToCreate)))
+	} else {
+		logger.Debug("audit_logs collection indexes already exist", 
+			zap.String("collection", "audit_logs"))
+	}
+	
+	return nil
+} 

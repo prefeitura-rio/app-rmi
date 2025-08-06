@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -82,6 +82,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 			verification.Telefone.Principal.UpdatedAt = &now
 		}
 	}
+	
 	update := bson.M{
 		"$set": bson.M{
 			"telefone":   verification.Telefone,
@@ -92,30 +93,55 @@ func ValidatePhoneVerification(c *gin.Context) {
 		},
 	}
 
-	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
-		context.Background(),
-		bson.M{"cpf": cpf},
-		update,
-		options.Update().SetUpsert(true),
-	)
-	if err != nil {
-		observability.Logger().Error("failed to update self-declared data", zap.Error(err))
+	// Use transaction for atomic update and cleanup
+	operations := []utils.DatabaseOperation{
+		{
+			Operation: func() error {
+				_, err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
+					context.Background(),
+					bson.M{"cpf": cpf},
+					update,
+					options.Update().SetUpsert(true),
+				)
+				return err
+			},
+			Rollback: func() error {
+				// No rollback needed for this operation
+				return nil
+			},
+		},
+		{
+			Operation: func() error {
+				_, err := config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection).DeleteOne(
+					context.Background(),
+					bson.M{"cpf": verification.CPF, "phone_number": verification.PhoneNumber},
+				)
+				return err
+			},
+			Rollback: func() error {
+				// No rollback needed for delete operation
+				return nil
+			},
+		},
+	}
+
+	if err := utils.ExecuteWithTransaction(context.Background(), operations); err != nil {
+		observability.Logger().Error("failed to complete phone verification", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error: "Failed to update phone verification status",
+			Error: "Failed to complete phone verification",
 		})
 		return
 	}
 
-	// Delete used verification code
-	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection).DeleteOne(
-		context.Background(),
-		bson.M{"cpf": verification.CPF, "phone_number": verification.PhoneNumber},
-	)
-
-	// Invalidate cache
-	cacheKey := fmt.Sprintf("citizen:%s", cpf)
-	if err := config.Redis.Del(c.Request.Context(), cacheKey).Err(); err != nil {
+	// Invalidate all related caches
+	if err := utils.InvalidateCitizenCache(c.Request.Context(), cpf); err != nil {
 		observability.Logger().Warn("failed to invalidate cache", zap.Error(err))
+	}
+
+	// Log audit event
+	auditCtx := utils.GetAuditContextFromGin(c, cpf)
+	if err := utils.LogPhoneVerificationSuccess(c.Request.Context(), auditCtx, verification.PhoneNumber); err != nil {
+		observability.Logger().Warn("failed to log audit event", zap.Error(err))
 	}
 
 	c.JSON(http.StatusOK, SuccessResponse{
