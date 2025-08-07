@@ -110,7 +110,7 @@ make_request() {
     
     # Add authorization header if provided
     if [[ -n "$BEARER_TOKEN" ]]; then
-        headers+=("-H" "Authorization: $BEARER_TOKEN")
+        headers+=("-H" "Authorization: Bearer $BEARER_TOKEN")
     fi
     
     # Add content type for POST/PUT requests
@@ -140,7 +140,7 @@ make_request() {
     if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]] || [[ "$status_code" -eq 404 ]]; then
         print_result "$test_name" "PASS" "$response_body"
         # Store response body in a temporary file for verification
-        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]]; then
+        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]] || [[ "$test_name" == *"Create Beta Group"* ]] || [[ "$test_name" == *"Create Second Beta Group"* ]]; then
             # Create a safe filename by replacing spaces and special chars with underscores
             local safe_filename=$(echo "$test_name" | sed 's/[^a-zA-Z0-9]/_/g')
             echo "$response_body" > "/tmp/api_response_${safe_filename}"
@@ -164,6 +164,16 @@ verify_update() {
     if command -v jq >/dev/null 2>&1; then
         local original_value=$(echo "$original_data" | jq -r "$field_path" 2>/dev/null)
         local updated_value=$(echo "$updated_data" | jq -r "$field_path" 2>/dev/null)
+        
+        # Handle null values for comparison
+        if [[ "$original_value" == "null" ]]; then
+            original_value=""
+        fi
+        if [[ "$updated_value" == "null" ]]; then
+            updated_value=""
+        fi
+        
+
         
         if [[ "$original_value" != "$updated_value" ]]; then
             echo -e "${GREEN}✅ $test_name: Data updated successfully${NC}"
@@ -245,8 +255,13 @@ make_request "PUT" "/citizen/$CPF/email" "$email_data" "Update Email"
 
 # Test 11: Update Ethnicity (dynamic - pick different from current)
 # Get current ethnicity and pick a different one
-current_ethnicity=$(curl -s -X GET "http://localhost:8080/v1/citizen/$CPF" -H "Authorization: $BEARER_TOKEN" | jq -r '.raca' 2>/dev/null || echo "unknown")
+current_ethnicity=$(curl -s -X GET "http://localhost:8080/v1/citizen/$CPF" -H "Authorization: Bearer $BEARER_TOKEN" | jq -r '.raca' 2>/dev/null || echo "unknown")
 echo "Current ethnicity: $current_ethnicity"
+
+# Handle null ethnicity - treat it as empty string for comparison
+if [[ "$current_ethnicity" == "null" ]]; then
+    current_ethnicity=""
+fi
 
 # Get available options and pick one different from current
 ethnicity_options=$(curl -s -X GET "http://localhost:8080/v1/citizen/ethnicity/options" | jq -r '.[]' 2>/dev/null)
@@ -276,7 +291,7 @@ make_request "PUT" "/citizen/$CPF/firstlogin" "$firstlogin_data" "Update First L
 
 # Test 13: Update Opt-In (change to true to test update)
 # First get current opt-in status to ensure we make a change
-current_optin_response=$(curl -s -H "Authorization: $BEARER_TOKEN" "$API_BASE_URL/citizen/$CPF/optin")
+current_optin_response=$(curl -s -H "Authorization: Bearer $BEARER_TOKEN" "$API_BASE_URL/citizen/$CPF/optin")
 current_optin=$(echo "$current_optin_response" | jq -r '.opt_in' 2>/dev/null)
 
 # Set to opposite of current value to ensure a change
@@ -365,9 +380,10 @@ if [[ "$SKIP_PHONE" != "true" ]]; then
         \"ddd\": \"$ddd\",
         \"valor\": \"$valor\"
     }"
+    # Test 14.5: Validate Phone Verification Code
     make_request "POST" "/citizen/$CPF/phone/validate" "$verification_data" "Validate Phone Verification Code"
     
-    # Verify Phone Update after verification
+    # Test 15: Verify Phone Update after verification
     echo -e "${BLUE}📋 Getting final citizen data to verify phone update...${NC}"
     make_request "GET" "/citizen/$CPF" "" "Get Citizen Data (After Phone Verification)"
 else
@@ -731,6 +747,124 @@ make_request "GET" "/admin/phone/quarantined?page=1&per_page=10" "" "Get Quarant
 echo -e "${BLUE}Test 66: Get Quarantined Phones (expired filter)${NC}"
 make_request "GET" "/admin/phone/quarantined?expired=true" "" "Get Quarantined Phones (expired)"
 
+echo -e "${BLUE}=== Testando Funcionalidades Beta Whitelist ===${NC}"
+
+# Test 67: Get Beta Status (not whitelisted)
+echo -e "${BLUE}Test 67: Get Beta Status (not whitelisted)${NC}"
+make_request "GET" "/phone/$PHONE_NUMBER/beta-status" "" "Get Beta Status (not whitelisted)"
+
+# Test 68: Create Beta Group (admin only)
+echo -e "${BLUE}Test 68: Create Beta Group (admin only)${NC}"
+group_data='{
+    "name": "Test Group 1 - '$(date +%s)'"
+}'
+make_request "POST" "/admin/beta/groups" "$group_data" "Create Beta Group"
+
+# Test 69: List Beta Groups (admin only)
+echo -e "${BLUE}Test 69: List Beta Groups (admin only)${NC}"
+make_request "GET" "/admin/beta/groups" "" "List Beta Groups"
+
+# Test 70: Get Beta Group by ID (admin only)
+echo -e "${BLUE}Test 70: Get Beta Group by ID (admin only)${NC}"
+# Extract group ID from previous response
+GROUP_ID=$(cat /tmp/api_response_Create_Beta_Group 2>/dev/null | jq -r '.id' 2>/dev/null)
+if [[ -n "$GROUP_ID" && "$GROUP_ID" != "null" ]]; then
+    make_request "GET" "/admin/beta/groups/$GROUP_ID" "" "Get Beta Group by ID"
+else
+    echo -e "${YELLOW}⚠️  Skipping Get Beta Group by ID (no group ID available)${NC}"
+fi
+
+# Test 71: Add Phone to Whitelist (admin only)
+echo -e "${BLUE}Test 71: Add Phone to Whitelist (admin only)${NC}"
+if [[ -n "$GROUP_ID" && "$GROUP_ID" != "null" ]]; then
+    whitelist_data='{
+        "group_id": "'$GROUP_ID'"
+    }'
+    make_request "POST" "/admin/beta/whitelist/$PHONE_NUMBER" "$whitelist_data" "Add Phone to Whitelist"
+else
+    echo -e "${YELLOW}⚠️  Skipping Add Phone to Whitelist (no group ID available)${NC}"
+fi
+
+# Test 72: Get Beta Status (whitelisted)
+echo -e "${BLUE}Test 72: Get Beta Status (whitelisted)${NC}"
+make_request "GET" "/phone/$PHONE_NUMBER/beta-status" "" "Get Beta Status (whitelisted)"
+
+# Test 73: Get Phone Status (includes beta info)
+echo -e "${BLUE}Test 73: Get Phone Status (includes beta info)${NC}"
+make_request "GET" "/phone/$PHONE_NUMBER/status" "" "Get Phone Status (with beta info)"
+
+# Test 74: List Whitelisted Phones (admin only)
+echo -e "${BLUE}Test 74: List Whitelisted Phones (admin only)${NC}"
+make_request "GET" "/admin/beta/whitelist" "" "List Whitelisted Phones"
+
+# Test 75: Create Second Beta Group (admin only)
+echo -e "${BLUE}Test 75: Create Second Beta Group (admin only)${NC}"
+group_data2='{
+    "name": "Test Group 2 - '$(date +%s)'"
+}'
+make_request "POST" "/admin/beta/groups" "$group_data2" "Create Second Beta Group"
+
+# Test 76: Bulk Add Phones to Whitelist (admin only)
+echo -e "${BLUE}Test 76: Bulk Add Phones to Whitelist (admin only)${NC}"
+GROUP_ID2=$(cat /tmp/api_response_Create_Second_Beta_Group 2>/dev/null | jq -r '.id' 2>/dev/null)
+if [[ -n "$GROUP_ID2" && "$GROUP_ID2" != "null" ]]; then
+    bulk_add_data='{
+        "phone_numbers": ["+5511999887766", "+5511999888777"],
+        "group_id": "'$GROUP_ID2'"
+    }'
+    make_request "POST" "/admin/beta/whitelist/bulk-add" "$bulk_add_data" "Bulk Add Phones to Whitelist"
+else
+    echo -e "${YELLOW}⚠️  Skipping Bulk Add Phones to Whitelist (no group ID available)${NC}"
+fi
+
+# Test 77: Bulk Move Phones Between Groups (admin only)
+echo -e "${BLUE}Test 77: Bulk Move Phones Between Groups (admin only)${NC}"
+if [[ -n "$GROUP_ID" && "$GROUP_ID" != "null" && -n "$GROUP_ID2" && "$GROUP_ID2" != "null" ]]; then
+    bulk_move_data='{
+        "phone_numbers": ["+5511999887766", "+5511999888777"],
+        "from_group_id": "'$GROUP_ID2'",
+        "to_group_id": "'$GROUP_ID'"
+    }'
+    make_request "POST" "/admin/beta/whitelist/bulk-move" "$bulk_move_data" "Bulk Move Phones Between Groups"
+else
+    echo -e "${YELLOW}⚠️  Skipping Bulk Move Phones Between Groups (no group IDs available)${NC}"
+fi
+
+# Test 78: Update Beta Group (admin only)
+echo -e "${BLUE}Test 78: Update Beta Group (admin only)${NC}"
+if [[ -n "$GROUP_ID" && "$GROUP_ID" != "null" ]]; then
+    update_group_data='{
+        "name": "Updated Test Group 1"
+    }'
+    make_request "PUT" "/admin/beta/groups/$GROUP_ID" "$update_group_data" "Update Beta Group"
+else
+    echo -e "${YELLOW}⚠️  Skipping Update Beta Group (no group ID available)${NC}"
+fi
+
+# Test 79: Bulk Remove Phones from Whitelist (admin only)
+echo -e "${BLUE}Test 79: Bulk Remove Phones from Whitelist (admin only)${NC}"
+bulk_remove_data='{
+    "phone_numbers": ["+5511999887766", "+5511999888777"]
+}'
+make_request "POST" "/admin/beta/whitelist/bulk-remove" "$bulk_remove_data" "Bulk Remove Phones from Whitelist"
+
+# Test 80: Remove Phone from Whitelist (admin only)
+echo -e "${BLUE}Test 80: Remove Phone from Whitelist (admin only)${NC}"
+make_request "DELETE" "/admin/beta/whitelist/$PHONE_NUMBER" "" "Remove Phone from Whitelist"
+
+# Test 81: Get Beta Status (not whitelisted after removal)
+echo -e "${BLUE}Test 81: Get Beta Status (not whitelisted after removal)${NC}"
+make_request "GET" "/phone/$PHONE_NUMBER/beta-status" "" "Get Beta Status (not whitelisted after removal)"
+
+# Test 82: Delete Beta Groups (admin only)
+echo -e "${BLUE}Test 82: Delete Beta Groups (admin only)${NC}"
+if [[ -n "$GROUP_ID" && "$GROUP_ID" != "null" ]]; then
+    make_request "DELETE" "/admin/beta/groups/$GROUP_ID" "" "Delete Beta Group 1"
+fi
+if [[ -n "$GROUP_ID2" && "$GROUP_ID2" != "null" ]]; then
+    make_request "DELETE" "/admin/beta/groups/$GROUP_ID2" "" "Delete Beta Group 2"
+fi
+
 # Clean up temporary files
 rm -f /tmp/api_response_*
 
@@ -739,7 +873,7 @@ echo -e "${BLUE}📊 Test Results Summary:${NC}"
 echo -e "${GREEN}✅ Tests Passed: $TESTS_PASSED${NC}"
 echo -e "${RED}❌ Tests Failed: $TESTS_FAILED${NC}"
 echo -e "${BLUE}📈 Total Tests: $((TESTS_PASSED + TESTS_FAILED))${NC}"
-echo -e "${BLUE}📋 Note: Includes new opt-out tests with conditional blocking logic${NC}"
+echo -e "${BLUE}📋 Note: Includes opt-out tests with conditional blocking logic and beta whitelist functionality${NC}"
 
 if [[ $TESTS_FAILED -eq 0 ]]; then
     echo -e "${GREEN}🎉 All tests passed!${NC}"

@@ -21,6 +21,8 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 - 🔐 Sistema de opt-in/opt-out com histórico detalhado
 - 📋 Validação de registros contra dados base
 - 🎯 Mapeamento phone-CPF com controle de status
+- 🚫 Sistema de quarentena de telefones com TTL configurável
+- 🧪 Sistema de whitelist beta para chatbot com grupos
 
 ## Variáveis de Ambiente
 
@@ -36,6 +38,10 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | MONGODB_USER_CONFIG_COLLECTION | Nome da coleção de configurações do usuário | user_config | Não |
 | MONGODB_PHONE_MAPPING_COLLECTION | Nome da coleção de mapeamentos phone-CPF | phone_cpf_mappings | Não |
 | MONGODB_OPT_IN_HISTORY_COLLECTION | Nome da coleção de histórico opt-in/opt-out | opt_in_history | Não |
+| MONGODB_BETA_GROUP_COLLECTION | Nome da coleção de grupos beta | beta_groups | Não |
+| MONGODB_AUDIT_LOGS_COLLECTION | Nome da coleção de logs de auditoria | audit_logs | Não |
+| PHONE_QUARANTINE_TTL | TTL da quarentena de telefones (ex: "4320h" = 6 meses) | 4320h | Não |
+| BETA_STATUS_CACHE_TTL | TTL do cache de status beta (ex: "24h") | 24h | Não |
 | REDIS_URI | String de conexão Redis | redis://localhost:6379 | Sim |
 | REDIS_TTL | TTL do cache Redis em minutos | 60 | Não |
 | PHONE_VERIFICATION_TTL | TTL dos códigos de verificação de telefone (ex: "15m", "1h") | 15m | Não |
@@ -109,6 +115,13 @@ Atualiza ou cria a etnia autodeclarada de um cidadão.
 - Apenas o campo de etnia é atualizado
 - Valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/ethnicity/options
 
+### PUT /citizen/{cpf}/optin
+Atualiza o status de opt-in de um cidadão.
+- Atualiza o campo `opt_in` nos dados autodeclarados
+- Requer autenticação JWT com acesso ao CPF
+- Invalida cache relacionado automaticamente
+- Registra auditoria da mudança
+
 ### GET /citizen/ethnicity/options
 Retorna a lista de opções válidas de etnia para autodeclaração.
 - Usado para validar as atualizações de etnia autodeclarada
@@ -169,6 +182,20 @@ Rejeita um registro e bloqueia mapeamento phone-CPF.
 - Bloqueia mapeamento existente
 - Registra rejeição no histórico
 - Permite novo registro para o número
+
+### GET /phone/{phone_number}/status
+Verifica o status de um número de telefone.
+- Retorna informações sobre mapeamento phone-CPF
+- Inclui status de quarentena (se aplicável)
+- Inclui informações de whitelist beta (se aplicável)
+- Não requer autenticação
+- Dados sensíveis (CPF, nome) são mascarados
+
+### GET /phone/{phone_number}/beta-status
+Verifica se um número de telefone está na whitelist beta.
+- Retorna status beta e informações do grupo
+- Cache Redis para performance
+- Não requer autenticação
 
 ## Configuration Endpoints
 
@@ -293,6 +320,11 @@ A API gerencia automaticamente os índices MongoDB para garantir performance oti
   - Índice no campo `channel` (`channel_1`)
   - Índice no campo `timestamp` (`timestamp_1`)
   - Índice composto em `phone_number` e `timestamp` (`phone_number_1_timestamp_1`)
+- Coleção `beta_groups`:
+  - Índice único no campo `name` (`name_1`) - case-insensitive
+  - Índice no campo `created_at` (`created_at_1`) - ordenação temporal
+- Coleção `phone_cpf_mappings` (índices adicionais):
+  - Índice no campo `beta_group_id` (`beta_group_id_1`) - consultas de whitelist beta
 
 ## WhatsApp Bot Scenarios
 
@@ -531,6 +563,174 @@ PHONE_QUARANTINE_TTL=4320h  # 6 meses (6 * 30 * 24 horas)
 - Métricas de quarentena disponíveis via endpoint de estatísticas
 - Logs estruturados para todas as operações de quarentena
 - Rastreamento de histórico completo para compliance
+
+## Funcionalidades de Beta Whitelist
+
+Sistema de whitelist para chatbot beta que permite gerenciar grupos de teste e controlar acesso de números de telefone.
+
+### Visão Geral
+- **Grupos Beta**: Criação e gerenciamento de grupos para testes do chatbot
+- **Whitelist de Telefones**: Controle de quais números podem acessar o chatbot beta
+- **Cache Inteligente**: Verificação rápida de status beta com cache Redis
+- **Operações em Lote**: Suporte a operações bulk para gerenciamento eficiente
+- **Analytics**: Rastreamento de grupos para fins analíticos
+
+### Funcionalidades Principais
+
+#### Gerenciamento de Grupos Beta
+- **Criação de Grupos**: Criação de grupos com nomes únicos (case-insensitive)
+- **Listagem Paginada**: Listagem de grupos com paginação
+- **Atualização**: Modificação de nomes de grupos existentes
+- **Exclusão**: Remoção de grupos com limpeza automática de associações
+- **UUIDs**: Identificadores únicos automáticos para grupos
+
+#### Whitelist de Telefones
+- **Adição Individual**: Adicionar telefones a grupos específicos
+- **Remoção Individual**: Remover telefones da whitelist
+- **Operações em Lote**: Adicionar, remover e mover múltiplos telefones
+- **Validação**: Verificação de duplicatas e grupos existentes
+- **Cache**: Cache Redis para verificações rápidas de status
+
+#### Verificação de Status
+- **Endpoint Público**: Verificação rápida se um telefone está na whitelist
+- **Cache TTL**: Cache configurável (padrão: 24 horas)
+- **Invalidação Automática**: Cache limpo quando associações mudam
+- **Informações Completas**: Inclui ID e nome do grupo
+
+### Endpoints da API
+
+#### Endpoints Públicos
+
+##### GET /phone/{phone_number}/beta-status
+Verifica se um número de telefone está na whitelist beta.
+- **Resposta**: Status beta, ID do grupo, nome do grupo
+- **Cache**: Resultados cacheados por 24 horas
+- **Autenticação**: Não requerida
+
+#### Endpoints Administrativos
+
+##### GET /admin/beta/groups
+Lista todos os grupos beta com paginação.
+- **Parâmetros**: `page` (padrão: 1), `per_page` (padrão: 10, máximo: 100)
+- **Autenticação**: Requer role `rmi-admin`
+
+##### POST /admin/beta/groups
+Cria um novo grupo beta.
+- **Body**: `{"name": "Nome do Grupo"}`
+- **Validação**: Nome único, case-insensitive
+- **Autenticação**: Requer role `rmi-admin`
+
+##### GET /admin/beta/groups/{group_id}
+Obtém detalhes de um grupo beta específico.
+- **Autenticação**: Requer role `rmi-admin`
+
+##### PUT /admin/beta/groups/{group_id}
+Atualiza o nome de um grupo beta.
+- **Body**: `{"name": "Novo Nome"}`
+- **Validação**: Nome único, case-insensitive
+- **Autenticação**: Requer role `rmi-admin`
+
+##### DELETE /admin/beta/groups/{group_id}
+Remove um grupo beta e todas as associações de telefones.
+- **Limpeza**: Remove automaticamente todos os telefones do grupo
+- **Autenticação**: Requer role `rmi-admin`
+
+##### GET /admin/beta/whitelist
+Lista telefones na whitelist com paginação.
+- **Parâmetros**: `page`, `per_page`, `group_id` (filtro opcional)
+- **Autenticação**: Requer role `rmi-admin`
+
+##### POST /admin/beta/whitelist/{phone_number}
+Adiciona um telefone a um grupo beta.
+- **Body**: `{"group_id": "uuid-do-grupo"}`
+- **Validação**: Telefone não pode estar em outro grupo
+- **Autenticação**: Requer role `rmi-admin`
+
+##### DELETE /admin/beta/whitelist/{phone_number}
+Remove um telefone da whitelist beta.
+- **Autenticação**: Requer role `rmi-admin`
+
+##### POST /admin/beta/whitelist/bulk-add
+Adiciona múltiplos telefones a um grupo.
+- **Body**: `{"phone_numbers": ["+5511999887766"], "group_id": "uuid"}`
+- **Autenticação**: Requer role `rmi-admin`
+
+##### POST /admin/beta/whitelist/bulk-remove
+Remove múltiplos telefones da whitelist.
+- **Body**: `{"phone_numbers": ["+5511999887766"]}`
+- **Autenticação**: Requer role `rmi-admin`
+
+##### POST /admin/beta/whitelist/bulk-move
+Move telefones entre grupos.
+- **Body**: `{"phone_numbers": ["+5511999887766"], "from_group_id": "uuid", "to_group_id": "uuid"}`
+- **Autenticação**: Requer role `rmi-admin`
+
+### Modelos de Dados
+
+#### BetaGroup
+```json
+{
+  "id": "uuid-do-grupo",
+  "name": "Nome do Grupo",
+  "created_at": "2025-08-07T15:30:00Z",
+  "updated_at": "2025-08-07T15:30:00Z"
+}
+```
+
+#### BetaStatusResponse
+```json
+{
+  "phone_number": "+5511999887766",
+  "beta_whitelisted": true,
+  "group_id": "uuid-do-grupo",
+  "group_name": "Nome do Grupo"
+}
+```
+
+#### PhoneStatusResponse (Atualizado)
+```json
+{
+  "phone_number": "+5511999887766",
+  "found": true,
+  "quarantined": false,
+  "cpf": "12345678901",
+  "name": "Nome do Cidadão",
+  "quarantine_until": null,
+  "beta_whitelisted": true,
+  "beta_group_id": "uuid-do-grupo",
+  "beta_group_name": "Nome do Grupo"
+}
+```
+
+### Configuração
+
+#### Variáveis de Ambiente
+| Variável | Descrição | Padrão | Obrigatório |
+|----------|-----------|---------|------------|
+| BETA_STATUS_CACHE_TTL | TTL do cache de status beta (ex: "24h", "1h") | 24h | Não |
+| MONGODB_BETA_GROUP_COLLECTION | Nome da coleção de grupos beta | beta_groups | Não |
+
+### Características Técnicas
+
+#### Cache Redis
+- **TTL Configurável**: Cache de status beta com TTL personalizável
+- **Invalidação Inteligente**: Cache limpo quando associações mudam
+- **Performance**: Verificações rápidas sem consulta ao banco
+
+#### Banco de Dados
+- **Índices Otimizados**: Índices para consultas eficientes
+- **Integridade**: Constraints para nomes únicos de grupos
+- **Cascade**: Limpeza automática de associações ao deletar grupos
+
+#### Segurança
+- **Controle de Acesso**: Endpoints administrativos requerem role `rmi-admin`
+- **Validação**: Verificação de duplicatas e dados válidos
+- **Auditoria**: Logs de todas as operações administrativas
+
+#### Performance
+- **Cache Inteligente**: Cache Redis para verificações frequentes
+- **Paginação**: Listagens paginadas para grandes volumes
+- **Índices**: Índices otimizados para consultas rápidas
 
 ## Melhorias Implementadas
 

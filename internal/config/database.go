@@ -150,6 +150,11 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure beta_group collection index
+	if err := ensureBetaGroupIndex(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -499,7 +504,7 @@ func ensureUserConfigIndex(ctx context.Context, logger *zap.Logger) error {
 
 // ensureAuditLogsIndex creates the required indexes for audit_logs collection
 func ensureAuditLogsIndex(ctx context.Context, logger *zap.Logger) error {
-	collection := MongoDB.Collection("audit_logs")
+	collection := MongoDB.Collection(AppConfig.AuditLogsCollection)
 	
 	// Check if indexes already exist
 	cursor, err := collection.Indexes().List(ctx)
@@ -566,24 +571,24 @@ func ensureAuditLogsIndex(ctx context.Context, logger *zap.Logger) error {
 		if err != nil {
 			// Check if it's a duplicate key error (another instance created it)
 			if mongo.IsDuplicateKeyError(err) {
-				logger.Info("audit_logs index already exists (created by another instance)", 
-					zap.String("collection", "audit_logs"))
+						logger.Info("audit_logs index already exists (created by another instance)",
+			zap.String("collection", AppConfig.AuditLogsCollection))
 				continue
 			}
-			logger.Error("failed to create audit_logs index", 
-				zap.String("collection", "audit_logs"),
+					logger.Error("failed to create audit_logs index",
+			zap.String("collection", AppConfig.AuditLogsCollection),
 				zap.Error(err))
 			return err
 		}
 	}
 
 	if len(indexesToCreate) > 0 {
-		logger.Info("created audit_logs collection indexes", 
-			zap.String("collection", "audit_logs"),
+				logger.Info("created audit_logs collection indexes",
+			zap.String("collection", AppConfig.AuditLogsCollection),
 			zap.Int("count", len(indexesToCreate)))
 	} else {
-		logger.Debug("audit_logs collection indexes already exist", 
-			zap.String("collection", "audit_logs"))
+				logger.Debug("audit_logs collection indexes already exist",
+			zap.String("collection", AppConfig.AuditLogsCollection))
 	}
 	
 	return nil
@@ -733,6 +738,20 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		}
 	}
 
+	// Create beta_group_id index for beta whitelist queries
+	if _, exists := existingIndexes["beta_group_id_1"]; !exists {
+		logger.Info("creating beta_group_id index", zap.String("collection", AppConfig.PhoneMappingCollection))
+		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys: bson.D{{Key: "beta_group_id", Value: 1}},
+					Options: options.Index().
+			SetName("beta_group_id_1"),
+		})
+		if err != nil {
+			logger.Error("failed to create beta_group_id index", zap.Error(err))
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -840,6 +859,80 @@ func ensureOptInHistoryIndex(ctx context.Context, logger *zap.Logger) error {
 	} else {
 		logger.Debug("opt_in_history collection indexes already exist", 
 			zap.String("collection", AppConfig.OptInHistoryCollection))
+	}
+	
+	return nil
+}
+
+// ensureBetaGroupIndex creates the indexes for beta_group collection
+func ensureBetaGroupIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.BetaGroupCollection)
+	
+	// Check if indexes already exist
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		logger.Error("failed to list indexes", zap.Error(err))
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	existingIndexes := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existingIndexes[name] = true
+		}
+	}
+
+	// Create indexes that don't exist
+	indexesToCreate := []mongo.IndexModel{}
+
+	// 1. Index on name for group name queries (case-insensitive)
+	if !existingIndexes["name_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "name", Value: 1}},
+			Options: options.Index().
+				SetName("name_1").
+				SetUnique(true),
+		})
+	}
+
+	// 2. Index on created_at for time-based queries
+	if !existingIndexes["created_at_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "created_at", Value: -1}},
+			Options: options.Index().
+				SetName("created_at_1"),
+		})
+	}
+
+	// Create all missing indexes
+	for _, indexModel := range indexesToCreate {
+		_, err = collection.Indexes().CreateOne(ctx, indexModel)
+		if err != nil {
+			// Check if it's a duplicate key error (another instance created it)
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("beta_group index already exists (created by another instance)", 
+					zap.String("collection", AppConfig.BetaGroupCollection))
+				continue
+			}
+			logger.Error("failed to create beta_group index", 
+				zap.String("collection", AppConfig.BetaGroupCollection),
+				zap.Error(err))
+			return err
+		}
+	}
+
+	if len(indexesToCreate) > 0 {
+		logger.Info("created beta_group collection indexes", 
+			zap.String("collection", AppConfig.BetaGroupCollection),
+			zap.Int("count", len(indexesToCreate)))
+	} else {
+		logger.Debug("beta_group collection indexes already exist", 
+			zap.String("collection", AppConfig.BetaGroupCollection))
 	}
 	
 	return nil

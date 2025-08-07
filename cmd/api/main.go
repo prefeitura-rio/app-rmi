@@ -74,9 +74,11 @@ func main() {
 	// Initialize services
 	phoneMappingService := services.NewPhoneMappingService(observability.Logger())
 	configService := services.NewConfigService()
+	betaGroupService := services.NewBetaGroupService(observability.Logger())
 
 	// Initialize handlers
 	phoneHandlers := handlers.NewPhoneHandlers(observability.Logger(), phoneMappingService, configService)
+	betaGroupHandlers := handlers.NewBetaGroupHandlers(observability.Logger(), betaGroupService)
 
 	// Set Gin mode
 	if config.AppConfig.Environment == "production" {
@@ -134,6 +136,7 @@ func main() {
 		phoneGroup := v1.Group("/phone")
 		{
 			phoneGroup.GET("/:phone_number/status", phoneHandlers.GetPhoneStatus)
+			phoneGroup.GET("/:phone_number/beta-status", betaGroupHandlers.GetBetaStatus)
 		}
 
 		// Phone routes (protected)
@@ -156,6 +159,21 @@ func main() {
 		{
 			adminGroup.GET("/phone/quarantined", phoneHandlers.GetQuarantinedPhones)
 			adminGroup.GET("/phone/quarantine/stats", phoneHandlers.GetQuarantineStats)
+			
+			// Beta group management
+			adminGroup.GET("/beta/groups", betaGroupHandlers.ListGroups)
+			adminGroup.POST("/beta/groups", betaGroupHandlers.CreateGroup)
+			adminGroup.GET("/beta/groups/:group_id", betaGroupHandlers.GetGroup)
+			adminGroup.PUT("/beta/groups/:group_id", betaGroupHandlers.UpdateGroup)
+			adminGroup.DELETE("/beta/groups/:group_id", betaGroupHandlers.DeleteGroup)
+			
+			// Beta whitelist management
+			adminGroup.GET("/beta/whitelist", betaGroupHandlers.ListWhitelistedPhones)
+			adminGroup.POST("/beta/whitelist/:phone_number", betaGroupHandlers.AddToWhitelist)
+			adminGroup.DELETE("/beta/whitelist/:phone_number", betaGroupHandlers.RemoveFromWhitelist)
+			adminGroup.POST("/beta/whitelist/bulk-add", betaGroupHandlers.BulkAddToWhitelist)
+			adminGroup.POST("/beta/whitelist/bulk-remove", betaGroupHandlers.BulkRemoveFromWhitelist)
+			adminGroup.POST("/beta/whitelist/bulk-move", betaGroupHandlers.BulkMoveWhitelist)
 		}
 
 		// Config routes (public)

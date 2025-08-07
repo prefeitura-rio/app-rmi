@@ -31,10 +31,13 @@ type Config struct {
 	MaintenanceRequestCollection string `json:"mongo_maintenance_request_collection"`
 	PhoneMappingCollection string `json:"mongo_phone_mapping_collection"`
 	OptInHistoryCollection string `json:"mongo_opt_in_history_collection"`
+	BetaGroupCollection    string `json:"mongo_beta_group_collection"`
+	AuditLogsCollection    string `json:"mongo_audit_logs_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
 	PhoneQuarantineTTL   time.Duration `json:"phone_quarantine_ttl"` // 6 months
+	BetaStatusCacheTTL   time.Duration `json:"beta_status_cache_ttl"`
 
 	// WhatsApp configuration
 	WhatsAppEnabled      bool   `json:"whatsapp_enabled"`
@@ -97,6 +100,11 @@ func LoadConfig() error {
 	phoneQuarantineTTL, err := time.ParseDuration(getEnvOrDefault("PHONE_QUARANTINE_TTL", "4320h")) // 6 months
 	if err != nil {
 		return fmt.Errorf("invalid PHONE_QUARANTINE_TTL: %w", err)
+	}
+
+	betaStatusCacheTTL, err := time.ParseDuration(getEnvOrDefault("BETA_STATUS_CACHE_TTL", "24h")) // 24 hours
+	if err != nil {
+		return fmt.Errorf("invalid BETA_STATUS_CACHE_TTL: %w", err)
 	}
 
 	// WhatsApp configuration
@@ -166,11 +174,14 @@ func LoadConfig() error {
 		UserConfigCollection:   getEnvOrDefault("MONGODB_USER_CONFIG_COLLECTION", "user_config"),
 		MaintenanceRequestCollection: maintenanceRequestCollection,
 		PhoneMappingCollection: getEnvOrDefault("MONGODB_PHONE_MAPPING_COLLECTION", "phone_cpf_mappings"),
-		OptInHistoryCollection: getEnvOrDefault("MONGODB_OPT_IN_HISTORY_COLLECTION", "opt_in_history"),
+			OptInHistoryCollection: getEnvOrDefault("MONGODB_OPT_IN_HISTORY_COLLECTION", "opt_in_history"),
+	BetaGroupCollection:    getEnvOrDefault("MONGODB_BETA_GROUP_COLLECTION", "beta_groups"),
+	AuditLogsCollection:    getEnvOrDefault("MONGODB_AUDIT_LOGS_COLLECTION", "audit_logs"),
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,
 		PhoneQuarantineTTL:   phoneQuarantineTTL,
+		BetaStatusCacheTTL:   betaStatusCacheTTL,
 
 		// WhatsApp configuration
 		WhatsAppEnabled:      whatsappEnabledBool,

@@ -44,12 +44,13 @@ func (s *PhoneMappingService) GetPhoneStatus(ctx context.Context, phoneNumber st
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			// Phone number not found
-			return &models.PhoneStatusResponse{
-				PhoneNumber: phoneNumber,
-				Found:       false,
-				Quarantined: false,
-			}, nil
+					// Phone number not found
+		return &models.PhoneStatusResponse{
+			PhoneNumber:     phoneNumber,
+			Found:           false,
+			Quarantined:     false,
+			BetaWhitelisted: false,
+		}, nil
 		}
 		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
 		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
@@ -79,6 +80,20 @@ func (s *PhoneMappingService) GetPhoneStatus(ctx context.Context, phoneNumber st
 			if citizen.Nome != nil {
 				response.Name = utils.MaskName(*citizen.Nome)
 			}
+		}
+	}
+
+	// Add beta group information
+	response.BetaWhitelisted = mapping.BetaGroupID != ""
+	response.BetaGroupID = mapping.BetaGroupID
+
+	// Get beta group name if whitelisted
+	if mapping.BetaGroupID != "" {
+		betaGroupCollection := config.MongoDB.Collection(config.AppConfig.BetaGroupCollection)
+		var betaGroup models.BetaGroup
+		err = betaGroupCollection.FindOne(ctx, bson.M{"_id": mapping.BetaGroupID}).Decode(&betaGroup)
+		if err == nil {
+			response.BetaGroupName = betaGroup.Name
 		}
 	}
 

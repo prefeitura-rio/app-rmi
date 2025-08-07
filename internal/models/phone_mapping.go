@@ -13,6 +13,7 @@ type PhoneCPFMapping struct {
 	QuarantineHistory []QuarantineEvent      `bson:"quarantine_history,omitempty" json:"quarantine_history,omitempty"`
 	ValidationAttempt ValidationAttempt      `bson:"validation_attempt,omitempty" json:"validation_attempt,omitempty"`
 	Channel           string                 `bson:"channel,omitempty" json:"channel,omitempty"`
+	BetaGroupID       string                 `bson:"beta_group_id,omitempty" json:"beta_group_id,omitempty"`
 	CreatedAt         time.Time              `bson:"created_at" json:"created_at"`
 	UpdatedAt         time.Time              `bson:"updated_at" json:"updated_at"`
 }
@@ -39,6 +40,9 @@ type PhoneStatusResponse struct {
 	CPF             string     `json:"cpf,omitempty"`
 	Name            string     `json:"name,omitempty"`
 	QuarantineUntil *time.Time `json:"quarantine_until,omitempty"`
+	BetaWhitelisted bool       `json:"beta_whitelisted"`
+	BetaGroupID     string     `json:"beta_group_id,omitempty"`
+	BetaGroupName   string     `json:"beta_group_name,omitempty"`
 }
 
 // QuarantineRequest represents the request to quarantine a phone number

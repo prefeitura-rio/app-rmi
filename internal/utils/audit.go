@@ -84,7 +84,7 @@ func LogAuditEvent(ctx context.Context, auditCtx AuditContext, action, resource,
 	}
 
 	// Insert into audit collection
-	_, err := config.MongoDB.Collection("audit_logs").InsertOne(ctx, auditLog)
+	_, err := config.MongoDB.Collection(config.AppConfig.AuditLogsCollection).InsertOne(ctx, auditLog)
 	if err != nil {
 		logger.Error("failed to insert audit log", zap.Error(err))
 		return fmt.Errorf("failed to insert audit log: %w", err)

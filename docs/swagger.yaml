@@ -74,6 +74,111 @@ definitions:
       cras:
         $ref: '#/definitions/models.CRAS'
     type: object
+  models.BetaGroupListResponse:
+    properties:
+      groups:
+        items:
+          $ref: '#/definitions/models.BetaGroupResponse'
+        type: array
+      pagination:
+        $ref: '#/definitions/models.PaginationInfo'
+      total_groups:
+        type: integer
+    type: object
+  models.BetaGroupRequest:
+    properties:
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  models.BetaGroupResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.BetaStatusResponse:
+    properties:
+      beta_whitelisted:
+        type: boolean
+      group_id:
+        type: string
+      group_name:
+        type: string
+      phone_number:
+        type: string
+    type: object
+  models.BetaWhitelistBulkRemoveRequest:
+    properties:
+      phone_numbers:
+        items:
+          type: string
+        type: array
+    required:
+    - phone_numbers
+    type: object
+  models.BetaWhitelistBulkRequest:
+    properties:
+      group_id:
+        type: string
+      phone_numbers:
+        items:
+          type: string
+        type: array
+    required:
+    - group_id
+    - phone_numbers
+    type: object
+  models.BetaWhitelistListResponse:
+    properties:
+      pagination:
+        $ref: '#/definitions/models.PaginationInfo'
+      total_count:
+        type: integer
+      whitelisted:
+        items:
+          $ref: '#/definitions/models.BetaWhitelistResponse'
+        type: array
+    type: object
+  models.BetaWhitelistMoveRequest:
+    properties:
+      from_group_id:
+        type: string
+      phone_numbers:
+        items:
+          type: string
+        type: array
+      to_group_id:
+        type: string
+    required:
+    - from_group_id
+    - phone_numbers
+    - to_group_id
+    type: object
+  models.BetaWhitelistRequest:
+    properties:
+      group_id:
+        type: string
+    required:
+    - group_id
+    type: object
+  models.BetaWhitelistResponse:
+    properties:
+      added_at:
+        type: string
+      group_id:
+        type: string
+      group_name:
+        type: string
+      phone_number:
+        type: string
+    type: object
   models.BindRequest:
     properties:
       channel:
@@ -475,6 +580,12 @@ definitions:
     type: object
   models.PhoneStatusResponse:
     properties:
+      beta_group_id:
+        type: string
+      beta_group_name:
+        type: string
+      beta_whitelisted:
+        type: boolean
       cpf:
         type: string
       found:
@@ -716,6 +827,376 @@ info:
   title: API RMI
   version: "1.0"
 paths:
+  /admin/beta/groups:
+    get:
+      description: Lista todos os grupos beta com paginação (apenas administradores)
+      parameters:
+      - description: 'Página (padrão: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 10)'
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaGroupListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Listar grupos beta
+      tags:
+      - Beta Groups
+    post:
+      consumes:
+      - application/json
+      description: Cria um novo grupo beta para o chatbot (apenas administradores)
+      parameters:
+      - description: Dados do grupo
+        in: body
+        name: group
+        required: true
+        schema:
+          $ref: '#/definitions/models.BetaGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.BetaGroupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Criar grupo beta
+      tags:
+      - Beta Groups
+  /admin/beta/groups/{group_id}:
+    delete:
+      description: Exclui um grupo beta e remove todas as associações de telefones
+        (apenas administradores)
+      parameters:
+      - description: ID do grupo
+        in: path
+        name: group_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Grupo excluído com sucesso
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Excluir grupo beta
+      tags:
+      - Beta Groups
+    get:
+      description: Obtém um grupo beta por ID (apenas administradores)
+      parameters:
+      - description: ID do grupo
+        in: path
+        name: group_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaGroupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Obter grupo beta
+      tags:
+      - Beta Groups
+    put:
+      consumes:
+      - application/json
+      description: Atualiza um grupo beta existente (apenas administradores)
+      parameters:
+      - description: ID do grupo
+        in: path
+        name: group_id
+        required: true
+        type: string
+      - description: Dados do grupo
+        in: body
+        name: group
+        required: true
+        schema:
+          $ref: '#/definitions/models.BetaGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaGroupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Atualizar grupo beta
+      tags:
+      - Beta Groups
+  /admin/beta/whitelist:
+    get:
+      description: Lista todos os telefones na whitelist beta com paginação (apenas
+        administradores)
+      parameters:
+      - description: 'Página (padrão: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 10)'
+        in: query
+        name: per_page
+        type: integer
+      - description: Filtrar por ID do grupo
+        in: query
+        name: group_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaWhitelistListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Listar telefones na whitelist
+      tags:
+      - Beta Whitelist
+  /admin/beta/whitelist/{phone_number}:
+    delete:
+      description: Remove um número de telefone da whitelist beta (apenas administradores)
+      parameters:
+      - description: Número de telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Telefone removido da whitelist com sucesso
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Remover telefone da whitelist
+      tags:
+      - Beta Whitelist
+    post:
+      consumes:
+      - application/json
+      description: Adiciona um número de telefone a um grupo beta (apenas administradores)
+      parameters:
+      - description: Número de telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Dados da whitelist
+        in: body
+        name: whitelist
+        required: true
+        schema:
+          $ref: '#/definitions/models.BetaWhitelistRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.BetaWhitelistResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Adicionar telefone à whitelist
+      tags:
+      - Beta Whitelist
+  /admin/beta/whitelist/bulk-add:
+    post:
+      consumes:
+      - application/json
+      description: Adiciona múltiplos números de telefone a um grupo beta (apenas
+        administradores)
+      parameters:
+      - description: Dados da operação em lote
+        in: body
+        name: bulk
+        required: true
+        schema:
+          $ref: '#/definitions/models.BetaWhitelistBulkRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            items:
+              $ref: '#/definitions/models.BetaWhitelistResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Adicionar múltiplos telefones à whitelist
+      tags:
+      - Beta Whitelist
+  /admin/beta/whitelist/bulk-move:
+    post:
+      consumes:
+      - application/json
+      description: Move múltiplos números de telefone de um grupo beta para outro
+        (apenas administradores)
+      parameters:
+      - description: Dados da operação em lote
+        in: body
+        name: bulk
+        required: true
+        schema:
+          $ref: '#/definitions/models.BetaWhitelistMoveRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Telefones movidos com sucesso
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Mover múltiplos telefones entre grupos
+      tags:
+      - Beta Whitelist
+  /admin/beta/whitelist/bulk-remove:
+    post:
+      consumes:
+      - application/json
+      description: Remove múltiplos números de telefone da whitelist beta (apenas
+        administradores)
+      parameters:
+      - description: Dados da operação em lote
+        in: body
+        name: bulk
+        required: true
+        schema:
+          $ref: '#/definitions/models.BetaWhitelistBulkRemoveRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Telefones removidos da whitelist com sucesso
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Remover múltiplos telefones da whitelist
+      tags:
+      - Beta Whitelist
   /admin/phone/quarantine/stats:
     get:
       consumes:
@@ -1407,6 +1888,29 @@ paths:
       summary: Verificação de saúde
       tags:
       - health
+  /phone/{phone_number}/beta-status:
+    get:
+      description: Verifica se um número de telefone está na whitelist beta (com cache)
+      parameters:
+      - description: Número de telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Verificar status beta
+      tags:
+      - Beta Whitelist
   /phone/{phone_number}/bind:
     post:
       consumes:

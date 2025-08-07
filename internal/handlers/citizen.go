@@ -507,6 +507,7 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 		ctx,
 		bson.M{"cpf": cpf},
 		bson.M{"$set": bson.M{
+			"cpf":        cpf,
 			"raca":       input.Valor,
 			"updated_at": time.Now(),
 		}},
@@ -523,7 +524,9 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 
 	// Invalidate cache
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)
-	config.Redis.Del(c.Request.Context(), cacheKey)
+	if err := config.Redis.Del(c.Request.Context(), cacheKey).Err(); err != nil {
+		logger.Warn("failed to invalidate cache", zap.Error(err))
+	}
 
 	c.JSON(http.StatusOK, SuccessResponse{Message: "ethnicity updated successfully"})
 }
@@ -781,6 +784,12 @@ func UpdateOptIn(c *gin.Context) {
 		logger.Error("failed to update opt-in status", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update opt-in status"})
 		return
+	}
+
+	// Invalidate citizen cache since opt-in status affects merged data
+	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	if err := config.Redis.Del(c.Request.Context(), cacheKey).Err(); err != nil {
+		logger.Warn("failed to invalidate cache", zap.Error(err))
 	}
 
 	c.JSON(http.StatusOK, input)

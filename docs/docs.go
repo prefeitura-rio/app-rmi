@@ -24,6 +24,560 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/admin/beta/groups": {
+            "get": {
+                "description": "Lista todos os grupos beta com paginação (apenas administradores)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Groups"
+                ],
+                "summary": "Listar grupos beta",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Página (padrão: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página (padrão: 10)",
+                        "name": "per_page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaGroupListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Cria um novo grupo beta para o chatbot (apenas administradores)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Groups"
+                ],
+                "summary": "Criar grupo beta",
+                "parameters": [
+                    {
+                        "description": "Dados do grupo",
+                        "name": "group",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaGroupResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/beta/groups/{group_id}": {
+            "get": {
+                "description": "Obtém um grupo beta por ID (apenas administradores)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Groups"
+                ],
+                "summary": "Obter grupo beta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do grupo",
+                        "name": "group_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaGroupResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Atualiza um grupo beta existente (apenas administradores)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Groups"
+                ],
+                "summary": "Atualizar grupo beta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do grupo",
+                        "name": "group_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dados do grupo",
+                        "name": "group",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaGroupResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Exclui um grupo beta e remove todas as associações de telefones (apenas administradores)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Groups"
+                ],
+                "summary": "Excluir grupo beta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do grupo",
+                        "name": "group_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Grupo excluído com sucesso"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/beta/whitelist": {
+            "get": {
+                "description": "Lista todos os telefones na whitelist beta com paginação (apenas administradores)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Whitelist"
+                ],
+                "summary": "Listar telefones na whitelist",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Página (padrão: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página (padrão: 10)",
+                        "name": "per_page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtrar por ID do grupo",
+                        "name": "group_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaWhitelistListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/beta/whitelist/bulk-add": {
+            "post": {
+                "description": "Adiciona múltiplos números de telefone a um grupo beta (apenas administradores)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Whitelist"
+                ],
+                "summary": "Adicionar múltiplos telefones à whitelist",
+                "parameters": [
+                    {
+                        "description": "Dados da operação em lote",
+                        "name": "bulk",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaWhitelistBulkRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.BetaWhitelistResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/beta/whitelist/bulk-move": {
+            "post": {
+                "description": "Move múltiplos números de telefone de um grupo beta para outro (apenas administradores)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Whitelist"
+                ],
+                "summary": "Mover múltiplos telefones entre grupos",
+                "parameters": [
+                    {
+                        "description": "Dados da operação em lote",
+                        "name": "bulk",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaWhitelistMoveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Telefones movidos com sucesso"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/beta/whitelist/bulk-remove": {
+            "post": {
+                "description": "Remove múltiplos números de telefone da whitelist beta (apenas administradores)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Whitelist"
+                ],
+                "summary": "Remover múltiplos telefones da whitelist",
+                "parameters": [
+                    {
+                        "description": "Dados da operação em lote",
+                        "name": "bulk",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaWhitelistBulkRemoveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Telefones removidos da whitelist com sucesso"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/beta/whitelist/{phone_number}": {
+            "post": {
+                "description": "Adiciona um número de telefone a um grupo beta (apenas administradores)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Whitelist"
+                ],
+                "summary": "Adicionar telefone à whitelist",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número de telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dados da whitelist",
+                        "name": "whitelist",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaWhitelistRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaWhitelistResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Remove um número de telefone da whitelist beta (apenas administradores)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Whitelist"
+                ],
+                "summary": "Remover telefone da whitelist",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número de telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Telefone removido da whitelist com sucesso"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/phone/quarantine/stats": {
             "get": {
                 "security": [
@@ -1073,6 +1627,41 @@ const docTemplate = `{
                 }
             }
         },
+        "/phone/{phone_number}/beta-status": {
+            "get": {
+                "description": "Verifica se um número de telefone está na whitelist beta (com cache)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Beta Whitelist"
+                ],
+                "summary": "Verificar status beta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número de telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/phone/{phone_number}/bind": {
             "post": {
                 "security": [
@@ -1747,6 +2336,167 @@ const docTemplate = `{
                 }
             }
         },
+        "models.BetaGroupListResponse": {
+            "type": "object",
+            "properties": {
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.BetaGroupResponse"
+                    }
+                },
+                "pagination": {
+                    "$ref": "#/definitions/models.PaginationInfo"
+                },
+                "total_groups": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.BetaGroupRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.BetaGroupResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.BetaStatusResponse": {
+            "type": "object",
+            "properties": {
+                "beta_whitelisted": {
+                    "type": "boolean"
+                },
+                "group_id": {
+                    "type": "string"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "phone_number": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.BetaWhitelistBulkRemoveRequest": {
+            "type": "object",
+            "required": [
+                "phone_numbers"
+            ],
+            "properties": {
+                "phone_numbers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "models.BetaWhitelistBulkRequest": {
+            "type": "object",
+            "required": [
+                "group_id",
+                "phone_numbers"
+            ],
+            "properties": {
+                "group_id": {
+                    "type": "string"
+                },
+                "phone_numbers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "models.BetaWhitelistListResponse": {
+            "type": "object",
+            "properties": {
+                "pagination": {
+                    "$ref": "#/definitions/models.PaginationInfo"
+                },
+                "total_count": {
+                    "type": "integer"
+                },
+                "whitelisted": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.BetaWhitelistResponse"
+                    }
+                }
+            }
+        },
+        "models.BetaWhitelistMoveRequest": {
+            "type": "object",
+            "required": [
+                "from_group_id",
+                "phone_numbers",
+                "to_group_id"
+            ],
+            "properties": {
+                "from_group_id": {
+                    "type": "string"
+                },
+                "phone_numbers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "to_group_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.BetaWhitelistRequest": {
+            "type": "object",
+            "required": [
+                "group_id"
+            ],
+            "properties": {
+                "group_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.BetaWhitelistResponse": {
+            "type": "object",
+            "properties": {
+                "added_at": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "string"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "phone_number": {
+                    "type": "string"
+                }
+            }
+        },
         "models.BindRequest": {
             "type": "object",
             "required": [
@@ -2360,6 +3110,15 @@ const docTemplate = `{
         "models.PhoneStatusResponse": {
             "type": "object",
             "properties": {
+                "beta_group_id": {
+                    "type": "string"
+                },
+                "beta_group_name": {
+                    "type": "string"
+                },
+                "beta_whitelisted": {
+                    "type": "boolean"
+                },
                 "cpf": {
                     "type": "string"
                 },
