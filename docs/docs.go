@@ -24,6 +24,112 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/admin/phone/quarantine/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna estatísticas sobre números de telefone em quarentena (apenas administradores)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Estatísticas de quarentena",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.QuarantineStats"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/phone/quarantined": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna lista paginada de números de telefone em quarentena (apenas administradores)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Listar telefones em quarentena",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Página (padrão: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página (padrão: 20, máximo: 100)",
+                        "name": "per_page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Filtrar apenas quarentenas expiradas",
+                        "name": "expired",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.QuarantinedListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/ethnicity/options": {
             "get": {
                 "description": "Retorna a lista de opções válidas de etnia para autodeclaração. Esta lista é usada para validar as atualizações de etnia autodeclarada.",
@@ -891,7 +997,7 @@ const docTemplate = `{
         },
         "/config/channels": {
             "get": {
-                "description": "Retorna a lista de canais de comunicação disponíveis",
+                "description": "Retorna lista de canais disponíveis para opt-in/opt-out",
                 "consumes": [
                     "application/json"
                 ],
@@ -906,7 +1012,10 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.ChannelsResponse"
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -914,7 +1023,7 @@ const docTemplate = `{
         },
         "/config/opt-out-reasons": {
             "get": {
-                "description": "Retorna a lista de motivos disponíveis para opt-out",
+                "description": "Retorna lista de motivos disponíveis para opt-out",
                 "consumes": [
                     "application/json"
                 ],
@@ -929,7 +1038,10 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.OptOutReasonsResponse"
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.OptOutReason"
+                            }
                         }
                     }
                 }
@@ -961,8 +1073,77 @@ const docTemplate = `{
                 }
             }
         },
+        "/phone/{phone_number}/bind": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Vincula um número de telefone a um CPF sem definir opt-in",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "phone"
+                ],
+                "summary": "Vincular telefone a CPF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dados da vinculação",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.BindRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.BindResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/phone/{phone_number}/citizen": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Busca um cidadão por número de telefone e retorna dados mascarados",
                 "consumes": [
                     "application/json"
@@ -977,7 +1158,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Phone number",
+                        "description": "Número do telefone",
                         "name": "phone_number",
                         "in": "path",
                         "required": true
@@ -992,6 +1173,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -1012,7 +1199,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Processa opt-in para um número de telefone com validação de CPF",
+                "description": "Realiza opt-in para receber notificações",
                 "consumes": [
                     "application/json"
                 ],
@@ -1022,17 +1209,17 @@ const docTemplate = `{
                 "tags": [
                     "phone"
                 ],
-                "summary": "Opt-in para um número de telefone",
+                "summary": "Realizar opt-in",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Phone number",
+                        "description": "Número do telefone",
                         "name": "phone_number",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Opt-in data",
+                        "description": "Dados do opt-in",
                         "name": "data",
                         "in": "body",
                         "required": true,
@@ -1050,12 +1237,6 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -1082,7 +1263,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Processa opt-out para um número de telefone",
+                "description": "Realiza opt-out para parar de receber notificações",
                 "consumes": [
                     "application/json"
                 ],
@@ -1092,17 +1273,17 @@ const docTemplate = `{
                 "tags": [
                     "phone"
                 ],
-                "summary": "Opt-out para um número de telefone",
+                "summary": "Realizar opt-out",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Phone number",
+                        "description": "Número do telefone",
                         "name": "phone_number",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Opt-out data",
+                        "description": "Dados do opt-out",
                         "name": "data",
                         "in": "body",
                         "required": true,
@@ -1124,8 +1305,110 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized",
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/phone/{phone_number}/quarantine": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Coloca um número de telefone em quarentena (apenas administradores)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "phone"
+                ],
+                "summary": "Colocar telefone em quarentena",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.QuarantineResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Libera um número de telefone da quarentena (apenas administradores)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "phone"
+                ],
+                "summary": "Liberar telefone da quarentena",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.QuarantineResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -1152,7 +1435,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Rejeita um registro e bloqueia o mapeamento phone-CPF",
+                "description": "Rejeita um registro e bloqueia o mapeamento telefone-CPF",
                 "consumes": [
                     "application/json"
                 ],
@@ -1166,13 +1449,13 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Phone number",
+                        "description": "Número do telefone",
                         "name": "phone_number",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Rejection data",
+                        "description": "Dados da rejeição",
                         "name": "data",
                         "in": "body",
                         "required": true,
@@ -1194,12 +1477,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -1215,9 +1492,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/phone/{phone_number}/validate-registration": {
-            "post": {
-                "description": "Valida nome, CPF e data de nascimento contra dados base",
+        "/phone/{phone_number}/status": {
+            "get": {
+                "description": "Verifica o status de um número de telefone, incluindo se está em quarentena",
                 "consumes": [
                     "application/json"
                 ],
@@ -1227,17 +1504,66 @@ const docTemplate = `{
                 "tags": [
                     "phone"
                 ],
-                "summary": "Validar dados de registro",
+                "summary": "Verificar status do número de telefone",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Phone number",
+                        "description": "Número do telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PhoneStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/phone/{phone_number}/validate-registration": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Valida dados de registro contra a base de dados oficial",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "phone"
+                ],
+                "summary": "Validar registro de cidadão",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do telefone",
                         "name": "phone_number",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Registration data",
+                        "description": "Dados para validação",
                         "name": "data",
                         "in": "body",
                         "required": true,
@@ -1255,6 +1581,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -1415,6 +1747,41 @@ const docTemplate = `{
                 }
             }
         },
+        "models.BindRequest": {
+            "type": "object",
+            "required": [
+                "channel",
+                "cpf"
+            ],
+            "properties": {
+                "channel": {
+                    "type": "string"
+                },
+                "cpf": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.BindResponse": {
+            "type": "object",
+            "properties": {
+                "cpf": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "opt_in": {
+                    "type": "boolean"
+                },
+                "phone_number": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "models.CRAS": {
             "type": "object",
             "properties": {
@@ -1446,28 +1813,6 @@ const docTemplate = `{
                 },
                 "status_cadastral": {
                     "type": "string"
-                }
-            }
-        },
-        "models.Channel": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.ChannelsResponse": {
-            "type": "object",
-            "properties": {
-                "channels": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.Channel"
-                    }
                 }
             }
         },
@@ -1927,17 +2272,6 @@ const docTemplate = `{
                 }
             }
         },
-        "models.OptOutReasonsResponse": {
-            "type": "object",
-            "properties": {
-                "reasons": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.OptOutReason"
-                    }
-                }
-            }
-        },
         "models.OptOutRequest": {
             "type": "object",
             "required": [
@@ -1989,6 +2323,23 @@ const docTemplate = `{
                 }
             }
         },
+        "models.PaginationInfo": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer"
+                },
+                "per_page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "total_pages": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.PhoneCitizenResponse": {
             "type": "object",
             "properties": {
@@ -2003,6 +2354,29 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "models.PhoneStatusResponse": {
+            "type": "object",
+            "properties": {
+                "cpf": {
+                    "type": "string"
+                },
+                "found": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone_number": {
+                    "type": "string"
+                },
+                "quarantine_until": {
+                    "type": "string"
+                },
+                "quarantined": {
+                    "type": "boolean"
                 }
             }
         },
@@ -2036,6 +2410,77 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "nome": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.QuarantineResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "phone_number": {
+                    "type": "string"
+                },
+                "quarantine_until": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.QuarantineStats": {
+            "type": "object",
+            "properties": {
+                "active_quarantines": {
+                    "type": "integer"
+                },
+                "expired_quarantines": {
+                    "type": "integer"
+                },
+                "quarantine_history_total": {
+                    "type": "integer"
+                },
+                "quarantines_with_cpf": {
+                    "type": "integer"
+                },
+                "quarantines_without_cpf": {
+                    "type": "integer"
+                },
+                "total_quarantined": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.QuarantinedListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.QuarantinedPhone"
+                    }
+                },
+                "pagination": {
+                    "$ref": "#/definitions/models.PaginationInfo"
+                }
+            }
+        },
+        "models.QuarantinedPhone": {
+            "type": "object",
+            "properties": {
+                "cpf": {
+                    "type": "string"
+                },
+                "expired": {
+                    "type": "boolean"
+                },
+                "phone_number": {
+                    "type": "string"
+                },
+                "quarantine_until": {
                     "type": "string"
                 }
             }
@@ -2199,7 +2644,7 @@ const docTemplate = `{
         "models.UserConfigOptInResponse": {
             "type": "object",
             "properties": {
-                "optin": {
+                "opt_in": {
                     "type": "boolean"
                 }
             }

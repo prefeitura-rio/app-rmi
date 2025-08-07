@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # API Testing Script for RMI API
-# Usage: ./scripts/test_api.sh <CPF> <BEARER_TOKEN> [PHONE_NUMBER]
+# Usage: ./scripts/test_api.sh <CPF> <BEARER_TOKEN> [--skip-phone]
 # 
 # This script tests all API endpoints including:
 # - Health and configuration endpoints
@@ -9,8 +9,10 @@
 # - Phone-based endpoints for WhatsApp bot
 # - Data verification for updates
 # 
-# Note: Random data is generated for address and email updates to avoid 409 conflicts
-# when running the script multiple times with the same CPF.
+# Note: 
+# - Random data is generated for address and email updates to avoid 409 conflicts
+# - A random phone number is generated automatically for testing
+# - Use --skip-phone to skip phone verification tests
 
 # set -e  # Disabled to prevent script from exiting on errors
 
@@ -25,7 +27,6 @@ NC='\033[0m' # No Color
 SKIP_PHONE=false
 CPF=""
 BEARER_TOKEN=""
-PHONE_NUMBER=""
 
 # Parse positional arguments and flags
 while [[ $# -gt 0 ]]; do
@@ -39,13 +40,25 @@ while [[ $# -gt 0 ]]; do
                 CPF="$1"
             elif [[ -z "$BEARER_TOKEN" ]]; then
                 BEARER_TOKEN="$1"
-            elif [[ -z "$PHONE_NUMBER" ]]; then
-                PHONE_NUMBER="$1"
             fi
             shift
             ;;
     esac
 done
+
+# Generate a random phone number for testing
+generate_random_phone() {
+    # Generate a random Brazilian phone number: +55 11 9XXXX-XXXX
+    local ddi="55"
+    local ddd="11"
+    local prefix="9"
+    local number1=$((RANDOM % 9000 + 1000))  # 4 digits
+    local number2=$((RANDOM % 9000 + 1000))  # 4 digits
+    echo "+${ddi}${ddd}${prefix}${number1}${number2}"
+}
+
+PHONE_NUMBER=$(generate_random_phone)
+echo -e "${BLUE}📱 Generated random phone number for testing: $PHONE_NUMBER${NC}"
 
 # Configuration
 API_BASE_URL="http://localhost:8080/v1"
@@ -53,9 +66,9 @@ API_BASE_URL="http://localhost:8080/v1"
 # Validation
 if [[ -z "$CPF" ]]; then
     echo -e "${RED}Error: CPF is required${NC}"
-    echo "Usage: $0 <CPF> <BEARER_TOKEN> [PHONE_NUMBER] [--skip-phone]"
-    echo "Example: $0 12345678901 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' '+5511999887766'"
-    echo "Example: $0 12345678901 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' '+5511999887766' --skip-phone"
+    echo "Usage: $0 <CPF> <BEARER_TOKEN> [--skip-phone]"
+    echo "Example: $0 12345678901 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'"
+    echo "Example: $0 12345678901 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' --skip-phone"
     exit 1
 fi
 
@@ -127,7 +140,7 @@ make_request() {
     if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]] || [[ "$status_code" -eq 404 ]]; then
         print_result "$test_name" "PASS" "$response_body"
         # Store response body in a temporary file for verification
-        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]]; then
+        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]]; then
             # Create a safe filename by replacing spaces and special chars with underscores
             local safe_filename=$(echo "$test_name" | sed 's/[^a-zA-Z0-9]/_/g')
             echo "$response_body" > "/tmp/api_response_${safe_filename}"
@@ -189,13 +202,8 @@ make_request "GET" "/health" "" "Health Check"
 make_request "GET" "/citizen/ethnicity/options" "" "Get Ethnicity Options"
 
 # Test 3: Validate Phone Number (no auth required)
-if [[ -n "$PHONE_NUMBER" ]]; then
-    phone_data="{\"phone\":\"$PHONE_NUMBER\"}"
-    make_request "POST" "/validate/phone" "$phone_data" "Validate Phone Number"
-else
-    echo -e "${YELLOW}⚠️  Skipping phone validation (no phone number provided)${NC}"
-    echo ""
-fi
+phone_data="{\"phone\":\"$PHONE_NUMBER\"}"
+make_request "POST" "/validate/phone" "$phone_data" "Validate Phone Number"
 
 # Test 4: Get Citizen Data (Original)
 echo -e "${BLUE}📋 Getting original citizen data for verification...${NC}"
@@ -267,15 +275,70 @@ firstlogin_data='{
 make_request "PUT" "/citizen/$CPF/firstlogin" "$firstlogin_data" "Update First Login"
 
 # Test 13: Update Opt-In (change to true to test update)
-optin_data='{
-    "optin": true
-}'
+# First get current opt-in status to ensure we make a change
+current_optin_response=$(curl -s -H "Authorization: $BEARER_TOKEN" "$API_BASE_URL/citizen/$CPF/optin")
+current_optin=$(echo "$current_optin_response" | jq -r '.opt_in' 2>/dev/null)
+
+# Set to opposite of current value to ensure a change
+if [[ "$current_optin" == "true" ]]; then
+    new_optin_value="false"
+else
+    new_optin_value="true"
+fi
+
+optin_data="{
+    \"opt_in\": $new_optin_value
+}"
 make_request "PUT" "/citizen/$CPF/optin" "$optin_data" "Update Opt-In"
 
+# Function to get verification code from MongoDB
+get_verification_code() {
+    local cpf="$1"
+    local phone_number="$2"
+    
+    # Get MongoDB connection details from environment
+    local mongo_uri="${MONGODB_TEST_URI:-mongodb://localhost:27017/rmi}"
+    local collection="${MONGODB_PHONE_VERIFICATION_COLLECTION:-phone_verifications}"
+        
+    # Format phone number for storage (remove + and format as stored in DB)
+    local storage_phone="${phone_number#+}"  # Remove leading +
+    
+    # Debug: show what we're looking for
+    echo -e "${BLUE}🔍 Looking for verification code with:${NC}" >&2
+    echo -e "${BLUE}   CPF: $cpf${NC}" >&2
+    echo -e "${BLUE}   Phone: $storage_phone${NC}" >&2
+    
+    # Try to connect to MongoDB with authentication
+    local result=""
+    result=$(mongosh "$mongo_uri" --quiet --eval "db.$collection.find({\"phone_number\": \"$storage_phone\"}).sort({\"created_at\": -1}).limit(1).toArray()" 2>/dev/null | tr -d '\n')
+    
+    # Debug: print the result for troubleshooting
+    echo -e "${BLUE}🔍 MongoDB query result: $result${NC}" >&2
+    
+    # Extract the code from the result using jq for proper JSON parsing
+    local code=""
+    echo -e "${BLUE}🔍 Raw MongoDB result: $result${NC}" >&2
+    
+    if echo "$result" | grep -q "code:"; then
+        # Extract the code using a simple grep and sed approach
+        code=$(echo "$result" | grep -o "code: '[^']*'" | sed "s/code: '\([^']*\)'/\1/")
+        echo -e "${BLUE}🔍 Extracted code: $code${NC}" >&2
+    fi
+    
+    if [[ -n "$code" ]]; then
+        echo "$code"
+        return 0
+    else
+        echo -e "${YELLOW}⚠️  No verification code found in database${NC}" >&2
+        echo -e "${YELLOW}💡 This might be due to MongoDB authentication issues or the verification code not being stored${NC}" >&2
+        return 1
+    fi
+}
+
 # Test 14: Update Phone (requires verification)
-if [[ -n "$PHONE_NUMBER" && "$SKIP_PHONE" != "true" ]]; then
-    # Extract DDI, DDD, and number from the phone number
-    # Assuming format like +5511999887766
+if [[ "$SKIP_PHONE" != "true" ]]; then
+    # Extract DDI, DDD, and number from the generated phone number
+    # Format: +5511999887766
     ddi="${PHONE_NUMBER:1:2}"  # 55
     ddd="${PHONE_NUMBER:3:2}"  # 11
     valor="${PHONE_NUMBER:5}"  # 999887766
@@ -287,36 +350,28 @@ if [[ -n "$PHONE_NUMBER" && "$SKIP_PHONE" != "true" ]]; then
     }"
     make_request "PUT" "/citizen/$CPF/phone" "$phone_data" "Update Phone"
     
-    # Wait for user to input verification code
-    echo -e "${YELLOW}📱 Phone update request sent!${NC}"
-    echo -e "${YELLOW}Please check your WhatsApp for the verification code.${NC}"
-    echo ""
+    # Wait a moment for the verification code to be stored in MongoDB
+    echo -e "${BLUE}⏳ Waiting for verification code to be stored...${NC}"
+    sleep 2
     
-    read -p "Enter the verification code you received: " user_verification_code
+    # Get verification code from MongoDB
+    echo -e "${BLUE}🔍 Retrieving verification code from database...${NC}"
+    verification_code=$(get_verification_code "$CPF" "$PHONE_NUMBER")
     
-    if [[ -n "$user_verification_code" ]]; then
-        echo -e "${BLUE}Testing phone verification with code: $user_verification_code${NC}"
-        verification_data="{
-            \"code\": \"$user_verification_code\",
-            \"ddi\": \"$ddi\",
-            \"ddd\": \"$ddd\",
-            \"valor\": \"$valor\"
-        }"
-        make_request "POST" "/citizen/$CPF/phone/validate" "$verification_data" "Validate Phone Verification Code"
-        
-        # Verify Phone Update after verification
-        echo -e "${BLUE}📋 Getting final citizen data to verify phone update...${NC}"
-        make_request "GET" "/citizen/$CPF" "" "Get Citizen Data (After Phone Verification)"
-        # Note: Phone verification will be handled in the verification section
-    else
-        echo -e "${YELLOW}⚠️  No verification code provided, skipping phone verification${NC}"
-        echo ""
-    fi
-elif [[ "$SKIP_PHONE" == "true" ]]; then
-    echo -e "${YELLOW}⚠️  Skipping phone update and verification (--skip-phone flag used)${NC}"
-    echo ""
+    echo -e "${GREEN}✅ Found verification code: $verification_code${NC}"
+    verification_data="{
+        \"code\": \"$verification_code\",
+        \"ddi\": \"$ddi\",
+        \"ddd\": \"$ddd\",
+        \"valor\": \"$valor\"
+    }"
+    make_request "POST" "/citizen/$CPF/phone/validate" "$verification_data" "Validate Phone Verification Code"
+    
+    # Verify Phone Update after verification
+    echo -e "${BLUE}📋 Getting final citizen data to verify phone update...${NC}"
+    make_request "GET" "/citizen/$CPF" "" "Get Citizen Data (After Phone Verification)"
 else
-    echo -e "${YELLOW}⚠️  Skipping phone update and verification (no phone number provided)${NC}"
+    echo -e "${YELLOW}⚠️  Skipping phone update and verification (--skip-phone flag used)${NC}"
     echo ""
 fi
 
@@ -340,16 +395,10 @@ make_request "GET" "/config/channels" "" "Get Available Channels"
 # Test 20: Get Opt-Out Reasons
 make_request "GET" "/config/opt-out-reasons" "" "Get Opt-Out Reasons"
 
-# Test 21: Get Citizen by Phone (if phone number provided)
-if [[ -n "$PHONE_NUMBER" ]]; then
-    make_request "GET" "/phone/$PHONE_NUMBER/citizen" "" "Get Citizen by Phone"
-else
-    echo -e "${YELLOW}⚠️  Skipping phone-based tests (no phone number provided)${NC}"
-    echo ""
-fi
+# Test 21: Get Citizen by Phone
+make_request "GET" "/phone/$PHONE_NUMBER/citizen" "" "Get Citizen by Phone"
 
-# Test 22: Validate Registration (if phone number provided)
-if [[ -n "$PHONE_NUMBER" ]]; then
+# Test 22: Validate Registration
     registration_data="{
         \"name\": \"João Silva Santos\",
         \"cpf\": \"$CPF\",
@@ -358,7 +407,7 @@ if [[ -n "$PHONE_NUMBER" ]]; then
     }"
     make_request "POST" "/phone/$PHONE_NUMBER/validate-registration" "$registration_data" "Validate Registration"
     
-    # Test 22.5: Create phone-CPF mapping for testing (if phone number provided)
+    # Test 22.5: Create phone-CPF mapping for testing
     echo -e "${BLUE}🔗 Setting up Phone-CPF Mapping for Testing...${NC}"
     echo "=================================================="
     
@@ -382,13 +431,8 @@ if [[ -n "$PHONE_NUMBER" ]]; then
     
     echo -e "${GREEN}✅ Phone-CPF mapping setup completed${NC}"
     echo ""
-else
-    echo -e "${YELLOW}⚠️  Skipping registration validation (no phone number provided)${NC}"
-    echo ""
-fi
 
-# Test 23: Test Opt-out with non-blocking reason (if phone number provided)
-if [[ -n "$PHONE_NUMBER" ]]; then
+# Test 23: Test Opt-out with non-blocking reason
     echo -e "${BLUE}🔄 Testing Non-blocking Opt-out Behavior...${NC}"
     echo "=================================================="
     
@@ -434,13 +478,8 @@ if [[ -n "$PHONE_NUMBER" ]]; then
     
     echo -e "${GREEN}✅ Non-blocking opt-out tests completed${NC}"
     echo ""
-else
-    echo -e "${YELLOW}⚠️  Skipping opt-out test (no phone number provided)${NC}"
-    echo ""
-fi
 
-# Test 24: Test Opt-out with blocking reason (if phone number provided)
-if [[ -n "$PHONE_NUMBER" ]]; then
+# Test 24: Test Opt-out with blocking reason
     echo -e "${BLUE}🔒 Testing Blocking Opt-out Behavior...${NC}"
     echo "=================================================="
     
@@ -461,13 +500,8 @@ if [[ -n "$PHONE_NUMBER" ]]; then
         \"reason\": \"incorrect_person\"
     }"
     make_request "POST" "/phone/$PHONE_NUMBER/opt-out" "$optout_blocking_data" "Opt-out (Blocking)"
-else
-    echo -e "${YELLOW}⚠️  Skipping opt-out blocking test (no phone number provided)${NC}"
-    echo ""
-fi
 
-# Test 25: Verify phone mapping is blocked after incorrect_person opt-out (if phone number provided)
-if [[ -n "$PHONE_NUMBER" ]]; then
+# Test 25: Verify phone mapping is blocked after incorrect_person opt-out
     echo -e "${BLUE}🔒 Testing CPF-Phone Mapping Blocking Logic...${NC}"
     echo "=================================================="
     
@@ -486,7 +520,7 @@ if [[ -n "$PHONE_NUMBER" ]]; then
     # Test opt-in with different CPF (should work - mapping is blocked but not the phone)
     # Note: Using a different CPF that exists in the test data
     optin_different_cpf="{
-        \"cpf\": \"98765432109\",
+        \"cpf\": \"45049725810\",
         \"channel\": \"whatsapp\",
         \"validation_result\": {
             \"valid\": true
@@ -496,10 +530,6 @@ if [[ -n "$PHONE_NUMBER" ]]; then
     
     echo -e "${GREEN}✅ CPF-Phone mapping blocking tests completed${NC}"
     echo ""
-else
-    echo -e "${YELLOW}⚠️  Skipping CPF-phone mapping blocking tests (no phone number provided)${NC}"
-    echo ""
-fi
 
 # Verification Section
 echo -e "${BLUE}🔍 Verifying Data Updates...${NC}"
@@ -564,7 +594,7 @@ fi
 if [[ -f "/tmp/api_response_Get_Opt_In_Status__Original_" ]] && [[ -f "/tmp/api_response_Get_Opt_In_Status__Updated_" ]]; then
     original_optin_data=$(cat "/tmp/api_response_Get_Opt_In_Status__Original_")
     updated_optin_data=$(cat "/tmp/api_response_Get_Opt_In_Status__Updated_")
-    verify_update "Opt-In Update" "$original_optin_data" "$updated_optin_data" ".optin"
+    verify_update "Opt-In Update" "$original_optin_data" "$updated_optin_data" ".opt_in"
 else
     echo -e "${YELLOW}⚠️  Skipping opt-in verification (data not available)${NC}"
     echo "  Looking for files: /tmp/api_response_Get_Opt_In_Status__Original_ and /tmp/api_response_Get_Opt_In_Status__Updated_"
@@ -618,6 +648,88 @@ else
     echo -e "${YELLOW}⚠️  Skipping CPF-Phone mapping verification (opt-out responses not available)${NC}"
     echo -e "${YELLOW}📝 This may be due to missing active phone-CPF mapping or test failures${NC}"
 fi
+
+echo -e "${BLUE}=== Testando Funcionalidades de Quarentena ===${NC}"
+
+# Test 50: Get Phone Status (not found)
+echo -e "${BLUE}Test 50: Get Phone Status (not found)${NC}"
+make_request "GET" "/phone/+5511999887766/status" "" "Get Phone Status (not found)"
+
+# Test 51: Bind Phone to CPF (new binding)
+echo -e "${BLUE}Test 51: Bind Phone to CPF (new binding)${NC}"
+bind_data='{
+    "cpf": "'$CPF'",
+    "channel": "whatsapp"
+}'
+make_request "POST" "/phone/+5511999887766/bind" "$bind_data" "Bind Phone to CPF"
+
+# Test 52: Get Phone Status (found, not quarantined)
+echo -e "${BLUE}Test 52: Get Phone Status (found, not quarantined)${NC}"
+make_request "GET" "/phone/+5511999887766/status" "" "Get Phone Status (found)"
+
+# Test 53: Quarantine Phone (admin only)
+echo -e "${BLUE}Test 53: Quarantine Phone (admin only)${NC}"
+make_request "POST" "/phone/+5511999887766/quarantine" "{}" "Quarantine Phone"
+
+# Test 54: Get Phone Status (found, quarantined)
+echo -e "${BLUE}Test 54: Get Phone Status (found, quarantined)${NC}"
+make_request "GET" "/phone/+5511999887766/status" "" "Get Phone Status (quarantined)"
+
+# Test 55: Get Quarantined Phones List (admin only)
+echo -e "${BLUE}Test 55: Get Quarantined Phones List (admin only)${NC}"
+make_request "GET" "/admin/phone/quarantined" "" "Get Quarantined Phones List"
+
+# Test 56: Get Quarantine Stats (admin only)
+echo -e "${BLUE}Test 56: Get Quarantine Stats (admin only)${NC}"
+make_request "GET" "/admin/phone/quarantine/stats" "" "Get Quarantine Stats"
+
+# Test 57: Release Quarantine (admin only)
+echo -e "${BLUE}Test 57: Release Quarantine (admin only)${NC}"
+make_request "DELETE" "/phone/+5511999887766/quarantine" "" "Release Quarantine"
+
+# Test 58: Get Phone Status (found, released from quarantine)
+echo -e "${BLUE}Test 58: Get Phone Status (found, released from quarantine)${NC}"
+make_request "GET" "/phone/+5511999887766/status" "" "Get Phone Status (released)"
+
+# Test 59: Quarantine Phone Without CPF (admin only)
+echo -e "${BLUE}Test 59: Quarantine Phone Without CPF (admin only)${NC}"
+make_request "POST" "/phone/+5511999888777/quarantine" "{}" "Quarantine Phone Without CPF"
+
+# Test 60: Get Phone Status (quarantined without CPF)
+echo -e "${BLUE}Test 60: Get Phone Status (quarantined without CPF)${NC}"
+make_request "GET" "/phone/+5511999888777/status" "" "Get Phone Status (quarantined without CPF)"
+
+# Test 61: Bind Phone to CPF (releases quarantine)
+echo -e "${BLUE}Test 61: Bind Phone to CPF (releases quarantine)${NC}"
+bind_data='{
+    "cpf": "'$CPF'",
+    "channel": "whatsapp"
+}'
+make_request "POST" "/phone/+5511999888777/bind" "$bind_data" "Bind Phone to CPF (releases quarantine)"
+
+# Test 62: Get Phone Status (found, released by binding)
+echo -e "${BLUE}Test 62: Get Phone Status (found, released by binding)${NC}"
+make_request "GET" "/phone/+5511999888777/status" "" "Get Phone Status (released by binding)"
+
+# Test 63: Opt-in (releases quarantine)
+echo -e "${BLUE}Test 63: Opt-in (releases quarantine)${NC}"
+optin_data='{
+    "cpf": "'$CPF'",
+    "channel": "whatsapp"
+}'
+make_request "POST" "/phone/+5511999887766/opt-in" "$optin_data" "Opt-in (releases quarantine)"
+
+# Test 64: Get Phone Status (found, active after opt-in)
+echo -e "${BLUE}Test 64: Get Phone Status (found, active after opt-in)${NC}"
+make_request "GET" "/phone/+5511999887766/status" "" "Get Phone Status (active after opt-in)"
+
+# Test 65: Get Quarantined Phones with Pagination (admin only)
+echo -e "${BLUE}Test 65: Get Quarantined Phones with Pagination (admin only)${NC}"
+make_request "GET" "/admin/phone/quarantined?page=1&per_page=10" "" "Get Quarantined Phones with Pagination"
+
+# Test 66: Get Quarantined Phones (expired filter)
+echo -e "${BLUE}Test 66: Get Quarantined Phones (expired filter)${NC}"
+make_request "GET" "/admin/phone/quarantined?expired=true" "" "Get Quarantined Phones (expired)"
 
 # Clean up temporary files
 rm -f /tmp/api_response_*

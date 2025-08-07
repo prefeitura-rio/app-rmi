@@ -34,6 +34,7 @@ type Config struct {
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
+	PhoneQuarantineTTL   time.Duration `json:"phone_quarantine_ttl"` // 6 months
 
 	// WhatsApp configuration
 	WhatsAppEnabled      bool   `json:"whatsapp_enabled"`
@@ -91,6 +92,11 @@ func LoadConfig() error {
 	phoneVerificationTTL, err := time.ParseDuration(getEnvOrDefault("PHONE_VERIFICATION_TTL", "5m"))
 	if err != nil {
 		return fmt.Errorf("invalid PHONE_VERIFICATION_TTL: %w", err)
+	}
+
+	phoneQuarantineTTL, err := time.ParseDuration(getEnvOrDefault("PHONE_QUARANTINE_TTL", "4320h")) // 6 months
+	if err != nil {
+		return fmt.Errorf("invalid PHONE_QUARANTINE_TTL: %w", err)
 	}
 
 	// WhatsApp configuration
@@ -164,6 +170,7 @@ func LoadConfig() error {
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,
+		PhoneQuarantineTTL:   phoneQuarantineTTL,
 
 		// WhatsApp configuration
 		WhatsAppEnabled:      whatsappEnabledBool,

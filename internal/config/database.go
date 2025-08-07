@@ -629,80 +629,110 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		}
 	}
 
-	// Create indexes that don't exist
-	indexesToCreate := []mongo.IndexModel{}
-
-	// 1. Index on phone_number for quick lookups (not unique - allows multiple CPFs with different statuses)
+	// Create phone_number index (non-unique to allow multiple CPFs)
 	if _, exists := existingIndexes["phone_number_1"]; !exists {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+		logger.Info("creating phone_number index", zap.String("collection", AppConfig.PhoneMappingCollection))
+		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
 			Keys: bson.D{{Key: "phone_number", Value: 1}},
-			Options: options.Index().
-				SetName("phone_number_1"),
+					Options: options.Index().
+			SetName("phone_number_1"),
 		})
-	}
-
-	// 2. Index on cpf for CPF-based queries
-	if _, exists := existingIndexes["cpf_1"]; !exists {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "cpf", Value: 1}},
-			Options: options.Index().
-				SetName("cpf_1"),
-		})
-	}
-
-	// 3. Index on status for filtering active/blocked mappings
-	if _, exists := existingIndexes["status_1"]; !exists {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "status", Value: 1}},
-			Options: options.Index().
-				SetName("status_1"),
-		})
-	}
-
-	// 4. Compound index on phone_number and status for active mapping lookups
-	if _, exists := existingIndexes["phone_number_1_status_1"]; !exists {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "phone_number", Value: 1}, {Key: "status", Value: 1}},
-			Options: options.Index().
-				SetName("phone_number_1_status_1"),
-		})
-	}
-
-	// 5. Index on created_at for time-based queries
-	if _, exists := existingIndexes["created_at_1"]; !exists {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "created_at", Value: -1}},
-			Options: options.Index().
-				SetName("created_at_1"),
-		})
-	}
-
-	// Create all missing indexes
-	for _, indexModel := range indexesToCreate {
-		_, err = collection.Indexes().CreateOne(ctx, indexModel)
 		if err != nil {
-			// Check if it's a duplicate key error (another instance created it)
-			if mongo.IsDuplicateKeyError(err) {
-				logger.Info("phone_mapping index already exists (created by another instance)", 
-					zap.String("collection", AppConfig.PhoneMappingCollection))
-				continue
-			}
-			logger.Error("failed to create phone_mapping index", 
-				zap.String("collection", AppConfig.PhoneMappingCollection),
-				zap.Error(err))
+			logger.Error("failed to create phone_number index", zap.Error(err))
 			return err
 		}
 	}
 
-	if len(indexesToCreate) > 0 {
-		logger.Info("created phone_mapping collection indexes", 
-			zap.String("collection", AppConfig.PhoneMappingCollection),
-			zap.Int("count", len(indexesToCreate)))
-	} else {
-		logger.Debug("phone_mapping collection indexes already exist", 
-			zap.String("collection", AppConfig.PhoneMappingCollection))
+	// Create cpf index
+	if _, exists := existingIndexes["cpf_1"]; !exists {
+		logger.Info("creating cpf index", zap.String("collection", AppConfig.PhoneMappingCollection))
+		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys: bson.D{{Key: "cpf", Value: 1}},
+					Options: options.Index().
+			SetName("cpf_1"),
+		})
+		if err != nil {
+			logger.Error("failed to create cpf index", zap.Error(err))
+			return err
+		}
 	}
-	
+
+	// Create status index
+	if _, exists := existingIndexes["status_1"]; !exists {
+		logger.Info("creating status index", zap.String("collection", AppConfig.PhoneMappingCollection))
+		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys: bson.D{{Key: "status", Value: 1}},
+					Options: options.Index().
+			SetName("status_1"),
+		})
+		if err != nil {
+			logger.Error("failed to create status index", zap.Error(err))
+			return err
+		}
+	}
+
+	// Create phone_number + status compound index
+	if _, exists := existingIndexes["phone_number_1_status_1"]; !exists {
+		logger.Info("creating phone_number + status compound index", zap.String("collection", AppConfig.PhoneMappingCollection))
+		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys: bson.D{
+				{Key: "phone_number", Value: 1},
+				{Key: "status", Value: 1},
+			},
+					Options: options.Index().
+			SetName("phone_number_1_status_1"),
+		})
+		if err != nil {
+			logger.Error("failed to create phone_number + status compound index", zap.Error(err))
+			return err
+		}
+	}
+
+	// Create quarantine_until index for quarantine queries
+	if _, exists := existingIndexes["quarantine_until_1"]; !exists {
+		logger.Info("creating quarantine_until index", zap.String("collection", AppConfig.PhoneMappingCollection))
+		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys: bson.D{{Key: "quarantine_until", Value: 1}},
+					Options: options.Index().
+			SetName("quarantine_until_1"),
+		})
+		if err != nil {
+			logger.Error("failed to create quarantine_until index", zap.Error(err))
+			return err
+		}
+	}
+
+	// Create compound index for quarantine queries (quarantine_until + cpf)
+	if _, exists := existingIndexes["quarantine_until_1_cpf_1"]; !exists {
+		logger.Info("creating quarantine_until + cpf compound index", zap.String("collection", AppConfig.PhoneMappingCollection))
+		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys: bson.D{
+				{Key: "quarantine_until", Value: 1},
+				{Key: "cpf", Value: 1},
+			},
+					Options: options.Index().
+			SetName("quarantine_until_1_cpf_1"),
+		})
+		if err != nil {
+			logger.Error("failed to create quarantine_until + cpf compound index", zap.Error(err))
+			return err
+		}
+	}
+
+	// Create created_at index for sorting
+	if _, exists := existingIndexes["created_at_1"]; !exists {
+		logger.Info("creating created_at index", zap.String("collection", AppConfig.PhoneMappingCollection))
+		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
+			Keys: bson.D{{Key: "created_at", Value: 1}},
+					Options: options.Index().
+			SetName("created_at_1"),
+		})
+		if err != nil {
+			logger.Error("failed to create created_at index", zap.Error(err))
+			return err
+		}
+	}
+
 	return nil
 }
 

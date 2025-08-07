@@ -74,6 +74,29 @@ definitions:
       cras:
         $ref: '#/definitions/models.CRAS'
     type: object
+  models.BindRequest:
+    properties:
+      channel:
+        type: string
+      cpf:
+        type: string
+    required:
+    - channel
+    - cpf
+    type: object
+  models.BindResponse:
+    properties:
+      cpf:
+        type: string
+      message:
+        type: string
+      opt_in:
+        type: boolean
+      phone_number:
+        type: string
+      status:
+        type: string
+    type: object
   models.CRAS:
     properties:
       endereco:
@@ -95,20 +118,6 @@ definitions:
         type: boolean
       status_cadastral:
         type: string
-    type: object
-  models.Channel:
-    properties:
-      code:
-        type: string
-      name:
-        type: string
-    type: object
-  models.ChannelsResponse:
-    properties:
-      channels:
-        items:
-          $ref: '#/definitions/models.Channel'
-        type: array
     type: object
   models.Citizen:
     properties:
@@ -409,13 +418,6 @@ definitions:
       title:
         type: string
     type: object
-  models.OptOutReasonsResponse:
-    properties:
-      reasons:
-        items:
-          $ref: '#/definitions/models.OptOutReason'
-        type: array
-    type: object
   models.OptOutRequest:
     properties:
       channel:
@@ -449,6 +451,17 @@ definitions:
             type: integer
         type: object
     type: object
+  models.PaginationInfo:
+    properties:
+      page:
+        type: integer
+      per_page:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
   models.PhoneCitizenResponse:
     properties:
       cpf:
@@ -459,6 +472,21 @@ definitions:
         type: boolean
       name:
         type: string
+    type: object
+  models.PhoneStatusResponse:
+    properties:
+      cpf:
+        type: string
+      found:
+        type: boolean
+      name:
+        type: string
+      phone_number:
+        type: string
+      quarantine_until:
+        type: string
+      quarantined:
+        type: boolean
     type: object
   models.PhoneVerificationValidateRequest:
     properties:
@@ -481,6 +509,52 @@ definitions:
       id_profissional_sus:
         type: string
       nome:
+        type: string
+    type: object
+  models.QuarantineResponse:
+    properties:
+      message:
+        type: string
+      phone_number:
+        type: string
+      quarantine_until:
+        type: string
+      status:
+        type: string
+    type: object
+  models.QuarantineStats:
+    properties:
+      active_quarantines:
+        type: integer
+      expired_quarantines:
+        type: integer
+      quarantine_history_total:
+        type: integer
+      quarantines_with_cpf:
+        type: integer
+      quarantines_without_cpf:
+        type: integer
+      total_quarantined:
+        type: integer
+    type: object
+  models.QuarantinedListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.QuarantinedPhone'
+        type: array
+      pagination:
+        $ref: '#/definitions/models.PaginationInfo'
+    type: object
+  models.QuarantinedPhone:
+    properties:
+      cpf:
+        type: string
+      expired:
+        type: boolean
+      phone_number:
+        type: string
+      quarantine_until:
         type: string
     type: object
   models.RejectRegistrationRequest:
@@ -589,7 +663,7 @@ definitions:
     type: object
   models.UserConfigOptInResponse:
     properties:
-      optin:
+      opt_in:
         type: boolean
     type: object
   models.UserConfigResponse:
@@ -642,6 +716,75 @@ info:
   title: API RMI
   version: "1.0"
 paths:
+  /admin/phone/quarantine/stats:
+    get:
+      consumes:
+      - application/json
+      description: Retorna estatísticas sobre números de telefone em quarentena (apenas
+        administradores)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.QuarantineStats'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Estatísticas de quarentena
+      tags:
+      - admin
+  /admin/phone/quarantined:
+    get:
+      consumes:
+      - application/json
+      description: Retorna lista paginada de números de telefone em quarentena (apenas
+        administradores)
+      parameters:
+      - description: 'Página (padrão: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 20, máximo: 100)'
+        in: query
+        name: per_page
+        type: integer
+      - description: Filtrar apenas quarentenas expiradas
+        in: query
+        name: expired
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.QuarantinedListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar telefones em quarentena
+      tags:
+      - admin
   /citizen/{cpf}:
     get:
       consumes:
@@ -1216,14 +1359,16 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retorna a lista de canais de comunicação disponíveis
+      description: Retorna lista de canais disponíveis para opt-in/opt-out
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.ChannelsResponse'
+            items:
+              type: string
+            type: array
       summary: Obter canais disponíveis
       tags:
       - config
@@ -1231,14 +1376,16 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retorna a lista de motivos disponíveis para opt-out
+      description: Retorna lista de motivos disponíveis para opt-out
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.OptOutReasonsResponse'
+            items:
+              $ref: '#/definitions/models.OptOutReason'
+            type: array
       summary: Obter motivos de opt-out
       tags:
       - config
@@ -1260,13 +1407,54 @@ paths:
       summary: Verificação de saúde
       tags:
       - health
+  /phone/{phone_number}/bind:
+    post:
+      consumes:
+      - application/json
+      description: Vincula um número de telefone a um CPF sem definir opt-in
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Dados da vinculação
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.BindRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BindResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Vincular telefone a CPF
+      tags:
+      - phone
   /phone/{phone_number}/citizen:
     get:
       consumes:
       - application/json
       description: Busca um cidadão por número de telefone e retorna dados mascarados
       parameters:
-      - description: Phone number
+      - description: Número do telefone
         in: path
         name: phone_number
         required: true
@@ -1282,10 +1470,16 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Obter cidadão por número de telefone
       tags:
       - phone
@@ -1293,14 +1487,14 @@ paths:
     post:
       consumes:
       - application/json
-      description: Processa opt-in para um número de telefone com validação de CPF
+      description: Realiza opt-in para receber notificações
       parameters:
-      - description: Phone number
+      - description: Número do telefone
         in: path
         name: phone_number
         required: true
         type: string
-      - description: Opt-in data
+      - description: Dados do opt-in
         in: body
         name: data
         required: true
@@ -1317,10 +1511,6 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -1331,21 +1521,21 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Opt-in para um número de telefone
+      summary: Realizar opt-in
       tags:
       - phone
   /phone/{phone_number}/opt-out:
     post:
       consumes:
       - application/json
-      description: Processa opt-out para um número de telefone
+      description: Realiza opt-out para parar de receber notificações
       parameters:
-      - description: Phone number
+      - description: Número do telefone
         in: path
         name: phone_number
         required: true
         type: string
-      - description: Opt-out data
+      - description: Dados do opt-out
         in: body
         name: data
         required: true
@@ -1362,8 +1552,39 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Realizar opt-out
+      tags:
+      - phone
+  /phone/{phone_number}/quarantine:
+    delete:
+      consumes:
+      - application/json
+      description: Libera um número de telefone da quarentena (apenas administradores)
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.QuarantineResponse'
+        "400":
+          description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
@@ -1376,21 +1597,55 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Opt-out para um número de telefone
+      summary: Liberar telefone da quarentena
+      tags:
+      - phone
+    post:
+      consumes:
+      - application/json
+      description: Coloca um número de telefone em quarentena (apenas administradores)
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.QuarantineResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Colocar telefone em quarentena
       tags:
       - phone
   /phone/{phone_number}/reject-registration:
     post:
       consumes:
       - application/json
-      description: Rejeita um registro e bloqueia o mapeamento phone-CPF
+      description: Rejeita um registro e bloqueia o mapeamento telefone-CPF
       parameters:
-      - description: Phone number
+      - description: Número do telefone
         in: path
         name: phone_number
         required: true
         type: string
-      - description: Rejection data
+      - description: Dados da rejeição
         in: body
         name: data
         required: true
@@ -1407,10 +1662,6 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -1424,18 +1675,48 @@ paths:
       summary: Rejeitar registro
       tags:
       - phone
-  /phone/{phone_number}/validate-registration:
-    post:
+  /phone/{phone_number}/status:
+    get:
       consumes:
       - application/json
-      description: Valida nome, CPF e data de nascimento contra dados base
+      description: Verifica o status de um número de telefone, incluindo se está em
+        quarentena
       parameters:
-      - description: Phone number
+      - description: Número do telefone
         in: path
         name: phone_number
         required: true
         type: string
-      - description: Registration data
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PhoneStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Verificar status do número de telefone
+      tags:
+      - phone
+  /phone/{phone_number}/validate-registration:
+    post:
+      consumes:
+      - application/json
+      description: Valida dados de registro contra a base de dados oficial
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Dados para validação
         in: body
         name: data
         required: true
@@ -1452,11 +1733,17 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Validar dados de registro
+      security:
+      - BearerAuth: []
+      summary: Validar registro de cidadão
       tags:
       - phone
   /validate/phone:

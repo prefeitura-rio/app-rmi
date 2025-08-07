@@ -72,10 +72,11 @@ func main() {
 	config.InitRedis()
 
 	// Initialize services
-	registrationValidator := services.NewBaseDataValidator(observability.Logger())
-	phoneMappingService := services.NewPhoneMappingService(observability.Logger(), registrationValidator)
+	phoneMappingService := services.NewPhoneMappingService(observability.Logger())
 	configService := services.NewConfigService()
-	phoneHandlers := handlers.NewPhoneHandlers(phoneMappingService, configService)
+
+	// Initialize handlers
+	phoneHandlers := handlers.NewPhoneHandlers(observability.Logger(), phoneMappingService, configService)
 
 	// Set Gin mode
 	if config.AppConfig.Environment == "production" {
@@ -129,24 +130,39 @@ func main() {
 		// Endpoint de validação de telefone
 		v1.POST("/validate/phone", handlers.ValidatePhoneNumber)
 
-		// Phone-based endpoints (require auth for CPF operations)
-		phone := v1.Group("/phone")
+		// Phone routes (public)
+		phoneGroup := v1.Group("/phone")
 		{
-			// Public endpoints (no auth required)
-			phone.GET("/:phone_number/citizen", phoneHandlers.GetCitizenByPhone)
-			phone.POST("/:phone_number/validate-registration", phoneHandlers.ValidateRegistration)
-			
-			// Protected endpoints (require auth)
-			phone.POST("/:phone_number/opt-in", middleware.AuthMiddleware(), phoneHandlers.OptIn)
-			phone.POST("/:phone_number/opt-out", middleware.AuthMiddleware(), phoneHandlers.OptOut)
-			phone.POST("/:phone_number/reject-registration", middleware.AuthMiddleware(), phoneHandlers.RejectRegistration)
+			phoneGroup.GET("/:phone_number/status", phoneHandlers.GetPhoneStatus)
 		}
 
-		// Configuration endpoints (no auth required)
-		config := v1.Group("/config")
+		// Phone routes (protected)
+		protectedPhoneGroup := v1.Group("/phone")
+		protectedPhoneGroup.Use(middleware.AuthMiddleware())
 		{
-			config.GET("/channels", phoneHandlers.GetAvailableChannels)
-			config.GET("/opt-out-reasons", phoneHandlers.GetOptOutReasons)
+			protectedPhoneGroup.GET("/:phone_number/citizen", phoneHandlers.GetCitizenByPhone)
+			protectedPhoneGroup.POST("/:phone_number/validate-registration", phoneHandlers.ValidateRegistration)
+			protectedPhoneGroup.POST("/:phone_number/opt-in", phoneHandlers.OptIn)
+			protectedPhoneGroup.POST("/:phone_number/opt-out", phoneHandlers.OptOut)
+			protectedPhoneGroup.POST("/:phone_number/reject-registration", phoneHandlers.RejectRegistration)
+			protectedPhoneGroup.POST("/:phone_number/bind", phoneHandlers.BindPhoneToCPF)
+			protectedPhoneGroup.POST("/:phone_number/quarantine", phoneHandlers.QuarantinePhone)
+			protectedPhoneGroup.DELETE("/:phone_number/quarantine", phoneHandlers.ReleaseQuarantine)
+		}
+
+		// Admin routes
+		adminGroup := v1.Group("/admin")
+		adminGroup.Use(middleware.AuthMiddleware())
+		{
+			adminGroup.GET("/phone/quarantined", phoneHandlers.GetQuarantinedPhones)
+			adminGroup.GET("/phone/quarantine/stats", phoneHandlers.GetQuarantineStats)
+		}
+
+		// Config routes (public)
+		configGroup := v1.Group("/config")
+		{
+			configGroup.GET("/channels", phoneHandlers.GetAvailableChannels)
+			configGroup.GET("/opt-out-reasons", phoneHandlers.GetOptOutReasons)
 		}
 	}
 

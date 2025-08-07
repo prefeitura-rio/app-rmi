@@ -6,7 +6,7 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -16,26 +16,25 @@
           };
         };
 
-        # Create a Python environment with required packages
         pythonEnv = pkgs.python3.withPackages (ps: with ps; [
           pandas
           matplotlib
           seaborn
         ]);
-      in
-      {
+      in {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             go
             gopls
-            go-tools
+            go-tools       # includes swag
             jq
             just
             k6
             docker
             docker-compose
-            gotools  # Includes swag
-            pythonEnv  # Add Python environment with plotting packages
+            pythonEnv      # Python with plotting libs
+            mongosh        # MongoDB Shell (standalone)
+            redis
           ];
 
           shellHook = ''
@@ -44,8 +43,8 @@
             echo "- Go $(go version)"
             echo "- Just $(just --version)"
             echo "- K6 $(k6 --version)"
-            echo "- MongoDB $(mongod --version | head -n1)"
-            echo "- Redis $(redis-server --version)"
+            echo "- MongoDB shell $(mongosh --version)"
+            echo "- Redis server $(redis-server --version)"
             echo "- Docker $(docker --version)"
             echo "- Python $(python3 --version)"
             echo ""
@@ -56,6 +55,5 @@
             export PATH="$GOBIN:$PATH"
           '';
         };
-      }
-    );
-} 
+      });
+}

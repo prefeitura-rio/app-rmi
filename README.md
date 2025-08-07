@@ -294,7 +294,7 @@ A API gerencia automaticamente os índices MongoDB para garantir performance oti
   - Índice no campo `timestamp` (`timestamp_1`)
   - Índice composto em `phone_number` e `timestamp` (`phone_number_1_timestamp_1`)
 
-## Cenários do WhatsApp Bot
+## WhatsApp Bot Scenarios
 
 ### Cenário 1: Opt-in de Usuário Existente
 1. **Verificar Registro**: WhatsApp bot chama `GET /phone/{phone}/citizen`
@@ -303,7 +303,7 @@ A API gerencia automaticamente os índices MongoDB para garantir performance oti
 4. **Processamento de Opt-in**: Bot chama `POST /phone/{phone}/opt-in` com CPF e canal
 5. **Criar Mapeamento**: API cria mapeamento phone-CPF ativo e atualiza status de opt-in
 
-### Cenário 2: Registro de Novo Usuário
+### Cenário 2: Novo Registro de Usuário
 1. **Verificar Registro**: WhatsApp bot chama `GET /phone/{phone}/citizen` → Retorna `{"found": false}`
 2. **Coletar Dados**: Bot coleta nome, CPF e data de nascimento do usuário
 3. **Validar Registro**: Bot chama `POST /phone/{phone}/validate-registration`
@@ -325,17 +325,212 @@ A API gerencia automaticamente os índices MongoDB para garantir performance oti
 4. **Atualizar Status**: API atualiza status de opt-in dos dados autodeclarados
 5. **Registrar Histórico**: API registra opt-out no histórico com motivo e timestamp
 
+### Cenário 5: HSM Sucesso (Quarentena)
+1. **Verificar Status**: Bot chama `GET /phone/{phone}/status`
+2. **Se Encontrado e Não Quarantinado**: Bot chama `POST /phone/{phone}/bind` para vincular CPF sem opt-in
+3. **Se Encontrado e Quarantinado**: Bot chama `POST /phone/{phone}/bind` que automaticamente libera da quarentena
+4. **Se Não Encontrado**: Bot chama `POST /phone/{phone}/bind` para criar novo mapeamento
+
+### Cenário 6: HSM Falha (Quarentena)
+1. **Verificar Status**: Bot chama `GET /phone/{phone}/status`
+2. **Quarentenar Número**: Admin chama `POST /phone/{phone}/quarantine` (sem CPF)
+3. **Se Número Existe**: Quarentena é estendida
+4. **Se Número Não Existe**: Nova quarentena é criada
+
 **Motivos de Opt-out:**
 - **Conteúdo irrelevante**: Mensagens não são úteis (não bloqueia mapeamento)
 - **Não sou do Rio**: Não é do Rio de Janeiro (não bloqueia mapeamento)
 - **Mensagem era engano**: Não é a pessoa na mensagem (**bloqueia mapeamento CPF-telefone**)
 - **Quantidade de mensagens**: Muitas mensagens da Prefeitura (não bloqueia mapeamento)
 
-**Recursos de Segurança:**
-- **Construção de Índices em Background**: Índices são construídos em background, permitindo que outras operações continuem
-- **Tratamento de Chaves Duplicadas**: Trata graciosamente casos onde outra instância cria o mesmo índice
-- **Recuperação de Erros**: Falha na criação de índice não trava a aplicação
-- **Segurança Concorrente**: Múltiplas instâncias da API podem executar manutenção de índices simultaneamente sem conflitos
+## Funcionalidades de Quarentena
+
+### Visão Geral
+O sistema de quarentena permite gerenciar números de telefone que falharam na entrega de mensagens HSM (Highly Structured Messages) do WhatsApp. Números em quarentena são automaticamente excluídos de futuras campanhas por um período configurável.
+
+### Características Principais
+- **Quarentena Computada**: O status `quarantined` é calculado dinamicamente baseado em `quarantine_until > now()`
+- **Histórico Completo**: Todas as ações de quarentena são registradas com timestamps
+- **Liberação Automática**: Opt-in e binding automaticamente liberam números da quarentena
+- **Extensão de Quarentena**: Quarentenas existentes são estendidas quando aplicadas novamente
+- **Acesso Administrativo**: Apenas usuários com role `rmi-admin` podem gerenciar quarentenas
+
+### Endpoints de Quarentena
+
+#### Verificar Status do Telefone
+```http
+GET /v1/phone/{phone_number}/status
+```
+**Resposta:**
+```json
+{
+  "phone_number": "+5511999887766",
+  "found": true,
+  "quarantined": true,
+  "cpf": "***.***.***-**",
+  "name": "*** ***",
+  "quarantine_until": "2026-02-07T10:00:00Z"
+}
+```
+
+#### Colocar em Quarentena (Admin)
+```http
+POST /v1/phone/{phone_number}/quarantine
+```
+**Corpo da Requisição:** `{}` (vazio)
+**Resposta:**
+```json
+{
+  "status": "quarantined",
+  "phone_number": "+5511999887766",
+  "quarantine_until": "2026-02-07T10:00:00Z",
+  "message": "Phone number quarantined for 6 months"
+}
+```
+
+#### Liberar da Quarentena (Admin)
+```http
+DELETE /v1/phone/{phone_number}/quarantine
+```
+**Resposta:**
+```json
+{
+  "status": "released",
+  "phone_number": "+5511999887766",
+  "quarantine_until": "2025-08-07T10:00:00Z",
+  "message": "Phone number released from quarantine"
+}
+```
+
+#### Vincular Telefone a CPF
+```http
+POST /v1/phone/{phone_number}/bind
+```
+**Corpo da Requisição:**
+```json
+{
+  "cpf": "12345678901",
+  "channel": "whatsapp"
+}
+```
+**Resposta:**
+```json
+{
+  "status": "bound",
+  "phone_number": "+5511999887766",
+  "cpf": "12345678901",
+  "opt_in": false,
+  "message": "Phone number bound to CPF without opt-in"
+}
+```
+
+#### Listar Telefones em Quarentena (Admin)
+```http
+GET /v1/admin/phone/quarantined?page=1&per_page=20&expired=false
+```
+**Parâmetros:**
+- `page`: Número da página (padrão: 1)
+- `per_page`: Itens por página (padrão: 20, máximo: 100)
+- `expired`: Filtrar apenas quarentenas expiradas (padrão: false)
+
+**Resposta:**
+```json
+{
+  "data": [
+    {
+      "phone_number": "+5511999887766",
+      "cpf": "***.***.***-**",
+      "quarantine_until": "2026-02-07T10:00:00Z",
+      "expired": false
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "per_page": 20,
+    "total": 150,
+    "total_pages": 8
+  }
+}
+```
+
+#### Estatísticas de Quarentena (Admin)
+```http
+GET /v1/admin/phone/quarantine/stats
+```
+**Resposta:**
+```json
+{
+  "total_quarantined": 150,
+  "expired_quarantines": 25,
+  "active_quarantines": 125,
+  "quarantines_with_cpf": 80,
+  "quarantines_without_cpf": 70,
+  "quarantine_history_total": 300
+}
+```
+
+### Configuração
+```env
+PHONE_QUARANTINE_TTL=4320h  # 6 meses (6 * 30 * 24 horas)
+```
+
+### Modelo de Dados
+```json
+{
+  "phone_number": "+5511999887766",
+  "cpf": "12345678901",  // null se não vinculado
+  "status": "active|blocked|quarantined",
+  "quarantine_until": "2026-02-07T10:00:00Z",  // null se não em quarentena
+  "quarantine_history": [
+    {
+      "quarantined_at": "2025-08-07T10:00:00Z",
+      "quarantine_until": "2026-02-07T10:00:00Z",
+      "released_at": "2025-09-07T10:00:00Z"  // null se ainda em quarentena
+    }
+  ],
+  "created_at": "2025-08-07T10:00:00Z",
+  "updated_at": "2025-08-07T10:00:00Z"
+}
+```
+
+### Índices de Banco de Dados
+- `phone_number_1`: Índice no número de telefone
+- `cpf_1`: Índice no CPF
+- `status_1`: Índice no status
+- `quarantine_until_1`: Índice para consultas de quarentena
+- `quarantine_until_1_cpf_1`: Índice composto para quarentenas com CPF
+- `phone_number_1_status_1`: Índice composto para consultas por telefone e status
+- `created_at_1`: Índice para ordenação temporal
+
+### Fluxo de Negócio
+
+#### HSM Sucesso
+1. Bot verifica status do telefone
+2. Se encontrado e não quarantinado → Vincula CPF sem opt-in
+3. Se encontrado e quarantinado → Libera da quarentena e vincula CPF
+4. Se não encontrado → Cria novo mapeamento com CPF
+
+#### HSM Falha
+1. Bot verifica status do telefone
+2. Admin coloca número em quarentena
+3. Se número existe → Estende quarentena
+4. Se número não existe → Cria nova quarentena
+
+#### Liberação de Quarentena
+- **Automática**: Opt-in ou binding liberam automaticamente
+- **Manual**: Admin pode liberar via endpoint DELETE
+- **Expiração**: Quarentenas expiram automaticamente após TTL configurado
+
+### Segurança
+- Apenas usuários com role `rmi-admin` podem gerenciar quarentenas
+- Todos os endpoints de quarentena requerem autenticação
+- Histórico completo de todas as ações para auditoria
+- Dados sensíveis (CPF) são mascarados nas respostas
+
+### Monitoramento
+- Métricas de quarentena disponíveis via endpoint de estatísticas
+- Logs estruturados para todas as operações de quarentena
+- Rastreamento de histórico completo para compliance
 
 ## Melhorias Implementadas
 

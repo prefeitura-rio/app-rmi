@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
@@ -15,49 +16,555 @@ import (
 	"go.uber.org/zap"
 )
 
-// PhoneMappingService handles phone-CPF mappings and opt-in/opt-out flows
 type PhoneMappingService struct {
-	logger               *logging.SafeLogger
-	registrationValidator RegistrationValidator
+	logger *logging.SafeLogger
 }
 
-// NewPhoneMappingService creates a new PhoneMappingService
-func NewPhoneMappingService(logger *logging.SafeLogger, validator RegistrationValidator) *PhoneMappingService {
+func NewPhoneMappingService(logger *logging.SafeLogger) *PhoneMappingService {
 	return &PhoneMappingService{
-		logger:               logger,
-		registrationValidator: validator,
+		logger: logger,
 	}
 }
 
-// FindCPFByPhone finds a CPF by phone number and returns masked data
-func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber string) (*models.PhoneCitizenResponse, error) {
-	// Parse phone number
+// GetPhoneStatus checks the status of a phone number including quarantine status
+func (s *PhoneMappingService) GetPhoneStatus(ctx context.Context, phoneNumber string) (*models.PhoneStatusResponse, error) {
+	// Parse phone number for storage format
 	components, err := utils.ParsePhoneNumber(phoneNumber)
 	if err != nil {
 		return nil, fmt.Errorf("invalid phone number: %w", err)
 	}
-
-	// Format for storage lookup
 	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
-
-	// Find active mapping
+	
+	// Find the phone mapping
 	var mapping models.PhoneCPFMapping
 	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
 		ctx,
-		bson.M{
-			"phone_number": storagePhone,
-			"status":       models.PhoneMappingStatusActive,
+		bson.M{"phone_number": storagePhone},
+	).Decode(&mapping)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			// Phone number not found
+			return &models.PhoneStatusResponse{
+				PhoneNumber: phoneNumber,
+				Found:       false,
+				Quarantined: false,
+			}, nil
+		}
+		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
+	}
+
+	// Check if quarantined (computed on-demand)
+	now := time.Now()
+	quarantined := mapping.QuarantineUntil != nil && mapping.QuarantineUntil.After(now)
+
+	response := &models.PhoneStatusResponse{
+		PhoneNumber:     phoneNumber,
+		Found:           true,
+		Quarantined:     quarantined,
+		QuarantineUntil: mapping.QuarantineUntil,
+	}
+
+	// If not quarantined and has CPF, get citizen data
+	if !quarantined && mapping.CPF != "" {
+		var citizen models.Citizen
+		err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).FindOne(
+			ctx,
+			bson.M{"cpf": mapping.CPF},
+		).Decode(&citizen)
+
+		if err == nil {
+			response.CPF = utils.MaskCPF(citizen.CPF)
+			if citizen.Nome != nil {
+				response.Name = utils.MaskName(*citizen.Nome)
+			}
+		}
+	}
+
+	return response, nil
+}
+
+// QuarantinePhone quarantines a phone number
+func (s *PhoneMappingService) QuarantinePhone(ctx context.Context, phoneNumber string) (*models.QuarantineResponse, error) {
+	// Parse phone number for storage format
+	components, err := utils.ParsePhoneNumber(phoneNumber)
+	if err != nil {
+		return nil, fmt.Errorf("invalid phone number: %w", err)
+	}
+	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+	now := time.Now()
+	
+	// Calculate quarantine end date
+	quarantineTTL := config.AppConfig.PhoneQuarantineTTL
+	
+	quarantineUntil := now.Add(quarantineTTL)
+	
+	// Check if phone mapping exists
+	var existingMapping models.PhoneCPFMapping
+	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+	).Decode(&existingMapping)
+
+	if err == mongo.ErrNoDocuments {
+		// Create new quarantine record without CPF
+		newMapping := models.PhoneCPFMapping{
+			PhoneNumber: storagePhone,
+			Status:      models.MappingStatusQuarantined,
+			QuarantineUntil: &quarantineUntil,
+			QuarantineHistory: []models.QuarantineEvent{
+				{
+					QuarantinedAt:   now,
+					QuarantineUntil: quarantineUntil,
+				},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+
+		_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
+		if err != nil {
+			s.logger.Error("failed to create quarantine record", zap.Error(err), zap.String("phone_number", storagePhone))
+			return nil, fmt.Errorf("failed to create quarantine record: %w", err)
+		}
+
+		return &models.QuarantineResponse{
+			Status:         "quarantined",
+			PhoneNumber:    phoneNumber,
+			QuarantineUntil: quarantineUntil,
+			Message:        "Phone number quarantined for 6 months",
+		}, nil
+	}
+
+	if err != nil {
+		s.logger.Error("failed to check existing phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to check existing phone mapping: %w", err)
+	}
+
+	// Extend existing quarantine
+	quarantineEvent := models.QuarantineEvent{
+		QuarantinedAt:   now,
+		QuarantineUntil: quarantineUntil,
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"status":            models.MappingStatusQuarantined,
+			"quarantine_until":  quarantineUntil,
+			"updated_at":        now,
 		},
+		"$push": bson.M{
+			"quarantine_history": quarantineEvent,
+		},
+	}
+
+	_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+		update,
+	)
+	if err != nil {
+		s.logger.Error("failed to extend quarantine", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to extend quarantine: %w", err)
+	}
+
+	return &models.QuarantineResponse{
+		Status:         "quarantined",
+		PhoneNumber:    phoneNumber,
+		QuarantineUntil: quarantineUntil,
+		Message:        "Phone number quarantine extended for 6 months",
+	}, nil
+}
+
+// ReleaseQuarantine releases a phone number from quarantine
+func (s *PhoneMappingService) ReleaseQuarantine(ctx context.Context, phoneNumber string) (*models.QuarantineResponse, error) {
+	// Parse phone number for storage format
+	components, err := utils.ParsePhoneNumber(phoneNumber)
+	if err != nil {
+		return nil, fmt.Errorf("invalid phone number: %w", err)
+	}
+	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+	now := time.Now()
+
+	// Find the phone mapping
+	var mapping models.PhoneCPFMapping
+	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+	).Decode(&mapping)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("phone number not found")
+		}
+		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
+	}
+
+	// Update the last quarantine event with release time
+	if len(mapping.QuarantineHistory) > 0 {
+		lastEvent := mapping.QuarantineHistory[len(mapping.QuarantineHistory)-1]
+		lastEvent.ReleasedAt = &now
+		mapping.QuarantineHistory[len(mapping.QuarantineHistory)-1] = lastEvent
+	}
+
+	// Determine new status based on whether CPF exists
+	newStatus := models.MappingStatusActive
+	if mapping.CPF == "" {
+		// If no CPF, remove the record entirely
+		_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).DeleteOne(
+			ctx,
+			bson.M{"phone_number": storagePhone},
+		)
+		if err != nil {
+			s.logger.Error("failed to delete quarantine record", zap.Error(err), zap.String("phone_number", storagePhone))
+			return nil, fmt.Errorf("failed to delete quarantine record: %w", err)
+		}
+
+		return &models.QuarantineResponse{
+			Status:         "released",
+			PhoneNumber:    phoneNumber,
+			QuarantineUntil: now,
+			Message:        "Phone number released from quarantine and removed",
+		}, nil
+	}
+
+	// Update the mapping
+	update := bson.M{
+		"$set": bson.M{
+			"status":             newStatus,
+			"quarantine_until":   nil,
+			"updated_at":         now,
+			"quarantine_history": mapping.QuarantineHistory,
+		},
+	}
+
+	_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+		update,
+	)
+	if err != nil {
+		s.logger.Error("failed to release quarantine", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to release quarantine: %w", err)
+	}
+
+	return &models.QuarantineResponse{
+		Status:         "released",
+		PhoneNumber:    phoneNumber,
+		QuarantineUntil: now,
+		Message:        "Phone number released from quarantine",
+	}, nil
+}
+
+// BindPhoneToCPF binds a phone number to a CPF without setting opt-in
+func (s *PhoneMappingService) BindPhoneToCPF(ctx context.Context, phoneNumber, cpf, channel string) (*models.BindResponse, error) {
+	// Parse phone number for storage format
+	components, err := utils.ParsePhoneNumber(phoneNumber)
+	if err != nil {
+		return nil, fmt.Errorf("invalid phone number: %w", err)
+	}
+	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+	now := time.Now()
+
+	// Validate CPF
+	if !utils.ValidateCPF(cpf) {
+		return nil, fmt.Errorf("invalid CPF format")
+	}
+
+	// Check if phone mapping exists
+	var existingMapping models.PhoneCPFMapping
+	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+	).Decode(&existingMapping)
+
+	if err == mongo.ErrNoDocuments {
+		// Create new mapping
+		newMapping := models.PhoneCPFMapping{
+			PhoneNumber: storagePhone,
+			CPF:         cpf,
+			Status:      models.MappingStatusActive,
+			Channel:     channel,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+
+		_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
+		if err != nil {
+			s.logger.Error("failed to create phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+			return nil, fmt.Errorf("failed to create phone mapping: %w", err)
+		}
+
+		return &models.BindResponse{
+			Status:      "bound",
+			PhoneNumber: phoneNumber,
+			CPF:         cpf,
+			OptIn:       false,
+			Message:     "Phone number bound to CPF without opt-in",
+		}, nil
+	}
+
+	if err != nil {
+		s.logger.Error("failed to check existing phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to check existing phone mapping: %w", err)
+	}
+
+	// Update existing mapping
+	update := bson.M{
+		"$set": bson.M{
+			"cpf":         cpf,
+			"status":      models.MappingStatusActive,
+			"channel":     channel,
+			"updated_at":  now,
+		},
+	}
+
+	// If was quarantined, release it
+	if existingMapping.QuarantineUntil != nil {
+		update["$set"].(bson.M)["quarantine_until"] = nil
+		
+		// Add release time to last quarantine event
+		if len(existingMapping.QuarantineHistory) > 0 {
+			lastEvent := existingMapping.QuarantineHistory[len(existingMapping.QuarantineHistory)-1]
+			lastEvent.ReleasedAt = &now
+			existingMapping.QuarantineHistory[len(existingMapping.QuarantineHistory)-1] = lastEvent
+			update["$set"].(bson.M)["quarantine_history"] = existingMapping.QuarantineHistory
+		}
+	}
+
+	_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+		update,
+	)
+	if err != nil {
+		s.logger.Error("failed to update phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to update phone mapping: %w", err)
+	}
+
+	return &models.BindResponse{
+		Status:      "bound",
+		PhoneNumber: phoneNumber,
+		CPF:         cpf,
+		OptIn:       false,
+		Message:     "Phone number bound to CPF without opt-in",
+	}, nil
+}
+
+// GetQuarantinedPhones returns a paginated list of quarantined phone numbers
+func (s *PhoneMappingService) GetQuarantinedPhones(ctx context.Context, page, perPage int, expired bool) (*models.QuarantinedListResponse, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+
+	skip := int64((page - 1) * perPage)
+	perPage64 := int64(perPage)
+	now := time.Now()
+
+	// Build filter
+	filter := bson.M{"quarantine_until": bson.M{"$exists": true, "$ne": nil}}
+	if expired {
+		filter["quarantine_until"] = bson.M{"$lte": now}
+	} else {
+		filter["quarantine_until"] = bson.M{"$gt": now}
+	}
+
+	// Count total
+	total, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).CountDocuments(ctx, filter)
+	if err != nil {
+		s.logger.Error("failed to count quarantined phones", zap.Error(err))
+		return nil, fmt.Errorf("failed to count quarantined phones: %w", err)
+	}
+
+	// Find quarantined phones
+	cursor, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).Find(
+		ctx,
+		filter,
+		&options.FindOptions{
+			Skip:  &skip,
+			Limit: &perPage64,
+			Sort:  bson.M{"quarantine_until": 1},
+		},
+	)
+	if err != nil {
+		s.logger.Error("failed to find quarantined phones", zap.Error(err))
+		return nil, fmt.Errorf("failed to find quarantined phones: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var quarantinedPhones []models.QuarantinedPhone
+	for cursor.Next(ctx) {
+		var mapping models.PhoneCPFMapping
+		if err := cursor.Decode(&mapping); err != nil {
+			s.logger.Error("failed to decode phone mapping", zap.Error(err))
+			continue
+		}
+
+		quarantinedPhone := models.QuarantinedPhone{
+			PhoneNumber:     utils.ExtractPhoneFromComponents("55", mapping.PhoneNumber[:2], mapping.PhoneNumber[2:]),
+			QuarantineUntil: *mapping.QuarantineUntil,
+			Expired:         mapping.QuarantineUntil.Before(now),
+		}
+
+		if mapping.CPF != "" {
+			quarantinedPhone.CPF = utils.MaskCPF(mapping.CPF)
+		}
+
+		quarantinedPhones = append(quarantinedPhones, quarantinedPhone)
+	}
+
+	totalPages := (int(total) + perPage - 1) / perPage
+
+	return &models.QuarantinedListResponse{
+		Data: quarantinedPhones,
+		Pagination: models.PaginationInfo{
+			Page:       page,
+			PerPage:    perPage,
+			Total:      int(total),
+			TotalPages: totalPages,
+		},
+	}, nil
+}
+
+// GetQuarantineStats returns quarantine statistics
+func (s *PhoneMappingService) GetQuarantineStats(ctx context.Context) (*models.QuarantineStats, error) {
+	now := time.Now()
+
+	// Total quarantined (with quarantine_until field)
+	totalQuarantined, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).CountDocuments(
+		ctx,
+		bson.M{"quarantine_until": bson.M{"$exists": true, "$ne": nil}},
+	)
+	if err != nil {
+		s.logger.Error("failed to count total quarantined", zap.Error(err))
+		return nil, fmt.Errorf("failed to count total quarantined: %w", err)
+	}
+
+	// Expired quarantines
+	expiredQuarantines, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).CountDocuments(
+		ctx,
+		bson.M{"quarantine_until": bson.M{"$lte": now}},
+	)
+	if err != nil {
+		s.logger.Error("failed to count expired quarantines", zap.Error(err))
+		return nil, fmt.Errorf("failed to count expired quarantines: %w", err)
+	}
+
+	// Active quarantines
+	activeQuarantines, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).CountDocuments(
+		ctx,
+		bson.M{"quarantine_until": bson.M{"$gt": now}},
+	)
+	if err != nil {
+		s.logger.Error("failed to count active quarantines", zap.Error(err))
+		return nil, fmt.Errorf("failed to count active quarantines: %w", err)
+	}
+
+	// Quarantines with CPF
+	quarantinesWithCPF, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).CountDocuments(
+		ctx,
+		bson.M{
+			"quarantine_until": bson.M{"$exists": true, "$ne": nil},
+			"cpf":             bson.M{"$exists": true, "$ne": ""},
+		},
+	)
+	if err != nil {
+		s.logger.Error("failed to count quarantines with CPF", zap.Error(err))
+		return nil, fmt.Errorf("failed to count quarantines with CPF: %w", err)
+	}
+
+	// Quarantines without CPF
+	quarantinesWithoutCPF, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).CountDocuments(
+		ctx,
+		bson.M{
+			"quarantine_until": bson.M{"$exists": true, "$ne": nil},
+			"$or": []bson.M{
+				{"cpf": bson.M{"$exists": false}},
+				{"cpf": ""},
+			},
+		},
+	)
+	if err != nil {
+		s.logger.Error("failed to count quarantines without CPF", zap.Error(err))
+		return nil, fmt.Errorf("failed to count quarantines without CPF: %w", err)
+	}
+
+	// Total quarantine history events
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"quarantine_history": bson.M{"$exists": true}}}},
+		{{Key: "$unwind", Value: "$quarantine_history"}},
+		{{Key: "$count", Value: "total"}},
+	}
+
+	cursor, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).Aggregate(ctx, pipeline)
+	if err != nil {
+		s.logger.Error("failed to count quarantine history", zap.Error(err))
+		return nil, fmt.Errorf("failed to count quarantine history: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var historyResult []bson.M
+	if err := cursor.All(ctx, &historyResult); err != nil {
+		s.logger.Error("failed to decode quarantine history count", zap.Error(err))
+		return nil, fmt.Errorf("failed to decode quarantine history count: %w", err)
+	}
+
+	quarantineHistoryTotal := 0
+	if len(historyResult) > 0 {
+		if total, ok := historyResult[0]["total"].(int32); ok {
+			quarantineHistoryTotal = int(total)
+		}
+	}
+
+	return &models.QuarantineStats{
+		TotalQuarantined:       int(totalQuarantined),
+		ExpiredQuarantines:     int(expiredQuarantines),
+		ActiveQuarantines:      int(activeQuarantines),
+		QuarantinesWithCPF:     int(quarantinesWithCPF),
+		QuarantinesWithoutCPF:  int(quarantinesWithoutCPF),
+		QuarantineHistoryTotal: quarantineHistoryTotal,
+	}, nil
+}
+
+// FindCPFByPhone finds a CPF by phone number (existing method, updated for new model)
+func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber string) (*models.PhoneCitizenResponse, error) {
+	// Parse phone number for storage format
+	components, err := utils.ParsePhoneNumber(phoneNumber)
+	if err != nil {
+		return nil, fmt.Errorf("invalid phone number: %w", err)
+	}
+	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+	
+	var mapping models.PhoneCPFMapping
+	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
 	).Decode(&mapping)
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return &models.PhoneCitizenResponse{Found: false}, nil
 		}
-		return nil, fmt.Errorf("failed to query phone mapping: %w", err)
+		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
 	}
 
-	// Get citizen data to extract name
+	// Check if quarantined
+	now := time.Now()
+	if mapping.QuarantineUntil != nil && mapping.QuarantineUntil.After(now) {
+		return &models.PhoneCitizenResponse{Found: false}, nil
+	}
+
+	if mapping.CPF == "" {
+		return &models.PhoneCitizenResponse{Found: false}, nil
+	}
+
+	// Get citizen data
 	var citizen models.Citizen
 	err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).FindOne(
 		ctx,
@@ -68,8 +575,8 @@ func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber st
 		if err == mongo.ErrNoDocuments {
 			// Phone mapping exists but citizen doesn't - this is an invalid state
 			// Return not found instead of error
-			s.logger.Warn("phone mapping exists but citizen not found", 
-				zap.String("phone_number", storagePhone), 
+			s.logger.Warn("phone mapping exists but citizen not found",
+				zap.String("phone_number", storagePhone),
 				zap.String("cpf", mapping.CPF))
 			return &models.PhoneCitizenResponse{Found: false}, nil
 		}
@@ -77,252 +584,261 @@ func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber st
 		return nil, fmt.Errorf("failed to get citizen data: %w", err)
 	}
 
-	// Extract name and first name
-	var fullName, firstName string
-	if citizen.Nome != nil {
-		fullName = *citizen.Nome
-		firstName = utils.ExtractFirstName(fullName)
-	}
-
-	// Mask sensitive data
-	maskedName := utils.MaskName(fullName)
-	maskedCPF := utils.MaskCPF(mapping.CPF)
-
 	return &models.PhoneCitizenResponse{
-		Found:     true,
-		CPF:       maskedCPF,
-		Name:      maskedName,
-		FirstName: firstName,
+		Found: true,
+		CPF:   utils.MaskCPF(citizen.CPF),
+		Name:  func() string {
+			if citizen.Nome != nil {
+				return utils.MaskName(*citizen.Nome)
+			}
+			return ""
+		}(),
 	}, nil
 }
 
-// ValidateRegistration validates registration data
-func (s *PhoneMappingService) ValidateRegistration(ctx context.Context, phoneNumber string, req *models.ValidateRegistrationRequest) (*models.ValidateRegistrationResponse, error) {
-	// Parse phone number
+// ValidateRegistration validates registration data against base data
+func (s *PhoneMappingService) ValidateRegistration(ctx context.Context, phoneNumber string, name, cpf, birthDate string) (*models.ValidateRegistrationResponse, error) {
+	// Parse phone number for storage format
 	components, err := utils.ParsePhoneNumber(phoneNumber)
 	if err != nil {
 		return nil, fmt.Errorf("invalid phone number: %w", err)
 	}
+	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+	now := time.Now()
 
-	// Validate registration using the validator service
-	valid, matchedCPF, matchedName, err := s.registrationValidator.ValidateRegistration(
-		ctx, req.Name, req.CPF, req.BirthDate)
+	// Validate CPF
+	if !utils.ValidateCPF(cpf) {
+		return &models.ValidateRegistrationResponse{
+			Valid: false,
+		}, nil
+	}
+
+	// Get citizen data from base collection
+	var citizen models.Citizen
+	err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).FindOne(
+		ctx,
+		bson.M{"cpf": cpf},
+	).Decode(&citizen)
+
 	if err != nil {
-		return nil, fmt.Errorf("validation failed: %w", err)
+		if err == mongo.ErrNoDocuments {
+			return &models.ValidateRegistrationResponse{
+				Valid: false,
+			}, nil
+		}
+		s.logger.Error("failed to get citizen data", zap.Error(err), zap.String("cpf", cpf))
+		return nil, fmt.Errorf("failed to get citizen data: %w", err)
+	}
+
+	// Validate name (case-insensitive)
+	validName := false
+	if citizen.Nome != nil {
+		validName = strings.EqualFold(strings.TrimSpace(name), strings.TrimSpace(*citizen.Nome))
+	}
+	
+	// Validate birth date
+	validBirthDate := false
+	if citizen.Nascimento != nil && citizen.Nascimento.Data != nil {
+		expectedDate := citizen.Nascimento.Data.Format("2006-01-02")
+		validBirthDate = birthDate == expectedDate
 	}
 
 	// Record validation attempt
-	s.recordValidationAttempt(ctx, components, req.CPF, valid, req.Channel)
+	validationAttempt := models.ValidationAttempt{
+		AttemptedAt: now,
+		Valid:       validName && validBirthDate,
+		Channel:     "whatsapp",
+	}
+
+	// Update or create phone mapping with validation attempt
+	update := bson.M{
+		"$set": bson.M{
+			"validation_attempt": validationAttempt,
+			"updated_at":         now,
+		},
+	}
+
+	_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+		update,
+		&options.UpdateOptions{Upsert: &[]bool{true}[0]},
+	)
+	if err != nil {
+		s.logger.Error("failed to update validation attempt", zap.Error(err), zap.String("phone_number", storagePhone))
+		// Don't fail the validation for this error
+	}
+
+	if validName && validBirthDate {
+		return &models.ValidateRegistrationResponse{
+			Valid:       true,
+			MatchedCPF:  citizen.CPF,
+			MatchedName: func() string {
+				if citizen.Nome != nil {
+					return *citizen.Nome
+				}
+				return ""
+			}(),
+		}, nil
+	}
 
 	return &models.ValidateRegistrationResponse{
-		Valid:       valid,
-		MatchedCPF:  matchedCPF,
-		MatchedName: matchedName,
+		Valid: false,
 	}, nil
 }
 
 // OptIn processes opt-in for a phone number
-func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber string, req *models.OptInRequest) (*models.OptInResponse, error) {
-	// Parse phone number
+func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, channel string) (*models.OptInResponse, error) {
+	// Parse phone number for storage format
 	components, err := utils.ParsePhoneNumber(phoneNumber)
 	if err != nil {
 		return nil, fmt.Errorf("invalid phone number: %w", err)
 	}
-
 	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+	now := time.Now()
 
-	// Check if there's already an active mapping for this phone
+	// Validate CPF
+	if !utils.ValidateCPF(cpf) {
+		return nil, fmt.Errorf("invalid CPF format")
+	}
+
+	// Check if phone mapping exists
 	var existingMapping models.PhoneCPFMapping
 	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
 		ctx,
-		bson.M{
-			"phone_number": storagePhone,
-			"status":       models.PhoneMappingStatusActive,
-		},
+		bson.M{"phone_number": storagePhone},
 	).Decode(&existingMapping)
 
-	if err == nil {
-		// Active mapping exists - check if it's for the same CPF
-		if existingMapping.CPF == req.CPF {
-			// Phone is already mapped to this CPF - return success
-			s.logger.Info("phone already mapped to this CPF", 
-				zap.String("phone_number", storagePhone), 
-				zap.String("cpf", req.CPF))
-			return &models.OptInResponse{
-				Status:         "already_opted_in",
-				PhoneMappingID: existingMapping.ID.Hex(),
-			}, nil
+	if err == mongo.ErrNoDocuments {
+		// Create new mapping
+		newMapping := models.PhoneCPFMapping{
+			PhoneNumber: storagePhone,
+			CPF:         cpf,
+			Status:      models.MappingStatusActive,
+			Channel:     channel,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		}
-		// Different CPF - block the old mapping
-		s.blockPhoneMapping(ctx, storagePhone, existingMapping.CPF, "new_opt_in")
-	} else if err != mongo.ErrNoDocuments {
-		// Some other error occurred
-		return nil, fmt.Errorf("failed to check existing mapping: %w", err)
-	}
 
-	// Check if there's any mapping for this phone-CPF combination (regardless of status)
-	var anyMapping models.PhoneCPFMapping
-	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
-		ctx,
-		bson.M{
-			"phone_number": storagePhone,
-			"cpf":         req.CPF,
-		},
-	).Decode(&anyMapping)
-
-	if err == nil {
-		// Mapping exists for this phone-CPF combination
-		if anyMapping.Status == models.PhoneMappingStatusBlocked {
-			// Reactivate the blocked mapping by updating it
-			s.logger.Info("reactivating blocked mapping", 
-				zap.String("phone_number", storagePhone), 
-				zap.String("cpf", req.CPF))
-			
-			// Update the existing mapping to active status
-			_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
-				ctx,
-				bson.M{"_id": anyMapping.ID},
-				bson.M{
-					"$set": bson.M{
-						"status":         models.PhoneMappingStatusActive,
-						"channel":        req.Channel,
-						"updated_at":     time.Now(),
-					},
-				},
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to reactivate blocked mapping: %w", err)
-			}
-
-			// Record opt-in history
-			s.recordOptInHistory(ctx, storagePhone, req.CPF, models.OptInActionOptIn, req.Channel, nil, req.ValidationResult)
-
-			// Update self-declared data if this is a validated registration
-			if req.ValidationResult != nil && req.ValidationResult.Valid {
-				s.updateSelfDeclaredOptIn(ctx, req.CPF, req.Channel, storagePhone)
-			}
-
-			return &models.OptInResponse{
-				Status:         "opted_in",
-				PhoneMappingID: anyMapping.ID.Hex(),
-			}, nil
+		_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
+		if err != nil {
+			s.logger.Error("failed to create phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+			return nil, fmt.Errorf("failed to create phone mapping: %w", err)
 		}
-		// If mapping exists but is not blocked, continue with normal flow
-	} else if err != mongo.ErrNoDocuments {
-		// Some other error occurred
-		return nil, fmt.Errorf("failed to check existing mapping: %w", err)
+
+		// Record opt-in history
+		s.recordOptInHistory(ctx, phoneNumber, cpf, "opt_in", channel, "")
+
+		return &models.OptInResponse{
+			Status: "opted_in",
+		}, nil
 	}
 
-	// Create new mapping (this should only happen for new phone-CPF combinations)
-	mapping := models.PhoneCPFMapping{
-		PhoneNumber:    storagePhone,
-		CPF:           req.CPF,
-		Status:        models.PhoneMappingStatusActive,
-		IsSelfDeclared: req.ValidationResult != nil && req.ValidationResult.Valid,
-		Channel:       req.Channel,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-	}
-
-	// Add validation attempt if provided
-	if req.ValidationResult != nil {
-		mapping.ValidationAttempts = []models.ValidationAttempt{
-			{
-				Timestamp: time.Now(),
-				Valid:     req.ValidationResult.Valid,
-				Channel:   req.Channel,
-			},
-		}
-	}
-
-	// Insert new mapping
-	result, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create phone mapping: %w", err)
+		s.logger.Error("failed to check existing phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to check existing phone mapping: %w", err)
+	}
+
+	// Check if already opted in for the same CPF
+	if existingMapping.CPF == cpf && existingMapping.Status == models.MappingStatusActive {
+		return &models.OptInResponse{
+			Status: "already_opted_in",
+		}, nil
+	}
+
+	// Update existing mapping
+	update := bson.M{
+		"$set": bson.M{
+			"cpf":        cpf,
+			"status":     models.MappingStatusActive,
+			"channel":    channel,
+			"updated_at": now,
+		},
+	}
+
+	// If was quarantined, release it
+	if existingMapping.QuarantineUntil != nil {
+		update["$set"].(bson.M)["quarantine_until"] = nil
+		
+		// Add release time to last quarantine event
+		if len(existingMapping.QuarantineHistory) > 0 {
+			lastEvent := existingMapping.QuarantineHistory[len(existingMapping.QuarantineHistory)-1]
+			lastEvent.ReleasedAt = &now
+			existingMapping.QuarantineHistory[len(existingMapping.QuarantineHistory)-1] = lastEvent
+			update["$set"].(bson.M)["quarantine_history"] = existingMapping.QuarantineHistory
+		}
+	}
+
+	_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+		update,
+	)
+	if err != nil {
+		s.logger.Error("failed to update phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to update phone mapping: %w", err)
 	}
 
 	// Record opt-in history
-	s.recordOptInHistory(ctx, storagePhone, req.CPF, models.OptInActionOptIn, req.Channel, nil, req.ValidationResult)
-
-	// Update self-declared data if this is a validated registration
-	if req.ValidationResult != nil && req.ValidationResult.Valid {
-		s.updateSelfDeclaredOptIn(ctx, req.CPF, req.Channel, storagePhone)
-	}
+	s.recordOptInHistory(ctx, phoneNumber, cpf, "opt_in", channel, "")
 
 	return &models.OptInResponse{
-		Status:         "opted_in",
-		PhoneMappingID: result.InsertedID.(string),
+		Status: "opted_in",
 	}, nil
 }
 
 // OptOut processes opt-out for a phone number
-func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber string, req *models.OptOutRequest) (*models.OptOutResponse, error) {
-	// Parse phone number
+func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber, reason, channel string) (*models.OptOutResponse, error) {
+	// Parse phone number for storage format
 	components, err := utils.ParsePhoneNumber(phoneNumber)
 	if err != nil {
 		return nil, fmt.Errorf("invalid phone number: %w", err)
 	}
-
 	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+	now := time.Now()
 
-	// Find any mapping for this phone number (not just active)
+	// Find existing mapping
 	var mapping models.PhoneCPFMapping
 	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
 		ctx,
-		bson.M{
-			"phone_number": storagePhone,
-		},
+		bson.M{"phone_number": storagePhone},
 	).Decode(&mapping)
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, fmt.Errorf("no mapping found for phone number")
-		}
-		return nil, fmt.Errorf("failed to find phone mapping: %w", err)
-	}
-
-	// Check if mapping is already blocked
-	if mapping.Status == models.PhoneMappingStatusBlocked {
-		s.logger.Info("phone mapping already blocked", 
-			zap.String("phone_number", storagePhone), 
-			zap.String("cpf", mapping.CPF))
-		// Still record the opt-out in history
-		s.recordOptInHistory(ctx, storagePhone, mapping.CPF, models.OptInActionOptOut, req.Channel, &req.Reason, nil)
-		return &models.OptOutResponse{
-			Status: "already_opted_out",
+					return &models.OptOutResponse{
+			Status: "not_found",
 		}, nil
-	}
-
-	// Only block the mapping if the reason is "incorrect_person" (Mensagem era engano)
-	if req.Reason == models.OptOutReasonIncorrectPerson {
-		_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
-			ctx,
-			bson.M{"_id": mapping.ID},
-			bson.M{
-				"$set": bson.M{
-					"status":     models.PhoneMappingStatusBlocked,
-					"updated_at": time.Now(),
-				},
-			},
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to block phone mapping: %w", err)
 		}
-		s.logger.Info("phone mapping blocked due to incorrect person opt-out", 
-			zap.String("phone_number", storagePhone), 
-			zap.String("cpf", mapping.CPF))
-	} else {
-		s.logger.Info("opt-out recorded without blocking phone mapping", 
-			zap.String("phone_number", storagePhone), 
-			zap.String("cpf", mapping.CPF), 
-			zap.String("reason", req.Reason))
+		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
 	}
 
 	// Record opt-out history
-	s.recordOptInHistory(ctx, storagePhone, mapping.CPF, models.OptInActionOptOut, req.Channel, &req.Reason, nil)
+	s.recordOptInHistory(ctx, phoneNumber, mapping.CPF, "opt_out", channel, reason)
 
-	// Update self-declared data
-	s.updateSelfDeclaredOptOut(ctx, mapping.CPF)
+	// Update mapping status
+	update := bson.M{
+		"$set": bson.M{
+			"status":     models.MappingStatusBlocked,
+			"updated_at": now,
+		},
+	}
+
+	// Only block the mapping if reason is "Mensagem era engano"
+	if reason == "Mensagem era engano" {
+		update["$set"].(bson.M)["status"] = models.MappingStatusBlocked
+	}
+
+	_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+		update,
+	)
+	if err != nil {
+		s.logger.Error("failed to update phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to update phone mapping: %w", err)
+	}
 
 	return &models.OptOutResponse{
 		Status: "opted_out",
@@ -330,149 +846,87 @@ func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber string, re
 }
 
 // RejectRegistration rejects a registration and blocks the phone-CPF mapping
-func (s *PhoneMappingService) RejectRegistration(ctx context.Context, phoneNumber string, req *models.RejectRegistrationRequest) (*models.RejectRegistrationResponse, error) {
-	// Parse phone number
+func (s *PhoneMappingService) RejectRegistration(ctx context.Context, phoneNumber, cpf string) (*models.RejectRegistrationResponse, error) {
+	// Parse phone number for storage format
 	components, err := utils.ParsePhoneNumber(phoneNumber)
 	if err != nil {
 		return nil, fmt.Errorf("invalid phone number: %w", err)
 	}
-
 	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+	now := time.Now()
 
-	// Block the mapping
-	_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
-		ctx,
-		bson.M{
-			"phone_number": storagePhone,
-			"cpf":         req.CPF,
-		},
-		bson.M{
-			"$set": bson.M{
-				"status":     models.PhoneMappingStatusBlocked,
-				"updated_at": time.Now(),
-			},
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to block phone mapping: %w", err)
+	// Validate CPF
+	if !utils.ValidateCPF(cpf) {
+		return nil, fmt.Errorf("invalid CPF format")
 	}
 
-	// Record rejection in opt-in history
-	s.recordOptInHistory(ctx, storagePhone, req.CPF, models.OptInActionOptOut, req.Channel, &req.Reason, nil)
+	// Find existing mapping
+	var mapping models.PhoneCPFMapping
+	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+	).Decode(&mapping)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+					return &models.RejectRegistrationResponse{
+			Status: "not_found",
+		}, nil
+		}
+		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
+	}
+
+	// Record rejection in history
+	s.recordOptInHistory(ctx, phoneNumber, cpf, "rejected", "whatsapp", "Registro rejeitado pelo usuário")
+
+	// Block the mapping
+	update := bson.M{
+		"$set": bson.M{
+			"status":     models.MappingStatusBlocked,
+			"updated_at": now,
+		},
+	}
+
+	_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+		update,
+	)
+	if err != nil {
+		s.logger.Error("failed to block phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		return nil, fmt.Errorf("failed to block phone mapping: %w", err)
+	}
 
 	return &models.RejectRegistrationResponse{
 		Status: "rejected",
 	}, nil
 }
 
-// Helper methods
-
-func (s *PhoneMappingService) recordValidationAttempt(ctx context.Context, components *utils.PhoneComponents, cpf string, valid bool, channel string) {
+// recordOptInHistory records opt-in/opt-out history
+func (s *PhoneMappingService) recordOptInHistory(ctx context.Context, phoneNumber, cpf, action, channel, reason string) {
+	now := time.Now()
+	
+	// Parse phone number for storage format
+	components, err := utils.ParsePhoneNumber(phoneNumber)
+	if err != nil {
+		s.logger.Error("failed to parse phone number for history", zap.Error(err), zap.String("phone_number", phoneNumber))
+		return
+	}
 	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
-
-	attempt := models.ValidationAttempt{
-		Timestamp: time.Now(),
-		Valid:     valid,
-		Channel:   channel,
-	}
-
-	_, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
-		ctx,
-		bson.M{"phone_number": storagePhone},
-		bson.M{
-			"$push": bson.M{
-				"validation_attempts": attempt,
-			},
-			"$set": bson.M{
-				"updated_at": time.Now(),
-			},
-		},
-		options.Update().SetUpsert(true),
-	)
-
-	if err != nil {
-		s.logger.Error("failed to record validation attempt", zap.Error(err))
-	}
-}
-
-func (s *PhoneMappingService) recordOptInHistory(ctx context.Context, phoneNumber, cpf, action, channel string, reason *string, validationResult *models.ValidationResult) {
+	
 	history := models.OptInHistory{
-		PhoneNumber:      phoneNumber,
-		CPF:              cpf,
-		Action:           action,
-		Channel:          channel,
-		Reason:           reason,
-		ValidationResult: validationResult,
-		Timestamp:        time.Now(),
+		PhoneNumber: storagePhone,
+		CPF:         cpf,
+		Action:      action,
+		Channel:     channel,
+		Reason:      &reason,
+		Timestamp:   now,
 	}
 
-	_, err := config.MongoDB.Collection(config.AppConfig.OptInHistoryCollection).InsertOne(ctx, history)
+	_, err = config.MongoDB.Collection(config.AppConfig.OptInHistoryCollection).InsertOne(ctx, history)
 	if err != nil {
-		s.logger.Error("failed to record opt-in history", zap.Error(err))
-	}
-}
-
-func (s *PhoneMappingService) blockPhoneMapping(ctx context.Context, phoneNumber, cpf, reason string) {
-	_, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
-		ctx,
-		bson.M{
-			"phone_number": phoneNumber,
-			"cpf":         cpf,
-		},
-		bson.M{
-			"$set": bson.M{
-				"status":     models.PhoneMappingStatusBlocked,
-				"updated_at": time.Now(),
-			},
-		},
-	)
-	if err != nil {
-		s.logger.Error("failed to block phone mapping", zap.Error(err))
-	}
-}
-
-func (s *PhoneMappingService) updateSelfDeclaredOptIn(ctx context.Context, cpf, channel, phoneNumber string) {
-	// Update self-declared data with opt-in details
-	update := bson.M{
-		"$set": bson.M{
-			"opt_in_details": bson.M{
-				"status":       true,
-				"channel":      channel,
-				"timestamp":    time.Now(),
-				"phone_number": phoneNumber,
-				"validated":    true,
-			},
-			"updated_at": time.Now(),
-		},
-	}
-
-	_, err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
-		ctx,
-		bson.M{"cpf": cpf},
-		update,
-		options.Update().SetUpsert(true),
-	)
-	if err != nil {
-		s.logger.Error("failed to update self-declared opt-in", zap.Error(err))
-	}
-}
-
-func (s *PhoneMappingService) updateSelfDeclaredOptOut(ctx context.Context, cpf string) {
-	// Update self-declared data to opt out
-	update := bson.M{
-		"$set": bson.M{
-			"opt_in_details.status": false,
-			"opt_in_details.timestamp": time.Now(),
-			"updated_at": time.Now(),
-		},
-	}
-
-	_, err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
-		ctx,
-		bson.M{"cpf": cpf},
-		update,
-	)
-	if err != nil {
-		s.logger.Error("failed to update self-declared opt-out", zap.Error(err))
+		s.logger.Error("failed to record opt-in history", zap.Error(err), zap.String("phone_number", phoneNumber))
+		// Don't fail the main operation for this error
 	}
 } 
