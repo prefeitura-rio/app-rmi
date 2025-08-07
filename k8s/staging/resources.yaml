@@ -6,6 +6,7 @@ metadata:
   annotations:
     reloader.stakater.com/auto: "true"
     sidecar.istio.io/proxyMemory: "256Mi"
+    sidecar.istio.io/proxyMemoryLimit: "512Mi"
 spec:
   strategy:
     type: RollingUpdate
