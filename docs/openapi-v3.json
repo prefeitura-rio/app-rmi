@@ -956,14 +956,14 @@
             "bearerAuth": []
           }
         ],
-        "description": "Validates the verification code sent to the phone number",
+        "description": "Valida o código de verificação enviado para o número de telefone",
         "tags": [
           "citizen"
         ],
-        "summary": "Validate phone verification",
+        "summary": "Validar verificação de telefone",
         "parameters": [
           {
-            "description": "CPF number",
+            "description": "Número do CPF",
             "name": "cpf",
             "in": "path",
             "required": true,
@@ -980,7 +980,7 @@
               }
             }
           },
-          "description": "Verification code and phone",
+          "description": "Código de verificação e telefone",
           "required": true
         },
         "responses": {
@@ -1116,6 +1116,58 @@
         }
       }
     },
+    "/config/channels": {
+      "get": {
+        "description": "Retorna a lista de canais de comunicação disponíveis",
+        "tags": [
+          "config"
+        ],
+        "summary": "Obter canais disponíveis",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.ChannelsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/config/opt-out-reasons": {
+      "get": {
+        "description": "Retorna a lista de motivos disponíveis para opt-out",
+        "tags": [
+          "config"
+        ],
+        "summary": "Obter motivos de opt-out",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.OptOutReasonsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/health": {
       "get": {
         "description": "Verifica a saúde da API e suas dependências (MongoDB e Redis). Retorna status detalhado para cada serviço.",
@@ -1140,6 +1192,395 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/handlers.HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/phone/{phone_number}/citizen": {
+      "get": {
+        "description": "Busca um cidadão por número de telefone e retorna dados mascarados",
+        "tags": [
+          "phone"
+        ],
+        "summary": "Obter cidadão por número de telefone",
+        "parameters": [
+          {
+            "description": "Phone number",
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.PhoneCitizenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/phone/{phone_number}/opt-in": {
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Processa opt-in para um número de telefone com validação de CPF",
+        "tags": [
+          "phone"
+        ],
+        "summary": "Opt-in para um número de telefone",
+        "parameters": [
+          {
+            "description": "Phone number",
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.OptInRequest"
+              }
+            }
+          },
+          "description": "Opt-in data",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.OptInResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/phone/{phone_number}/opt-out": {
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Processa opt-out para um número de telefone",
+        "tags": [
+          "phone"
+        ],
+        "summary": "Opt-out para um número de telefone",
+        "parameters": [
+          {
+            "description": "Phone number",
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.OptOutRequest"
+              }
+            }
+          },
+          "description": "Opt-out data",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.OptOutResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/phone/{phone_number}/reject-registration": {
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Rejeita um registro e bloqueia o mapeamento phone-CPF",
+        "tags": [
+          "phone"
+        ],
+        "summary": "Rejeitar registro",
+        "parameters": [
+          {
+            "description": "Phone number",
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.RejectRegistrationRequest"
+              }
+            }
+          },
+          "description": "Rejection data",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.RejectRegistrationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/phone/{phone_number}/validate-registration": {
+      "post": {
+        "description": "Valida nome, CPF e data de nascimento contra dados base",
+        "tags": [
+          "phone"
+        ],
+        "summary": "Validar dados de registro",
+        "parameters": [
+          {
+            "description": "Phone number",
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.ValidateRegistrationRequest"
+              }
+            }
+          },
+          "description": "Registration data",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.ValidateRegistrationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
                 }
               }
             }
@@ -1360,6 +1801,28 @@
           },
           "status_cadastral": {
             "type": "string"
+          }
+        }
+      },
+      "models.Channel": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "models.ChannelsResponse": {
+        "type": "object",
+        "properties": {
+          "channels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.Channel"
+            }
           }
         }
       },
@@ -1776,6 +2239,83 @@
           }
         }
       },
+      "models.OptInRequest": {
+        "type": "object",
+        "required": [
+          "channel",
+          "cpf"
+        ],
+        "properties": {
+          "channel": {
+            "type": "string"
+          },
+          "cpf": {
+            "type": "string"
+          },
+          "validation_result": {
+            "$ref": "#/components/schemas/models.ValidationResult"
+          }
+        }
+      },
+      "models.OptInResponse": {
+        "type": "object",
+        "properties": {
+          "phone_mapping_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "models.OptOutReason": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "models.OptOutReasonsResponse": {
+        "type": "object",
+        "properties": {
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.OptOutReason"
+            }
+          }
+        }
+      },
+      "models.OptOutRequest": {
+        "type": "object",
+        "required": [
+          "channel",
+          "reason"
+        ],
+        "properties": {
+          "channel": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "models.OptOutResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "models.PaginatedMaintenanceRequests": {
         "type": "object",
         "properties": {
@@ -1801,6 +2341,23 @@
                 "type": "integer"
               }
             }
+          }
+        }
+      },
+      "models.PhoneCitizenResponse": {
+        "type": "object",
+        "properties": {
+          "cpf": {
+            "type": "string"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -1834,6 +2391,33 @@
             "type": "string"
           },
           "nome": {
+            "type": "string"
+          }
+        }
+      },
+      "models.RejectRegistrationRequest": {
+        "type": "object",
+        "required": [
+          "channel",
+          "cpf",
+          "reason"
+        ],
+        "properties": {
+          "channel": {
+            "type": "string"
+          },
+          "cpf": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "models.RejectRegistrationResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
             "type": "string"
           }
         }
@@ -1979,6 +2563,51 @@
         "type": "object",
         "properties": {
           "firstlogin": {
+            "type": "boolean"
+          }
+        }
+      },
+      "models.ValidateRegistrationRequest": {
+        "type": "object",
+        "required": [
+          "birth_date",
+          "channel",
+          "cpf",
+          "name"
+        ],
+        "properties": {
+          "birth_date": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "cpf": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "models.ValidateRegistrationResponse": {
+        "type": "object",
+        "properties": {
+          "matched_cpf": {
+            "type": "string"
+          },
+          "matched_name": {
+            "type": "string"
+          },
+          "valid": {
+            "type": "boolean"
+          }
+        }
+      },
+      "models.ValidationResult": {
+        "type": "object",
+        "properties": {
+          "valid": {
             "type": "boolean"
           }
         }
