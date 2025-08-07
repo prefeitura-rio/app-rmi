@@ -24,11 +24,11 @@ spec:
           resources:
             requests:
               ephemeral-storage: 100Mi
-              cpu: 1000m
-              memory: 512Mi
+              cpu: 1500m
+              memory: 768Mi
             limits:
-              cpu: 2000m
-              memory: 1024Mi
+              cpu: 3000m
+              memory: 1536Mi
           readinessProbe:
             httpGet:
               path: /v1/health
@@ -61,7 +61,7 @@ spec:
       metadata:
         serverAddress: http://prometheus.istio-system.svc.cluster.local:9090
         metricName: http_requests_total
-        threshold: "4000"
+        threshold: "3000"
         query: sum(rate(istio_requests_total{destination_workload="rmi"}[1m]))
 
 ---
