@@ -140,6 +140,16 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure phone_mapping collection index
+	if err := ensurePhoneMappingIndex(ctx, logger); err != nil {
+		return err
+	}
+
+	// Ensure opt_in_history collection index
+	if err := ensureOptInHistoryIndex(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -574,6 +584,232 @@ func ensureAuditLogsIndex(ctx context.Context, logger *zap.Logger) error {
 	} else {
 		logger.Debug("audit_logs collection indexes already exist", 
 			zap.String("collection", "audit_logs"))
+	}
+	
+	return nil
+} 
+
+// ensurePhoneMappingIndex creates the required indexes for phone_cpf_mappings collection
+func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.PhoneMappingCollection)
+	
+	// Check if indexes already exist
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		logger.Error("failed to list indexes", zap.Error(err))
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	existingIndexes := make(map[string]bson.M)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existingIndexes[name] = index
+		}
+	}
+
+	// Check if we need to drop the old unique index
+	if oldIndex, exists := existingIndexes["phone_number_1"]; exists {
+		if unique, ok := oldIndex["unique"].(bool); ok && unique {
+			logger.Info("dropping old unique phone_number index to allow multiple CPFs", 
+				zap.String("collection", AppConfig.PhoneMappingCollection))
+			
+			_, err = collection.Indexes().DropOne(ctx, "phone_number_1")
+			if err != nil {
+				logger.Error("failed to drop old unique phone_number index", zap.Error(err))
+				return err
+			}
+			
+			// Remove from existing indexes map since we're recreating it
+			delete(existingIndexes, "phone_number_1")
+		}
+	}
+
+	// Create indexes that don't exist
+	indexesToCreate := []mongo.IndexModel{}
+
+	// 1. Index on phone_number for quick lookups (not unique - allows multiple CPFs with different statuses)
+	if _, exists := existingIndexes["phone_number_1"]; !exists {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "phone_number", Value: 1}},
+			Options: options.Index().
+				SetName("phone_number_1"),
+		})
+	}
+
+	// 2. Index on cpf for CPF-based queries
+	if _, exists := existingIndexes["cpf_1"]; !exists {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "cpf", Value: 1}},
+			Options: options.Index().
+				SetName("cpf_1"),
+		})
+	}
+
+	// 3. Index on status for filtering active/blocked mappings
+	if _, exists := existingIndexes["status_1"]; !exists {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "status", Value: 1}},
+			Options: options.Index().
+				SetName("status_1"),
+		})
+	}
+
+	// 4. Compound index on phone_number and status for active mapping lookups
+	if _, exists := existingIndexes["phone_number_1_status_1"]; !exists {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "phone_number", Value: 1}, {Key: "status", Value: 1}},
+			Options: options.Index().
+				SetName("phone_number_1_status_1"),
+		})
+	}
+
+	// 5. Index on created_at for time-based queries
+	if _, exists := existingIndexes["created_at_1"]; !exists {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "created_at", Value: -1}},
+			Options: options.Index().
+				SetName("created_at_1"),
+		})
+	}
+
+	// Create all missing indexes
+	for _, indexModel := range indexesToCreate {
+		_, err = collection.Indexes().CreateOne(ctx, indexModel)
+		if err != nil {
+			// Check if it's a duplicate key error (another instance created it)
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("phone_mapping index already exists (created by another instance)", 
+					zap.String("collection", AppConfig.PhoneMappingCollection))
+				continue
+			}
+			logger.Error("failed to create phone_mapping index", 
+				zap.String("collection", AppConfig.PhoneMappingCollection),
+				zap.Error(err))
+			return err
+		}
+	}
+
+	if len(indexesToCreate) > 0 {
+		logger.Info("created phone_mapping collection indexes", 
+			zap.String("collection", AppConfig.PhoneMappingCollection),
+			zap.Int("count", len(indexesToCreate)))
+	} else {
+		logger.Debug("phone_mapping collection indexes already exist", 
+			zap.String("collection", AppConfig.PhoneMappingCollection))
+	}
+	
+	return nil
+}
+
+// ensureOptInHistoryIndex creates the required indexes for opt_in_history collection
+func ensureOptInHistoryIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.OptInHistoryCollection)
+	
+	// Check if indexes already exist
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		logger.Error("failed to list indexes", zap.Error(err))
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	existingIndexes := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existingIndexes[name] = true
+		}
+	}
+
+	// Create indexes that don't exist
+	indexesToCreate := []mongo.IndexModel{}
+
+	// 1. Index on phone_number for phone-based queries
+	if !existingIndexes["phone_number_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "phone_number", Value: 1}},
+			Options: options.Index().
+				SetName("phone_number_1"),
+		})
+	}
+
+	// 2. Index on cpf for CPF-based queries
+	if !existingIndexes["cpf_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "cpf", Value: 1}},
+			Options: options.Index().
+				SetName("cpf_1"),
+		})
+	}
+
+	// 3. Index on action for filtering opt-in/opt-out
+	if !existingIndexes["action_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "action", Value: 1}},
+			Options: options.Index().
+				SetName("action_1"),
+		})
+	}
+
+	// 4. Index on channel for channel-based queries
+	if !existingIndexes["channel_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "channel", Value: 1}},
+			Options: options.Index().
+				SetName("channel_1"),
+		})
+	}
+
+	// 5. Index on timestamp for time-based queries
+	if !existingIndexes["timestamp_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "timestamp", Value: -1}},
+			Options: options.Index().
+				SetName("timestamp_1"),
+		})
+	}
+
+	// 6. Compound index on phone_number and timestamp for chronological history
+	if !existingIndexes["phone_number_1_timestamp_1"] {
+		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
+			Keys: bson.D{{Key: "phone_number", Value: 1}, {Key: "timestamp", Value: -1}},
+			Options: options.Index().
+				SetName("phone_number_1_timestamp_1"),
+		})
+	}
+
+	// Create all missing indexes
+	for _, indexModel := range indexesToCreate {
+		_, err = collection.Indexes().CreateOne(ctx, indexModel)
+		if err != nil {
+			// Check if it's a duplicate key error (another instance created it)
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("opt_in_history index already exists (created by another instance)", 
+					zap.String("collection", AppConfig.OptInHistoryCollection))
+				continue
+			}
+			logger.Error("failed to create opt_in_history index", 
+				zap.String("collection", AppConfig.OptInHistoryCollection),
+				zap.Error(err))
+			return err
+		}
+	}
+
+	if len(indexesToCreate) > 0 {
+		logger.Info("created opt_in_history collection indexes", 
+			zap.String("collection", AppConfig.OptInHistoryCollection),
+			zap.Int("count", len(indexesToCreate)))
+	} else {
+		logger.Debug("opt_in_history collection indexes already exist", 
+			zap.String("collection", AppConfig.OptInHistoryCollection))
 	}
 	
 	return nil

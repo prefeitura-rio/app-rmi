@@ -17,6 +17,10 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 - ✅ Validação de dados abrangente
 - 🔄 Transações de banco de dados
 - 🧹 Limpeza automática de dados expirados
+- 📞 Suporte a WhatsApp bot com phone-based endpoints
+- 🔐 Sistema de opt-in/opt-out com histórico detalhado
+- 📋 Validação de registros contra dados base
+- 🎯 Mapeamento phone-CPF com controle de status
 
 ## Variáveis de Ambiente
 
@@ -30,6 +34,8 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | MONGODB_PHONE_VERIFICATION_COLLECTION | Nome da coleção de verificação de telefone | phone_verifications | Não |
 | MONGODB_MAINTENANCE_REQUEST_COLLECTION | Nome da coleção de chamados do 1746 | - | Sim |
 | MONGODB_USER_CONFIG_COLLECTION | Nome da coleção de configurações do usuário | user_config | Não |
+| MONGODB_PHONE_MAPPING_COLLECTION | Nome da coleção de mapeamentos phone-CPF | phone_cpf_mappings | Não |
+| MONGODB_OPT_IN_HISTORY_COLLECTION | Nome da coleção de histórico opt-in/opt-out | opt_in_history | Não |
 | REDIS_URI | String de conexão Redis | redis://localhost:6379 | Sim |
 | REDIS_TTL | TTL do cache Redis em minutos | 60 | Não |
 | PHONE_VERIFICATION_TTL | TTL dos códigos de verificação de telefone (ex: "15m", "1h") | 15m | Não |
@@ -126,6 +132,56 @@ Valida um número de telefone usando um código de verificação.
 - Invalidação completa do cache relacionado
 - Registro de auditoria da verificação
 
+## WhatsApp Bot Endpoints
+
+### GET /phone/{phone_number}/citizen
+Busca um cidadão por número de telefone e retorna dados mascarados.
+- Retorna CPF e nome mascarados se encontrado
+- Retorna `{"found": false}` se não encontrado
+- Não requer autenticação
+- Suporte a números internacionais
+
+### POST /phone/{phone_number}/validate-registration
+Valida dados de registro (nome, CPF, data de nascimento) contra dados base.
+- Validação contra coleção de dados base (read-only)
+- Retorna resultado da validação e dados encontrados
+- Registra tentativas de validação para auditoria
+- Não requer autenticação
+
+### POST /phone/{phone_number}/opt-in
+Processa opt-in para um número de telefone.
+- Requer autenticação JWT com acesso ao CPF
+- Cria mapeamento phone-CPF ativo
+- Registra histórico de opt-in
+- Atualiza dados autodeclarados se validado
+- Suporte a diferentes canais (WhatsApp, Web, Mobile)
+
+### POST /phone/{phone_number}/opt-out
+Processa opt-out para um número de telefone.
+- Requer autenticação JWT
+- Bloqueia mapeamento phone-CPF
+- Registra histórico de opt-out com motivo
+- Atualiza dados autodeclarados
+
+### POST /phone/{phone_number}/reject-registration
+Rejeita um registro e bloqueia mapeamento phone-CPF.
+- Requer autenticação JWT com acesso ao CPF
+- Bloqueia mapeamento existente
+- Registra rejeição no histórico
+- Permite novo registro para o número
+
+## Configuration Endpoints
+
+### GET /config/channels
+Retorna lista de canais disponíveis para opt-in/opt-out.
+- Canais: WhatsApp, Web, Mobile
+- Não requer autenticação
+
+### GET /config/opt-out-reasons
+Retorna lista de motivos disponíveis para opt-out.
+- Motivos com título e subtítulo
+- Não requer autenticação
+
 ## Modelos de Dados
 
 ### Citizen
@@ -136,86 +192,150 @@ Modelo principal contendo todas as informações do cidadão:
 - Metadados (última atualização, etc.)
 
 ### SelfDeclaredData
-Stores self-declared updates to citizen data:
-- Only stores fields that have been updated
-- Includes validation status
-- Maintains update history
+Armazena atualizações autodeclaradas dos dados do cidadão:
+- Armazena apenas campos que foram atualizados
+- Inclui status de validação
+- Mantém histórico de atualizações
 
 ### PhoneVerification
-Manages phone number verification process:
-- Stores verification codes
-- Tracks verification status
-- Handles code expiration
-- Automatic cleanup via TTL indexes
-- Optimized queries with compound indexes
+Gerencia o processo de verificação de números de telefone:
+- Armazena códigos de verificação
+- Rastreia status de verificação
+- Gerencia expiração de códigos
+- Limpeza automática via índices TTL
+- Consultas otimizadas com índices compostos
 
 ### AuditLog
-Comprehensive audit trail system:
-- Tracks all data changes with metadata
-- Records user context (IP, user agent, user ID)
-- Automatic cleanup after 1 year
-- Structured for compliance and debugging
+Sistema abrangente de auditoria:
+- Rastreia todas as mudanças de dados com metadados
+- Registra contexto do usuário (IP, user agent, ID do usuário)
+- Limpeza automática após 1 ano
+- Estruturado para compliance e debugging
 
-## Caching
+### PhoneCPFMapping
+Gerencia relacionamentos entre números de telefone e CPF:
+- Rastreia mapeamentos ativos, bloqueados e pendentes
+- Suporta registros autodeclarados e validados
+- Registra tentativas de validação e canais
+- Gerenciamento automático de status
 
-The API uses Redis for caching citizen data:
-- Cache key: `citizen:{cpf}`
-- TTL: Configurable via `REDIS_TTL` (default: 60 minutes)
-- Cache is invalidated when self-declared data is updated
-- Comprehensive cache invalidation for related data
-- Cache invalidation for citizen, wallet, and maintenance request data
+### OptInHistory
+Rastreia ações de opt-in e opt-out:
+- Registra todos os eventos de opt-in/opt-out com timestamps
+- Armazena informações de canal e motivos
+- Vincula aos resultados de validação
+- Trilha de auditoria completa para compliance
 
-## Monitoring
+## Cache
 
-### Metrics
-Prometheus metrics are available at `/metrics`:
-- Request counts and durations
-- Cache hits and misses
-- Self-declared updates
-- Phone verifications
+A API usa Redis para cache de dados de cidadãos:
+- Chave de cache: `citizen:{cpf}`
+- TTL: Configurável via `REDIS_TTL` (padrão: 60 minutos)
+- Cache é invalidado quando dados autodeclarados são atualizados
+- Invalidação abrangente de cache para dados relacionados
+- Invalidação de cache para dados de cidadão, carteira e chamados
 
-### Tracing
-OpenTelemetry tracing is available when enabled:
-- Request tracing
-- Database operations
-- Cache operations
-- External service calls
+## Monitoramento
 
-### Logging
-Structured logging with Zap:
-- Request logging
-- Error tracking
-- Performance monitoring
-- Audit trail
+### Métricas
+Métricas Prometheus disponíveis em `/metrics`:
+- Contagens e durações de requisições
+- Hits e misses de cache
+- Atualizações autodeclaradas
+- Verificações de telefone
 
-### Index Management
-The API automatically manages MongoDB indexes to ensure optimal query performance:
-- **Automatic Index Creation**: Creates required indexes on startup if they don't exist
-- **Periodic Verification**: Checks for indexes at configurable intervals and recreates them if missing
-- **Multi-Instance Safe**: Uses MongoDB's `createIndex` with background building and duplicate key error handling
-- **Collection Overwrite Protection**: Ensures indexes exist after BigQuery/Airbyte collection overwrites
-- **Configurable Interval**: Set via `INDEX_MAINTENANCE_INTERVAL` environment variable (default: 1h)
+### Rastreamento
+Rastreamento OpenTelemetry disponível quando habilitado:
+- Rastreamento de requisições
+- Operações de banco de dados
+- Operações de cache
+- Chamadas de serviços externos
 
-**Managed Indexes:**
-- `citizen` collection: Unique index on `cpf` field (`cpf_1`)
-- `maintenance_request` collection: Index on `cpf` field (`cpf_1`)
-- `self_declared` collection: Unique index on `cpf` field (`cpf_1`)
-- `phone_verifications` collection: 
-  - Unique compound index on `cpf` and `phone_number` (`cpf_1_phone_number_1`)
-  - TTL index on `expires_at` for automatic cleanup (`expires_at_1`)
-  - Compound index for verification queries (`verification_query_1`)
-- `user_config` collection: Unique index on `cpf` field (`cpf_1`)
-- `audit_logs` collection:
-  - Index on `cpf` field (`cpf_1`)
-  - Index on `timestamp` field (`timestamp_1`)
-  - Compound index on `action` and `resource` (`action_1_resource_1`)
-  - TTL index for automatic cleanup after 1 year (`timestamp_ttl`)
+### Logs
+Logs estruturados com Zap:
+- Logs de requisições
+- Rastreamento de erros
+- Monitoramento de performance
+- Trilha de auditoria
 
-**Safety Features:**
-- **Background Index Building**: Indexes are built in the background, allowing other operations to continue
-- **Duplicate Key Handling**: Gracefully handles cases where another instance creates the same index
-- **Error Recovery**: Failed index creation doesn't crash the application
-- **Concurrent Safety**: Multiple API instances can run index maintenance simultaneously without conflicts
+### Gerenciamento de Índices
+A API gerencia automaticamente os índices MongoDB para garantir performance otimizada de consultas:
+- **Criação Automática de Índices**: Cria índices necessários na inicialização se não existirem
+- **Verificação Periódica**: Verifica índices em intervalos configuráveis e os recria se estiverem ausentes
+- **Seguro para Múltiplas Instâncias**: Usa `createIndex` do MongoDB com construção em background e tratamento de erros de chave duplicada
+- **Proteção contra Sobrescrita de Coleções**: Garante que índices existam após sobrescritas de coleções do BigQuery/Airbyte
+- **Intervalo Configurável**: Definido via variável de ambiente `INDEX_MAINTENANCE_INTERVAL` (padrão: 1h)
+
+**Índices Gerenciados:**
+- Coleção `citizen`: Índice único no campo `cpf` (`cpf_1`)
+- Coleção `maintenance_request`: Índice no campo `cpf` (`cpf_1`)
+- Coleção `self_declared`: Índice único no campo `cpf` (`cpf_1`)
+- Coleção `phone_verifications`: 
+  - Índice composto único em `cpf` e `phone_number` (`cpf_1_phone_number_1`)
+  - Índice TTL em `expires_at` para limpeza automática (`expires_at_1`)
+  - Índice composto para consultas de verificação (`verification_query_1`)
+- Coleção `user_config`: Índice único no campo `cpf` (`cpf_1`)
+- Coleção `audit_logs`:
+  - Índice no campo `cpf` (`cpf_1`)
+  - Índice no campo `timestamp` (`timestamp_1`)
+  - Índice composto em `action` e `resource` (`action_1_resource_1`)
+  - Índice TTL para limpeza automática após 1 ano (`timestamp_ttl`)
+- Coleção `phone_cpf_mappings`:
+  - Índice único no campo `phone_number` (`phone_number_1`)
+  - Índice no campo `cpf` (`cpf_1`)
+  - Índice no campo `status` (`status_1`)
+  - Índice composto em `phone_number` e `status` (`phone_number_1_status_1`)
+  - Índice no campo `created_at` (`created_at_1`)
+- Coleção `opt_in_history`:
+  - Índice no campo `phone_number` (`phone_number_1`)
+  - Índice no campo `cpf` (`cpf_1`)
+  - Índice no campo `action` (`action_1`)
+  - Índice no campo `channel` (`channel_1`)
+  - Índice no campo `timestamp` (`timestamp_1`)
+  - Índice composto em `phone_number` e `timestamp` (`phone_number_1_timestamp_1`)
+
+## Cenários do WhatsApp Bot
+
+### Cenário 1: Opt-in de Usuário Existente
+1. **Verificar Registro**: WhatsApp bot chama `GET /phone/{phone}/citizen`
+2. **Retornar Dados Mascarados**: API retorna CPF e nome mascarados se encontrado
+3. **Confirmação do Usuário**: Usuário confirma que o registro está correto
+4. **Processamento de Opt-in**: Bot chama `POST /phone/{phone}/opt-in` com CPF e canal
+5. **Criar Mapeamento**: API cria mapeamento phone-CPF ativo e atualiza status de opt-in
+
+### Cenário 2: Registro de Novo Usuário
+1. **Verificar Registro**: WhatsApp bot chama `GET /phone/{phone}/citizen` → Retorna `{"found": false}`
+2. **Coletar Dados**: Bot coleta nome, CPF e data de nascimento do usuário
+3. **Validar Registro**: Bot chama `POST /phone/{phone}/validate-registration`
+4. **Resultado da Validação**: API valida contra dados base e retorna resultado
+5. **Processamento de Opt-in**: Se válido, bot chama `POST /phone/{phone}/opt-in` com resultado da validação
+6. **Criar Mapeamento Autodeclarado**: API cria mapeamento phone-CPF autodeclarado
+
+### Cenário 3: Registro Incorreto
+1. **Verificar Registro**: WhatsApp bot chama `GET /phone/{phone}/citizen` → Retorna registro existente
+2. **Rejeição do Usuário**: Usuário diz que o registro pertence a outra pessoa
+3. **Rejeitar Registro**: Bot chama `POST /phone/{phone}/reject-registration`
+4. **Bloquear Mapeamento**: API bloqueia o mapeamento phone-CPF
+5. **Novo Registro**: Bot prossegue com fluxo de novo registro (Cenário 2)
+
+### Cenário 4: Processo de Opt-out
+1. **Solicitação do Usuário**: Usuário solicita opt-out via WhatsApp
+2. **Processamento de Opt-out**: Bot chama `POST /phone/{phone}/opt-out` com motivo e canal
+3. **Bloqueio Condicional**: API só bloqueia o mapeamento phone-CPF se o motivo for "Mensagem era engano"
+4. **Atualizar Status**: API atualiza status de opt-in dos dados autodeclarados
+5. **Registrar Histórico**: API registra opt-out no histórico com motivo e timestamp
+
+**Motivos de Opt-out:**
+- **Conteúdo irrelevante**: Mensagens não são úteis (não bloqueia mapeamento)
+- **Não sou do Rio**: Não é do Rio de Janeiro (não bloqueia mapeamento)
+- **Mensagem era engano**: Não é a pessoa na mensagem (**bloqueia mapeamento CPF-telefone**)
+- **Quantidade de mensagens**: Muitas mensagens da Prefeitura (não bloqueia mapeamento)
+
+**Recursos de Segurança:**
+- **Construção de Índices em Background**: Índices são construídos em background, permitindo que outras operações continuem
+- **Tratamento de Chaves Duplicadas**: Trata graciosamente casos onde outra instância cria o mesmo índice
+- **Recuperação de Erros**: Falha na criação de índice não trava a aplicação
+- **Segurança Concorrente**: Múltiplas instâncias da API podem executar manutenção de índices simultaneamente sem conflitos
 
 ## Melhorias Implementadas
 
@@ -288,29 +408,29 @@ The API automatically manages MongoDB indexes to ensure optimal query performanc
 - **Documentação Interativa**: Swagger UI melhorado
 - **Testes de Carga**: Validação de performance sob carga
 
-## Development
+## Desenvolvimento
 
-### Prerequisites
-- Go 1.21 or later
+### Pré-requisitos
+- Go 1.21 ou superior
 - MongoDB
 - Redis
-- WhatsApp API service
+- Serviço de API do WhatsApp
 
-### Building
+### Compilação
 ```bash
 go build -o api cmd/api/main.go
 ```
 
-### Running
+### Execução
 ```bash
 ./api
 ```
 
-### Testing
+### Testes
 ```bash
 go test ./...
 ```
 
-## License
+## Licença
 
 MIT

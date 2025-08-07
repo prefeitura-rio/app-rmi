@@ -151,4 +151,44 @@ func RequireOwnCPF() gin.HandlerFunc {
 
 		c.Next()
 	}
-} 
+}
+
+// ExtractCPFFromToken extracts CPF from JWT token in Gin context
+func ExtractCPFFromToken(c *gin.Context) (string, error) {
+	claims, exists := c.Get("claims")
+	if !exists {
+		return "", fmt.Errorf("claims not found")
+	}
+
+	jwtClaims, ok := claims.(*models.JWTClaims)
+	if !ok {
+		return "", fmt.Errorf("invalid claims type")
+	}
+
+	return jwtClaims.PreferredUsername, nil
+}
+
+// IsAdmin checks if the user has admin privileges
+func IsAdmin(c *gin.Context) (bool, error) {
+	claims, exists := c.Get("claims")
+	if !exists {
+		return false, fmt.Errorf("claims not found")
+	}
+
+	jwtClaims, ok := claims.(*models.JWTClaims)
+	if !ok {
+		return false, fmt.Errorf("invalid claims type")
+	}
+
+	// Check if user has admin role
+	for _, role := range jwtClaims.RealmAccess.Roles {
+		if role == config.AppConfig.AdminGroup {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// ErrAccessDenied is returned when access is denied
+var ErrAccessDenied = fmt.Errorf("access denied") 

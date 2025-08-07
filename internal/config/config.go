@@ -29,6 +29,8 @@ type Config struct {
 	PhoneVerificationCollection string `json:"mongo_phone_verification_collection"`
 	UserConfigCollection   string `json:"mongo_user_config_collection"`
 	MaintenanceRequestCollection string `json:"mongo_maintenance_request_collection"`
+	PhoneMappingCollection string `json:"mongo_phone_mapping_collection"`
+	OptInHistoryCollection string `json:"mongo_opt_in_history_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -157,6 +159,8 @@ func LoadConfig() error {
 		PhoneVerificationCollection: getEnvOrDefault("MONGODB_PHONE_VERIFICATION_COLLECTION", "phone_verifications"),
 		UserConfigCollection:   getEnvOrDefault("MONGODB_USER_CONFIG_COLLECTION", "user_config"),
 		MaintenanceRequestCollection: maintenanceRequestCollection,
+		PhoneMappingCollection: getEnvOrDefault("MONGODB_PHONE_MAPPING_COLLECTION", "phone_cpf_mappings"),
+		OptInHistoryCollection: getEnvOrDefault("MONGODB_OPT_IN_HISTORY_COLLECTION", "opt_in_history"),
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,

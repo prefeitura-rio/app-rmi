@@ -16,6 +16,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/middleware"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -70,6 +71,12 @@ func main() {
 	config.InitMongoDB()
 	config.InitRedis()
 
+	// Initialize services
+	registrationValidator := services.NewBaseDataValidator(observability.Logger())
+	phoneMappingService := services.NewPhoneMappingService(observability.Logger(), registrationValidator)
+	configService := services.NewConfigService()
+	phoneHandlers := handlers.NewPhoneHandlers(phoneMappingService, configService)
+
 	// Set Gin mode
 	if config.AppConfig.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -121,6 +128,26 @@ func main() {
 
 		// Endpoint de validação de telefone
 		v1.POST("/validate/phone", handlers.ValidatePhoneNumber)
+
+		// Phone-based endpoints (require auth for CPF operations)
+		phone := v1.Group("/phone")
+		{
+			// Public endpoints (no auth required)
+			phone.GET("/:phone_number/citizen", phoneHandlers.GetCitizenByPhone)
+			phone.POST("/:phone_number/validate-registration", phoneHandlers.ValidateRegistration)
+			
+			// Protected endpoints (require auth)
+			phone.POST("/:phone_number/opt-in", middleware.AuthMiddleware(), phoneHandlers.OptIn)
+			phone.POST("/:phone_number/opt-out", middleware.AuthMiddleware(), phoneHandlers.OptOut)
+			phone.POST("/:phone_number/reject-registration", middleware.AuthMiddleware(), phoneHandlers.RejectRegistration)
+		}
+
+		// Configuration endpoints (no auth required)
+		config := v1.Group("/config")
+		{
+			config.GET("/channels", phoneHandlers.GetAvailableChannels)
+			config.GET("/opt-out-reasons", phoneHandlers.GetOptOutReasons)
+		}
 	}
 
 	// Swagger documentation

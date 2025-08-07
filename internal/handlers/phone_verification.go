@@ -17,13 +17,13 @@ import (
 )
 
 // ValidatePhoneVerification godoc
-// @Summary Validate phone verification
-// @Description Validates the verification code sent to the phone number
+// @Summary Validar verificação de telefone
+// @Description Valida o código de verificação enviado para o número de telefone
 // @Tags citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "CPF number"
-// @Param data body models.PhoneVerificationValidateRequest true "Verification code and phone"
+// @Param cpf path string true "Número do CPF"
+// @Param data body models.PhoneVerificationValidateRequest true "Código de verificação e telefone"
 // @Security BearerAuth
 // @Success 200 {object} SuccessResponse
 // @Failure 400 {object} ErrorResponse
