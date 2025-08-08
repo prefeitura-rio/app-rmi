@@ -28,7 +28,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: rmi
-          image: ghcr.io/prefeitura-rio/app-rmi:stable
+          image: ghcr.io/prefeitura-rio/app-rmi:latest
           envFrom:
             - secretRef:
                 name: rmi-secrets
