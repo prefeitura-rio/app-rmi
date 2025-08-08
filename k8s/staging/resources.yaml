@@ -55,7 +55,6 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 3
       restartPolicy: Always
-
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
@@ -66,7 +65,6 @@ spec:
   selector:
     matchLabels:
       app: rmi
-
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -85,7 +83,12 @@ spec:
         metricName: http_requests_total
         threshold: "750"
         query: sum(rate(istio_requests_total{destination_workload="rmi"}[1m]))
-
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.istio-system.svc.cluster.local:9090
+        metricName: http_request_latency
+        threshold: "1000"
+        query: histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="rmi"}[1m])) by (le))
 ---
 apiVersion: v1
 kind: Service
