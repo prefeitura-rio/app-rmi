@@ -58,6 +58,10 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | TRACING_ENABLED | Habilitar rastreamento OpenTelemetry | false | Não |
 | TRACING_ENDPOINT | Endpoint do coletor OpenTelemetry | http://localhost:4317 | Não |
 | AUDIT_LOGS_ENABLED | Habilitar logs de auditoria automáticos | true | Não |
+| AUDIT_WORKER_COUNT | Número de workers para logging assíncrono | 5 | Não |
+| AUDIT_BUFFER_SIZE | Tamanho do buffer para audit logs | 1000 | Não |
+| VERIFICATION_WORKER_COUNT | Número de workers para verificação de telefone | 10 | Não |
+| VERIFICATION_QUEUE_SIZE | Tamanho da fila de verificação | 5000 | Não |
 | INDEX_MAINTENANCE_INTERVAL | Intervalo para verificação de índices (ex: "1h", "24h") | 1h | Não |
 | WHATSAPP_COD_PARAMETER | Parâmetro do código no template HSM do WhatsApp | COD | Não |
 
@@ -98,6 +102,48 @@ mongodb://root:PASSWORD@mongodb-0.mongodb-headless.rmi.svc.cluster.local:27017,m
 - **✅ Performance**: Otimizações aplicadas diretamente
 - **✅ Manutenção**: Uma única fonte de verdade
 - **✅ Escalabilidade**: Fácil ajuste para diferentes ambientes
+
+### **🔧 Otimizações de Connection Pool**
+
+#### **Problema Resolvido: Connection Pool Exhaustion**
+```
+failed to insert audit log: canceled while checking out a connection from connection pool
+context canceled; total connections: 333, maxPoolSize: 1000, idle connections: 0, wait duration: 15.807719752s
+```
+
+#### **Soluções Implementadas**
+
+1. **Audit Logging Assíncrono**
+   - **Worker pool** com 5 workers dedicados
+   - **Buffer de 1000** logs para picos de tráfego
+   - **Não bloqueia** operações principais
+   - **Fallback síncrono** se buffer estiver cheio
+
+2. **Connection Pool Monitoring**
+   - **Monitoramento em tempo real** do pool de conexões
+   - **Alertas** quando uso > 100 conexões
+   - **Logs detalhados** de aquisição/retorno de conexões
+   - **Verificação a cada 30s** do status do pool
+
+3. **Configuração Otimizada**
+   ```bash
+   # Workers para audit logging
+   AUDIT_WORKER_COUNT=5
+   
+   # Buffer size para audit logs
+   AUDIT_BUFFER_SIZE=1000
+   
+   # Monitoramento de conexões
+   # Automático a cada 30s
+   ```
+
+#### **Benefícios das Otimizações**
+
+- **✅ Elimina bloqueios** de operações por audit logging
+- **✅ Reduz uso** do connection pool MongoDB
+- **✅ Melhora performance** geral da API
+- **✅ Monitoramento proativo** de problemas de conexão
+- **✅ Escalabilidade** para alto tráfego
 
 ---
 

@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.uber.org/zap"
 )
 
 // BetaGroupService handles beta group and whitelist operations
@@ -565,7 +566,7 @@ func (s *BetaGroupService) BulkRemoveFromWhitelist(ctx context.Context, phoneNum
 	return nil
 }
 
-// BulkMoveWhitelist moves multiple phone numbers from one group to another
+// BulkMoveWhitelist moves multiple phone numbers from one group to another using batch operations
 func (s *BetaGroupService) BulkMoveWhitelist(ctx context.Context, phoneNumbers []string, fromGroupID, toGroupID string) error {
 	// Validate group IDs
 	fromObjectID, err := primitive.ObjectIDFromHex(fromGroupID)
@@ -597,6 +598,61 @@ func (s *BetaGroupService) BulkMoveWhitelist(ctx context.Context, phoneNumbers [
 		return fmt.Errorf("failed to get to group: %w", err)
 	}
 
+	// Use batch operations for better performance
+	if err := s.bulkMoveWhitelistBatch(ctx, phoneNumbers, fromGroupID, toGroupID); err != nil {
+		s.logger.Warn("batch move operation failed, falling back to individual operations", zap.Error(err))
+		// Fallback to individual operations
+		return s.bulkMoveWhitelistIndividual(ctx, phoneNumbers, fromGroupID, toGroupID)
+	}
+
+	return nil
+}
+
+// bulkMoveWhitelistBatch performs the move operation using MongoDB bulk operations
+func (s *BetaGroupService) bulkMoveWhitelistBatch(ctx context.Context, phoneNumbers []string, fromGroupID, toGroupID string) error {
+	phoneCollection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
+	now := time.Now()
+	
+	// Prepare bulk operations
+	bulkOps := make([]mongo.WriteModel, len(phoneNumbers))
+	
+	for i, phoneNumber := range phoneNumbers {
+		storagePhone := strings.TrimPrefix(phoneNumber, "+")
+		
+		bulkOps[i] = mongo.NewUpdateOneModel().
+			SetFilter(bson.M{
+				"phone_number":   storagePhone,
+				"beta_group_id":  fromGroupID,
+			}).
+			SetUpdate(bson.M{
+				"$set": bson.M{
+					"beta_group_id": toGroupID,
+					"updated_at":    now,
+				},
+			})
+	}
+	
+	// Execute bulk operation
+	result, err := phoneCollection.BulkWrite(ctx, bulkOps)
+	if err != nil {
+		return fmt.Errorf("bulk write failed: %w", err)
+	}
+	
+	// Verify all operations were successful
+	if result.MatchedCount != int64(len(phoneNumbers)) {
+		s.logger.Warn("not all phones were found for move operation",
+			zap.Int64("matched", result.MatchedCount),
+			zap.Int("requested", len(phoneNumbers)))
+	}
+	
+	// Invalidate cache for all affected phones using pipeline
+	s.invalidateBetaStatusCacheBatch(ctx, phoneNumbers)
+	
+	return nil
+}
+
+// bulkMoveWhitelistIndividual performs the move operation using individual operations (fallback)
+func (s *BetaGroupService) bulkMoveWhitelistIndividual(ctx context.Context, phoneNumbers []string, fromGroupID, toGroupID string) error {
 	phoneCollection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
 	now := time.Now()
 
@@ -622,6 +678,23 @@ func (s *BetaGroupService) BulkMoveWhitelist(ctx context.Context, phoneNumbers [
 	}
 
 	return nil
+}
+
+// invalidateBetaStatusCacheBatch invalidates cache for multiple phone numbers using Redis pipeline
+func (s *BetaGroupService) invalidateBetaStatusCacheBatch(ctx context.Context, phoneNumbers []string) {
+	// Use Redis pipeline for batch cache invalidation
+	pipe := config.Redis.Pipeline()
+	
+	for _, phoneNumber := range phoneNumbers {
+		storagePhone := strings.TrimPrefix(phoneNumber, "+")
+		cacheKey := fmt.Sprintf("beta_status:%s", storagePhone)
+		pipe.Del(ctx, cacheKey)
+	}
+	
+	// Execute pipeline
+	if _, err := pipe.Exec(ctx); err != nil {
+		s.logger.Warn("failed to execute cache invalidation pipeline", zap.Error(err))
+	}
 }
 
 // invalidateBetaStatusCache invalidates cache for all phones in a group

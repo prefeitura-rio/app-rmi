@@ -54,6 +54,14 @@ type Config struct {
 
 	// Audit logging configuration
 	AuditLogsEnabled bool `json:"audit_logs_enabled"`
+	
+	// Audit worker configuration
+	AuditWorkerCount int `json:"audit_worker_count"`
+	AuditBufferSize  int `json:"audit_buffer_size"`
+	
+	// Verification queue configuration
+	VerificationWorkerCount int `json:"verification_worker_count"`
+	VerificationQueueSize   int `json:"verification_queue_size"`
 
 	// Authorization configuration
 	AdminGroup string `json:"admin_group"`
@@ -199,8 +207,16 @@ func LoadConfig() error {
 		TracingEnabled:  getEnvOrDefault("TRACING_ENABLED", "false") == "true",
 		TracingEndpoint: getEnvOrDefault("TRACING_ENDPOINT", "localhost:4317"),
 
-		// Audit logging configuration
-		AuditLogsEnabled: getEnvOrDefault("AUDIT_LOGS_ENABLED", "true") == "true",
+			// Audit logging configuration
+	AuditLogsEnabled: getEnvOrDefault("AUDIT_LOGS_ENABLED", "true") == "true",
+	
+	// Audit worker configuration
+	AuditWorkerCount: getEnvAsIntOrDefault("AUDIT_WORKER_COUNT", 5),
+	AuditBufferSize:  getEnvAsIntOrDefault("AUDIT_BUFFER_SIZE", 1000),
+	
+	// Verification queue configuration
+	VerificationWorkerCount: getEnvAsIntOrDefault("VERIFICATION_WORKER_COUNT", 10),
+	VerificationQueueSize:   getEnvAsIntOrDefault("VERIFICATION_QUEUE_SIZE", 5000),
 
 		// Authorization configuration
 		AdminGroup: getEnvOrDefault("ADMIN_GROUP", "rmi-admin"),
@@ -216,6 +232,16 @@ func LoadConfig() error {
 func getEnvOrDefault(key, defaultValue string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
+	}
+	return defaultValue
+}
+
+// getEnvAsIntOrDefault returns environment variable value as int or default if not set
+func getEnvAsIntOrDefault(key string, defaultValue int) int {
+	if value, exists := os.LookupEnv(key); exists {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
 	}
 	return defaultValue
 } 

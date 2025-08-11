@@ -17,6 +17,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/middleware"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -70,6 +71,16 @@ func main() {
 	// Initialize database connections
 	config.InitMongoDB()
 	config.InitRedis()
+
+	// Initialize audit worker for asynchronous audit logging
+	// This prevents connection pool exhaustion from audit operations
+	utils.InitAuditWorker(config.AppConfig.AuditWorkerCount, config.AppConfig.AuditBufferSize)
+
+	// Initialize verification queue for asynchronous phone verification
+	verificationQueue := services.NewVerificationQueue(config.AppConfig.VerificationWorkerCount, config.AppConfig.VerificationQueueSize)
+
+	// Initialize performance monitor
+	_ = services.GetGlobalMonitor()
 
 	// Initialize services
 	phoneMappingService := services.NewPhoneMappingService(observability.Logger())
@@ -220,6 +231,16 @@ func main() {
 	// Attempt graceful shutdown
 	if err := srv.Shutdown(ctx); err != nil {
 		logging.Logger.Fatal("server forced to shutdown", zap.Error(err))
+	}
+
+	// Stop audit worker gracefully
+	if utils.GetAuditWorker() != nil {
+		utils.GetAuditWorker().Stop()
+	}
+
+	// Stop verification queue gracefully
+	if verificationQueue != nil {
+		verificationQueue.Stop()
 	}
 
 	logging.Logger.Info("server exiting")

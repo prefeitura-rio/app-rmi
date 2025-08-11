@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -10,6 +11,8 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/event"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -36,6 +39,23 @@ func InitMongoDB() {
 		// All MongoDB connection parameters are now configured via URI
 		// This allows for easier tuning through environment variables
 
+	// Add connection pool monitoring
+	opts.SetPoolMonitor(&event.PoolMonitor{
+		Event: func(evt *event.PoolEvent) {
+			switch evt.Type {
+			case event.GetSucceeded:
+				logging.Logger.Info("MongoDB connection acquired",
+					zap.Uint64("connection_id", evt.ConnectionID))
+			case event.GetFailed:
+				logging.Logger.Warn("MongoDB connection acquisition failed",
+					zap.Uint64("connection_id", evt.ConnectionID))
+			case event.ConnectionReturned:
+				logging.Logger.Info("MongoDB connection returned to pool",
+					zap.Uint64("connection_id", evt.ConnectionID))
+			}
+		},
+	})
+
 	client, err := mongo.Connect(ctx, opts)
 	if err != nil {
 		log.Fatal(err)
@@ -59,6 +79,9 @@ func InitMongoDB() {
 		zap.String("uri", maskMongoURI(AppConfig.MongoURI)),
 		zap.String("database", AppConfig.MongoDatabase),
 	)
+
+	// Start connection pool monitoring
+	go monitorConnectionPool()
 }
 
 // InitRedis initializes the Redis connection
@@ -107,6 +130,12 @@ func ensureIndexes() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Check if we can write to the database (primary node or direct connection)
+	if err := checkWriteAccess(ctx, logger); err != nil {
+		logger.Warn("cannot write to database, skipping index creation", zap.Error(err))
+		return nil
+	}
+
 	// Ensure citizen collection index
 	if err := ensureCitizenIndex(ctx, logger); err != nil {
 		return err
@@ -153,6 +182,32 @@ func ensureIndexes() error {
 	}
 
 	logger.Info("all required indexes verified")
+	return nil
+}
+
+// checkWriteAccess checks if we can write to the database
+func checkWriteAccess(ctx context.Context, logger *zap.Logger) error {
+	// Try to create a test document to verify write access
+	testCollection := MongoDB.Collection("_test_write_access")
+	
+	// Use a unique test document ID to avoid conflicts
+	testDoc := bson.M{
+		"_id": primitive.NewObjectID(),
+		"test": true,
+		"timestamp": time.Now(),
+	}
+	
+	_, err := testCollection.InsertOne(ctx, testDoc)
+	if err != nil {
+		return fmt.Errorf("cannot write to database: %w", err)
+	}
+	
+	// Clean up the test document
+	_, err = testCollection.DeleteOne(ctx, bson.M{"_id": testDoc["_id"]})
+	if err != nil {
+		logger.Warn("failed to clean up test document", zap.Error(err))
+	}
+	
 	return nil
 }
 
@@ -933,4 +988,30 @@ func ensureBetaGroupIndex(ctx context.Context, logger *zap.Logger) error {
 	}
 	
 	return nil
+}
+
+// monitorConnectionPool monitors MongoDB connection pool health
+func monitorConnectionPool() {
+	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// Get connection pool stats
+			stats := MongoDB.Client().NumberSessionsInProgress()
+			
+			// Log connection pool status
+			logging.Logger.Info("MongoDB connection pool status",
+				zap.Int("sessions_in_progress", stats),
+				zap.String("database", AppConfig.MongoDatabase))
+			
+			// Alert if too many connections are in use
+			if stats > 100 {
+				logging.Logger.Warn("High MongoDB connection usage detected",
+					zap.Int("sessions_in_progress", stats),
+					zap.String("database", AppConfig.MongoDatabase))
+			}
+		}
+	}
 } 

@@ -114,7 +114,7 @@ spec:
         serverAddress: http://prometheus.istio-system.svc.cluster.local:9090
         metricName: http_requests_total
         threshold: "750"
-        query: sum(rate(istio_requests_total{destination_workload="rmi"}[1m]))
+        query: sum(rate(istio_requests_total{destination_workload="rmi"}[30s]))
         activationThreshold: "500"
 ---
 apiVersion: v1

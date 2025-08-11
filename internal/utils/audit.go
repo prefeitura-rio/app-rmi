@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -30,25 +31,24 @@ type AuditLog struct {
 	Metadata    map[string]string `bson:"metadata,omitempty" json:"metadata,omitempty"`
 }
 
-// AuditAction constants
+// Audit constants
 const (
 	AuditActionCreate   = "CREATE"
+	AuditActionRead     = "READ"
 	AuditActionUpdate   = "UPDATE"
 	AuditActionDelete   = "DELETE"
 	AuditActionValidate = "VALIDATE"
 	AuditActionLogin    = "LOGIN"
 	AuditActionLogout   = "LOGOUT"
-)
 
-// AuditResource constants
-const (
-	AuditResourceAddress         = "ADDRESS"
-	AuditResourcePhone           = "PHONE"
-	AuditResourceEmail           = "EMAIL"
-	AuditResourceEthnicity       = "ETHNICITY"
-	AuditResourcePhoneVerification = "PHONE_VERIFICATION"
-	AuditResourceUserConfig      = "USER_CONFIG"
-	AuditResourceCitizen         = "CITIZEN"
+	AuditResourceAddress           = "address"
+	AuditResourcePhone            = "phone"
+	AuditResourceEmail            = "email"
+	AuditResourceEthnicity        = "ethnicity"
+	AuditResourcePhoneVerification = "phone_verification"
+	AuditResourceUserConfig       = "user_config"
+	AuditResourceBetaGroup        = "beta_group"
+	AuditResourceBetaWhitelist    = "beta_whitelist"
 )
 
 // AuditContext contains context information for audit logging
@@ -60,8 +60,138 @@ type AuditContext struct {
 	RequestID string
 }
 
-// LogAuditEvent logs an audit event to the audit collection
+// AuditWorker manages asynchronous audit logging
+type AuditWorker struct {
+	auditChan chan AuditLog
+	workers   int
+	wg        sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
+}
+
+var (
+	auditWorker *AuditWorker
+	once        sync.Once
+)
+
+// InitAuditWorker initializes the audit worker
+func InitAuditWorker(workers int, bufferSize int) {
+	once.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		auditWorker = &AuditWorker{
+			auditChan: make(chan AuditLog, bufferSize),
+			workers:   workers,
+			ctx:       ctx,
+			cancel:    cancel,
+		}
+		auditWorker.start()
+	})
+}
+
+// start starts the audit worker pool
+func (aw *AuditWorker) start() {
+	for i := 0; i < aw.workers; i++ {
+		aw.wg.Add(1)
+		go aw.worker()
+	}
+}
+
+// worker processes audit logs from the channel
+func (aw *AuditWorker) worker() {
+	defer aw.wg.Done()
+	
+	for {
+		select {
+		case auditLog, ok := <-aw.auditChan:
+			if !ok {
+				return
+			}
+			aw.processAuditLog(auditLog)
+		case <-aw.ctx.Done():
+			return
+		}
+	}
+}
+
+// processAuditLog processes a single audit log entry
+func (aw *AuditWorker) processAuditLog(auditLog AuditLog) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Use a separate context for the database operation
+	_, err := config.MongoDB.Collection(config.AppConfig.AuditLogsCollection).InsertOne(ctx, auditLog)
+	if err != nil {
+		logging.Logger.Error("failed to insert audit log",
+			zap.Error(err),
+			zap.String("cpf", auditLog.CPF),
+			zap.String("action", auditLog.Action),
+			zap.String("resource", auditLog.Resource))
+		return
+	}
+
+	logging.Logger.Info("audit event logged successfully",
+		zap.String("cpf", auditLog.CPF),
+		zap.String("action", auditLog.Action),
+		zap.String("resource", auditLog.Resource),
+		zap.String("resource_id", auditLog.ResourceID))
+}
+
+// Stop stops the audit worker
+func (aw *AuditWorker) Stop() {
+	if aw != nil {
+		aw.cancel()
+		close(aw.auditChan)
+		aw.wg.Wait()
+	}
+}
+
+// GetAuditWorker returns the global audit worker instance
+func GetAuditWorker() *AuditWorker {
+	return auditWorker
+}
+
+// LogAuditEvent logs an audit event to the audit collection asynchronously
 func LogAuditEvent(ctx context.Context, auditCtx AuditContext, action, resource, resourceID string, oldValue, newValue interface{}, metadata map[string]string) error {
+	// If audit logging is disabled, return immediately
+	if !config.AppConfig.AuditLogsEnabled {
+		return nil
+	}
+
+	// If audit worker is not initialized, log synchronously as fallback
+	if auditWorker == nil {
+		return logAuditEventSync(ctx, auditCtx, action, resource, resourceID, oldValue, newValue, metadata)
+	}
+
+	auditLog := AuditLog{
+		CPF:        auditCtx.CPF,
+		Action:     action,
+		Resource:   resource,
+		ResourceID: resourceID,
+		OldValue:   oldValue,
+		NewValue:   newValue,
+		UserID:     auditCtx.UserID,
+		IPAddress:  auditCtx.IPAddress,
+		UserAgent:  auditCtx.UserAgent,
+		RequestID:  auditCtx.RequestID,
+		Timestamp:  time.Now(),
+		Metadata:   metadata,
+	}
+
+	// Try to send to audit channel, but don't block
+	select {
+	case auditWorker.auditChan <- auditLog:
+		return nil
+	default:
+		// Channel is full, fall back to synchronous logging
+		logging.Logger.Warn("audit channel full, falling back to synchronous logging",
+			zap.String("cpf", auditCtx.CPF),
+			zap.String("action", action))
+		return logAuditEventSync(ctx, auditCtx, action, resource, resourceID, oldValue, newValue, metadata)
+	}
+}
+
+// logAuditEventSync logs an audit event synchronously (fallback method)
+func logAuditEventSync(ctx context.Context, auditCtx AuditContext, action, resource, resourceID string, oldValue, newValue interface{}, metadata map[string]string) error {
 	logger := logging.Logger.With(
 		zap.String("cpf", auditCtx.CPF),
 		zap.String("action", action),
@@ -83,8 +213,12 @@ func LogAuditEvent(ctx context.Context, auditCtx AuditContext, action, resource,
 		Metadata:   metadata,
 	}
 
+	// Use a separate context with timeout for the database operation
+	dbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	// Insert into audit collection
-	_, err := config.MongoDB.Collection(config.AppConfig.AuditLogsCollection).InsertOne(ctx, auditLog)
+	_, err := config.MongoDB.Collection(config.AppConfig.AuditLogsCollection).InsertOne(dbCtx, auditLog)
 	if err != nil {
 		logger.Error("failed to insert audit log", zap.Error(err))
 		return fmt.Errorf("failed to insert audit log: %w", err)

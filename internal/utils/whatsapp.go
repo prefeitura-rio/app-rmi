@@ -14,6 +14,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/utils/httpclient"
 	"go.uber.org/zap"
 )
 
@@ -88,7 +89,10 @@ func getAuthToken(ctx context.Context) (string, error) {
 	req.Header.Set("accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	// Use HTTP client pool for optimal performance
+	client := httpclient.GetGlobalPool().Get()
+	defer httpclient.GetGlobalPool().Put(client)
+	
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Error("failed to send auth request", zap.Error(err))
@@ -193,7 +197,10 @@ func SendWhatsAppMessage(ctx context.Context, phones []string, hsmID string, var
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	// Use HTTP client pool for optimal performance
+	client := httpclient.GetGlobalPool().Get()
+	defer httpclient.GetGlobalPool().Put(client)
+	
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Error("failed to send message request", zap.Error(err))

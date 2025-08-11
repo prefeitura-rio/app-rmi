@@ -61,10 +61,28 @@ func extractClaims(token string) (*models.JWTClaims, error) {
 		return nil, fmt.Errorf("invalid token format")
 	}
 
-	// Decode the claims part (second part)
-	claimsBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	// Decode the claims part (second part) with proper padding handling
+	claimsPart := parts[1]
+	
+	// Add padding if needed
+	switch len(claimsPart) % 4 {
+	case 2:
+		claimsPart += "=="
+	case 3:
+		claimsPart += "="
+	}
+	
+	// Try RawURLEncoding first, then fallback to standard encoding
+	var claimsBytes []byte
+	var err error
+	
+	claimsBytes, err = base64.RawURLEncoding.DecodeString(claimsPart)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode claims: %w", err)
+		// Fallback to standard base64 decoding
+		claimsBytes, err = base64.StdEncoding.DecodeString(claimsPart)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode claims: %w", err)
+		}
 	}
 
 	// Parse the claims
