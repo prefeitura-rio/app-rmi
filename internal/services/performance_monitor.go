@@ -146,15 +146,15 @@ func (pm *PerformanceMonitor) GetSystemStats() map[string]interface{} {
 	runtime.ReadMemStats(&m)
 
 	return map[string]interface{}{
-		"goroutines":    runtime.NumGoroutine(),
-		"memory_alloc":  m.Alloc,
-		"memory_total":  m.TotalAlloc,
-		"memory_sys":    m.Sys,
-		"memory_heap":   m.HeapAlloc,
-		"memory_stack":  m.StackInuse,
-		"gc_cycles":     m.NumGC,
-		"gc_pause_ns":   m.PauseTotalNs,
-		"uptime":        time.Since(startTime),
+		"goroutines":   runtime.NumGoroutine(),
+		"memory_alloc": m.Alloc,
+		"memory_total": m.TotalAlloc,
+		"memory_sys":   m.Sys,
+		"memory_heap":  m.HeapAlloc,
+		"memory_stack": m.StackInuse,
+		"gc_cycles":    m.NumGC,
+		"gc_pause_ns":  m.PauseTotalNs,
+		"uptime":       time.Since(startTime),
 	}
 }
 
@@ -272,14 +272,14 @@ func (pm *PerformanceMonitor) GetPerformanceReport() map[string]interface{} {
 	}
 
 	report := map[string]interface{}{
-		"timestamp":           time.Now(),
-		"total_operations":    totalOperations,
-		"total_duration":      totalDuration,
-		"slowest_operation":   slowestOperation,
-		"slowest_duration":    slowestDuration,
-		"operation_metrics":   metrics,
-		"system_stats":        systemStats,
-		"performance_alerts":  pm.getPerformanceAlerts(metrics),
+		"timestamp":          time.Now(),
+		"total_operations":   totalOperations,
+		"total_duration":     totalDuration,
+		"slowest_operation":  slowestOperation,
+		"slowest_duration":   slowestDuration,
+		"operation_metrics":  metrics,
+		"system_stats":       systemStats,
+		"performance_alerts": pm.getPerformanceAlerts(metrics),
 	}
 
 	return report
@@ -293,20 +293,20 @@ func (pm *PerformanceMonitor) getPerformanceAlerts(metrics map[string]*Performan
 		// Alert for slow operations (> 1 second average)
 		if metric.AvgDuration > time.Second {
 			alerts = append(alerts, map[string]interface{}{
-				"type":        "slow_operation",
-				"operation":   name,
+				"type":         "slow_operation",
+				"operation":    name,
 				"avg_duration": metric.AvgDuration,
-				"severity":    "warning",
+				"severity":     "warning",
 			})
 		}
 
 		// Alert for very slow operations (> 5 seconds average)
 		if metric.AvgDuration > 5*time.Second {
 			alerts = append(alerts, map[string]interface{}{
-				"type":        "very_slow_operation",
-				"operation":   name,
+				"type":         "very_slow_operation",
+				"operation":    name,
 				"avg_duration": metric.AvgDuration,
-				"severity":    "critical",
+				"severity":     "critical",
 			})
 		}
 
@@ -315,11 +315,11 @@ func (pm *PerformanceMonitor) getPerformanceAlerts(metrics map[string]*Performan
 			variance := metric.MaxDuration - metric.MinDuration
 			if variance > metric.AvgDuration*2 {
 				alerts = append(alerts, map[string]interface{}{
-					"type":        "high_variance_operation",
-					"operation":   name,
-					"variance":    variance,
+					"type":         "high_variance_operation",
+					"operation":    name,
+					"variance":     variance,
 					"avg_duration": metric.AvgDuration,
-					"severity":    "info",
+					"severity":     "info",
 				})
 			}
 		}

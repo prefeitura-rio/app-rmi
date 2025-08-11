@@ -14,13 +14,13 @@ import (
 func RequestTiming() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		
+
 		// Add start time to context for handlers to use
 		c.Set("request_start_time", start)
-		
+
 		// Create a span for the entire request
 		ctx, span := otel.Tracer("http").Start(c.Request.Context(), "http.request")
-		
+
 		// Set attributes after span creation
 		span.SetAttributes(
 			attribute.String("http.method", c.Request.Method),
@@ -30,24 +30,24 @@ func RequestTiming() gin.HandlerFunc {
 			attribute.String("http.client_ip", c.ClientIP()),
 		)
 		defer span.End()
-		
+
 		// Update the request context
 		c.Request = c.Request.WithContext(ctx)
-		
+
 		// Process request
 		c.Next()
-		
+
 		// Calculate timing metrics
 		latency := time.Since(start)
 		status := c.Writer.Status()
-		
+
 		// Add timing attributes to span
 		span.SetAttributes(
 			attribute.Int("http.status_code", status),
 			attribute.Int64("http.duration_ms", latency.Milliseconds()),
 			attribute.String("http.duration", latency.String()),
 		)
-		
+
 		// Log request completion with timing
 		observability.Logger().Info("request completed",
 			zap.String("method", c.Request.Method),
@@ -58,14 +58,14 @@ func RequestTiming() gin.HandlerFunc {
 			zap.String("client_ip", c.ClientIP()),
 			zap.String("user_agent", c.Request.UserAgent()),
 		)
-		
+
 		// Update metrics
 		observability.RequestDuration.WithLabelValues(
 			c.FullPath(),
 			c.Request.Method,
 			string(rune(status)),
 		).Observe(latency.Seconds())
-		
+
 		// Record errors in span if status indicates error
 		if status >= 400 {
 			span.SetAttributes(attribute.String("http.error", "true"))

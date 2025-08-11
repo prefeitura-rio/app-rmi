@@ -22,11 +22,11 @@ func SendVerificationCode(ctx context.Context, phone string, code string) error 
 	vars := map[string]interface{}{
 		"COD": code,
 	}
-	
+
 	return SendWhatsAppMessage(
 		ctx,
 		[]string{phone},
 		config.AppConfig.WhatsAppHSMID,
 		[]map[string]interface{}{vars},
 	)
-} 
+}

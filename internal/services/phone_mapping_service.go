@@ -34,7 +34,7 @@ func (s *PhoneMappingService) GetPhoneStatus(ctx context.Context, phoneNumber st
 		return nil, fmt.Errorf("invalid phone number: %w", err)
 	}
 	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
-	
+
 	// Find the phone mapping
 	var mapping models.PhoneCPFMapping
 	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
@@ -44,13 +44,13 @@ func (s *PhoneMappingService) GetPhoneStatus(ctx context.Context, phoneNumber st
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-					// Phone number not found
-		return &models.PhoneStatusResponse{
-			PhoneNumber:     phoneNumber,
-			Found:           false,
-			Quarantined:     false,
-			BetaWhitelisted: false,
-		}, nil
+			// Phone number not found
+			return &models.PhoneStatusResponse{
+				PhoneNumber:     phoneNumber,
+				Found:           false,
+				Quarantined:     false,
+				BetaWhitelisted: false,
+			}, nil
 		}
 		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
 		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
@@ -109,12 +109,12 @@ func (s *PhoneMappingService) QuarantinePhone(ctx context.Context, phoneNumber s
 	}
 	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
 	now := time.Now()
-	
+
 	// Calculate quarantine end date
 	quarantineTTL := config.AppConfig.PhoneQuarantineTTL
-	
+
 	quarantineUntil := now.Add(quarantineTTL)
-	
+
 	// Check if phone mapping exists
 	var existingMapping models.PhoneCPFMapping
 	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
@@ -125,8 +125,8 @@ func (s *PhoneMappingService) QuarantinePhone(ctx context.Context, phoneNumber s
 	if err == mongo.ErrNoDocuments {
 		// Create new quarantine record without CPF
 		newMapping := models.PhoneCPFMapping{
-			PhoneNumber: storagePhone,
-			Status:      models.MappingStatusQuarantined,
+			PhoneNumber:     storagePhone,
+			Status:          models.MappingStatusQuarantined,
 			QuarantineUntil: &quarantineUntil,
 			QuarantineHistory: []models.QuarantineEvent{
 				{
@@ -145,10 +145,10 @@ func (s *PhoneMappingService) QuarantinePhone(ctx context.Context, phoneNumber s
 		}
 
 		return &models.QuarantineResponse{
-			Status:         "quarantined",
-			PhoneNumber:    phoneNumber,
+			Status:          "quarantined",
+			PhoneNumber:     phoneNumber,
 			QuarantineUntil: quarantineUntil,
-			Message:        "Phone number quarantined for 6 months",
+			Message:         "Phone number quarantined for 6 months",
 		}, nil
 	}
 
@@ -165,9 +165,9 @@ func (s *PhoneMappingService) QuarantinePhone(ctx context.Context, phoneNumber s
 
 	update := bson.M{
 		"$set": bson.M{
-			"status":            models.MappingStatusQuarantined,
-			"quarantine_until":  quarantineUntil,
-			"updated_at":        now,
+			"status":           models.MappingStatusQuarantined,
+			"quarantine_until": quarantineUntil,
+			"updated_at":       now,
 		},
 		"$push": bson.M{
 			"quarantine_history": quarantineEvent,
@@ -185,10 +185,10 @@ func (s *PhoneMappingService) QuarantinePhone(ctx context.Context, phoneNumber s
 	}
 
 	return &models.QuarantineResponse{
-		Status:         "quarantined",
-		PhoneNumber:    phoneNumber,
+		Status:          "quarantined",
+		PhoneNumber:     phoneNumber,
 		QuarantineUntil: quarantineUntil,
-		Message:        "Phone number quarantine extended for 6 months",
+		Message:         "Phone number quarantine extended for 6 months",
 	}, nil
 }
 
@@ -238,10 +238,10 @@ func (s *PhoneMappingService) ReleaseQuarantine(ctx context.Context, phoneNumber
 		}
 
 		return &models.QuarantineResponse{
-			Status:         "released",
-			PhoneNumber:    phoneNumber,
+			Status:          "released",
+			PhoneNumber:     phoneNumber,
 			QuarantineUntil: now,
-			Message:        "Phone number released from quarantine and removed",
+			Message:         "Phone number released from quarantine and removed",
 		}, nil
 	}
 
@@ -266,10 +266,10 @@ func (s *PhoneMappingService) ReleaseQuarantine(ctx context.Context, phoneNumber
 	}
 
 	return &models.QuarantineResponse{
-		Status:         "released",
-		PhoneNumber:    phoneNumber,
+		Status:          "released",
+		PhoneNumber:     phoneNumber,
 		QuarantineUntil: now,
-		Message:        "Phone number released from quarantine",
+		Message:         "Phone number released from quarantine",
 	}, nil
 }
 
@@ -329,17 +329,17 @@ func (s *PhoneMappingService) BindPhoneToCPF(ctx context.Context, phoneNumber, c
 	// Update existing mapping
 	update := bson.M{
 		"$set": bson.M{
-			"cpf":         cpf,
-			"status":      models.MappingStatusActive,
-			"channel":     channel,
-			"updated_at":  now,
+			"cpf":        cpf,
+			"status":     models.MappingStatusActive,
+			"channel":    channel,
+			"updated_at": now,
 		},
 	}
 
 	// If was quarantined, release it
 	if existingMapping.QuarantineUntil != nil {
 		update["$set"].(bson.M)["quarantine_until"] = nil
-		
+
 		// Add release time to last quarantine event
 		if len(existingMapping.QuarantineHistory) > 0 {
 			lastEvent := existingMapping.QuarantineHistory[len(existingMapping.QuarantineHistory)-1]
@@ -485,7 +485,7 @@ func (s *PhoneMappingService) GetQuarantineStats(ctx context.Context) (*models.Q
 		ctx,
 		bson.M{
 			"quarantine_until": bson.M{"$exists": true, "$ne": nil},
-			"cpf":             bson.M{"$exists": true, "$ne": ""},
+			"cpf":              bson.M{"$exists": true, "$ne": ""},
 		},
 	)
 	if err != nil {
@@ -554,7 +554,7 @@ func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber st
 		return nil, fmt.Errorf("invalid phone number: %w", err)
 	}
 	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
-	
+
 	var mapping models.PhoneCPFMapping
 	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
 		ctx,
@@ -602,7 +602,7 @@ func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber st
 	return &models.PhoneCitizenResponse{
 		Found: true,
 		CPF:   utils.MaskCPF(citizen.CPF),
-		Name:  func() string {
+		Name: func() string {
 			if citizen.Nome != nil {
 				return utils.MaskName(*citizen.Nome)
 			}
@@ -650,7 +650,7 @@ func (s *PhoneMappingService) ValidateRegistration(ctx context.Context, phoneNum
 	if citizen.Nome != nil {
 		validName = strings.EqualFold(strings.TrimSpace(name), strings.TrimSpace(*citizen.Nome))
 	}
-	
+
 	// Validate birth date
 	validBirthDate := false
 	if citizen.Nascimento != nil && citizen.Nascimento.Data != nil {
@@ -686,8 +686,8 @@ func (s *PhoneMappingService) ValidateRegistration(ctx context.Context, phoneNum
 
 	if validName && validBirthDate {
 		return &models.ValidateRegistrationResponse{
-			Valid:       true,
-			MatchedCPF:  citizen.CPF,
+			Valid:      true,
+			MatchedCPF: citizen.CPF,
 			MatchedName: func() string {
 				if citizen.Nome != nil {
 					return *citizen.Nome
@@ -774,7 +774,7 @@ func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, chann
 	// If was quarantined, release it
 	if existingMapping.QuarantineUntil != nil {
 		update["$set"].(bson.M)["quarantine_until"] = nil
-		
+
 		// Add release time to last quarantine event
 		if len(existingMapping.QuarantineHistory) > 0 {
 			lastEvent := existingMapping.QuarantineHistory[len(existingMapping.QuarantineHistory)-1]
@@ -821,9 +821,9 @@ func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber, reason, c
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-					return &models.OptOutResponse{
-			Status: "not_found",
-		}, nil
+			return &models.OptOutResponse{
+				Status: "not_found",
+			}, nil
 		}
 		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
 		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
@@ -884,9 +884,9 @@ func (s *PhoneMappingService) RejectRegistration(ctx context.Context, phoneNumbe
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-					return &models.RejectRegistrationResponse{
-			Status: "not_found",
-		}, nil
+			return &models.RejectRegistrationResponse{
+				Status: "not_found",
+			}, nil
 		}
 		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
 		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
@@ -921,7 +921,7 @@ func (s *PhoneMappingService) RejectRegistration(ctx context.Context, phoneNumbe
 // recordOptInHistory records opt-in/opt-out history
 func (s *PhoneMappingService) recordOptInHistory(ctx context.Context, phoneNumber, cpf, action, channel, reason string) {
 	now := time.Now()
-	
+
 	// Parse phone number for storage format
 	components, err := utils.ParsePhoneNumber(phoneNumber)
 	if err != nil {
@@ -929,7 +929,7 @@ func (s *PhoneMappingService) recordOptInHistory(ctx context.Context, phoneNumbe
 		return
 	}
 	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
-	
+
 	history := models.OptInHistory{
 		PhoneNumber: storagePhone,
 		CPF:         cpf,
@@ -944,4 +944,4 @@ func (s *PhoneMappingService) recordOptInHistory(ctx context.Context, phoneNumbe
 		s.logger.Error("failed to record opt-in history", zap.Error(err), zap.String("phone_number", phoneNumber))
 		// Don't fail the main operation for this error
 	}
-} 
+}

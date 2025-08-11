@@ -87,12 +87,12 @@ func TestUpdateSelfDeclaredAddress(t *testing.T) {
 	r := setupRouter()
 	w := httptest.NewRecorder()
 	body := map[string]interface{}{
-		"Bairro": "Centro",
-		"CEP": "20000000",
-		"Estado": "RJ",
+		"Bairro":     "Centro",
+		"CEP":        "20000000",
+		"Estado":     "RJ",
 		"Logradouro": "Rua Teste",
-		"Municipio": "Rio de Janeiro",
-		"Numero": "123",
+		"Municipio":  "Rio de Janeiro",
+		"Numero":     "123",
 	}
 	jsonBody, _ := json.Marshal(body)
 	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/address", bytes.NewBuffer(jsonBody))
@@ -107,8 +107,8 @@ func TestUpdateSelfDeclaredPhone(t *testing.T) {
 	r := setupRouter()
 	w := httptest.NewRecorder()
 	body := map[string]interface{}{
-		"DDI": "+55",
-		"DDD": "21",
+		"DDI":   "+55",
+		"DDD":   "21",
 		"Valor": "999999999",
 	}
 	jsonBody, _ := json.Marshal(body)
@@ -146,13 +146,13 @@ func TestUpdateSelfDeclaredRaca(t *testing.T) {
 	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/ethnicity", bytes.NewBuffer(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
-	
+
 	// Log the response for debugging
 	t.Logf("Response status: %d", w.Code)
 	if w.Body.Len() > 0 {
 		t.Logf("Response body: %s", w.Body.String())
 	}
-	
+
 	if w.Code != http.StatusOK && w.Code != http.StatusConflict && w.Code != http.StatusBadRequest {
 		t.Errorf("expected 200, 409, or 400, got %d", w.Code)
 	}

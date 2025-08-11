@@ -274,7 +274,7 @@ const docTemplate = `{
         },
         "/admin/beta/whitelist": {
             "get": {
-                "description": "Lista todos os telefones na whitelist beta com paginação (apenas administradores)",
+                "description": "Lista telefones na whitelist beta com paginação (apenas administradores)",
                 "produces": [
                     "application/json"
                 ],
@@ -340,7 +340,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "Dados da operação em lote",
-                        "name": "bulk",
+                        "name": "data",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -349,8 +349,8 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Created",
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "type": "array",
                             "items": {
@@ -394,8 +394,8 @@ const docTemplate = `{
                 "summary": "Mover múltiplos telefones entre grupos",
                 "parameters": [
                     {
-                        "description": "Dados da operação em lote",
-                        "name": "bulk",
+                        "description": "Dados da operação de movimentação",
+                        "name": "data",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -404,8 +404,11 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "Telefones movidos com sucesso"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -444,7 +447,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "Dados da operação em lote",
-                        "name": "bulk",
+                        "name": "data",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -453,8 +456,11 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "Telefones removidos da whitelist com sucesso"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -494,7 +500,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Dados da whitelist",
-                        "name": "whitelist",
+                        "name": "data",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -503,8 +509,8 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Created",
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.BetaWhitelistResponse"
                         }
@@ -554,8 +560,11 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "Telefone removido da whitelist com sucesso"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaWhitelistResponse"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -580,22 +589,14 @@ const docTemplate = `{
         },
         "/admin/phone/quarantine/stats": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna estatísticas sobre números de telefone em quarentena (apenas administradores)",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém estatísticas sobre telefones em quarentena (apenas administradores)",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "admin"
+                    "phone"
                 ],
-                "summary": "Estatísticas de quarentena",
+                "summary": "Obter estatísticas de quarentena",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -608,32 +609,18 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
                     }
                 }
             }
         },
         "/admin/phone/quarantined": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna lista paginada de números de telefone em quarentena (apenas administradores)",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Lista todos os telefones em quarentena com paginação (apenas administradores)",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "admin"
+                    "phone"
                 ],
                 "summary": "Listar telefones em quarentena",
                 "parameters": [
@@ -645,14 +632,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Itens por página (padrão: 20, máximo: 100)",
+                        "description": "Itens por página (padrão: 10)",
                         "name": "per_page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Filtrar apenas quarentenas expiradas",
-                        "name": "expired",
                         "in": "query"
                     }
                 ],
@@ -671,12 +652,6 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -723,10 +698,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Recupera os dados do cidadão por CPF, combinando dados base com atualizações autodeclaradas. Dados autodeclarados têm precedência sobre dados base. Os resultados são armazenados em cache usando Redis com TTL configurável.",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém os dados completos de um cidadão, incluindo dados autodeclarados",
                 "produces": [
                     "application/json"
                 ],
@@ -736,10 +708,8 @@ const docTemplate = `{
                 "summary": "Obter dados do cidadão",
                 "parameters": [
                     {
-                        "maxLength": 11,
-                        "minLength": 11,
                         "type": "string",
-                        "description": "CPF do cidadão (11 dígitos)",
+                        "description": "Número do CPF",
                         "name": "cpf",
                         "in": "path",
                         "required": true
@@ -747,13 +717,13 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Dados completos do cidadão",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.Citizen"
                         }
                     },
                     "400": {
-                        "description": "Formato de CPF inválido",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -771,13 +741,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "Cidadão não encontrado",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Erro interno do servidor",
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -1551,10 +1515,7 @@ const docTemplate = `{
         },
         "/config/channels": {
             "get": {
-                "description": "Retorna lista de canais disponíveis para opt-in/opt-out",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém a lista de canais disponíveis para comunicação",
                 "produces": [
                     "application/json"
                 ],
@@ -1577,10 +1538,7 @@ const docTemplate = `{
         },
         "/config/opt-out-reasons": {
             "get": {
-                "description": "Retorna lista de motivos disponíveis para opt-out",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém a lista de motivos válidos para opt-out",
                 "produces": [
                     "application/json"
                 ],
@@ -1594,7 +1552,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.OptOutReason"
+                                "type": "string"
                             }
                         }
                     }
@@ -1733,17 +1691,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Busca um cidadão por número de telefone e retorna dados mascarados",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém informações do cidadão associado a um número de telefone",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "phone"
                 ],
-                "summary": "Obter cidadão por número de telefone",
+                "summary": "Obter cidadão por telefone",
                 "parameters": [
                     {
                         "type": "string",
@@ -1970,9 +1925,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Libera um número de telefone da quarentena (apenas administradores)",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -2083,17 +2035,14 @@ const docTemplate = `{
         },
         "/phone/{phone_number}/status": {
             "get": {
-                "description": "Verifica o status de um número de telefone, incluindo se está em quarentena",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém o status de um número de telefone (quarentena, CPF vinculado, etc.)",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "phone"
                 ],
-                "summary": "Verificar status do número de telefone",
+                "summary": "Obter status do telefone",
                 "parameters": [
                     {
                         "type": "string",
@@ -2132,7 +2081,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Valida dados de registro contra a base de dados oficial",
+                "description": "Valida um registro de usuário contra dados base",
                 "consumes": [
                     "application/json"
                 ],
@@ -2142,7 +2091,7 @@ const docTemplate = `{
                 "tags": [
                     "phone"
                 ],
-                "summary": "Validar registro de cidadão",
+                "summary": "Validar registro",
                 "parameters": [
                     {
                         "type": "string",
@@ -2152,7 +2101,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Dados para validação",
+                        "description": "Dados do registro",
                         "name": "data",
                         "in": "body",
                         "required": true,
@@ -3004,20 +2953,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.OptOutReason": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "subtitle": {
-                    "type": "string"
-                },
-                "title": {
                     "type": "string"
                 }
             }

@@ -35,9 +35,9 @@ type destination struct {
 }
 
 type messageRequest struct {
-	CostCenterID  int           `json:"costCenterId"`
-	CampaignName  string        `json:"campaignName"`
-	Destinations  []destination `json:"destinations"`
+	CostCenterID int           `json:"costCenterId"`
+	CampaignName string        `json:"campaignName"`
+	Destinations []destination `json:"destinations"`
 }
 
 type errorResponse struct {
@@ -92,7 +92,7 @@ func getAuthToken(ctx context.Context) (string, error) {
 	// Use HTTP client pool for optimal performance
 	client := httpclient.GetGlobalPool().Get()
 	defer httpclient.GetGlobalPool().Put(client)
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Error("failed to send auth request", zap.Error(err))
@@ -169,7 +169,7 @@ func SendWhatsAppMessage(ctx context.Context, phones []string, hsmID string, var
 
 	costCenterID, err := strconv.Atoi(config.AppConfig.WhatsAppCostCenterID)
 	if err != nil {
-		logger.Error("invalid cost center ID", 
+		logger.Error("invalid cost center ID",
 			zap.String("cost_center_id", config.AppConfig.WhatsAppCostCenterID),
 			zap.Error(err))
 		return fmt.Errorf("invalid cost center ID: %w", err)
@@ -200,7 +200,7 @@ func SendWhatsAppMessage(ctx context.Context, phones []string, hsmID string, var
 	// Use HTTP client pool for optimal performance
 	client := httpclient.GetGlobalPool().Get()
 	defer httpclient.GetGlobalPool().Put(client)
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Error("failed to send message request", zap.Error(err))
@@ -228,4 +228,4 @@ func SendWhatsAppMessage(ctx context.Context, phones []string, hsmID string, var
 	}
 
 	return nil
-} 
+}

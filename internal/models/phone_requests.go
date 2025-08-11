@@ -2,10 +2,10 @@ package models
 
 // PhoneCitizenResponse represents the response for phone-based citizen lookup
 type PhoneCitizenResponse struct {
-	Found      bool   `json:"found"`
-	CPF        string `json:"cpf,omitempty"`
-	Name       string `json:"name,omitempty"`
-	FirstName  string `json:"first_name,omitempty"`
+	Found     bool   `json:"found"`
+	CPF       string `json:"cpf,omitempty"`
+	Name      string `json:"name,omitempty"`
+	FirstName string `json:"first_name,omitempty"`
 }
 
 // ValidateRegistrationRequest represents the request for registration validation
@@ -80,4 +80,4 @@ type ChannelsResponse struct {
 // OptOutReasonsResponse represents the response for available opt-out reasons
 type OptOutReasonsResponse struct {
 	Reasons []OptOutReason `json:"reasons"`
-} 
+}

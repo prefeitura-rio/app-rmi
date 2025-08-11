@@ -10,9 +10,9 @@ import (
 // BetaGroup represents a closed beta group for analytics purposes
 type BetaGroup struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name      string            `bson:"name" json:"name"`
-	CreatedAt time.Time         `bson:"created_at" json:"created_at"`
-	UpdatedAt time.Time         `bson:"updated_at" json:"updated_at"`
+	Name      string             `bson:"name" json:"name"`
+	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
+	UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
 }
 
 // BetaGroupRequest represents the request body for creating/updating a beta group
@@ -30,9 +30,9 @@ type BetaGroupResponse struct {
 
 // BetaGroupListResponse represents the paginated response for listing beta groups
 type BetaGroupListResponse struct {
-	Groups        []BetaGroupResponse `json:"groups"`
-	Pagination    PaginationInfo      `json:"pagination"`
-	TotalGroups   int64               `json:"total_groups"`
+	Groups      []BetaGroupResponse `json:"groups"`
+	Pagination  PaginationInfo      `json:"pagination"`
+	TotalGroups int64               `json:"total_groups"`
 }
 
 // BetaWhitelistRequest represents the request body for adding a phone to beta whitelist
@@ -108,4 +108,4 @@ func (bg *BetaGroup) BeforeCreate() {
 // BeforeUpdate sets the update timestamp
 func (bg *BetaGroup) BeforeUpdate() {
 	bg.UpdatedAt = time.Now()
-} 
+}

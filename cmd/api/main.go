@@ -115,7 +115,7 @@ func main() {
 	{
 		// Health check endpoint (no auth required)
 		v1.GET("/health", handlers.HealthCheck)
-		
+
 		// Citizen endpoints (require auth)
 		citizen := v1.Group("/citizen")
 		citizen.Use(middleware.AuthMiddleware())
@@ -140,9 +140,6 @@ func main() {
 		{
 			public.GET("/ethnicity/options", handlers.GetEthnicityOptions)
 		}
-
-		// Endpoint de validação de telefone
-		v1.POST("/validate/phone", handlers.ValidatePhoneNumber)
 
 		// Phone routes (public)
 		phoneGroup := v1.Group("/phone")
@@ -171,14 +168,14 @@ func main() {
 		{
 			adminGroup.GET("/phone/quarantined", phoneHandlers.GetQuarantinedPhones)
 			adminGroup.GET("/phone/quarantine/stats", phoneHandlers.GetQuarantineStats)
-			
+
 			// Beta group management
 			adminGroup.GET("/beta/groups", betaGroupHandlers.ListGroups)
 			adminGroup.POST("/beta/groups", betaGroupHandlers.CreateGroup)
 			adminGroup.GET("/beta/groups/:group_id", betaGroupHandlers.GetGroup)
 			adminGroup.PUT("/beta/groups/:group_id", betaGroupHandlers.UpdateGroup)
 			adminGroup.DELETE("/beta/groups/:group_id", betaGroupHandlers.DeleteGroup)
-			
+
 			// Beta whitelist management
 			adminGroup.GET("/beta/whitelist", betaGroupHandlers.ListWhitelistedPhones)
 			adminGroup.POST("/beta/whitelist/:phone_number", betaGroupHandlers.AddToWhitelist)
@@ -244,4 +241,4 @@ func main() {
 	}
 
 	logging.Logger.Info("server exiting")
-} 
+}

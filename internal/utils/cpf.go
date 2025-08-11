@@ -66,4 +66,4 @@ func ValidateCPF(cpf string) bool {
 	}
 
 	return true
-} 
+}

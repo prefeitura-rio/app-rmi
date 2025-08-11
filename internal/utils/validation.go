@@ -278,4 +278,4 @@ func sanitizeStringPtr(s *string) *string {
 	}
 	sanitized := SanitizeString(*s)
 	return &sanitized
-} 
+}

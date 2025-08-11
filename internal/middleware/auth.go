@@ -63,7 +63,7 @@ func extractClaims(token string) (*models.JWTClaims, error) {
 
 	// Decode the claims part (second part) with proper padding handling
 	claimsPart := parts[1]
-	
+
 	// Add padding if needed
 	switch len(claimsPart) % 4 {
 	case 2:
@@ -71,11 +71,11 @@ func extractClaims(token string) (*models.JWTClaims, error) {
 	case 3:
 		claimsPart += "="
 	}
-	
+
 	// Try RawURLEncoding first, then fallback to standard encoding
 	var claimsBytes []byte
 	var err error
-	
+
 	claimsBytes, err = base64.RawURLEncoding.DecodeString(claimsPart)
 	if err != nil {
 		// Fallback to standard base64 decoding
@@ -209,4 +209,4 @@ func IsAdmin(c *gin.Context) (bool, error) {
 }
 
 // ErrAccessDenied is returned when access is denied
-var ErrAccessDenied = fmt.Errorf("access denied") 
+var ErrAccessDenied = fmt.Errorf("access denied")

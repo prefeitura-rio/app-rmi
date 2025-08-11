@@ -23,7 +23,7 @@ type DatabaseOperation struct {
 // ExecuteWithTransaction executes multiple database operations within a transaction
 func ExecuteWithTransaction(ctx context.Context, operations []DatabaseOperation) error {
 	logger := logging.Logger.With(zap.String("operation", "database_transaction"))
-	
+
 	// Start a session
 	session, err := config.MongoDB.Client().StartSession()
 	if err != nil {
@@ -37,14 +37,14 @@ func ExecuteWithTransaction(ctx context.Context, operations []DatabaseOperation)
 		// Execute all operations
 		for i, op := range operations {
 			if err := op.Operation(); err != nil {
-				logger.Error("operation failed, rolling back", 
+				logger.Error("operation failed, rolling back",
 					zap.Int("operation_index", i),
 					zap.Error(err))
-				
+
 				// Rollback all previous operations
 				for j := i - 1; j >= 0; j-- {
 					if rollbackErr := operations[j].Rollback(); rollbackErr != nil {
-						logger.Error("rollback operation failed", 
+						logger.Error("rollback operation failed",
 							zap.Int("rollback_index", j),
 							zap.Error(rollbackErr))
 					}
@@ -183,4 +183,4 @@ func InvalidateCitizenCache(ctx context.Context, cpf string) error {
 
 	logger.Info("citizen cache invalidated successfully")
 	return nil
-} 
+}

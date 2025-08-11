@@ -20,7 +20,7 @@ type PhoneComponents struct {
 func ParsePhoneNumber(phoneString string) (*PhoneComponents, error) {
 	// Clean the phone string
 	cleanPhone := strings.TrimSpace(phoneString)
-	
+
 	// If it doesn't start with +, try to add it
 	if !strings.HasPrefix(cleanPhone, "+") {
 		// If it starts with 55 (Brazil), add +
@@ -100,4 +100,4 @@ func FormatPhoneForStorage(ddi, ddd, valor string) string {
 // ExtractPhoneFromComponents extracts the full phone number from components
 func ExtractPhoneFromComponents(ddi, ddd, valor string) string {
 	return fmt.Sprintf("+%s%s%s", ddi, ddd, valor)
-} 
+}

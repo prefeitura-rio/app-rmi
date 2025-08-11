@@ -33,7 +33,7 @@ func NewBaseDataValidator(logger *logging.SafeLogger) *BaseDataValidator {
 // ValidateRegistration validates registration data against base data collection
 // This is a placeholder implementation that can be enhanced later
 func (v *BaseDataValidator) ValidateRegistration(ctx context.Context, name, cpf, birthDate string) (bool, string, string, error) {
-	v.logger.Info("validating registration", 
+	v.logger.Info("validating registration",
 		zap.String("cpf", cpf),
 		zap.String("name", name),
 		zap.String("birthDate", birthDate))
@@ -68,7 +68,7 @@ func (v *BaseDataValidator) ValidateRegistration(ctx context.Context, name, cpf,
 
 	nameMatch := v.simpleNameMatch(name, baseName)
 	if !nameMatch {
-		v.logger.Info("name does not match", 
+		v.logger.Info("name does not match",
 			zap.String("provided_name", name),
 			zap.String("base_name", baseName))
 		return false, cpf, baseName, nil
@@ -79,7 +79,7 @@ func (v *BaseDataValidator) ValidateRegistration(ctx context.Context, name, cpf,
 	if citizen.Nascimento != nil && citizen.Nascimento.Data != nil {
 		baseBirthDate = citizen.Nascimento.Data.Format("2006-01-02")
 	}
-	
+
 	birthDateMatch := v.simpleBirthDateMatch(birthDate, baseBirthDate)
 	if !birthDateMatch {
 		v.logger.Info("birth date does not match",
@@ -171,4 +171,4 @@ func (m *MockValidator) ValidateRegistration(ctx context.Context, name, cpf, bir
 		return true, m.MockCPF, m.MockName, nil
 	}
 	return false, "", "", nil
-} 
+}

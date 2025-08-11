@@ -83,4 +83,4 @@ func (l *SafeLogger) With(fields ...zap.Field) *SafeLogger {
 		return &SafeLogger{logger: l.logger.With(fields...)}
 	}
 	return l
-} 
+}

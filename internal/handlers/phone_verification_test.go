@@ -40,4 +40,4 @@ func TestValidatePhoneVerificationEndpoint(t *testing.T) {
 	}
 
 	// Note: Happy path would require a real verification code in the DB, which is not practical for a static test.
-} 
+}

@@ -6,16 +6,16 @@ import (
 
 // PhoneCPFMapping represents the mapping between phone numbers and CPFs
 type PhoneCPFMapping struct {
-	PhoneNumber       string                 `bson:"phone_number" json:"phone_number"`
-	CPF               string                 `bson:"cpf,omitempty" json:"cpf,omitempty"`
-	Status            string                 `bson:"status" json:"status"`
-	QuarantineUntil   *time.Time             `bson:"quarantine_until,omitempty" json:"quarantine_until,omitempty"`
-	QuarantineHistory []QuarantineEvent      `bson:"quarantine_history,omitempty" json:"quarantine_history,omitempty"`
-	ValidationAttempt ValidationAttempt      `bson:"validation_attempt,omitempty" json:"validation_attempt,omitempty"`
-	Channel           string                 `bson:"channel,omitempty" json:"channel,omitempty"`
-	BetaGroupID       string                 `bson:"beta_group_id,omitempty" json:"beta_group_id,omitempty"`
-	CreatedAt         time.Time              `bson:"created_at" json:"created_at"`
-	UpdatedAt         time.Time              `bson:"updated_at" json:"updated_at"`
+	PhoneNumber       string            `bson:"phone_number" json:"phone_number"`
+	CPF               string            `bson:"cpf,omitempty" json:"cpf,omitempty"`
+	Status            string            `bson:"status" json:"status"`
+	QuarantineUntil   *time.Time        `bson:"quarantine_until,omitempty" json:"quarantine_until,omitempty"`
+	QuarantineHistory []QuarantineEvent `bson:"quarantine_history,omitempty" json:"quarantine_history,omitempty"`
+	ValidationAttempt ValidationAttempt `bson:"validation_attempt,omitempty" json:"validation_attempt,omitempty"`
+	Channel           string            `bson:"channel,omitempty" json:"channel,omitempty"`
+	BetaGroupID       string            `bson:"beta_group_id,omitempty" json:"beta_group_id,omitempty"`
+	CreatedAt         time.Time         `bson:"created_at" json:"created_at"`
+	UpdatedAt         time.Time         `bson:"updated_at" json:"updated_at"`
 }
 
 // QuarantineEvent represents a quarantine event in the history
@@ -52,10 +52,10 @@ type QuarantineRequest struct {
 
 // QuarantineResponse represents the response for quarantine operations
 type QuarantineResponse struct {
-	Status         string     `json:"status"`
-	PhoneNumber    string     `json:"phone_number"`
+	Status          string    `json:"status"`
+	PhoneNumber     string    `json:"phone_number"`
 	QuarantineUntil time.Time `json:"quarantine_until"`
-	Message        string     `json:"message"`
+	Message         string    `json:"message"`
 }
 
 // BindRequest represents the request to bind a phone number to a CPF
@@ -75,10 +75,10 @@ type BindResponse struct {
 
 // QuarantinedPhone represents a quarantined phone number for admin endpoints
 type QuarantinedPhone struct {
-	PhoneNumber     string     `json:"phone_number"`
-	CPF             string     `json:"cpf,omitempty"`
-	QuarantineUntil time.Time  `json:"quarantine_until"`
-	Expired         bool       `json:"expired"`
+	PhoneNumber     string    `json:"phone_number"`
+	CPF             string    `json:"cpf,omitempty"`
+	QuarantineUntil time.Time `json:"quarantine_until"`
+	Expired         bool      `json:"expired"`
 }
 
 // QuarantinedListResponse represents the paginated response for quarantined phones
@@ -89,12 +89,12 @@ type QuarantinedListResponse struct {
 
 // QuarantineStats represents quarantine statistics
 type QuarantineStats struct {
-	TotalQuarantined        int `json:"total_quarantined"`
-	ExpiredQuarantines      int `json:"expired_quarantines"`
-	ActiveQuarantines       int `json:"active_quarantines"`
-	QuarantinesWithCPF      int `json:"quarantines_with_cpf"`
-	QuarantinesWithoutCPF   int `json:"quarantines_without_cpf"`
-	QuarantineHistoryTotal  int `json:"quarantine_history_total"`
+	TotalQuarantined       int `json:"total_quarantined"`
+	ExpiredQuarantines     int `json:"expired_quarantines"`
+	ActiveQuarantines      int `json:"active_quarantines"`
+	QuarantinesWithCPF     int `json:"quarantines_with_cpf"`
+	QuarantinesWithoutCPF  int `json:"quarantines_without_cpf"`
+	QuarantineHistoryTotal int `json:"quarantine_history_total"`
 }
 
 // PaginationInfo represents pagination information
@@ -107,8 +107,8 @@ type PaginationInfo struct {
 
 // Mapping status constants
 const (
-	MappingStatusActive     = "active"
-	MappingStatusBlocked    = "blocked"
+	MappingStatusActive      = "active"
+	MappingStatusBlocked     = "blocked"
 	MappingStatusQuarantined = "quarantined"
 )
 
@@ -117,4 +117,4 @@ const (
 	ChannelWhatsApp = "whatsapp"
 	ChannelWeb      = "web"
 	ChannelMobile   = "mobile"
-) 
+)

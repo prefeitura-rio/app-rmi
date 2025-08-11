@@ -49,12 +49,12 @@ func UpdateWithOptimisticLock(ctx context.Context, collection string, filter bso
 	// Add version increment to update
 	newVersion := expectedVersion + 1
 	now := time.Now()
-	
+
 	// Ensure update is a $set operation
 	if update["$set"] == nil {
 		update["$set"] = bson.M{}
 	}
-	
+
 	update["$set"].(bson.M)["version"] = newVersion
 	update["$set"].(bson.M)["updated_at"] = now
 
@@ -154,7 +154,7 @@ func RetryWithOptimisticLock(ctx context.Context, maxRetries int, operation func
 		// Check if it's an optimistic lock error
 		if _, ok := err.(OptimisticLockError); ok {
 			if attempt == maxRetries {
-				logger.Error("max retries reached for optimistic lock", 
+				logger.Error("max retries reached for optimistic lock",
 					zap.Int("attempts", attempt+1),
 					zap.Error(err))
 				return err
@@ -212,4 +212,4 @@ func InitializeDocumentVersion(ctx context.Context, collection string, filter bs
 	}
 
 	return nil
-} 
+}

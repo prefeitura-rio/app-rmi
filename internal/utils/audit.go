@@ -16,19 +16,19 @@ import (
 
 // AuditLog represents an audit log entry
 type AuditLog struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	CPF         string            `bson:"cpf" json:"cpf"`
-	Action      string            `bson:"action" json:"action"`
-	Resource    string            `bson:"resource" json:"resource"`
-	ResourceID  string            `bson:"resource_id" json:"resource_id"`
-	OldValue    interface{}       `bson:"old_value,omitempty" json:"old_value,omitempty"`
-	NewValue    interface{}       `bson:"new_value,omitempty" json:"new_value,omitempty"`
-	UserID      string            `bson:"user_id,omitempty" json:"user_id,omitempty"`
-	IPAddress   string            `bson:"ip_address,omitempty" json:"ip_address,omitempty"`
-	UserAgent   string            `bson:"user_agent,omitempty" json:"user_agent,omitempty"`
-	RequestID   string            `bson:"request_id,omitempty" json:"request_id,omitempty"`
-	Timestamp   time.Time         `bson:"timestamp" json:"timestamp"`
-	Metadata    map[string]string `bson:"metadata,omitempty" json:"metadata,omitempty"`
+	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	CPF        string             `bson:"cpf" json:"cpf"`
+	Action     string             `bson:"action" json:"action"`
+	Resource   string             `bson:"resource" json:"resource"`
+	ResourceID string             `bson:"resource_id" json:"resource_id"`
+	OldValue   interface{}        `bson:"old_value,omitempty" json:"old_value,omitempty"`
+	NewValue   interface{}        `bson:"new_value,omitempty" json:"new_value,omitempty"`
+	UserID     string             `bson:"user_id,omitempty" json:"user_id,omitempty"`
+	IPAddress  string             `bson:"ip_address,omitempty" json:"ip_address,omitempty"`
+	UserAgent  string             `bson:"user_agent,omitempty" json:"user_agent,omitempty"`
+	RequestID  string             `bson:"request_id,omitempty" json:"request_id,omitempty"`
+	Timestamp  time.Time          `bson:"timestamp" json:"timestamp"`
+	Metadata   map[string]string  `bson:"metadata,omitempty" json:"metadata,omitempty"`
 }
 
 // Audit constants
@@ -42,13 +42,13 @@ const (
 	AuditActionLogout   = "LOGOUT"
 
 	AuditResourceAddress           = "address"
-	AuditResourcePhone            = "phone"
-	AuditResourceEmail            = "email"
-	AuditResourceEthnicity        = "ethnicity"
+	AuditResourcePhone             = "phone"
+	AuditResourceEmail             = "email"
+	AuditResourceEthnicity         = "ethnicity"
 	AuditResourcePhoneVerification = "phone_verification"
-	AuditResourceUserConfig       = "user_config"
-	AuditResourceBetaGroup        = "beta_group"
-	AuditResourceBetaWhitelist    = "beta_whitelist"
+	AuditResourceUserConfig        = "user_config"
+	AuditResourceBetaGroup         = "beta_group"
+	AuditResourceBetaWhitelist     = "beta_whitelist"
 )
 
 // AuditContext contains context information for audit logging
@@ -99,7 +99,7 @@ func (aw *AuditWorker) start() {
 // worker processes audit logs from the channel
 func (aw *AuditWorker) worker() {
 	defer aw.wg.Done()
-	
+
 	for {
 		select {
 		case auditLog, ok := <-aw.auditChan:
@@ -380,4 +380,4 @@ func sanitizeMap(data interface{}) {
 			sanitizeMap(item)
 		}
 	}
-} 
+}

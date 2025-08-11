@@ -20,27 +20,27 @@ type Config struct {
 	// Redis configuration
 	RedisURI      string        `json:"redis_uri"`
 	RedisPassword string        `json:"redis_password"`
-	RedisDB       int          `json:"redis_db"`
+	RedisDB       int           `json:"redis_db"`
 	RedisTTL      time.Duration `json:"redis_ttl"`
-	
+
 	// Redis connection pool configuration
-	RedisPoolSize      int           `json:"redis_pool_size"`
-	RedisMinIdleConns  int           `json:"redis_min_idle_conns"`
-	RedisDialTimeout   time.Duration `json:"redis_dial_timeout"`
-	RedisReadTimeout   time.Duration `json:"redis_read_timeout"`
-	RedisWriteTimeout  time.Duration `json:"redis_write_timeout"`
-	RedisPoolTimeout   time.Duration `json:"redis_pool_timeout"`
+	RedisPoolSize     int           `json:"redis_pool_size"`
+	RedisMinIdleConns int           `json:"redis_min_idle_conns"`
+	RedisDialTimeout  time.Duration `json:"redis_dial_timeout"`
+	RedisReadTimeout  time.Duration `json:"redis_read_timeout"`
+	RedisWriteTimeout time.Duration `json:"redis_write_timeout"`
+	RedisPoolTimeout  time.Duration `json:"redis_pool_timeout"`
 
 	// Collection names
-	CitizenCollection      string `json:"mongo_citizen_collection"`
-	SelfDeclaredCollection string `json:"mongo_self_declared_collection"`
-	PhoneVerificationCollection string `json:"mongo_phone_verification_collection"`
-	UserConfigCollection   string `json:"mongo_user_config_collection"`
+	CitizenCollection            string `json:"mongo_citizen_collection"`
+	SelfDeclaredCollection       string `json:"mongo_self_declared_collection"`
+	PhoneVerificationCollection  string `json:"mongo_phone_verification_collection"`
+	UserConfigCollection         string `json:"mongo_user_config_collection"`
 	MaintenanceRequestCollection string `json:"mongo_maintenance_request_collection"`
-	PhoneMappingCollection string `json:"mongo_phone_mapping_collection"`
-	OptInHistoryCollection string `json:"mongo_opt_in_history_collection"`
-	BetaGroupCollection    string `json:"mongo_beta_group_collection"`
-	AuditLogsCollection    string `json:"mongo_audit_logs_collection"`
+	PhoneMappingCollection       string `json:"mongo_phone_mapping_collection"`
+	OptInHistoryCollection       string `json:"mongo_opt_in_history_collection"`
+	BetaGroupCollection          string `json:"mongo_beta_group_collection"`
+	AuditLogsCollection          string `json:"mongo_audit_logs_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -62,11 +62,11 @@ type Config struct {
 
 	// Audit logging configuration
 	AuditLogsEnabled bool `json:"audit_logs_enabled"`
-	
+
 	// Audit worker configuration
 	AuditWorkerCount int `json:"audit_worker_count"`
 	AuditBufferSize  int `json:"audit_buffer_size"`
-	
+
 	// Verification queue configuration
 	VerificationWorkerCount int `json:"verification_worker_count"`
 	VerificationQueueSize   int `json:"verification_queue_size"`
@@ -185,25 +185,25 @@ func LoadConfig() error {
 		RedisPassword: getEnvOrDefault("REDIS_PASSWORD", ""),
 		RedisDB:       redisDB,
 		RedisTTL:      redisTTL,
-	
+
 		// Redis connection pool configuration
-		RedisPoolSize:      getEnvAsIntOrDefault("REDIS_POOL_SIZE", 50),
-		RedisMinIdleConns:  getEnvAsIntOrDefault("REDIS_MIN_IDLE_CONNS", 20),
-		RedisDialTimeout:   getEnvAsDurationOrDefault("REDIS_DIAL_TIMEOUT", 2*time.Second),
-		RedisReadTimeout:   getEnvAsDurationOrDefault("REDIS_READ_TIMEOUT", 1*time.Second),
-		RedisWriteTimeout:  getEnvAsDurationOrDefault("REDIS_WRITE_TIMEOUT", 1*time.Second),
-		RedisPoolTimeout:   getEnvAsDurationOrDefault("REDIS_POOL_TIMEOUT", 2*time.Second),
+		RedisPoolSize:     getEnvAsIntOrDefault("REDIS_POOL_SIZE", 50),
+		RedisMinIdleConns: getEnvAsIntOrDefault("REDIS_MIN_IDLE_CONNS", 20),
+		RedisDialTimeout:  getEnvAsDurationOrDefault("REDIS_DIAL_TIMEOUT", 2*time.Second),
+		RedisReadTimeout:  getEnvAsDurationOrDefault("REDIS_READ_TIMEOUT", 1*time.Second),
+		RedisWriteTimeout: getEnvAsDurationOrDefault("REDIS_WRITE_TIMEOUT", 1*time.Second),
+		RedisPoolTimeout:  getEnvAsDurationOrDefault("REDIS_POOL_TIMEOUT", 2*time.Second),
 
 		// Collection names
-		CitizenCollection:      citizenCollection,
-		SelfDeclaredCollection: getEnvOrDefault("MONGODB_SELF_DECLARED_COLLECTION", "self_declared"),
-		PhoneVerificationCollection: getEnvOrDefault("MONGODB_PHONE_VERIFICATION_COLLECTION", "phone_verifications"),
-		UserConfigCollection:   getEnvOrDefault("MONGODB_USER_CONFIG_COLLECTION", "user_config"),
+		CitizenCollection:            citizenCollection,
+		SelfDeclaredCollection:       getEnvOrDefault("MONGODB_SELF_DECLARED_COLLECTION", "self_declared"),
+		PhoneVerificationCollection:  getEnvOrDefault("MONGODB_PHONE_VERIFICATION_COLLECTION", "phone_verifications"),
+		UserConfigCollection:         getEnvOrDefault("MONGODB_USER_CONFIG_COLLECTION", "user_config"),
 		MaintenanceRequestCollection: maintenanceRequestCollection,
-		PhoneMappingCollection: getEnvOrDefault("MONGODB_PHONE_MAPPING_COLLECTION", "phone_cpf_mappings"),
-			OptInHistoryCollection: getEnvOrDefault("MONGODB_OPT_IN_HISTORY_COLLECTION", "opt_in_history"),
-	BetaGroupCollection:    getEnvOrDefault("MONGODB_BETA_GROUP_COLLECTION", "beta_groups"),
-	AuditLogsCollection:    getEnvOrDefault("MONGODB_AUDIT_LOGS_COLLECTION", "audit_logs"),
+		PhoneMappingCollection:       getEnvOrDefault("MONGODB_PHONE_MAPPING_COLLECTION", "phone_cpf_mappings"),
+		OptInHistoryCollection:       getEnvOrDefault("MONGODB_OPT_IN_HISTORY_COLLECTION", "opt_in_history"),
+		BetaGroupCollection:          getEnvOrDefault("MONGODB_BETA_GROUP_COLLECTION", "beta_groups"),
+		AuditLogsCollection:          getEnvOrDefault("MONGODB_AUDIT_LOGS_COLLECTION", "audit_logs"),
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,
@@ -223,16 +223,16 @@ func LoadConfig() error {
 		TracingEnabled:  getEnvOrDefault("TRACING_ENABLED", "false") == "true",
 		TracingEndpoint: getEnvOrDefault("TRACING_ENDPOINT", "localhost:4317"),
 
-			// Audit logging configuration
-	AuditLogsEnabled: getEnvOrDefault("AUDIT_LOGS_ENABLED", "true") == "true",
-	
-	// Audit worker configuration
-	AuditWorkerCount: getEnvAsIntOrDefault("AUDIT_WORKER_COUNT", 5),
-	AuditBufferSize:  getEnvAsIntOrDefault("AUDIT_BUFFER_SIZE", 1000),
-	
-	// Verification queue configuration
-	VerificationWorkerCount: getEnvAsIntOrDefault("VERIFICATION_WORKER_COUNT", 10),
-	VerificationQueueSize:   getEnvAsIntOrDefault("VERIFICATION_QUEUE_SIZE", 5000),
+		// Audit logging configuration
+		AuditLogsEnabled: getEnvOrDefault("AUDIT_LOGS_ENABLED", "true") == "true",
+
+		// Audit worker configuration
+		AuditWorkerCount: getEnvAsIntOrDefault("AUDIT_WORKER_COUNT", 5),
+		AuditBufferSize:  getEnvAsIntOrDefault("AUDIT_BUFFER_SIZE", 1000),
+
+		// Verification queue configuration
+		VerificationWorkerCount: getEnvAsIntOrDefault("VERIFICATION_WORKER_COUNT", 10),
+		VerificationQueueSize:   getEnvAsIntOrDefault("VERIFICATION_QUEUE_SIZE", 5000),
 
 		// Authorization configuration
 		AdminGroup: getEnvOrDefault("ADMIN_GROUP", "rmi-admin"),
@@ -270,4 +270,4 @@ func getEnvAsDurationOrDefault(key string, defaultValue time.Duration) time.Dura
 		}
 	}
 	return defaultValue
-} 
+}

@@ -88,4 +88,4 @@ func ShutdownTracer() {
 	if err := tracerProvider.Shutdown(ctx); err != nil {
 		logging.Logger.Error("failed to shutdown tracer provider", zap.Error(err))
 	}
-} 
+}

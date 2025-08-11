@@ -272,7 +272,7 @@
         },
         "/admin/beta/whitelist": {
             "get": {
-                "description": "Lista todos os telefones na whitelist beta com paginação (apenas administradores)",
+                "description": "Lista telefones na whitelist beta com paginação (apenas administradores)",
                 "produces": [
                     "application/json"
                 ],
@@ -338,7 +338,7 @@
                 "parameters": [
                     {
                         "description": "Dados da operação em lote",
-                        "name": "bulk",
+                        "name": "data",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -347,8 +347,8 @@
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Created",
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "type": "array",
                             "items": {
@@ -392,8 +392,8 @@
                 "summary": "Mover múltiplos telefones entre grupos",
                 "parameters": [
                     {
-                        "description": "Dados da operação em lote",
-                        "name": "bulk",
+                        "description": "Dados da operação de movimentação",
+                        "name": "data",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -402,8 +402,11 @@
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "Telefones movidos com sucesso"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -442,7 +445,7 @@
                 "parameters": [
                     {
                         "description": "Dados da operação em lote",
-                        "name": "bulk",
+                        "name": "data",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -451,8 +454,11 @@
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "Telefones removidos da whitelist com sucesso"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -492,7 +498,7 @@
                     },
                     {
                         "description": "Dados da whitelist",
-                        "name": "whitelist",
+                        "name": "data",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -501,8 +507,8 @@
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Created",
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.BetaWhitelistResponse"
                         }
@@ -552,8 +558,11 @@
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "Telefone removido da whitelist com sucesso"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.BetaWhitelistResponse"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -578,22 +587,14 @@
         },
         "/admin/phone/quarantine/stats": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna estatísticas sobre números de telefone em quarentena (apenas administradores)",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém estatísticas sobre telefones em quarentena (apenas administradores)",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "admin"
+                    "phone"
                 ],
-                "summary": "Estatísticas de quarentena",
+                "summary": "Obter estatísticas de quarentena",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -606,32 +607,18 @@
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
                     }
                 }
             }
         },
         "/admin/phone/quarantined": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna lista paginada de números de telefone em quarentena (apenas administradores)",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Lista todos os telefones em quarentena com paginação (apenas administradores)",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "admin"
+                    "phone"
                 ],
                 "summary": "Listar telefones em quarentena",
                 "parameters": [
@@ -643,14 +630,8 @@
                     },
                     {
                         "type": "integer",
-                        "description": "Itens por página (padrão: 20, máximo: 100)",
+                        "description": "Itens por página (padrão: 10)",
                         "name": "per_page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Filtrar apenas quarentenas expiradas",
-                        "name": "expired",
                         "in": "query"
                     }
                 ],
@@ -669,12 +650,6 @@
                     },
                     "403": {
                         "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -721,10 +696,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Recupera os dados do cidadão por CPF, combinando dados base com atualizações autodeclaradas. Dados autodeclarados têm precedência sobre dados base. Os resultados são armazenados em cache usando Redis com TTL configurável.",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém os dados completos de um cidadão, incluindo dados autodeclarados",
                 "produces": [
                     "application/json"
                 ],
@@ -734,10 +706,8 @@
                 "summary": "Obter dados do cidadão",
                 "parameters": [
                     {
-                        "maxLength": 11,
-                        "minLength": 11,
                         "type": "string",
-                        "description": "CPF do cidadão (11 dígitos)",
+                        "description": "Número do CPF",
                         "name": "cpf",
                         "in": "path",
                         "required": true
@@ -745,13 +715,13 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Dados completos do cidadão",
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.Citizen"
                         }
                     },
                     "400": {
-                        "description": "Formato de CPF inválido",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -769,13 +739,7 @@
                         }
                     },
                     "404": {
-                        "description": "Cidadão não encontrado",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Erro interno do servidor",
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -1549,10 +1513,7 @@
         },
         "/config/channels": {
             "get": {
-                "description": "Retorna lista de canais disponíveis para opt-in/opt-out",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém a lista de canais disponíveis para comunicação",
                 "produces": [
                     "application/json"
                 ],
@@ -1575,10 +1536,7 @@
         },
         "/config/opt-out-reasons": {
             "get": {
-                "description": "Retorna lista de motivos disponíveis para opt-out",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém a lista de motivos válidos para opt-out",
                 "produces": [
                     "application/json"
                 ],
@@ -1592,7 +1550,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.OptOutReason"
+                                "type": "string"
                             }
                         }
                     }
@@ -1731,17 +1689,14 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Busca um cidadão por número de telefone e retorna dados mascarados",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém informações do cidadão associado a um número de telefone",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "phone"
                 ],
-                "summary": "Obter cidadão por número de telefone",
+                "summary": "Obter cidadão por telefone",
                 "parameters": [
                     {
                         "type": "string",
@@ -1968,9 +1923,6 @@
                     }
                 ],
                 "description": "Libera um número de telefone da quarentena (apenas administradores)",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -2081,17 +2033,14 @@
         },
         "/phone/{phone_number}/status": {
             "get": {
-                "description": "Verifica o status de um número de telefone, incluindo se está em quarentena",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Obtém o status de um número de telefone (quarentena, CPF vinculado, etc.)",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "phone"
                 ],
-                "summary": "Verificar status do número de telefone",
+                "summary": "Obter status do telefone",
                 "parameters": [
                     {
                         "type": "string",
@@ -2130,7 +2079,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Valida dados de registro contra a base de dados oficial",
+                "description": "Valida um registro de usuário contra dados base",
                 "consumes": [
                     "application/json"
                 ],
@@ -2140,7 +2089,7 @@
                 "tags": [
                     "phone"
                 ],
-                "summary": "Validar registro de cidadão",
+                "summary": "Validar registro",
                 "parameters": [
                     {
                         "type": "string",
@@ -2150,7 +2099,7 @@
                         "required": true
                     },
                     {
-                        "description": "Dados para validação",
+                        "description": "Dados do registro",
                         "name": "data",
                         "in": "body",
                         "required": true,
@@ -3002,20 +2951,6 @@
                     "type": "string"
                 },
                 "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.OptOutReason": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "subtitle": {
-                    "type": "string"
-                },
-                "title": {
                     "type": "string"
                 }
             }

@@ -88,24 +88,24 @@ func InitMongoDB() {
 func InitRedis() {
 	// Initialize Redis client with production-optimized settings
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:         AppConfig.RedisURI,
-		Password:     AppConfig.RedisPassword,
-		DB:           AppConfig.RedisDB,
-		
+		Addr:     AppConfig.RedisURI,
+		Password: AppConfig.RedisPassword,
+		DB:       AppConfig.RedisDB,
+
 		// Connection timeouts - configurable via environment variables
 		DialTimeout:  AppConfig.RedisDialTimeout,
 		ReadTimeout:  AppConfig.RedisReadTimeout,
 		WriteTimeout: AppConfig.RedisWriteTimeout,
-		
+
 		// Connection pool optimization - configurable via environment variables
 		PoolSize:     AppConfig.RedisPoolSize,
 		MinIdleConns: AppConfig.RedisMinIdleConns,
-		MaxRetries:   3,         // Retry failed commands
-		
+		MaxRetries:   3, // Retry failed commands
+
 		// Connection health checks
-		IdleTimeout:  5 * time.Minute,  // Close idle connections
-		MaxConnAge:   30 * time.Minute, // Rotate connections
-		
+		IdleTimeout: 5 * time.Minute,  // Close idle connections
+		MaxConnAge:  30 * time.Minute, // Rotate connections
+
 		// Circuit breaker for high load - configurable via environment variables
 		PoolTimeout: AppConfig.RedisPoolTimeout,
 	})
@@ -206,32 +206,32 @@ func ensureIndexes() error {
 func checkWriteAccess(ctx context.Context, logger *zap.Logger) error {
 	// Try to create a test document to verify write access
 	testCollection := MongoDB.Collection("_test_write_access")
-	
+
 	// Use a unique test document ID to avoid conflicts
 	testDoc := bson.M{
-		"_id": primitive.NewObjectID(),
-		"test": true,
+		"_id":       primitive.NewObjectID(),
+		"test":      true,
 		"timestamp": time.Now(),
 	}
-	
+
 	_, err := testCollection.InsertOne(ctx, testDoc)
 	if err != nil {
 		return fmt.Errorf("cannot write to database: %w", err)
 	}
-	
+
 	// Clean up the test document
 	_, err = testCollection.DeleteOne(ctx, bson.M{"_id": testDoc["_id"]})
 	if err != nil {
 		logger.Warn("failed to clean up test document", zap.Error(err))
 	}
-	
+
 	return nil
 }
 
 // ensureCitizenIndex creates the unique index on cpf for citizen collection
 func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.CitizenCollection)
-	
+
 	// Check if index already exists
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
@@ -269,17 +269,17 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 	if err != nil {
 		// Check if it's a duplicate key error (another instance created it)
 		if mongo.IsDuplicateKeyError(err) {
-			logger.Info("citizen index already exists (created by another instance)", 
+			logger.Info("citizen index already exists (created by another instance)",
 				zap.String("collection", AppConfig.CitizenCollection))
 			return nil
 		}
-		logger.Error("failed to create citizen index", 
+		logger.Error("failed to create citizen index",
 			zap.String("collection", AppConfig.CitizenCollection),
 			zap.Error(err))
 		return err
 	}
 
-	logger.Info("created citizen collection index", 
+	logger.Info("created citizen collection index",
 		zap.String("collection", AppConfig.CitizenCollection),
 		zap.String("index", "cpf_1"))
 	return nil
@@ -288,7 +288,7 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 // ensureMaintenanceRequestIndex creates the index on cpf for maintenance request collection
 func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.MaintenanceRequestCollection)
-	
+
 	// Check if index already exists
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
@@ -310,7 +310,7 @@ func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) erro
 	}
 
 	if indexExists {
-		logger.Debug("maintenance request collection index already exists", 
+		logger.Debug("maintenance request collection index already exists",
 			zap.String("collection", AppConfig.MaintenanceRequestCollection))
 		return nil
 	}
@@ -326,17 +326,17 @@ func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) erro
 	if err != nil {
 		// Check if it's a duplicate key error (another instance created it)
 		if mongo.IsDuplicateKeyError(err) {
-			logger.Info("maintenance request index already exists (created by another instance)", 
+			logger.Info("maintenance request index already exists (created by another instance)",
 				zap.String("collection", AppConfig.MaintenanceRequestCollection))
 			return nil
 		}
-		logger.Error("failed to create maintenance request index", 
+		logger.Error("failed to create maintenance request index",
 			zap.String("collection", AppConfig.MaintenanceRequestCollection),
 			zap.Error(err))
 		return err
 	}
 
-	logger.Info("created maintenance request collection index", 
+	logger.Info("created maintenance request collection index",
 		zap.String("collection", AppConfig.MaintenanceRequestCollection),
 		zap.String("index", "cpf_1"))
 	return nil
@@ -345,7 +345,7 @@ func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) erro
 // startIndexMaintenance starts a goroutine that periodically ensures indexes exist
 func startIndexMaintenance() {
 	logger := zap.L().Named("database")
-	
+
 	go func() {
 		ticker := time.NewTicker(AppConfig.IndexMaintenanceInterval)
 		defer ticker.Stop()
@@ -362,14 +362,14 @@ func startIndexMaintenance() {
 		}
 	}()
 
-	logger.Info("started index maintenance routine", 
+	logger.Info("started index maintenance routine",
 		zap.Duration("interval", AppConfig.IndexMaintenanceInterval))
 }
 
 // ensureSelfDeclaredIndex creates the unique index on cpf for self_declared collection
 func ensureSelfDeclaredIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.SelfDeclaredCollection)
-	
+
 	// Check if index already exists
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
@@ -391,7 +391,7 @@ func ensureSelfDeclaredIndex(ctx context.Context, logger *zap.Logger) error {
 	}
 
 	if indexExists {
-		logger.Debug("self_declared collection index already exists", 
+		logger.Debug("self_declared collection index already exists",
 			zap.String("collection", AppConfig.SelfDeclaredCollection))
 		return nil
 	}
@@ -408,17 +408,17 @@ func ensureSelfDeclaredIndex(ctx context.Context, logger *zap.Logger) error {
 	if err != nil {
 		// Check if it's a duplicate key error (another instance created it)
 		if mongo.IsDuplicateKeyError(err) {
-			logger.Info("self_declared index already exists (created by another instance)", 
+			logger.Info("self_declared index already exists (created by another instance)",
 				zap.String("collection", AppConfig.SelfDeclaredCollection))
 			return nil
 		}
-		logger.Error("failed to create self_declared index", 
+		logger.Error("failed to create self_declared index",
 			zap.String("collection", AppConfig.SelfDeclaredCollection),
 			zap.Error(err))
 		return err
 	}
 
-	logger.Info("created self_declared collection index", 
+	logger.Info("created self_declared collection index",
 		zap.String("collection", AppConfig.SelfDeclaredCollection),
 		zap.String("index", "cpf_1"))
 	return nil
@@ -427,7 +427,7 @@ func ensureSelfDeclaredIndex(ctx context.Context, logger *zap.Logger) error {
 // ensurePhoneVerificationIndex creates the required indexes for phone_verifications collection
 func ensurePhoneVerificationIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.PhoneVerificationCollection)
-	
+
 	// Check if indexes already exist
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
@@ -490,11 +490,11 @@ func ensurePhoneVerificationIndex(ctx context.Context, logger *zap.Logger) error
 		if err != nil {
 			// Check if it's a duplicate key error (another instance created it)
 			if mongo.IsDuplicateKeyError(err) {
-				logger.Info("phone_verifications index already exists (created by another instance)", 
+				logger.Info("phone_verifications index already exists (created by another instance)",
 					zap.String("collection", AppConfig.PhoneVerificationCollection))
 				continue
 			}
-			logger.Error("failed to create phone_verifications index", 
+			logger.Error("failed to create phone_verifications index",
 				zap.String("collection", AppConfig.PhoneVerificationCollection),
 				zap.Error(err))
 			return err
@@ -502,21 +502,21 @@ func ensurePhoneVerificationIndex(ctx context.Context, logger *zap.Logger) error
 	}
 
 	if len(indexesToCreate) > 0 {
-		logger.Info("created phone_verifications collection indexes", 
+		logger.Info("created phone_verifications collection indexes",
 			zap.String("collection", AppConfig.PhoneVerificationCollection),
 			zap.Int("count", len(indexesToCreate)))
 	} else {
-		logger.Debug("phone_verifications collection indexes already exist", 
+		logger.Debug("phone_verifications collection indexes already exist",
 			zap.String("collection", AppConfig.PhoneVerificationCollection))
 	}
-	
+
 	return nil
 }
 
 // ensureUserConfigIndex creates the unique index on cpf for user_config collection
 func ensureUserConfigIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.UserConfigCollection)
-	
+
 	// Check if index already exists
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
@@ -538,7 +538,7 @@ func ensureUserConfigIndex(ctx context.Context, logger *zap.Logger) error {
 	}
 
 	if indexExists {
-		logger.Debug("user_config collection index already exists", 
+		logger.Debug("user_config collection index already exists",
 			zap.String("collection", AppConfig.UserConfigCollection))
 		return nil
 	}
@@ -555,17 +555,17 @@ func ensureUserConfigIndex(ctx context.Context, logger *zap.Logger) error {
 	if err != nil {
 		// Check if it's a duplicate key error (another instance created it)
 		if mongo.IsDuplicateKeyError(err) {
-			logger.Info("user_config index already exists (created by another instance)", 
+			logger.Info("user_config index already exists (created by another instance)",
 				zap.String("collection", AppConfig.UserConfigCollection))
 			return nil
 		}
-		logger.Error("failed to create user_config index", 
+		logger.Error("failed to create user_config index",
 			zap.String("collection", AppConfig.UserConfigCollection),
 			zap.Error(err))
 		return err
 	}
 
-	logger.Info("created user_config collection index", 
+	logger.Info("created user_config collection index",
 		zap.String("collection", AppConfig.UserConfigCollection),
 		zap.String("index", "cpf_1"))
 	return nil
@@ -574,7 +574,7 @@ func ensureUserConfigIndex(ctx context.Context, logger *zap.Logger) error {
 // ensureAuditLogsIndex creates the required indexes for audit_logs collection
 func ensureAuditLogsIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.AuditLogsCollection)
-	
+
 	// Check if indexes already exist
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
@@ -640,33 +640,33 @@ func ensureAuditLogsIndex(ctx context.Context, logger *zap.Logger) error {
 		if err != nil {
 			// Check if it's a duplicate key error (another instance created it)
 			if mongo.IsDuplicateKeyError(err) {
-						logger.Info("audit_logs index already exists (created by another instance)",
-			zap.String("collection", AppConfig.AuditLogsCollection))
+				logger.Info("audit_logs index already exists (created by another instance)",
+					zap.String("collection", AppConfig.AuditLogsCollection))
 				continue
 			}
-					logger.Error("failed to create audit_logs index",
-			zap.String("collection", AppConfig.AuditLogsCollection),
+			logger.Error("failed to create audit_logs index",
+				zap.String("collection", AppConfig.AuditLogsCollection),
 				zap.Error(err))
 			return err
 		}
 	}
 
 	if len(indexesToCreate) > 0 {
-				logger.Info("created audit_logs collection indexes",
+		logger.Info("created audit_logs collection indexes",
 			zap.String("collection", AppConfig.AuditLogsCollection),
 			zap.Int("count", len(indexesToCreate)))
 	} else {
-				logger.Debug("audit_logs collection indexes already exist",
+		logger.Debug("audit_logs collection indexes already exist",
 			zap.String("collection", AppConfig.AuditLogsCollection))
 	}
-	
+
 	return nil
-} 
+}
 
 // ensurePhoneMappingIndex creates the required indexes for phone_cpf_mappings collection
 func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.PhoneMappingCollection)
-	
+
 	// Check if indexes already exist
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
@@ -689,15 +689,15 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 	// Check if we need to drop the old unique index
 	if oldIndex, exists := existingIndexes["phone_number_1"]; exists {
 		if unique, ok := oldIndex["unique"].(bool); ok && unique {
-			logger.Info("dropping old unique phone_number index to allow multiple CPFs", 
+			logger.Info("dropping old unique phone_number index to allow multiple CPFs",
 				zap.String("collection", AppConfig.PhoneMappingCollection))
-			
+
 			_, err = collection.Indexes().DropOne(ctx, "phone_number_1")
 			if err != nil {
 				logger.Error("failed to drop old unique phone_number index", zap.Error(err))
 				return err
 			}
-			
+
 			// Remove from existing indexes map since we're recreating it
 			delete(existingIndexes, "phone_number_1")
 		}
@@ -708,8 +708,8 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Info("creating phone_number index", zap.String("collection", AppConfig.PhoneMappingCollection))
 		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
 			Keys: bson.D{{Key: "phone_number", Value: 1}},
-					Options: options.Index().
-			SetName("phone_number_1"),
+			Options: options.Index().
+				SetName("phone_number_1"),
 		})
 		if err != nil {
 			logger.Error("failed to create phone_number index", zap.Error(err))
@@ -722,8 +722,8 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Info("creating cpf index", zap.String("collection", AppConfig.PhoneMappingCollection))
 		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
 			Keys: bson.D{{Key: "cpf", Value: 1}},
-					Options: options.Index().
-			SetName("cpf_1"),
+			Options: options.Index().
+				SetName("cpf_1"),
 		})
 		if err != nil {
 			logger.Error("failed to create cpf index", zap.Error(err))
@@ -736,8 +736,8 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Info("creating status index", zap.String("collection", AppConfig.PhoneMappingCollection))
 		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
 			Keys: bson.D{{Key: "status", Value: 1}},
-					Options: options.Index().
-			SetName("status_1"),
+			Options: options.Index().
+				SetName("status_1"),
 		})
 		if err != nil {
 			logger.Error("failed to create status index", zap.Error(err))
@@ -753,8 +753,8 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 				{Key: "phone_number", Value: 1},
 				{Key: "status", Value: 1},
 			},
-					Options: options.Index().
-			SetName("phone_number_1_status_1"),
+			Options: options.Index().
+				SetName("phone_number_1_status_1"),
 		})
 		if err != nil {
 			logger.Error("failed to create phone_number + status compound index", zap.Error(err))
@@ -767,8 +767,8 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Info("creating quarantine_until index", zap.String("collection", AppConfig.PhoneMappingCollection))
 		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
 			Keys: bson.D{{Key: "quarantine_until", Value: 1}},
-					Options: options.Index().
-			SetName("quarantine_until_1"),
+			Options: options.Index().
+				SetName("quarantine_until_1"),
 		})
 		if err != nil {
 			logger.Error("failed to create quarantine_until index", zap.Error(err))
@@ -784,8 +784,8 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 				{Key: "quarantine_until", Value: 1},
 				{Key: "cpf", Value: 1},
 			},
-					Options: options.Index().
-			SetName("quarantine_until_1_cpf_1"),
+			Options: options.Index().
+				SetName("quarantine_until_1_cpf_1"),
 		})
 		if err != nil {
 			logger.Error("failed to create quarantine_until + cpf compound index", zap.Error(err))
@@ -798,8 +798,8 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Info("creating created_at index", zap.String("collection", AppConfig.PhoneMappingCollection))
 		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
 			Keys: bson.D{{Key: "created_at", Value: 1}},
-					Options: options.Index().
-			SetName("created_at_1"),
+			Options: options.Index().
+				SetName("created_at_1"),
 		})
 		if err != nil {
 			logger.Error("failed to create created_at index", zap.Error(err))
@@ -812,8 +812,8 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Info("creating beta_group_id index", zap.String("collection", AppConfig.PhoneMappingCollection))
 		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
 			Keys: bson.D{{Key: "beta_group_id", Value: 1}},
-					Options: options.Index().
-			SetName("beta_group_id_1"),
+			Options: options.Index().
+				SetName("beta_group_id_1"),
 		})
 		if err != nil {
 			logger.Error("failed to create beta_group_id index", zap.Error(err))
@@ -827,7 +827,7 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 // ensureOptInHistoryIndex creates the required indexes for opt_in_history collection
 func ensureOptInHistoryIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.OptInHistoryCollection)
-	
+
 	// Check if indexes already exist
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
@@ -910,11 +910,11 @@ func ensureOptInHistoryIndex(ctx context.Context, logger *zap.Logger) error {
 		if err != nil {
 			// Check if it's a duplicate key error (another instance created it)
 			if mongo.IsDuplicateKeyError(err) {
-				logger.Info("opt_in_history index already exists (created by another instance)", 
+				logger.Info("opt_in_history index already exists (created by another instance)",
 					zap.String("collection", AppConfig.OptInHistoryCollection))
 				continue
 			}
-			logger.Error("failed to create opt_in_history index", 
+			logger.Error("failed to create opt_in_history index",
 				zap.String("collection", AppConfig.OptInHistoryCollection),
 				zap.Error(err))
 			return err
@@ -922,21 +922,21 @@ func ensureOptInHistoryIndex(ctx context.Context, logger *zap.Logger) error {
 	}
 
 	if len(indexesToCreate) > 0 {
-		logger.Info("created opt_in_history collection indexes", 
+		logger.Info("created opt_in_history collection indexes",
 			zap.String("collection", AppConfig.OptInHistoryCollection),
 			zap.Int("count", len(indexesToCreate)))
 	} else {
-		logger.Debug("opt_in_history collection indexes already exist", 
+		logger.Debug("opt_in_history collection indexes already exist",
 			zap.String("collection", AppConfig.OptInHistoryCollection))
 	}
-	
+
 	return nil
 }
 
 // ensureBetaGroupIndex creates the indexes for beta_group collection
 func ensureBetaGroupIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.BetaGroupCollection)
-	
+
 	// Check if indexes already exist
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
@@ -984,11 +984,11 @@ func ensureBetaGroupIndex(ctx context.Context, logger *zap.Logger) error {
 		if err != nil {
 			// Check if it's a duplicate key error (another instance created it)
 			if mongo.IsDuplicateKeyError(err) {
-				logger.Info("beta_group index already exists (created by another instance)", 
+				logger.Info("beta_group index already exists (created by another instance)",
 					zap.String("collection", AppConfig.BetaGroupCollection))
 				continue
 			}
-			logger.Error("failed to create beta_group index", 
+			logger.Error("failed to create beta_group index",
 				zap.String("collection", AppConfig.BetaGroupCollection),
 				zap.Error(err))
 			return err
@@ -996,14 +996,14 @@ func ensureBetaGroupIndex(ctx context.Context, logger *zap.Logger) error {
 	}
 
 	if len(indexesToCreate) > 0 {
-		logger.Info("created beta_group collection indexes", 
+		logger.Info("created beta_group collection indexes",
 			zap.String("collection", AppConfig.BetaGroupCollection),
 			zap.Int("count", len(indexesToCreate)))
 	} else {
-		logger.Debug("beta_group collection indexes already exist", 
+		logger.Debug("beta_group collection indexes already exist",
 			zap.String("collection", AppConfig.BetaGroupCollection))
 	}
-	
+
 	return nil
 }
 
@@ -1012,24 +1012,25 @@ func monitorConnectionPool() {
 	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
 	defer ticker.Stop()
 
+	//nolint:gosimple // This is an infinite monitoring loop, for { select {} } is the correct pattern
 	for {
 		select {
 		case <-ticker.C:
 			// Get connection pool stats
 			stats := MongoDB.Client().NumberSessionsInProgress()
-			
+
 			// Log connection pool status
 			logging.Logger.Info("MongoDB connection pool status",
 				zap.Int("sessions_in_progress", stats),
 				zap.String("database", AppConfig.MongoDatabase))
-			
+
 			// Alert if too many connections are in use
 			if stats > 100 {
 				logging.Logger.Warn("High MongoDB connection usage detected",
 					zap.Int("sessions_in_progress", stats),
 					zap.String("database", AppConfig.MongoDatabase))
 			}
-			
+
 			// Critical alert if approaching connection limit
 			if stats > 400 { // 80% of maxPoolSize=500
 				logging.Logger.Error("Critical MongoDB connection usage - approaching limit",
@@ -1037,7 +1038,7 @@ func monitorConnectionPool() {
 					zap.String("database", AppConfig.MongoDatabase),
 					zap.String("recommendation", "Check for connection leaks or increase maxPoolSize"))
 			}
-			
+
 			// Check if we're experiencing connection pool exhaustion
 			if stats > 300 && stats > 0 {
 				logging.Logger.Warn("MongoDB connection pool pressure detected",
@@ -1054,6 +1055,7 @@ func monitorRedisConnectionPool() {
 	ticker := time.NewTicker(15 * time.Second) // Check every 15 seconds for Redis
 	defer ticker.Stop()
 
+	//nolint:gosimple // This is an infinite monitoring loop, for { select {} } is the correct pattern
 	for {
 		select {
 		case <-ticker.C:
@@ -1063,14 +1065,14 @@ func monitorRedisConnectionPool() {
 
 			// Get Redis pool stats
 			poolStats := Redis.PoolStats()
-			
+
 			// Log Redis connection pool status
 			logging.Logger.Info("Redis connection pool status",
 				zap.Int("total_connections", int(poolStats.TotalConns)),
 				zap.Int("idle_connections", int(poolStats.IdleConns)),
 				zap.Int("stale_connections", int(poolStats.StaleConns)),
 				zap.String("uri", AppConfig.RedisURI))
-			
+
 			// Alert if connection pool is getting full
 			if poolStats.TotalConns > uint32(float64(AppConfig.RedisPoolSize)*0.8) { // 80% of max pool size
 				logging.Logger.Warn("High Redis connection usage detected",
@@ -1079,14 +1081,14 @@ func monitorRedisConnectionPool() {
 					zap.Int("idle_connections", int(poolStats.IdleConns)),
 					zap.String("uri", AppConfig.RedisURI))
 			}
-			
+
 			// Alert if no idle connections available
 			if poolStats.IdleConns == 0 {
 				logging.Logger.Warn("No idle Redis connections available",
 					zap.Int("total_connections", int(poolStats.TotalConns)),
 					zap.String("uri", AppConfig.RedisURI))
 			}
-			
+
 			// Critical alert if approaching connection limit
 			if poolStats.TotalConns > uint32(float64(AppConfig.RedisPoolSize)*0.9) { // 90% of max pool size
 				logging.Logger.Error("Critical Redis connection usage - approaching limit",
@@ -1097,4 +1099,4 @@ func monitorRedisConnectionPool() {
 			}
 		}
 	}
-} 
+}

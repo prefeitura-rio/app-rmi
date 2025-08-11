@@ -148,4 +148,4 @@ var (
 		},
 		[]string{"operation", "collection", "database"},
 	)
-) 
+)

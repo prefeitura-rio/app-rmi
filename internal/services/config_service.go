@@ -56,4 +56,4 @@ func (s *ConfigService) GetOptOutReasons() *models.OptOutReasonsResponse {
 			},
 		},
 	}
-} 
+}

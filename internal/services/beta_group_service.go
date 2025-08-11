@@ -41,7 +41,7 @@ func (s *BetaGroupService) CreateGroup(ctx context.Context, name string) (*model
 	// Check if group name already exists (case-insensitive)
 	normalizedName := group.GetNormalizedName()
 	collection := config.MongoDB.Collection(config.AppConfig.BetaGroupCollection)
-	
+
 	var existingGroup models.BetaGroup
 	err := collection.FindOne(ctx, bson.M{"name": bson.M{"$regex": primitive.Regex{Pattern: "^" + normalizedName + "$", Options: "i"}}}).Decode(&existingGroup)
 	if err == nil {
@@ -77,7 +77,7 @@ func (s *BetaGroupService) GetGroup(ctx context.Context, groupID string) (*model
 	}
 
 	collection := config.MongoDB.Collection(config.AppConfig.BetaGroupCollection)
-	
+
 	var group models.BetaGroup
 	err = collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&group)
 	if err != nil {
@@ -98,7 +98,7 @@ func (s *BetaGroupService) GetGroup(ctx context.Context, groupID string) (*model
 // ListGroups retrieves paginated list of beta groups
 func (s *BetaGroupService) ListGroups(ctx context.Context, page, perPage int) (*models.BetaGroupListResponse, error) {
 	collection := config.MongoDB.Collection(config.AppConfig.BetaGroupCollection)
-	
+
 	// Calculate skip
 	skip := (page - 1) * perPage
 
@@ -161,10 +161,10 @@ func (s *BetaGroupService) UpdateGroup(ctx context.Context, groupID, name string
 	// Check if group name already exists (case-insensitive, excluding current group)
 	normalizedName := group.GetNormalizedName()
 	collection := config.MongoDB.Collection(config.AppConfig.BetaGroupCollection)
-	
+
 	var existingGroup models.BetaGroup
 	err = collection.FindOne(ctx, bson.M{
-		"_id": bson.M{"$ne": objectID},
+		"_id":  bson.M{"$ne": objectID},
 		"name": bson.M{"$regex": primitive.Regex{Pattern: "^" + normalizedName + "$", Options: "i"}},
 	}).Decode(&existingGroup)
 	if err == nil {
@@ -223,7 +223,7 @@ func (s *BetaGroupService) DeleteGroup(ctx context.Context, groupID string) erro
 
 	// Remove all phone associations from this group
 	phoneCollection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
-	_, err = phoneCollection.UpdateMany(ctx, 
+	_, err = phoneCollection.UpdateMany(ctx,
 		bson.M{"beta_group_id": groupID},
 		bson.M{"$unset": bson.M{"beta_group_id": ""}},
 	)
@@ -287,7 +287,7 @@ func (s *BetaGroupService) AddToWhitelist(ctx context.Context, phoneNumber, grou
 		},
 	}
 
-	_, err = phoneCollection.UpdateOne(ctx, 
+	_, err = phoneCollection.UpdateOne(ctx,
 		bson.M{"phone_number": storagePhone},
 		update,
 		options.Update().SetUpsert(true),
@@ -312,7 +312,7 @@ func (s *BetaGroupService) RemoveFromWhitelist(ctx context.Context, phoneNumber 
 	storagePhone := strings.TrimPrefix(phoneNumber, "+")
 
 	phoneCollection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
-	
+
 	// Check if phone is whitelisted
 	var mapping models.PhoneCPFMapping
 	err := phoneCollection.FindOne(ctx, bson.M{"phone_number": storagePhone}).Decode(&mapping)
@@ -407,7 +407,7 @@ func (s *BetaGroupService) GetBetaStatus(ctx context.Context, phoneNumber string
 // ListWhitelistedPhones gets paginated list of whitelisted phones
 func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perPage int, groupID string) (*models.BetaWhitelistListResponse, error) {
 	phoneCollection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
-	
+
 	// Build filter
 	filter := bson.M{"beta_group_id": bson.M{"$exists": true, "$ne": ""}}
 	if groupID != "" {
@@ -581,7 +581,7 @@ func (s *BetaGroupService) BulkMoveWhitelist(ctx context.Context, phoneNumbers [
 	// Check if groups exist
 	collection := config.MongoDB.Collection(config.AppConfig.BetaGroupCollection)
 	var fromGroup, toGroup models.BetaGroup
-	
+
 	err = collection.FindOne(ctx, bson.M{"_id": fromObjectID}).Decode(&fromGroup)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -612,17 +612,17 @@ func (s *BetaGroupService) BulkMoveWhitelist(ctx context.Context, phoneNumbers [
 func (s *BetaGroupService) bulkMoveWhitelistBatch(ctx context.Context, phoneNumbers []string, fromGroupID, toGroupID string) error {
 	phoneCollection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
 	now := time.Now()
-	
+
 	// Prepare bulk operations
 	bulkOps := make([]mongo.WriteModel, len(phoneNumbers))
-	
+
 	for i, phoneNumber := range phoneNumbers {
 		storagePhone := strings.TrimPrefix(phoneNumber, "+")
-		
+
 		bulkOps[i] = mongo.NewUpdateOneModel().
 			SetFilter(bson.M{
-				"phone_number":   storagePhone,
-				"beta_group_id":  fromGroupID,
+				"phone_number":  storagePhone,
+				"beta_group_id": fromGroupID,
 			}).
 			SetUpdate(bson.M{
 				"$set": bson.M{
@@ -631,23 +631,23 @@ func (s *BetaGroupService) bulkMoveWhitelistBatch(ctx context.Context, phoneNumb
 				},
 			})
 	}
-	
+
 	// Execute bulk operation
 	result, err := phoneCollection.BulkWrite(ctx, bulkOps)
 	if err != nil {
 		return fmt.Errorf("bulk write failed: %w", err)
 	}
-	
+
 	// Verify all operations were successful
 	if result.MatchedCount != int64(len(phoneNumbers)) {
 		s.logger.Warn("not all phones were found for move operation",
 			zap.Int64("matched", result.MatchedCount),
 			zap.Int("requested", len(phoneNumbers)))
 	}
-	
+
 	// Invalidate cache for all affected phones using pipeline
 	s.invalidateBetaStatusCacheBatch(ctx, phoneNumbers)
-	
+
 	return nil
 }
 
@@ -684,13 +684,13 @@ func (s *BetaGroupService) bulkMoveWhitelistIndividual(ctx context.Context, phon
 func (s *BetaGroupService) invalidateBetaStatusCacheBatch(ctx context.Context, phoneNumbers []string) {
 	// Use Redis pipeline for batch cache invalidation
 	pipe := config.Redis.Pipeline()
-	
+
 	for _, phoneNumber := range phoneNumbers {
 		storagePhone := strings.TrimPrefix(phoneNumber, "+")
 		cacheKey := fmt.Sprintf("beta_status:%s", storagePhone)
 		pipe.Del(ctx, cacheKey)
 	}
-	
+
 	// Execute pipeline
 	if _, err := pipe.Exec(ctx); err != nil {
 		s.logger.Warn("failed to execute cache invalidation pipeline", zap.Error(err))
@@ -700,7 +700,7 @@ func (s *BetaGroupService) invalidateBetaStatusCacheBatch(ctx context.Context, p
 // invalidateBetaStatusCache invalidates cache for all phones in a group
 func (s *BetaGroupService) invalidateBetaStatusCache(ctx context.Context, groupID string) {
 	phoneCollection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
-	
+
 	cursor, err := phoneCollection.Find(ctx, bson.M{"beta_group_id": groupID})
 	if err != nil {
 		return
@@ -720,4 +720,4 @@ func (s *BetaGroupService) invalidateBetaStatusCache(ctx context.Context, groupI
 func (s *BetaGroupService) invalidateBetaStatusCacheForPhone(ctx context.Context, phoneNumber string) {
 	cacheKey := fmt.Sprintf("beta_status:%s", phoneNumber)
 	config.Redis.Del(ctx, cacheKey)
-} 
+}

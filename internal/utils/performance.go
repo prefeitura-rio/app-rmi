@@ -31,7 +31,7 @@ type Checkpoint struct {
 func NewPerformanceMonitor(ctx context.Context, operation string) *PerformanceMonitor {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	return &PerformanceMonitor{
 		startTime:    time.Now(),
 		operation:    operation,
@@ -45,15 +45,15 @@ func NewPerformanceMonitor(ctx context.Context, operation string) *PerformanceMo
 func (pm *PerformanceMonitor) Checkpoint(name string) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	checkpoint := Checkpoint{
 		Name:     name,
 		Duration: time.Since(pm.startTime),
 		Memory:   memStats.Alloc - pm.memoryBefore.Alloc,
 	}
-	
+
 	pm.checkpoints = append(pm.checkpoints, checkpoint)
-	
+
 	pm.logger.Info("performance checkpoint",
 		zap.String("checkpoint", name),
 		zap.Duration("duration", checkpoint.Duration),
@@ -65,10 +65,10 @@ func (pm *PerformanceMonitor) Checkpoint(name string) {
 func (pm *PerformanceMonitor) End() {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	totalDuration := time.Since(pm.startTime)
 	totalMemoryDelta := memStats.Alloc - pm.memoryBefore.Alloc
-	
+
 	// Log performance summary
 	pm.logger.Info("performance monitoring completed",
 		zap.String("operation", pm.operation),
@@ -76,7 +76,7 @@ func (pm *PerformanceMonitor) End() {
 		zap.Int64("total_memory_delta_bytes", int64(totalMemoryDelta)),
 		zap.Int("checkpoint_count", len(pm.checkpoints)),
 	)
-	
+
 	// Log individual checkpoints if there are any
 	if len(pm.checkpoints) > 0 {
 		for _, cp := range pm.checkpoints {
@@ -88,7 +88,7 @@ func (pm *PerformanceMonitor) End() {
 			)
 		}
 	}
-	
+
 	// Update metrics
 	observability.OperationDuration.WithLabelValues(pm.operation).Observe(totalDuration.Seconds())
 	observability.OperationMemoryUsage.WithLabelValues(pm.operation).Observe(float64(totalMemoryDelta))
@@ -111,7 +111,7 @@ func (pm *PerformanceMonitor) PerformanceWarning(threshold time.Duration, messag
 func (pm *PerformanceMonitor) MemoryWarning(thresholdBytes int64, message string) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	memoryDelta := int64(memStats.Alloc - pm.memoryBefore.Alloc)
 	if memoryDelta > thresholdBytes {
 		pm.logger.Warn("memory usage warning",
@@ -127,19 +127,19 @@ func (pm *PerformanceMonitor) MemoryWarning(thresholdBytes int64, message string
 func (pm *PerformanceMonitor) GetPerformanceReport() string {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	totalDuration := time.Since(pm.startTime)
 	totalMemoryDelta := memStats.Alloc - pm.memoryBefore.Alloc
-	
+
 	report := fmt.Sprintf("Performance Report for %s:\n", pm.operation)
 	report += fmt.Sprintf("  Total Duration: %s\n", totalDuration)
 	report += fmt.Sprintf("  Total Memory Delta: %d bytes\n", totalMemoryDelta)
 	report += fmt.Sprintf("  Checkpoints: %d\n", len(pm.checkpoints))
-	
+
 	for _, cp := range pm.checkpoints {
 		report += fmt.Sprintf("    %s: %s (%d bytes)\n", cp.Name, cp.Duration, cp.Memory)
 	}
-	
+
 	return report
 }
 
@@ -147,20 +147,20 @@ func (pm *PerformanceMonitor) GetPerformanceReport() string {
 func MonitorFunction(ctx context.Context, operation string, fn func() error) error {
 	monitor := NewPerformanceMonitor(ctx, operation)
 	defer monitor.End()
-	
+
 	monitor.Checkpoint("start")
-	
+
 	err := fn()
-	
+
 	monitor.Checkpoint("end")
-	
+
 	if err != nil {
 		monitor.logger.Error("operation failed",
 			zap.String("operation", operation),
 			zap.Error(err),
 		)
 	}
-	
+
 	return err
 }
 
@@ -168,19 +168,19 @@ func MonitorFunction(ctx context.Context, operation string, fn func() error) err
 func MonitorFunctionWithResult[T any](ctx context.Context, operation string, fn func() (T, error)) (T, error) {
 	monitor := NewPerformanceMonitor(ctx, operation)
 	defer monitor.End()
-	
+
 	monitor.Checkpoint("start")
-	
+
 	result, err := fn()
-	
+
 	monitor.Checkpoint("end")
-	
+
 	if err != nil {
 		monitor.logger.Error("operation failed",
 			zap.String("operation", operation),
 			zap.Error(err),
 		)
 	}
-	
+
 	return result, err
 }

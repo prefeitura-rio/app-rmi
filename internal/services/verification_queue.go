@@ -61,7 +61,7 @@ type ProcessingStats struct {
 // NewVerificationQueue creates a new verification queue
 func NewVerificationQueue(workers int, queueSize int) *VerificationQueue {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	queue := &VerificationQueue{
 		queue:           make(chan VerificationJob, queueSize),
 		results:         make(chan VerificationResult, queueSize),
@@ -73,7 +73,7 @@ func NewVerificationQueue(workers int, queueSize int) *VerificationQueue {
 
 	// Start workers
 	queue.startWorkers()
-	
+
 	// Start result processor
 	go queue.processResults()
 
@@ -108,7 +108,7 @@ func (vq *VerificationQueue) worker(id int) {
 // processJob processes a single verification job
 func (vq *VerificationQueue) processJob(job VerificationJob, workerID int) {
 	startTime := time.Now()
-	
+
 	// Update stats
 	vq.mu.Lock()
 	vq.processingStats.JobsProcessed++
@@ -126,7 +126,7 @@ func (vq *VerificationQueue) processJob(job VerificationJob, workerID int) {
 	if err != nil {
 		result.Success = false
 		result.Error = err.Error()
-		logging.Logger.Error("verification failed", 
+		logging.Logger.Error("verification failed",
 			zap.Int("worker_id", workerID),
 			zap.String("phone_number", job.PhoneNumber),
 			zap.Error(err))
@@ -165,7 +165,7 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 
 	// Find the verification code in the database
 	collection := config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection)
-	
+
 	var verification struct {
 		Code      string    `bson:"code"`
 		ExpiresAt time.Time `bson:"expires_at"`
@@ -211,7 +211,9 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 
 	// Log audit event
 	auditCtx := utils.GetAuditContextFromRequest(job.CPF, job.UserID, job.RequestID, job.IPAddress, job.UserAgent)
-	utils.LogPhoneVerificationSuccess(ctx, auditCtx, job.PhoneNumber)
+	if err := utils.LogPhoneVerificationSuccess(ctx, auditCtx, job.PhoneNumber); err != nil {
+		logging.Logger.Warn("failed to log phone verification success", zap.Error(err))
+	}
 
 	// Invalidate related caches
 	cacheKey := fmt.Sprintf("phone:%s:status", job.PhoneNumber)
@@ -297,16 +299,16 @@ func (vq *VerificationQueue) Stop() {
 // IsHealthy checks if the queue is healthy
 func (vq *VerificationQueue) IsHealthy() bool {
 	stats := vq.GetStats()
-	
+
 	// Check if queue is not overflowing
 	if stats.QueueSize > 1000 {
 		return false
 	}
-	
+
 	// Check if workers are processing jobs
 	if stats.JobsProcessed == 0 && stats.JobsEnqueued > 0 {
 		return false
 	}
-	
+
 	return true
 }

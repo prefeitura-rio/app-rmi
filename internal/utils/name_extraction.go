@@ -13,7 +13,7 @@ func ExtractFirstName(fullName string) string {
 
 	// Clean the name
 	cleanName := strings.TrimSpace(fullName)
-	
+
 	// Split by spaces and common separators
 	parts := strings.FieldsFunc(cleanName, func(r rune) bool {
 		return unicode.IsSpace(r) || r == '-' || r == '_'
@@ -60,7 +60,7 @@ func MaskName(fullName string) string {
 	// Three or more names - mask middle names
 	firstName := parts[0]
 	lastName := parts[len(parts)-1]
-	
+
 	middleMask := ""
 	for i := 1; i < len(parts)-1; i++ {
 		if len(parts[i]) > 0 {
@@ -78,4 +78,4 @@ func MaskCPF(cpf string) string {
 		return cpf
 	}
 	return cpf[:3] + "***" + cpf[6:]
-} 
+}

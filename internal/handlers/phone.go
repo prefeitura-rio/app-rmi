@@ -3,12 +3,16 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nyaruka/phonenumbers"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
 // PhoneValidationRequest representa a requisição para validação de telefone
@@ -51,22 +55,40 @@ type PhoneValidationResponse struct {
 // @Failure 400 {object} ErrorResponse
 // @Router /validate/phone [post]
 func ValidatePhoneNumber(c *gin.Context) {
+	startTime := time.Now()
 	ctx, span := otel.Tracer("").Start(c.Request.Context(), "ValidatePhoneNumber")
 	defer span.End()
 
+	// Add operation to span attributes
+	span.SetAttributes(
+		attribute.String("operation", "validate_phone_number"),
+		attribute.String("service", "phone_validation"),
+	)
+
 	var req PhoneValidationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.RecordErrorInSpan(span, err, map[string]interface{}{
+			"error.type": "input_parsing",
+			"input.type": "PhoneValidationRequest",
+		})
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "campo phone é obrigatório"})
 		return
 	}
 
+	// Add phone number to span attributes
+	span.SetAttributes(attribute.String("input.phone", req.Phone))
+
 	logger := logging.Logger.With(zap.String("phone", req.Phone))
+	logger.Info("ValidatePhoneNumber called", zap.String("phone", req.Phone))
 
-	// evitando erro de variável não utilizada
-	_ = ctx
-
+	// Parse phone number with tracing
+	ctx, parseSpan := utils.TraceBusinessLogic(ctx, "parse_phone_number")
 	num, err := phonenumbers.Parse(req.Phone, "")
 	if err != nil {
+		utils.RecordErrorInSpan(parseSpan, err, map[string]interface{}{
+			"parse.phone": req.Phone,
+		})
+		parseSpan.End()
 		logger.Warn("falha ao parsear número", zap.Error(err))
 		c.JSON(http.StatusBadRequest, PhoneValidationResponse{
 			Valid:   false,
@@ -74,15 +96,26 @@ func ValidatePhoneNumber(c *gin.Context) {
 		})
 		return
 	}
+	utils.AddSpanAttribute(parseSpan, "parse.success", true)
+	parseSpan.End()
 
+	// Validate phone number with tracing
+	ctx, validationSpan := utils.TraceBusinessLogic(ctx, "validate_phone_number")
 	if !phonenumbers.IsValidNumber(num) {
+		utils.AddSpanAttribute(validationSpan, "validation.valid", false)
+		utils.AddSpanAttribute(validationSpan, "validation.reason", "invalid_number")
+		validationSpan.End()
 		c.JSON(http.StatusOK, PhoneValidationResponse{
 			Valid:   false,
 			Message: "telefone inválido",
 		})
 		return
 	}
+	utils.AddSpanAttribute(validationSpan, "validation.valid", true)
+	validationSpan.End()
 
+	// Extract phone components with tracing
+	ctx, extractSpan := utils.TraceBusinessLogic(ctx, "extract_phone_components")
 	countryCode := num.GetCountryCode()
 	nationalNumber := phonenumbers.GetNationalSignificantNumber(num)
 	region := phonenumbers.GetRegionCodeForNumber(num)
@@ -95,7 +128,16 @@ func ValidatePhoneNumber(c *gin.Context) {
 		subscriber = nationalNumber[2:]
 	}
 
-	c.JSON(http.StatusOK, PhoneValidationResponse{
+	utils.AddSpanAttribute(extractSpan, "country_code", countryCode)
+	utils.AddSpanAttribute(extractSpan, "national_number", nationalNumber)
+	utils.AddSpanAttribute(extractSpan, "region", region)
+	utils.AddSpanAttribute(extractSpan, "ddd", ddd)
+	utils.AddSpanAttribute(extractSpan, "subscriber", subscriber)
+	extractSpan.End()
+
+	// Build response with tracing
+	ctx, responseSpan := utils.TraceBusinessLogic(ctx, "build_validation_response")
+	response := PhoneValidationResponse{
 		Valid:   true,
 		Message: "telefone válido",
 		DDI:     fmt.Sprintf("%d", countryCode),
@@ -103,5 +145,21 @@ func ValidatePhoneNumber(c *gin.Context) {
 		Numero:  subscriber,
 		E164:    phonenumbers.Format(num, phonenumbers.E164),
 		Region:  region,
-	})
+	}
+	responseSpan.End()
+
+	// Serialize response with tracing
+	_, serializeSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, response)
+	serializeSpan.End()
+
+	// Log total operation time
+	totalDuration := time.Since(startTime)
+	logger.Info("ValidatePhoneNumber completed",
+		zap.String("phone", req.Phone),
+		zap.Bool("valid", true),
+		zap.String("country_code", fmt.Sprintf("%d", countryCode)),
+		zap.String("region", region),
+		zap.Duration("total_duration", totalDuration),
+		zap.String("status", "success"))
 }

@@ -514,15 +514,6 @@ definitions:
       status:
         type: string
     type: object
-  models.OptOutReason:
-    properties:
-      code:
-        type: string
-      subtitle:
-        type: string
-      title:
-        type: string
-    type: object
   models.OptOutRequest:
     properties:
       channel:
@@ -994,8 +985,7 @@ paths:
       - Beta Groups
   /admin/beta/whitelist:
     get:
-      description: Lista todos os telefones na whitelist beta com paginação (apenas
-        administradores)
+      description: Lista telefones na whitelist beta com paginação (apenas administradores)
       parameters:
       - description: 'Página (padrão: 1)'
         in: query
@@ -1039,8 +1029,10 @@ paths:
       produces:
       - application/json
       responses:
-        "204":
-          description: Telefone removido da whitelist com sucesso
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaWhitelistResponse'
         "400":
           description: Bad Request
           schema:
@@ -1068,15 +1060,15 @@ paths:
         type: string
       - description: Dados da whitelist
         in: body
-        name: whitelist
+        name: data
         required: true
         schema:
           $ref: '#/definitions/models.BetaWhitelistRequest'
       produces:
       - application/json
       responses:
-        "201":
-          description: Created
+        "200":
+          description: OK
           schema:
             $ref: '#/definitions/models.BetaWhitelistResponse'
         "400":
@@ -1107,15 +1099,15 @@ paths:
       parameters:
       - description: Dados da operação em lote
         in: body
-        name: bulk
+        name: data
         required: true
         schema:
           $ref: '#/definitions/models.BetaWhitelistBulkRequest'
       produces:
       - application/json
       responses:
-        "201":
-          description: Created
+        "200":
+          description: OK
           schema:
             items:
               $ref: '#/definitions/models.BetaWhitelistResponse'
@@ -1142,17 +1134,19 @@ paths:
       description: Move múltiplos números de telefone de um grupo beta para outro
         (apenas administradores)
       parameters:
-      - description: Dados da operação em lote
+      - description: Dados da operação de movimentação
         in: body
-        name: bulk
+        name: data
         required: true
         schema:
           $ref: '#/definitions/models.BetaWhitelistMoveRequest'
       produces:
       - application/json
       responses:
-        "204":
-          description: Telefones movidos com sucesso
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
         "400":
           description: Bad Request
           schema:
@@ -1177,15 +1171,17 @@ paths:
       parameters:
       - description: Dados da operação em lote
         in: body
-        name: bulk
+        name: data
         required: true
         schema:
           $ref: '#/definitions/models.BetaWhitelistBulkRemoveRequest'
       produces:
       - application/json
       responses:
-        "204":
-          description: Telefones removidos da whitelist com sucesso
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
         "400":
           description: Bad Request
           schema:
@@ -1199,10 +1195,7 @@ paths:
       - Beta Whitelist
   /admin/phone/quarantine/stats:
     get:
-      consumes:
-      - application/json
-      description: Retorna estatísticas sobre números de telefone em quarentena (apenas
-        administradores)
+      description: Obtém estatísticas sobre telefones em quarentena (apenas administradores)
       produces:
       - application/json
       responses:
@@ -1214,34 +1207,21 @@ paths:
           description: Forbidden
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Estatísticas de quarentena
+      summary: Obter estatísticas de quarentena
       tags:
-      - admin
+      - phone
   /admin/phone/quarantined:
     get:
-      consumes:
-      - application/json
-      description: Retorna lista paginada de números de telefone em quarentena (apenas
-        administradores)
+      description: Lista todos os telefones em quarentena com paginação (apenas administradores)
       parameters:
       - description: 'Página (padrão: 1)'
         in: query
         name: page
         type: integer
-      - description: 'Itens por página (padrão: 20, máximo: 100)'
+      - description: 'Itens por página (padrão: 10)'
         in: query
         name: per_page
         type: integer
-      - description: Filtrar apenas quarentenas expiradas
-        in: query
-        name: expired
-        type: boolean
       produces:
       - application/json
       responses:
@@ -1257,27 +1237,15 @@ paths:
           description: Forbidden
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
       summary: Listar telefones em quarentena
       tags:
-      - admin
+      - phone
   /citizen/{cpf}:
     get:
-      consumes:
-      - application/json
-      description: Recupera os dados do cidadão por CPF, combinando dados base com
-        atualizações autodeclaradas. Dados autodeclarados têm precedência sobre dados
-        base. Os resultados são armazenados em cache usando Redis com TTL configurável.
+      description: Obtém os dados completos de um cidadão, incluindo dados autodeclarados
       parameters:
-      - description: CPF do cidadão (11 dígitos)
+      - description: Número do CPF
         in: path
-        maxLength: 11
-        minLength: 11
         name: cpf
         required: true
         type: string
@@ -1285,11 +1253,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: Dados completos do cidadão
+          description: OK
           schema:
             $ref: '#/definitions/models.Citizen'
         "400":
-          description: Formato de CPF inválido
+          description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1301,11 +1269,7 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Cidadão não encontrado
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Erro interno do servidor
+          description: Not Found
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -1838,9 +1802,7 @@ paths:
       - citizen
   /config/channels:
     get:
-      consumes:
-      - application/json
-      description: Retorna lista de canais disponíveis para opt-in/opt-out
+      description: Obtém a lista de canais disponíveis para comunicação
       produces:
       - application/json
       responses:
@@ -1855,9 +1817,7 @@ paths:
       - config
   /config/opt-out-reasons:
     get:
-      consumes:
-      - application/json
-      description: Retorna lista de motivos disponíveis para opt-out
+      description: Obtém a lista de motivos válidos para opt-out
       produces:
       - application/json
       responses:
@@ -1865,7 +1825,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/models.OptOutReason'
+              type: string
             type: array
       summary: Obter motivos de opt-out
       tags:
@@ -1954,9 +1914,7 @@ paths:
       - phone
   /phone/{phone_number}/citizen:
     get:
-      consumes:
-      - application/json
-      description: Busca um cidadão por número de telefone e retorna dados mascarados
+      description: Obtém informações do cidadão associado a um número de telefone
       parameters:
       - description: Número do telefone
         in: path
@@ -1984,7 +1942,7 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Obter cidadão por número de telefone
+      summary: Obter cidadão por telefone
       tags:
       - phone
   /phone/{phone_number}/opt-in:
@@ -2071,8 +2029,6 @@ paths:
       - phone
   /phone/{phone_number}/quarantine:
     delete:
-      consumes:
-      - application/json
       description: Libera um número de telefone da quarentena (apenas administradores)
       parameters:
       - description: Número do telefone
@@ -2181,10 +2137,8 @@ paths:
       - phone
   /phone/{phone_number}/status:
     get:
-      consumes:
-      - application/json
-      description: Verifica o status de um número de telefone, incluindo se está em
-        quarentena
+      description: Obtém o status de um número de telefone (quarentena, CPF vinculado,
+        etc.)
       parameters:
       - description: Número do telefone
         in: path
@@ -2206,21 +2160,21 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Verificar status do número de telefone
+      summary: Obter status do telefone
       tags:
       - phone
   /phone/{phone_number}/validate-registration:
     post:
       consumes:
       - application/json
-      description: Valida dados de registro contra a base de dados oficial
+      description: Valida um registro de usuário contra dados base
       parameters:
       - description: Número do telefone
         in: path
         name: phone_number
         required: true
         type: string
-      - description: Dados para validação
+      - description: Dados do registro
         in: body
         name: data
         required: true
@@ -2247,7 +2201,7 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Validar registro de cidadão
+      summary: Validar registro
       tags:
       - phone
   /validate/phone:
