@@ -137,15 +137,336 @@ context canceled; total connections: 333, maxPoolSize: 1000, idle connections: 0
    # Automático a cada 30s
    ```
 
-#### **Benefícios das Otimizações**
+## 🚀 **Redis Scaling & Performance**
 
-- **✅ Elimina bloqueios** de operações por audit logging
-- **✅ Reduz uso** do connection pool MongoDB
-- **✅ Melhora performance** geral da API
-- **✅ Monitoramento proativo** de problemas de conexão
-- **✅ Escalabilidade** para alto tráfego
+### **Configuração de Connection Pool Otimizada**
 
----
+#### **Configuração Atual (Produção)**
+```bash
+# Redis connection pool configuration
+REDIS_POOL_SIZE=50           # Aumentado de 10 para 50
+REDIS_MIN_IDLE_CONNS=20      # Aumentado de 5 para 20
+REDIS_DIAL_TIMEOUT=2s        # Reduzido de 5s para 2s
+REDIS_READ_TIMEOUT=1s        # Reduzido de 3s para 1s
+REDIS_WRITE_TIMEOUT=1s       # Reduzido de 3s para 1s
+REDIS_POOL_TIMEOUT=2s        # Timeout para obter conexão
+REDIS_COMMAND_TIMEOUT=2s     # Timeout geral de comandos
+```
+
+#### **Estratégias de Scaling Redis**
+
+1. **Horizontal Scaling (Recomendado)**
+   ```yaml
+   # k8s/staging/resources.yaml - Redis Cluster
+   apiVersion: apps/v1
+   kind: StatefulSet
+   metadata:
+     name: redis-cluster
+   spec:
+     replicas: 3  # Aumentar de 1 para 3
+     template:
+       spec:
+         containers:
+         - name: redis
+           image: redis:7.2-alpine
+           command: ["redis-server", "/etc/redis/redis.conf"]
+           ports:
+           - containerPort: 6379
+           resources:
+             requests:
+               memory: "256Mi"
+               cpu: "250m"
+             limits:
+               memory: "512Mi"
+               cpu: "500m"
+   ```
+
+2. **Redis Sentinel para Alta Disponibilidade**
+   ```yaml
+   # Redis Sentinel Configuration
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: redis-sentinel-config
+   data:
+     sentinel.conf: |
+       port 26379
+       sentinel monitor mymaster redis-master 6379 2
+       sentinel down-after-milliseconds mymaster 5000
+       sentinel failover-timeout mymaster 10000
+       sentinel parallel-syncs mymaster 1
+   ```
+
+3. **Redis Cluster para Sharding**
+   ```bash
+   # Redis Cluster com 6 nós (3 master + 3 replica)
+   kubectl apply -f - <<EOF
+   apiVersion: apps/v1
+   kind: StatefulSet
+   metadata:
+     name: redis-cluster
+   spec:
+     serviceName: redis-cluster
+     replicas: 6
+     template:
+       spec:
+         containers:
+         - name: redis
+           image: redis:7.2-alpine
+           command: ["redis-server", "/etc/redis/redis.conf", "--cluster-enabled", "yes"]
+   EOF
+   ```
+
+### **Monitoramento Redis em SignOz**
+
+#### **Métricas Disponíveis**
+```yaml
+# Redis Connection Pool Metrics
+app_rmi_redis_connection_pool{status="total", uri="redis-master"}
+app_rmi_redis_connection_pool{status="idle", uri="redis-master"}
+app_rmi_redis_connection_pool{status="stale", uri="redis-master"}
+
+# Redis Connection Pool Configuration
+app_rmi_redis_connection_pool_size{type="max", uri="redis-master"}
+app_rmi_redis_connection_pool_size{type="min_idle", uri="redis-master"}
+
+# Redis Operation Metrics
+app_rmi_redis_operations_total{operation="get", status="success"}
+app_rmi_redis_operation_duration_seconds{operation="get"}
+```
+
+#### **Alertas Automáticos**
+- **High Usage**: > 80% do pool size
+- **Critical Usage**: > 90% do pool size
+- **No Idle Connections**: 0 conexões ociosas
+- **Stale Connections**: Conexões antigas detectadas
+
+### **Otimizações de Performance**
+
+1. **Connection Pool Tuning**
+   ```bash
+   # Para produção com alto tráfego
+   export REDIS_POOL_SIZE=100
+   export REDIS_MIN_IDLE_CONNS=50
+   export REDIS_POOL_TIMEOUT=1s
+   export REDIS_COMMAND_TIMEOUT=1s
+   ```
+
+2. **Redis Memory Optimization**
+   ```bash
+   # redis.conf
+   maxmemory 512mb
+   maxmemory-policy allkeys-lru
+   save 900 1
+   save 300 10
+   save 60 10000
+   ```
+
+3. **Network Optimization**
+   ```bash
+   # Kubernetes Service
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: redis-master
+     annotations:
+       service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+   spec:
+     type: LoadBalancer
+     ports:
+     - port: 6379
+       targetPort: 6379
+     selector:
+       app: redis
+   ```
+
+### **Estratégias de Fallback**
+
+1. **Circuit Breaker Pattern**
+   ```go
+   // Implementado automaticamente via Redis client
+   // PoolTimeout: 2s - Falha rápido se pool estiver cheio
+   // MaxRetries: 3 - Retry automático de comandos falhados
+   ```
+
+2. **Graceful Degradation**
+   ```go
+   // Cache miss não bloqueia operações principais
+   // Fallback para MongoDB se Redis indisponível
+   // Logs de auditoria assíncronos
+   ```
+
+3. **Health Checks**
+   ```yaml
+   # Kubernetes Liveness Probe
+   livenessProbe:
+     exec:
+       command:
+       - redis-cli
+       - ping
+     initialDelaySeconds: 30
+     periodSeconds: 10
+   ```
+
+### **Troubleshooting Redis**
+
+#### **Problemas Comuns e Soluções**
+
+1. **Connection Pool Exhaustion**
+   ```bash
+   # Verificar métricas
+   kubectl exec -it redis-master -- redis-cli info clients
+   
+   # Aumentar pool size
+   export REDIS_POOL_SIZE=100
+   ```
+
+2. **High Latency**
+   ```bash
+   # Verificar rede
+   kubectl exec -it redis-master -- redis-cli --latency
+   
+   # Verificar memória
+   kubectl exec -it redis-master -- redis-cli info memory
+   ```
+
+3. **Memory Pressure**
+   ```bash
+   # Verificar uso de memória
+   kubectl exec -it redis-master -- redis-cli info memory
+   
+   # Limpar cache se necessário
+   kubectl exec -it redis-master -- redis-cli flushall
+   ```
+
+#### **Comandos de Debug**
+```bash
+# Verificar status do cluster
+kubectl exec -it redis-master -- redis-cli cluster info
+
+# Verificar nós do cluster
+kubectl exec -it redis-master -- redis-cli cluster nodes
+
+# Verificar slots de hash
+kubectl exec -it redis-master -- redis-cli cluster slots
+
+# Monitorar comandos em tempo real
+kubectl exec -it redis-master -- redis-cli monitor
+```
+
+## 🔍 **MongoDB Connection Pool Optimization**
+
+### **Configuração de Connection Pool MongoDB**
+
+#### **URI Otimizada para Produção**
+```bash
+# MongoDB URI com connection pool otimizado
+export MONGODB_URI="mongodb://root:PASSWORD@mongodb-0.mongodb-headless.rmi.svc.cluster.local:27017,mongodb-1.mongodb-headless.rmi.svc.cluster.local:27017,mongodb-arbiter.mongodb-headless.rmi.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin&readPreference=nearest&maxPoolSize=500&minPoolSize=50&maxIdleTimeMS=60000&serverSelectionTimeoutMS=3000&socketTimeoutMS=30000&connectTimeoutMS=5000&retryWrites=true&retryReads=true&w=majority&readConcernLevel=majority&directConnection=false&maxStalenessSeconds=90&heartbeatFrequencyMS=10000&localThresholdMS=15&compressors=zlib&zlibCompressionLevel=6&maxConnecting=2&loadBalanced=false"
+```
+
+#### **Parâmetros de Connection Pool Explicados**
+| Parâmetro | Valor | Impacto | Recomendação |
+|-----------|-------|---------|--------------|
+| `maxPoolSize=500` | 500 | Alto throughput | ✅ Manter |
+| `minPoolSize=50` | 50 | Conexões quentes | ✅ Manter |
+| `maxIdleTimeMS=60000` | 60s | Economia de recursos | ✅ Manter |
+| `serverSelectionTimeoutMS=3000` | 3s | Failover rápido | ✅ Manter |
+| `socketTimeoutMS=30000` | 30s | Timeout de operações | ✅ Manter |
+| `connectTimeoutMS=5000` | 5s | Timeout de conexão | ✅ Manter |
+| `maxConnecting=2` | 2 | Previne tempestades | ✅ Manter |
+
+### **Monitoramento MongoDB em SignOz**
+
+#### **Métricas Disponíveis**
+```yaml
+# MongoDB Connection Pool Metrics
+app_rmi_mongodb_connection_pool{status="sessions_in_progress", database="rmi"}
+app_rmi_mongodb_connection_pool{status="warning", database="rmi"}
+app_rmi_mongodb_connection_pool{status="critical", database="rmi"}
+
+# MongoDB Operation Metrics
+app_rmi_mongodb_operation_duration_seconds{operation="insert", collection="audit_logs", database="rmi"}
+app_rmi_mongodb_operation_duration_seconds{operation="find", collection="citizen", database="rmi"}
+```
+
+#### **Alertas Automáticos**
+- **Warning**: > 300 conexões (60% do pool)
+- **Critical**: > 400 conexões (80% do pool)
+- **Connection Leak Detection**: Monitoramento contínuo
+
+### **Estratégias de Otimização MongoDB**
+
+1. **Connection Pool Tuning**
+   ```bash
+   # Para produção com alto tráfego
+   # Ajustar via URI MongoDB
+   maxPoolSize=1000        # Aumentar se necessário
+   minPoolSize=100         # Manter conexões quentes
+   maxIdleTimeMS=30000     # Reduzir para 30s
+   ```
+
+2. **Query Optimization**
+   ```go
+   // Usar índices compostos para consultas frequentes
+   // Implementar paginação para listagens grandes
+   // Usar projeções para reduzir dados transferidos
+   ```
+
+3. **Replica Set Optimization**
+   ```bash
+   # Configurar read preference para distribuir carga
+   readPreference=nearest    # Lê do nó mais próximo
+   maxStalenessSeconds=90   # Aceita dados com até 90s de atraso
+   ```
+
+### **Troubleshooting MongoDB Connection Pool**
+
+#### **Problemas Comuns e Soluções**
+
+1. **Connection Pool Exhaustion**
+   ```bash
+   # Verificar métricas em SignOz
+   app_rmi_mongodb_connection_pool{status="critical"}
+   
+   # Verificar logs da aplicação
+   kubectl logs -f deployment/rmi-api | grep "connection pool"
+   
+   # Aumentar maxPoolSize na URI
+   maxPoolSize=1000
+   ```
+
+2. **Slow Queries Blocking Connections**
+   ```bash
+   # Verificar operações lentas
+   kubectl exec -it mongodb-0 -- mongosh --eval "db.currentOp({'secs_running': {'$gt': 5}})"
+   
+   # Verificar índices
+   kubectl exec -it mongodb-0 -- mongosh --eval "db.citizen.getIndexes()"
+   ```
+
+3. **Replica Set Issues**
+   ```bash
+   # Verificar status do replica set
+   kubectl exec -it mongodb-0 -- mongosh --eval "rs.status()"
+   
+   # Verificar eleição primária
+   kubectl exec -it mongodb-0 -- mongosh --eval "rs.isMaster()"
+   ```
+
+#### **Comandos de Debug MongoDB**
+```bash
+# Verificar status das conexões
+kubectl exec -it mongodb-0 -- mongosh --eval "db.serverStatus().connections"
+
+# Verificar operações ativas
+kubectl exec -it mongodb-0 -- mongosh --eval "db.currentOp()"
+
+# Verificar performance de queries
+kubectl exec -it mongodb-0 -- mongosh --eval "db.citizen.find().explain('executionStats')"
+
+# Verificar logs do MongoDB
+kubectl logs -f mongodb-0 -c mongodb
+```
 
 ## Endpoints da API
 

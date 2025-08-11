@@ -86,16 +86,28 @@ func InitMongoDB() {
 
 // InitRedis initializes the Redis connection
 func InitRedis() {
-	// Initialize Redis client
+	// Initialize Redis client with production-optimized settings
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:         AppConfig.RedisURI,
 		Password:     AppConfig.RedisPassword,
 		DB:           AppConfig.RedisDB,
-		DialTimeout:  5 * time.Second,
-		ReadTimeout:  3 * time.Second,
-		WriteTimeout: 3 * time.Second,
-		PoolSize:     10,
-		MinIdleConns: 5,
+		
+		// Connection timeouts - configurable via environment variables
+		DialTimeout:  AppConfig.RedisDialTimeout,
+		ReadTimeout:  AppConfig.RedisReadTimeout,
+		WriteTimeout: AppConfig.RedisWriteTimeout,
+		
+		// Connection pool optimization - configurable via environment variables
+		PoolSize:     AppConfig.RedisPoolSize,
+		MinIdleConns: AppConfig.RedisMinIdleConns,
+		MaxRetries:   3,         // Retry failed commands
+		
+		// Connection health checks
+		IdleTimeout:  5 * time.Minute,  // Close idle connections
+		MaxConnAge:   30 * time.Minute, // Rotate connections
+		
+		// Circuit breaker for high load - configurable via environment variables
+		PoolTimeout: AppConfig.RedisPoolTimeout,
 	})
 
 	// Wrap with traced client
@@ -113,7 +125,12 @@ func InitRedis() {
 	}
 
 	logging.Logger.Info("connected to Redis",
-		zap.String("uri", AppConfig.RedisURI))
+		zap.String("uri", AppConfig.RedisURI),
+		zap.Int("pool_size", AppConfig.RedisPoolSize),
+		zap.Int("min_idle_conns", AppConfig.RedisMinIdleConns))
+
+	// Start Redis connection pool monitoring
+	go monitorRedisConnectionPool()
 }
 
 // maskMongoURI masks sensitive information in MongoDB URI
@@ -1011,6 +1028,72 @@ func monitorConnectionPool() {
 				logging.Logger.Warn("High MongoDB connection usage detected",
 					zap.Int("sessions_in_progress", stats),
 					zap.String("database", AppConfig.MongoDatabase))
+			}
+			
+			// Critical alert if approaching connection limit
+			if stats > 400 { // 80% of maxPoolSize=500
+				logging.Logger.Error("Critical MongoDB connection usage - approaching limit",
+					zap.Int("sessions_in_progress", stats),
+					zap.String("database", AppConfig.MongoDatabase),
+					zap.String("recommendation", "Check for connection leaks or increase maxPoolSize"))
+			}
+			
+			// Check if we're experiencing connection pool exhaustion
+			if stats > 300 && stats > 0 {
+				logging.Logger.Warn("MongoDB connection pool pressure detected",
+					zap.Int("sessions_in_progress", stats),
+					zap.String("database", AppConfig.MongoDatabase),
+					zap.String("recommendation", "Consider increasing maxPoolSize or optimizing queries"))
+			}
+		}
+	}
+}
+
+// monitorRedisConnectionPool monitors Redis connection pool health
+func monitorRedisConnectionPool() {
+	ticker := time.NewTicker(15 * time.Second) // Check every 15 seconds for Redis
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if Redis == nil {
+				continue
+			}
+
+			// Get Redis pool stats
+			poolStats := Redis.PoolStats()
+			
+			// Log Redis connection pool status
+			logging.Logger.Info("Redis connection pool status",
+				zap.Int("total_connections", int(poolStats.TotalConns)),
+				zap.Int("idle_connections", int(poolStats.IdleConns)),
+				zap.Int("stale_connections", int(poolStats.StaleConns)),
+				zap.String("uri", AppConfig.RedisURI))
+			
+			// Alert if connection pool is getting full
+			if poolStats.TotalConns > uint32(float64(AppConfig.RedisPoolSize)*0.8) { // 80% of max pool size
+				logging.Logger.Warn("High Redis connection usage detected",
+					zap.Int("total_connections", int(poolStats.TotalConns)),
+					zap.Int("max_pool_size", AppConfig.RedisPoolSize),
+					zap.Int("idle_connections", int(poolStats.IdleConns)),
+					zap.String("uri", AppConfig.RedisURI))
+			}
+			
+			// Alert if no idle connections available
+			if poolStats.IdleConns == 0 {
+				logging.Logger.Warn("No idle Redis connections available",
+					zap.Int("total_connections", int(poolStats.TotalConns)),
+					zap.String("uri", AppConfig.RedisURI))
+			}
+			
+			// Critical alert if approaching connection limit
+			if poolStats.TotalConns > uint32(float64(AppConfig.RedisPoolSize)*0.9) { // 90% of max pool size
+				logging.Logger.Error("Critical Redis connection usage - approaching limit",
+					zap.Int("total_connections", int(poolStats.TotalConns)),
+					zap.Int("max_pool_size", AppConfig.RedisPoolSize),
+					zap.String("uri", AppConfig.RedisURI),
+					zap.String("recommendation", "Increase REDIS_POOL_SIZE or check for connection leaks"))
 			}
 		}
 	}

@@ -22,6 +22,14 @@ type Config struct {
 	RedisPassword string        `json:"redis_password"`
 	RedisDB       int          `json:"redis_db"`
 	RedisTTL      time.Duration `json:"redis_ttl"`
+	
+	// Redis connection pool configuration
+	RedisPoolSize      int           `json:"redis_pool_size"`
+	RedisMinIdleConns  int           `json:"redis_min_idle_conns"`
+	RedisDialTimeout   time.Duration `json:"redis_dial_timeout"`
+	RedisReadTimeout   time.Duration `json:"redis_read_timeout"`
+	RedisWriteTimeout  time.Duration `json:"redis_write_timeout"`
+	RedisPoolTimeout   time.Duration `json:"redis_pool_timeout"`
 
 	// Collection names
 	CitizenCollection      string `json:"mongo_citizen_collection"`
@@ -177,6 +185,14 @@ func LoadConfig() error {
 		RedisPassword: getEnvOrDefault("REDIS_PASSWORD", ""),
 		RedisDB:       redisDB,
 		RedisTTL:      redisTTL,
+	
+		// Redis connection pool configuration
+		RedisPoolSize:      getEnvAsIntOrDefault("REDIS_POOL_SIZE", 50),
+		RedisMinIdleConns:  getEnvAsIntOrDefault("REDIS_MIN_IDLE_CONNS", 20),
+		RedisDialTimeout:   getEnvAsDurationOrDefault("REDIS_DIAL_TIMEOUT", 2*time.Second),
+		RedisReadTimeout:   getEnvAsDurationOrDefault("REDIS_READ_TIMEOUT", 1*time.Second),
+		RedisWriteTimeout:  getEnvAsDurationOrDefault("REDIS_WRITE_TIMEOUT", 1*time.Second),
+		RedisPoolTimeout:   getEnvAsDurationOrDefault("REDIS_POOL_TIMEOUT", 2*time.Second),
 
 		// Collection names
 		CitizenCollection:      citizenCollection,
@@ -241,6 +257,16 @@ func getEnvAsIntOrDefault(key string, defaultValue int) int {
 	if value, exists := os.LookupEnv(key); exists {
 		if intValue, err := strconv.Atoi(value); err == nil {
 			return intValue
+		}
+	}
+	return defaultValue
+}
+
+// getEnvAsDurationOrDefault returns environment variable value as time.Duration or default if not set
+func getEnvAsDurationOrDefault(key string, defaultValue time.Duration) time.Duration {
+	if value, exists := os.LookupEnv(key); exists {
+		if duration, err := time.ParseDuration(value); err == nil {
+			return duration
 		}
 	}
 	return defaultValue

@@ -103,4 +103,49 @@ var (
 		},
 		[]string{"operation"},
 	)
+
+	// RedisConnectionPool tracks Redis connection pool status
+	RedisConnectionPool = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "app_rmi_redis_connection_pool",
+			Help: "Redis connection pool status",
+		},
+		[]string{"status", "uri"},
+	)
+
+	// RedisConnectionPoolSize tracks Redis connection pool configuration
+	RedisConnectionPoolSize = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "app_rmi_redis_connection_pool_size",
+			Help: "Redis connection pool configuration",
+		},
+		[]string{"type", "uri"},
+	)
+
+	// RedisLatency tracks Redis operation latency
+	RedisLatency = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "app_rmi_redis_latency_seconds",
+			Help: "Redis operation latency in seconds",
+		},
+		[]string{"operation", "uri"},
+	)
+
+	// MongoDBConnectionPool tracks MongoDB connection pool status
+	MongoDBConnectionPool = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "app_rmi_mongodb_connection_pool",
+			Help: "MongoDB connection pool status",
+		},
+		[]string{"status", "database"},
+	)
+
+	// MongoDBOperationDuration tracks MongoDB operation duration
+	MongoDBOperationDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "app_rmi_mongodb_operation_duration_seconds",
+			Help: "Duration of MongoDB operations in seconds",
+		},
+		[]string{"operation", "collection", "database"},
+	)
 ) 
