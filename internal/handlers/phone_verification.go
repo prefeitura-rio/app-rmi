@@ -12,7 +12,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -116,7 +116,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 	findSpan.End()
 
 	// Update self-declared data to replace the phone number with the verified one with tracing
-	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "prepare_phone_verification_update")
+	ctx, prepareSpan := utils.TraceBusinessLogic(ctx, "prepare_phone_verification_update")
 	origem := "self-declared"
 	sistema := "rmi"
 	now := time.Now()
@@ -129,6 +129,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 			verification.Telefone.Principal.UpdatedAt = &now
 		}
 	}
+	prepareSpan.End()
 
 	update := bson.M{
 		"$set": bson.M{
@@ -139,56 +140,46 @@ func ValidatePhoneVerification(c *gin.Context) {
 			"telefone_pending": "",
 		},
 	}
-	updateSpan.End()
 
-	// Use transaction for atomic update and cleanup with tracing
-	ctx, transactionSpan := utils.TraceDatabaseTransaction(ctx, "phone_verification_transaction")
-	operations := []utils.DatabaseOperation{
-		{
-			Operation: func() error {
-				_, err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
-					ctx,
-					bson.M{"cpf": cpf},
-					update,
-					options.Update().SetUpsert(true),
-				)
-				return err
-			},
-			Rollback: func() error {
-				// No rollback needed for this operation
-				return nil
-			},
-		},
-		{
-			Operation: func() error {
-				_, err := config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection).DeleteOne(
-					ctx,
-					bson.M{"cpf": verification.CPF, "phone_number": verification.PhoneNumber},
-				)
-				return err
-			},
-			Rollback: func() error {
-				// No rollback needed for delete operation
-				return nil
-			},
-		},
-	}
-
-	if err := utils.ExecuteWithTransaction(ctx, operations); err != nil {
-		utils.RecordErrorInSpan(transactionSpan, err, map[string]interface{}{
-			"transaction.operations_count": len(operations),
-			"transaction.type":             "phone_verification",
+	// Update self-declared data directly (no transaction needed for single collection)
+	ctx, updateSpan := utils.TraceDatabaseUpsert(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
+	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
+		ctx,
+		bson.M{"cpf": cpf},
+		update,
+		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
+	)
+	if err != nil {
+		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
+			"db.collection": config.AppConfig.SelfDeclaredCollection,
+			"db.operation":  "upsert",
 		})
-		transactionSpan.End()
-		observability.Logger().Error("failed to complete phone verification", zap.Error(err))
+		updateSpan.End()
+		observability.Logger().Error("failed to update self-declared data", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error: "Failed to complete phone verification",
+			Error: "Failed to update phone data",
 		})
 		return
 	}
-	utils.AddSpanAttribute(transactionSpan, "transaction.success", true)
-	utils.AddSpanAttribute(transactionSpan, "transaction.operations_count", len(operations))
-	transactionSpan.End()
+	updateSpan.End()
+
+	// Clean up verification data separately
+	ctx, cleanupSpan, cleanupCleanup := utils.TraceDatabaseOperation(ctx, "cleanup_verification", "delete", "cpf")
+	defer cleanupCleanup()
+	_, err = config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection).DeleteOne(
+		ctx,
+		bson.M{"cpf": verification.CPF, "phone_number": verification.PhoneNumber},
+	)
+	if err != nil {
+		utils.RecordErrorInSpan(cleanupSpan, err, map[string]interface{}{
+			"db.collection": config.AppConfig.PhoneVerificationCollection,
+			"db.operation":  "delete",
+		})
+		cleanupSpan.End()
+		observability.Logger().Warn("failed to cleanup verification data", zap.Error(err))
+		// Don't fail the entire operation for cleanup failure
+	}
+	cleanupSpan.End()
 
 	// Invalidate all related caches with tracing
 	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
@@ -213,7 +204,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 	auditSpan.End()
 
 	// Serialize response with tracing
-	ctx, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
 	c.JSON(http.StatusOK, SuccessResponse{
 		Message: "Phone number verified successfully",
 	})

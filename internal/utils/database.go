@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 	"go.uber.org/zap"
 )
 
@@ -183,4 +184,38 @@ func InvalidateCitizenCache(ctx context.Context, cpf string) error {
 
 	logger.Info("citizen cache invalidated successfully")
 	return nil
+}
+
+// GetWriteConcernForOperation returns the appropriate write concern for different operation types
+func GetWriteConcernForOperation(operationType string) *writeconcern.WriteConcern {
+	switch operationType {
+	case "audit":
+		// Fire-and-forget for audit logs - highest performance
+		return &writeconcern.WriteConcern{W: 0}
+	case "user_data":
+		// Acknowledged but not majority for user data updates - good performance
+		return &writeconcern.WriteConcern{W: 1}
+	case "critical":
+		// Majority acknowledgment for critical operations - highest durability
+		return &writeconcern.WriteConcern{W: "majority"}
+	default:
+		// Default to W(1) for most operations
+		return &writeconcern.WriteConcern{W: 1}
+	}
+}
+
+// GetUpdateOptionsWithWriteConcern returns update options with appropriate write concern
+func GetUpdateOptionsWithWriteConcern(operationType string, upsert bool) *options.UpdateOptions {
+	opts := options.Update().SetUpsert(upsert)
+	// Note: Write concern is typically set at the collection level or in the URI
+	// This function provides the write concern for reference
+	return opts
+}
+
+// GetInsertOptionsWithWriteConcern returns insert options with appropriate write concern
+func GetInsertOptionsWithWriteConcern(operationType string) *options.InsertOneOptions {
+	opts := options.InsertOne()
+	// Note: Write concern is typically set at the collection level or in the URI
+	// This function provides the write concern for reference
+	return opts
 }

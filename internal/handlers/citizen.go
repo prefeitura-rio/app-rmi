@@ -377,7 +377,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		ctx,
 		bson.M{"cpf": cpf},
 		update,
-		options.Update().SetUpsert(true),
+		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
 	)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
@@ -761,7 +761,7 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 		ctx,
 		bson.M{"cpf": cpf},
 		update,
-		options.Update().SetUpsert(true),
+		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
 	)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
@@ -921,7 +921,6 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 	selfDeclared.CPF = cpf
 	selfDeclared.Raca = &input.Valor
 
-	opts := options.Update().SetUpsert(true)
 	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
 		ctx,
 		bson.M{"cpf": cpf},
@@ -930,7 +929,7 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 			"raca":       input.Valor,
 			"updated_at": time.Now(),
 		}},
-		opts,
+		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
 	)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
@@ -1301,7 +1300,7 @@ func UpdateFirstLogin(c *gin.Context) {
 		ctx,
 		bson.M{"cpf": cpf},
 		update,
-		options.Update().SetUpsert(true),
+		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
 	)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
@@ -1522,7 +1521,7 @@ func UpdateOptIn(c *gin.Context) {
 		ctx,
 		bson.M{"cpf": cpf},
 		update,
-		options.Update().SetUpsert(true),
+		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
 	)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{

@@ -71,29 +71,33 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 
 Para máxima performance e flexibilidade, **todas as configurações MongoDB são feitas via URI**, permitindo ajuste fácil através de variáveis de ambiente sem conflitos de código.
 
-#### **URI Atual (Já Boa)**
+#### **URI Atual (Para Alta Performance de Escrita)**
 ```bash
-mongodb://root:PASSWORD@mongodb-0.mongodb-headless.rmi.svc.cluster.local:27017,mongodb-1.mongodb-headless.rmi.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin&readPreference=nearest&maxPoolSize=500&minPoolSize=50&maxIdleTimeMS=60000&serverSelectionTimeoutMS=3000&socketTimeoutMS=30000&connectTimeoutMS=5000&retryWrites=true&w=majority&readConcernLevel=majority&directConnection=false&maxStalenessSeconds=90
+mongodb://root:PASSWORD@mongodb-0.mongodb-headless.rmi.svc.cluster.local:27017,mongodb-1.mongodb-headless.rmi.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin&readPreference=nearest&maxPoolSize=500&minPoolSize=50&maxIdleTimeMS=60000&serverSelectionTimeoutMS=3000&socketTimeoutMS=30000&connectTimeoutMS=5000&retryWrites=true&w=1&readConcernLevel=majority&directConnection=false&maxStalenessSeconds=90
 ```
 
-#### **URI Otimizada (Recomendada)**
+**⚠️ IMPORTANTE**: Para aplicar esta otimização, você deve atualizar sua variável de ambiente `MONGODB_URI` para usar `w=1` em vez de `w=majority`.
+
+#### **URI Otimizada (Para Máxima Performance de Escrita)**
 ```bash
-mongodb://root:PASSWORD@mongodb-0.mongodb-headless.rmi.svc.cluster.local:27017,mongodb-1.mongodb-headless.rmi.svc.cluster.local:27017,mongodb-arbiter.mongodb-headless.rmi.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin&readPreference=nearest&maxPoolSize=500&minPoolSize=50&maxIdleTimeMS=60000&serverSelectionTimeoutMS=3000&socketTimeoutMS=30000&connectTimeoutMS=5000&retryWrites=true&retryReads=true&w=majority&readConcernLevel=majority&directConnection=false&maxStalenessSeconds=90&heartbeatFrequencyMS=10000&localThresholdMS=15&compressors=zlib&zlibCompressionLevel=6&maxConnecting=2&loadBalanced=false
+mongodb://root:PASSWORD@mongodb-0.mongodb-headless.rmi.svc.cluster.local:27017,mongodb-1.mongodb-headless.rmi.svc.cluster.local:27017,mongodb-arbiter.mongodb-headless.rmi.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin&readPreference=nearest&maxPoolSize=1000&minPoolSize=100&maxIdleTimeMS=30000&serverSelectionTimeoutMS=3000&socketTimeoutMS=30000&connectTimeoutMS=5000&retryWrites=true&retryReads=true&w=1&readConcernLevel=majority&directConnection=false&maxStalenessSeconds=90&heartbeatFrequencyMS=10000&localThresholdMS=15&compressors=zlib&zlibCompressionLevel=6&maxConnecting=5&loadBalanced=false
 ```
 
 ### **Parâmetros de Performance Explicados**
 
 | Parâmetro | Valor | Impacto | Recomendação |
 |-----------|-------|---------|--------------|
-| `maxPoolSize=500` | 500 | Alto throughput | ✅ Manter |
-| `minPoolSize=50` | 50 | Conexões quentes | ✅ Manter |
+| `w=1` | 1 | **Performance máxima de escrita** | 🚀 **Mudança Crítica** |
+| `maxPoolSize=1000` | 1000 | **Alto throughput para writes** | 🚀 **Aumentar de 500** |
+| `minPoolSize=100` | 100 | **Mais conexões quentes** | 🚀 **Aumentar de 50** |
+| `maxIdleTimeMS=30000` | 30s | **Menor idle time** | 🚀 **Reduzir de 60s** |
+| `maxConnecting=5` | 5 | **Mais conexões concorrentes** | 🚀 **Aumentar de 2** |
 | `readPreference=nearest` | nearest | Performance máxima | ✅ Manter |
 | `maxStalenessSeconds=90` | 90 | Consistência vs performance | ✅ Manter |
-| `heartbeatFrequencyMS=10000` | 10s | Failover mais rápido | 🚀 Adicionar |
-| `localThresholdMS=15` | 15ms | Melhor distribuição | 🚀 Adicionar |
-| `retryReads=true` | true | Melhor disponibilidade | 🚀 Adicionar |
-| `compressors=zlib` | zlib | Eficiência de rede | 🚀 Adicionar |
-| `maxConnecting=2` | 2 | Previne tempestades | 🚀 Adicionar |
+| `heartbeatFrequencyMS=10000` | 10s | Failover mais rápido | ✅ Manter |
+| `localThresholdMS=15` | 15ms | Melhor distribuição | ✅ Manter |
+| `retryReads=true` | true | Melhor disponibilidade | ✅ Manter |
+| `compressors=zlib` | zlib | Eficiência de rede | ✅ Manter |
 
 ### **Vantagens da Abordagem URI-Only**
 
@@ -125,13 +129,13 @@ context canceled; total connections: 333, maxPoolSize: 1000, idle connections: 0
    - **Logs detalhados** de aquisição/retorno de conexões
    - **Verificação a cada 30s** do status do pool
 
-3. **Configuração Otimizada**
+3. **Configuração Otimizada para Alta Performance**
    ```bash
-   # Workers para audit logging
-   AUDIT_WORKER_COUNT=5
+   # Workers para audit logging (aumentado para alta performance)
+   AUDIT_WORKER_COUNT=20
    
-   # Buffer size para audit logs
-   AUDIT_BUFFER_SIZE=1000
+   # Buffer size para audit logs (aumentado para picos de tráfego)
+   AUDIT_BUFFER_SIZE=10000
    
    # Monitoramento de conexões
    # Automático a cada 30s

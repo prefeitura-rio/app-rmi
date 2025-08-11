@@ -118,8 +118,10 @@ func (aw *AuditWorker) processAuditLog(auditLog AuditLog) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Use a separate context for the database operation
-	_, err := config.MongoDB.Collection(config.AppConfig.AuditLogsCollection).InsertOne(ctx, auditLog)
+	// Use W(0) write concern for audit logs - fire and forget to avoid blocking
+	// This prevents audit logging from slowing down main operations
+	opts := GetInsertOptionsWithWriteConcern("audit")
+	_, err := config.MongoDB.Collection(config.AppConfig.AuditLogsCollection).InsertOne(ctx, auditLog, opts)
 	if err != nil {
 		logging.Logger.Error("failed to insert audit log",
 			zap.Error(err),

@@ -227,8 +227,8 @@ func LoadConfig() error {
 		AuditLogsEnabled: getEnvOrDefault("AUDIT_LOGS_ENABLED", "true") == "true",
 
 		// Audit worker configuration
-		AuditWorkerCount: getEnvAsIntOrDefault("AUDIT_WORKER_COUNT", 5),
-		AuditBufferSize:  getEnvAsIntOrDefault("AUDIT_BUFFER_SIZE", 1000),
+		AuditWorkerCount: getEnvAsIntOrDefault("AUDIT_WORKER_COUNT", 20),
+		AuditBufferSize:  getEnvAsIntOrDefault("AUDIT_BUFFER_SIZE", 10000),
 
 		// Verification queue configuration
 		VerificationWorkerCount: getEnvAsIntOrDefault("VERIFICATION_WORKER_COUNT", 10),
