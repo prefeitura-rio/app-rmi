@@ -250,6 +250,48 @@ func MonitorContextFunctionWithResult[T any](pm *PerformanceMonitor, name string
 	}
 }
 
+// MonitorDatabaseOperation monitors a database operation and records performance metrics
+func (pm *PerformanceMonitor) MonitorDatabaseOperation(operationName string, operation func() error) error {
+	start := time.Now()
+
+	err := operation()
+
+	duration := time.Since(start)
+	pm.RecordOperation(operationName, duration)
+
+	// Log slow database operations
+	if duration > 100*time.Millisecond {
+		pm.logger.Warn("slow database operation detected",
+			zap.String("operation", operationName),
+			zap.Duration("duration", duration),
+			zap.Error(err))
+	}
+
+	return err
+}
+
+// MonitorDatabaseOperationWithContext monitors a database operation with context
+func (pm *PerformanceMonitor) MonitorDatabaseOperationWithContext(operationName string, operation func(context.Context) error) func(context.Context) error {
+	return func(ctx context.Context) error {
+		start := time.Now()
+
+		err := operation(ctx)
+
+		duration := time.Since(start)
+		pm.RecordOperation(operationName, duration)
+
+		// Log slow database operations
+		if duration > 100*time.Millisecond {
+			pm.logger.Warn("slow database operation detected",
+				zap.String("operation", operationName),
+				zap.Duration("duration", duration),
+				zap.Error(err))
+		}
+
+		return err
+	}
+}
+
 // GetPerformanceReport returns a comprehensive performance report
 func (pm *PerformanceMonitor) GetPerformanceReport() map[string]interface{} {
 	metrics := pm.GetMetrics()

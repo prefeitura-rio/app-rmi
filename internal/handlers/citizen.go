@@ -373,11 +373,12 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		},
 	}
 
+	// Use direct database operation for better performance
 	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
 		ctx,
 		bson.M{"cpf": cpf},
 		update,
-		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
+		options.Update().SetUpsert(true),
 	)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
@@ -757,11 +758,12 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 		},
 	}
 
+	// Use direct database operation for better performance
 	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
 		ctx,
 		bson.M{"cpf": cpf},
 		update,
-		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
+		options.Update().SetUpsert(true),
 	)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
@@ -921,6 +923,7 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 	selfDeclared.CPF = cpf
 	selfDeclared.Raca = &input.Valor
 
+	// Use direct database operation for better performance
 	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
 		ctx,
 		bson.M{"cpf": cpf},
@@ -929,7 +932,7 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 			"raca":       input.Valor,
 			"updated_at": time.Now(),
 		}},
-		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
+		options.Update().SetUpsert(true),
 	)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
@@ -1296,11 +1299,12 @@ func UpdateFirstLogin(c *gin.Context) {
 
 	// Update database with tracing
 	ctx, updateSpan := utils.TraceDatabaseUpsert(ctx, config.AppConfig.UserConfigCollection, "cpf")
+	// Use direct database operation for better performance
 	_, err := config.MongoDB.Collection(config.AppConfig.UserConfigCollection).UpdateOne(
 		ctx,
 		bson.M{"cpf": cpf},
 		update,
-		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
+		options.Update().SetUpsert(true),
 	)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
@@ -1517,11 +1521,12 @@ func UpdateOptIn(c *gin.Context) {
 
 	// Update database with tracing
 	ctx, updateSpan := utils.TraceDatabaseUpsert(ctx, config.AppConfig.UserConfigCollection, "cpf")
+	// Use direct database operation for better performance
 	_, err := config.MongoDB.Collection(config.AppConfig.UserConfigCollection).UpdateOne(
 		ctx,
 		bson.M{"cpf": cpf},
 		update,
-		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
+		options.Update().SetUpsert(true),
 	)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{

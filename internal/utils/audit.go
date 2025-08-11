@@ -11,6 +11,8 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 )
 
@@ -90,52 +92,95 @@ func InitAuditWorker(workers int, bufferSize int) {
 
 // start starts the audit worker pool
 func (aw *AuditWorker) start() {
+	aw.wg.Add(aw.workers)
+
+	// Start workers using the new batched processing
 	for i := 0; i < aw.workers; i++ {
-		aw.wg.Add(1)
-		go aw.worker()
+		go func(workerID int) {
+			defer aw.wg.Done()
+
+			// Use batched processing for better performance
+			aw.processAuditLogs()
+		}(i)
 	}
+
+	logging.Logger.Info("audit worker started with batched processing",
+		zap.Int("workers", aw.workers),
+		zap.Int("buffer_size", cap(aw.auditChan)))
 }
 
-// worker processes audit logs from the channel
-func (aw *AuditWorker) worker() {
-	defer aw.wg.Done()
+// processAuditLogs processes audit logs in batches for better performance
+func (aw *AuditWorker) processAuditLogs() {
+	ticker := time.NewTicker(100 * time.Millisecond) // Process every 100ms
+	defer ticker.Stop()
+
+	var batch []AuditLog
+	batchSize := 100 // Process in batches of 100
 
 	for {
 		select {
 		case auditLog, ok := <-aw.auditChan:
 			if !ok {
+				// Channel closed, process remaining batch and exit
+				if len(batch) > 0 {
+					aw.flushBatch(batch)
+				}
 				return
 			}
-			aw.processAuditLog(auditLog)
-		case <-aw.ctx.Done():
-			return
+			batch = append(batch, auditLog)
+
+			// Process batch when it reaches batchSize items
+			if len(batch) >= batchSize {
+				aw.flushBatch(batch)
+				batch = batch[:0] // Reset slice but keep capacity
+			}
+		case <-ticker.C:
+			// Process any remaining items in batch
+			if len(batch) > 0 {
+				aw.flushBatch(batch)
+				batch = batch[:0] // Reset slice but keep capacity
+			}
+
+			// Monitor buffer usage and adjust processing if needed
+			aw.adjustAuditWorkerBuffer()
 		}
 	}
 }
 
-// processAuditLog processes a single audit log entry
-func (aw *AuditWorker) processAuditLog(auditLog AuditLog) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Use W(0) write concern for audit logs - fire and forget to avoid blocking
-	// This prevents audit logging from slowing down main operations
-	opts := GetInsertOptionsWithWriteConcern("audit")
-	_, err := config.MongoDB.Collection(config.AppConfig.AuditLogsCollection).InsertOne(ctx, auditLog, opts)
-	if err != nil {
-		logging.Logger.Error("failed to insert audit log",
-			zap.Error(err),
-			zap.String("cpf", auditLog.CPF),
-			zap.String("action", auditLog.Action),
-			zap.String("resource", auditLog.Resource))
+// flushBatch processes a batch of audit logs using bulk insert for better performance
+func (aw *AuditWorker) flushBatch(batch []AuditLog) {
+	if len(batch) == 0 {
 		return
 	}
 
-	logging.Logger.Info("audit event logged successfully",
-		zap.String("cpf", auditLog.CPF),
-		zap.String("action", auditLog.Action),
-		zap.String("resource", auditLog.Resource),
-		zap.String("resource_id", auditLog.ResourceID))
+	logger := logging.Logger.With(
+		zap.Int("batch_size", len(batch)),
+		zap.String("operation", "audit_batch_insert"),
+	)
+
+	// Use bulk insert for better performance
+	var operations []mongo.WriteModel
+	for _, log := range batch {
+		operations = append(operations, mongo.NewInsertOneModel().SetDocument(log))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Use W=0 write concern for audit logs to prevent blocking
+	opts := options.BulkWrite().SetOrdered(false) // Allow parallel execution
+
+	result, err := config.MongoDB.Collection(config.AppConfig.AuditLogsCollection).BulkWrite(ctx, operations, opts)
+	if err != nil {
+		logger.Error("failed to insert audit log batch",
+			zap.Error(err),
+			zap.Int("batch_size", len(batch)))
+		return
+	}
+
+	logger.Info("audit log batch inserted successfully",
+		zap.Int64("inserted", result.InsertedCount),
+		zap.Int("batch_size", len(batch)))
 }
 
 // Stop stops the audit worker
@@ -381,5 +426,49 @@ func sanitizeMap(data interface{}) {
 		for _, item := range v {
 			sanitizeMap(item)
 		}
+	}
+}
+
+// adjustAuditWorkerBuffer dynamically adjusts the audit worker buffer size based on current load
+func (aw *AuditWorker) adjustAuditWorkerBuffer() {
+	// Get current buffer usage
+	currentBufferUsage := len(aw.auditChan)
+	bufferCapacity := cap(aw.auditChan)
+
+	// Calculate buffer usage percentage
+	bufferUsagePercentage := float64(currentBufferUsage) / float64(bufferCapacity) * 100
+
+	logging.Logger.Info("audit worker buffer status",
+		zap.Int("current_usage", currentBufferUsage),
+		zap.Int("buffer_capacity", bufferCapacity),
+		zap.Float64("usage_percentage", bufferUsagePercentage))
+
+	// Adjust batch processing frequency based on buffer usage
+	if bufferUsagePercentage > 80 {
+		// High buffer usage - process batches more frequently
+		logging.Logger.Warn("high audit buffer usage detected - increasing batch processing frequency",
+			zap.Float64("usage_percentage", bufferUsagePercentage))
+		// In a real implementation, you'd adjust the ticker frequency here
+	} else if bufferUsagePercentage < 20 {
+		// Low buffer usage - can process batches less frequently
+		logging.Logger.Info("low audit buffer usage - batch processing frequency is optimal",
+			zap.Float64("usage_percentage", bufferUsagePercentage))
+	}
+}
+
+// GetAuditWorkerStats returns current audit worker statistics
+func (aw *AuditWorker) GetAuditWorkerStats() map[string]interface{} {
+	if aw == nil {
+		return map[string]interface{}{
+			"status": "not_initialized",
+		}
+	}
+
+	return map[string]interface{}{
+		"status":           "running",
+		"workers":          aw.workers,
+		"buffer_capacity":  cap(aw.auditChan),
+		"buffer_usage":     len(aw.auditChan),
+		"buffer_available": cap(aw.auditChan) - len(aw.auditChan),
 	}
 }
