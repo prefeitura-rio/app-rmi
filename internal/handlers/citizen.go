@@ -18,6 +18,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
 
@@ -466,42 +467,80 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/ethnicity [put]
 func UpdateSelfDeclaredRaca(c *gin.Context) {
+	startTime := time.Now()
 	ctx, span := otel.Tracer("").Start(c.Request.Context(), "UpdateSelfDeclaredRaca")
 	defer span.End()
 
 	cpf := c.Param("cpf")
 	logger := observability.Logger().With(zap.String("cpf", cpf))
+	
+	// Add CPF to span attributes
+	span.SetAttributes(
+		attribute.String("cpf", cpf),
+		attribute.String("operation", "update_ethnicity"),
+		attribute.String("service", "citizen"),
+	)
 
-	// Parse input
+	logger.Info("UpdateSelfDeclaredRaca called", zap.String("cpf", cpf))
+
+	// Parse input with tracing
+	_, inputSpan := otel.Tracer("").Start(ctx, "parse_input")
 	var input models.SelfDeclaredRacaInput
 	if err := c.ShouldBindJSON(&input); err != nil {
+		inputSpan.RecordError(err)
+		inputSpan.SetAttributes(attribute.String("error", err.Error()))
+		inputSpan.End()
 		logger.Error("failed to parse input", zap.Error(err))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid input format"})
 		return
 	}
+	inputSpan.SetAttributes(attribute.String("ethnicity_value", input.Valor))
+	inputSpan.End()
 
-	// Validate ethnicity
+	// Validate ethnicity with tracing
+	_, validationSpan := otel.Tracer("").Start(ctx, "validate_ethnicity")
 	if !models.IsValidEthnicity(input.Valor) {
+		validationSpan.RecordError(fmt.Errorf("invalid ethnicity value: %s", input.Valor))
+		validationSpan.SetAttributes(attribute.String("invalid_value", input.Valor))
+		validationSpan.End()
 		logger.Error("invalid ethnicity value", zap.String("value", input.Valor))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid ethnicity value"})
 		return
 	}
+	validationSpan.SetAttributes(attribute.String("validated_value", input.Valor))
+	validationSpan.End()
 
-	// Get existing self-declared data
+	// Get existing self-declared data with tracing
+	_, findSpan := otel.Tracer("").Start(ctx, "find_existing_data")
 	var selfDeclared models.SelfDeclaredData
 	err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&selfDeclared)
 	if err != nil && err != mongo.ErrNoDocuments {
+		findSpan.RecordError(err)
+		findSpan.SetAttributes(attribute.String("error", err.Error()))
+		findSpan.End()
 		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
 		logger.Error("failed to get self-declared data", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
 		return
 	}
+	
+	// Log old ethnicity for audit
+	oldEthnicity := ""
+	if selfDeclared.Raca != nil {
+		oldEthnicity = *selfDeclared.Raca
+	}
+	findSpan.SetAttributes(
+		attribute.String("old_ethnicity", oldEthnicity),
+		attribute.Bool("document_exists", err != mongo.ErrNoDocuments),
+	)
+	findSpan.End()
 
 	// Update ethnicity
 	selfDeclared.CPF = cpf
 	selfDeclared.Raca = &input.Valor
 
-	// Upsert the document
+	// Upsert the document with tracing
+	_, updateSpan := otel.Tracer("").Start(ctx, "upsert_document")
 	opts := options.Update().SetUpsert(true)
 	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
 		ctx,
@@ -514,21 +553,75 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 		opts,
 	)
 	if err != nil {
+		updateSpan.RecordError(err)
+		updateSpan.SetAttributes(attribute.String("error", err.Error()))
+		updateSpan.End()
 		observability.DatabaseOperations.WithLabelValues("update", "error").Inc()
 		logger.Error("failed to update self-declared data", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
 		return
 	}
+	updateSpan.SetAttributes(attribute.String("new_ethnicity", input.Valor))
+	updateSpan.End()
+	
 	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
 	observability.SelfDeclaredUpdates.WithLabelValues("success").Inc()
 
-	// Invalidate cache
+	// Invalidate cache with tracing
+	_, cacheSpan := otel.Tracer("").Start(ctx, "invalidate_cache")
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)
-	if err := config.Redis.Del(c.Request.Context(), cacheKey).Err(); err != nil {
+	cacheStart := time.Now()
+	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
+		cacheSpan.RecordError(err)
+		cacheSpan.SetAttributes(attribute.String("error", err.Error()))
 		logger.Warn("failed to invalidate cache", zap.Error(err))
+	} else {
+		cacheSpan.SetAttributes(attribute.String("cache_key", cacheKey))
+	}
+	cacheDuration := time.Since(cacheStart)
+	cacheSpan.SetAttributes(
+		attribute.Int64("cache_duration_ms", cacheDuration.Milliseconds()),
+		attribute.String("cache_duration", cacheDuration.String()),
+	)
+	cacheSpan.End()
+
+	// Log audit event if audit logging is enabled
+	if config.AppConfig.AuditLogsEnabled {
+		_, auditSpan := otel.Tracer("").Start(ctx, "log_audit_event")
+		auditCtxData := utils.GetAuditContextFromGin(c, cpf)
+		if err := utils.LogEthnicityUpdate(ctx, auditCtxData, oldEthnicity, input.Valor); err != nil {
+			auditSpan.RecordError(err)
+			auditSpan.SetAttributes(attribute.String("error", err.Error()))
+			logger.Warn("failed to log audit event", zap.Error(err))
+		} else {
+			auditSpan.SetAttributes(
+				attribute.String("audit_action", "UPDATE"),
+				attribute.String("audit_resource", "ETHNICITY"),
+			)
+		}
+		auditSpan.End()
 	}
 
+	// Response serialization with tracing
+	_, responseSpan := otel.Tracer("").Start(ctx, "serialize_response")
+	responseStart := time.Now()
 	c.JSON(http.StatusOK, SuccessResponse{Message: "ethnicity updated successfully"})
+	responseDuration := time.Since(responseStart)
+	responseSpan.SetAttributes(
+		attribute.Int64("response_duration_ms", responseDuration.Milliseconds()),
+		attribute.String("response_duration", responseDuration.String()),
+		attribute.Int("http_status", http.StatusOK),
+	)
+	responseSpan.End()
+
+	// Log total operation time
+	totalDuration := time.Since(startTime)
+	logger.Info("ethnicity update completed successfully",
+		zap.String("cpf", cpf),
+		zap.String("old_ethnicity", oldEthnicity),
+		zap.String("new_ethnicity", input.Valor),
+		zap.Duration("total_duration", totalDuration),
+	)
 }
 
 // HealthCheck godoc

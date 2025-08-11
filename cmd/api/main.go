@@ -90,6 +90,7 @@ func main() {
 	router.Use(
 		gin.Recovery(),
 		middleware.RequestID(),
+		middleware.RequestTiming(), // Add comprehensive timing middleware
 		middleware.RequestLogger(),
 		middleware.RequestTracker(),
 		cors.Default(),

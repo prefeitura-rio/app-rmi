@@ -32,12 +32,9 @@ func InitMongoDB() {
 	// Configure MongoDB with optimizations
 	opts := options.Client().
 		ApplyURI(AppConfig.MongoURI).
-		SetMonitor(otelmongo.NewMonitor()). // Add OpenTelemetry instrumentation
-		SetMaxPoolSize(100).                // Adjust based on your needs
-		SetMinPoolSize(10).
-		SetMaxConnIdleTime(5 * time.Minute).
-		SetRetryWrites(true).
-		SetRetryReads(true)
+		SetMonitor(otelmongo.NewMonitor()) // Add OpenTelemetry instrumentation
+		// All MongoDB connection parameters are now configured via URI
+		// This allows for easier tuning through environment variables
 
 	client, err := mongo.Connect(ctx, opts)
 	if err != nil {

@@ -23,6 +23,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 - 🎯 Mapeamento phone-CPF com controle de status
 - 🚫 Sistema de quarentena de telefones com TTL configurável
 - 🧪 Sistema de whitelist beta para chatbot com grupos
+- 🔍 **Tracing e Monitoramento de Performance**: Sistema abrangente de observabilidade com OpenTelemetry e SignOz
 
 ## Variáveis de Ambiente
 
@@ -56,8 +57,49 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | METRICS_PORT | Porta para métricas Prometheus | 9090 | Não |
 | TRACING_ENABLED | Habilitar rastreamento OpenTelemetry | false | Não |
 | TRACING_ENDPOINT | Endpoint do coletor OpenTelemetry | http://localhost:4317 | Não |
+| AUDIT_LOGS_ENABLED | Habilitar logs de auditoria automáticos | true | Não |
 | INDEX_MAINTENANCE_INTERVAL | Intervalo para verificação de índices (ex: "1h", "24h") | 1h | Não |
 | WHATSAPP_COD_PARAMETER | Parâmetro do código no template HSM do WhatsApp | COD | Não |
+
+## 🚀 **Otimização de Performance MongoDB**
+
+### **Configuração URI-Only (Recomendada)**
+
+Para máxima performance e flexibilidade, **todas as configurações MongoDB são feitas via URI**, permitindo ajuste fácil através de variáveis de ambiente sem conflitos de código.
+
+#### **URI Atual (Já Boa)**
+```bash
+mongodb://root:PASSWORD@mongodb-0.mongodb-headless.rmi.svc.cluster.local:27017,mongodb-1.mongodb-headless.rmi.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin&readPreference=nearest&maxPoolSize=500&minPoolSize=50&maxIdleTimeMS=60000&serverSelectionTimeoutMS=3000&socketTimeoutMS=30000&connectTimeoutMS=5000&retryWrites=true&w=majority&readConcernLevel=majority&directConnection=false&maxStalenessSeconds=90
+```
+
+#### **URI Otimizada (Recomendada)**
+```bash
+mongodb://root:PASSWORD@mongodb-0.mongodb-headless.rmi.svc.cluster.local:27017,mongodb-1.mongodb-headless.rmi.svc.cluster.local:27017,mongodb-arbiter.mongodb-headless.rmi.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin&readPreference=nearest&maxPoolSize=500&minPoolSize=50&maxIdleTimeMS=60000&serverSelectionTimeoutMS=3000&socketTimeoutMS=30000&connectTimeoutMS=5000&retryWrites=true&retryReads=true&w=majority&readConcernLevel=majority&directConnection=false&maxStalenessSeconds=90&heartbeatFrequencyMS=10000&localThresholdMS=15&compressors=zlib&zlibCompressionLevel=6&maxConnecting=2&loadBalanced=false
+```
+
+### **Parâmetros de Performance Explicados**
+
+| Parâmetro | Valor | Impacto | Recomendação |
+|-----------|-------|---------|--------------|
+| `maxPoolSize=500` | 500 | Alto throughput | ✅ Manter |
+| `minPoolSize=50` | 50 | Conexões quentes | ✅ Manter |
+| `readPreference=nearest` | nearest | Performance máxima | ✅ Manter |
+| `maxStalenessSeconds=90` | 90 | Consistência vs performance | ✅ Manter |
+| `heartbeatFrequencyMS=10000` | 10s | Failover mais rápido | 🚀 Adicionar |
+| `localThresholdMS=15` | 15ms | Melhor distribuição | 🚀 Adicionar |
+| `retryReads=true` | true | Melhor disponibilidade | 🚀 Adicionar |
+| `compressors=zlib` | zlib | Eficiência de rede | 🚀 Adicionar |
+| `maxConnecting=2` | 2 | Previne tempestades | 🚀 Adicionar |
+
+### **Vantagens da Abordagem URI-Only**
+
+- **✅ Sem conflitos**: Configuração centralizada na URI
+- **✅ Flexibilidade**: Ajuste via variáveis de ambiente
+- **✅ Performance**: Otimizações aplicadas diretamente
+- **✅ Manutenção**: Uma única fonte de verdade
+- **✅ Escalabilidade**: Fácil ajuste para diferentes ambientes
+
+---
 
 ## Endpoints da API
 
@@ -731,6 +773,162 @@ Move telefones entre grupos.
 - **Cache Inteligente**: Cache Redis para verificações frequentes
 - **Paginação**: Listagens paginadas para grandes volumes
 - **Índices**: Índices otimizados para consultas rápidas
+
+## 🔍 Tracing e Monitoramento de Performance
+
+### Visão Geral
+O sistema RMI agora possui **tracing abrangente** usando OpenTelemetry (OTel) e SignOz, permitindo identificação precisa de gargalos de performance e observabilidade completa de todas as operações.
+
+### Funcionalidades Principais
+
+#### **1. Tracing de Operações HTTP**
+- **Middleware automático** adiciona spans detalhados para cada requisição
+- **Atributos HTTP**: método, URL, rota, user-agent, client-IP
+- **Timing automático** de toda a requisição
+- **Métricas de latência** por endpoint
+
+#### **2. Tracing de Operações de Banco**
+- **Spans específicos** para operações MongoDB
+- **Atributos de banco**: operação, coleção, sistema
+- **Timing individual** de cada operação de banco
+- **Rastreamento de queries** lentas
+
+#### **3. Tracing de Cache Redis**
+- **Instrumentação completa** de todas as operações Redis
+- **Atributos enriquecidos**: operação, chave, cliente, duração
+- **Métricas de performance** Redis em tempo real
+- **Identificação de gargalos** de cache
+
+#### **4. Sistema de Auditoria Automática**
+- **Registro automático** de todas as mudanças de dados
+- **Tracing completo** de eventos de auditoria
+- **Logs estruturados** para análise de compliance
+- **Configurável** via `AUDIT_LOGS_ENABLED`
+
+### Métricas Disponíveis
+
+#### **Performance**
+```yaml
+# Duração de operações
+app_rmi_operation_duration_seconds{operation="update_ethnicity"}
+
+# Uso de memória
+app_rmi_operation_memory_bytes{operation="update_ethnicity"}
+
+# Checkpoints de performance
+app_rmi_performance_checkpoints_total{operation="update_ethnicity"}
+```
+
+#### **Redis**
+```yaml
+# Contadores de operações
+app_rmi_redis_operations_total{operation="del", status="success"}
+
+# Duração das operações
+app_rmi_redis_operation_duration_seconds{operation="del"}
+
+# Status de operações
+app_rmi_redis_operations_total{operation="get", status="error"}
+```
+
+### Configuração
+
+#### **Variáveis de Ambiente**
+```bash
+# Tracing
+TRACING_ENABLED=true
+TRACING_ENDPOINT=localhost:4317
+
+# Auditoria
+AUDIT_LOGS_ENABLED=true
+```
+
+#### **Middleware Automático**
+```go
+// Adicionado automaticamente:
+router.Use(
+    middleware.RequestTiming(),    // Timing abrangente
+    middleware.RequestID(),
+    middleware.RequestLogger(),
+    middleware.RequestTracker(),
+)
+```
+
+### Casos de Uso
+
+#### **1. Debug de Operações Lentas**
+```go
+// Exemplo: UpdateSelfDeclaredRaca levando 24s
+// Agora você verá:
+- parse_input: 5ms
+- validate_ethnicity: 2ms  
+- find_existing_data: 5ms
+- upsert_document: 475ms
+- invalidate_cache: 23.5s  ← GARGALO IDENTIFICADO!
+- log_audit_event: 10ms
+- serialize_response: 1ms
+```
+
+#### **2. Monitoramento de Redis**
+- **Operações lentas** são identificadas automaticamente
+- **Timeouts** e falhas são rastreados
+- **Performance** de cache é monitorada em tempo real
+
+#### **3. Auditoria Automática**
+- **Mudanças de etnia** são auditadas automaticamente
+- **Atualizações de endereço** são rastreadas
+- **Modificações de telefone** são registradas
+- **Alterações de email** são documentadas
+
+### Utilitários Disponíveis
+
+#### **Performance Monitor**
+```go
+monitor := utils.NewPerformanceMonitor(ctx, "update_ethnicity")
+defer monitor.End()
+
+monitor.Checkpoint("parse_input")
+monitor.Checkpoint("database_update")
+monitor.Checkpoint("cache_invalidation")
+
+// Avisos automáticos
+monitor.PerformanceWarning(1*time.Second, "Operação muito lenta")
+monitor.MemoryWarning(1024*1024, "Uso de memória alto")
+```
+
+#### **Tracing Utils**
+```go
+// Tracing de operações
+ctx, span, cleanup := utils.TraceOperation(ctx, "custom_op", attrs)
+
+// Tracing de banco
+ctx, span, cleanup := utils.TraceDatabaseOperation(ctx, "find", "citizens", filter)
+
+// Tracing de cache
+ctx, span, cleanup := utils.TraceCacheOperation(ctx, "get", "user:123")
+```
+
+### Dashboard SignOz
+
+#### **Métricas Principais**
+- **Latência de requisições** por endpoint
+- **Duração de operações** por tipo
+- **Uso de memória** por operação
+- **Operações Redis** por status
+
+#### **Traces**
+- **Span tree** completo de cada requisição
+- **Timing** de cada operação
+- **Erros** e exceções
+- **Dependências** entre serviços
+
+#### **Alertas Recomendados**
+- Operações > 1 segundo
+- Uso de memória > 100MB
+- Taxa de erro > 5%
+- Latência Redis > 100ms
+
+---
 
 ## Melhorias Implementadas
 

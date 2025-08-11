@@ -52,6 +52,9 @@ type Config struct {
 	TracingEnabled  bool   `json:"tracing_enabled"`
 	TracingEndpoint string `json:"tracing_endpoint"`
 
+	// Audit logging configuration
+	AuditLogsEnabled bool `json:"audit_logs_enabled"`
+
 	// Authorization configuration
 	AdminGroup string `json:"admin_group"`
 
@@ -195,6 +198,9 @@ func LoadConfig() error {
 		// Tracing configuration
 		TracingEnabled:  getEnvOrDefault("TRACING_ENABLED", "false") == "true",
 		TracingEndpoint: getEnvOrDefault("TRACING_ENDPOINT", "localhost:4317"),
+
+		// Audit logging configuration
+		AuditLogsEnabled: getEnvOrDefault("AUDIT_LOGS_ENABLED", "true") == "true",
 
 		// Authorization configuration
 		AdminGroup: getEnvOrDefault("ADMIN_GROUP", "rmi-admin"),
