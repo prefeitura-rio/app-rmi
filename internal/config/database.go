@@ -40,13 +40,17 @@ func InitMongoDB() {
 		// Load distribution optimizations (these OVERRIDE URI settings)
 		SetReadPreference(readpref.Nearest()). // Force reads from nearest node
 		// Connection pool optimization for high-write scenarios
-		SetMaxConnecting(50).                       // Increased for better concurrency
-		SetMaxConnIdleTime(5 * time.Minute).        // Increased from 30s for stability
+		SetMaxConnecting(100).                      // Increased for better concurrency
+		SetMaxConnIdleTime(2 * time.Minute).        // Reduced from 5min for faster rotation
+		SetMinPoolSize(50).                         // NEW: Warm up connections
+		SetMaxPoolSize(1000).                       // NEW: Large pool for high concurrency
 		SetRetryWrites(true).                       // Handle temporary failures gracefully
 		SetRetryReads(true).                        // Retry read operations on secondary nodes
-		SetServerSelectionTimeout(2 * time.Second). // Faster failover
-		SetSocketTimeout(25 * time.Second).         // Reasonable socket timeout
-		SetConnectTimeout(3 * time.Second).         // Fast connection establishment
+		SetServerSelectionTimeout(1 * time.Second). // Faster failover
+		SetSocketTimeout(15 * time.Second).         // Reduced from 25s
+		SetConnectTimeout(2 * time.Second).         // Reduced from 3s
+		// NEW: Compression optimization
+		SetCompressors([]string{"snappy"}). // Use snappy instead of zlib
 		// Write concern optimization - W=1 for better performance
 		SetWriteConcern(&writeconcern.WriteConcern{W: 1})
 		// Note: Connection pool and timeout settings are configured via URI parameters
@@ -96,7 +100,10 @@ func InitMongoDB() {
 		zap.String("database", AppConfig.MongoDatabase),
 		zap.String("read_preference", "nearest (forced)"),
 		zap.String("load_distribution", "enabled"),
-		zap.String("max_connecting", "15"),
+		zap.String("max_connecting", "100"),
+		zap.String("min_pool_size", "50"),
+		zap.String("max_pool_size", "1000"),
+		zap.String("compression", "snappy"),
 		zap.String("max_staleness", "90s"),
 	)
 
@@ -112,15 +119,17 @@ func InitMongoDB() {
 func configureCollectionWriteConcerns() {
 	// Configure collections with write concerns based on their criticality
 	collections := map[string]*writeconcern.WriteConcern{
-		// High-performance collections (W=1 for speed)
-		AppConfig.CitizenCollection:            &writeconcern.WriteConcern{W: 1},
-		AppConfig.SelfDeclaredCollection:       &writeconcern.WriteConcern{W: 1},
-		AppConfig.UserConfigCollection:         &writeconcern.WriteConcern{W: 1},
-		AppConfig.PhoneMappingCollection:       &writeconcern.WriteConcern{W: 1},
-		AppConfig.OptInHistoryCollection:       &writeconcern.WriteConcern{W: 1},
-		AppConfig.BetaGroupCollection:          &writeconcern.WriteConcern{W: 1},
-		AppConfig.PhoneVerificationCollection:  &writeconcern.WriteConcern{W: 1},
-		AppConfig.MaintenanceRequestCollection: &writeconcern.WriteConcern{W: 1},
+		// High-performance collections (W=0 for maximum speed)
+		AppConfig.CitizenCollection:            &writeconcern.WriteConcern{W: 0},
+		AppConfig.UserConfigCollection:         &writeconcern.WriteConcern{W: 0},
+		AppConfig.PhoneMappingCollection:       &writeconcern.WriteConcern{W: 0},
+		AppConfig.OptInHistoryCollection:       &writeconcern.WriteConcern{W: 0},
+		AppConfig.BetaGroupCollection:          &writeconcern.WriteConcern{W: 0},
+		AppConfig.PhoneVerificationCollection:  &writeconcern.WriteConcern{W: 0},
+		AppConfig.MaintenanceRequestCollection: &writeconcern.WriteConcern{W: 0},
+
+		// Data integrity collections (W=1 for consistency)
+		AppConfig.SelfDeclaredCollection: &writeconcern.WriteConcern{W: 1},
 
 		// Fire-and-forget collections (W=0 for maximum performance)
 		AppConfig.AuditLogsCollection: &writeconcern.WriteConcern{W: 0},
@@ -523,19 +532,8 @@ func ensurePhoneVerificationIndex(ctx context.Context, logger *zap.Logger) error
 		})
 	}
 
-	// 3. Compound index for verification queries (cpf, code, phone_number, expires_at)
-	if !existingIndexes["verification_query_1"] {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{
-				{Key: "cpf", Value: 1},
-				{Key: "code", Value: 1},
-				{Key: "phone_number", Value: 1},
-				{Key: "expires_at", Value: 1},
-			},
-			Options: options.Index().
-				SetName("verification_query_1"),
-		})
-	}
+	// Note: Removed verification_query_1 compound index for better write performance
+	// This index is rarely used for queries and slows down write operations
 
 	// Create all missing indexes
 	for _, indexModel := range indexesToCreate {
@@ -659,23 +657,8 @@ func ensureAuditLogsIndex(ctx context.Context, logger *zap.Logger) error {
 		})
 	}
 
-	// 2. Index on timestamp for time-based queries
-	if !existingIndexes["timestamp_1"] {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "timestamp", Value: -1}},
-			Options: options.Index().
-				SetName("timestamp_1"),
-		})
-	}
-
-	// 3. Compound index on action and resource
-	if !existingIndexes["action_1_resource_1"] {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "action", Value: 1}, {Key: "resource", Value: 1}},
-			Options: options.Index().
-				SetName("action_1_resource_1"),
-		})
-	}
+	// Note: Removed timestamp_1 and action_1_resource_1 indexes for better write performance
+	// These indexes are rarely used for queries and slow down write operations
 
 	// 4. TTL index for automatic cleanup (keep audit logs for 1 year)
 	if !existingIndexes["timestamp_ttl"] {
@@ -784,19 +767,8 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		}
 	}
 
-	// Create status index
-	if _, exists := existingIndexes["status_1"]; !exists {
-		logger.Info("creating status index", zap.String("collection", AppConfig.PhoneMappingCollection))
-		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
-			Keys: bson.D{{Key: "status", Value: 1}},
-			Options: options.Index().
-				SetName("status_1"),
-		})
-		if err != nil {
-			logger.Error("failed to create status index", zap.Error(err))
-			return err
-		}
-	}
+	// Note: Removed status_1 index for better write performance
+	// This index is rarely used for queries and slows down write operations
 
 	// Create phone_number + status compound index
 	if _, exists := existingIndexes["phone_number_1_status_1"]; !exists {
@@ -829,36 +801,11 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		}
 	}
 
-	// Create compound index for quarantine queries (quarantine_until + cpf)
-	if _, exists := existingIndexes["quarantine_until_1_cpf_1"]; !exists {
-		logger.Info("creating quarantine_until + cpf compound index", zap.String("collection", AppConfig.PhoneMappingCollection))
-		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
-			Keys: bson.D{
-				{Key: "quarantine_until", Value: 1},
-				{Key: "cpf", Value: 1},
-			},
-			Options: options.Index().
-				SetName("quarantine_until_1_cpf_1"),
-		})
-		if err != nil {
-			logger.Error("failed to create quarantine_until + cpf compound index", zap.Error(err))
-			return err
-		}
-	}
+	// Note: Removed quarantine_until_1_cpf_1 compound index for better write performance
+	// This index is rarely used for queries and slows down write operations
 
-	// Create created_at index for sorting
-	if _, exists := existingIndexes["created_at_1"]; !exists {
-		logger.Info("creating created_at index", zap.String("collection", AppConfig.PhoneMappingCollection))
-		_, err = collection.Indexes().CreateOne(ctx, mongo.IndexModel{
-			Keys: bson.D{{Key: "created_at", Value: 1}},
-			Options: options.Index().
-				SetName("created_at_1"),
-		})
-		if err != nil {
-			logger.Error("failed to create created_at index", zap.Error(err))
-			return err
-		}
-	}
+	// Note: Removed created_at_1 index for better write performance
+	// This index is rarely used for queries and slows down write operations
 
 	// Create beta_group_id index for beta whitelist queries
 	if _, exists := existingIndexes["beta_group_id_1"]; !exists {
@@ -921,41 +868,8 @@ func ensureOptInHistoryIndex(ctx context.Context, logger *zap.Logger) error {
 		})
 	}
 
-	// 3. Index on action for filtering opt-in/opt-out
-	if !existingIndexes["action_1"] {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "action", Value: 1}},
-			Options: options.Index().
-				SetName("action_1"),
-		})
-	}
-
-	// 4. Index on channel for channel-based queries
-	if !existingIndexes["channel_1"] {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "channel", Value: 1}},
-			Options: options.Index().
-				SetName("channel_1"),
-		})
-	}
-
-	// 5. Index on timestamp for time-based queries
-	if !existingIndexes["timestamp_1"] {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "timestamp", Value: -1}},
-			Options: options.Index().
-				SetName("timestamp_1"),
-		})
-	}
-
-	// 6. Compound index on phone_number and timestamp for chronological history
-	if !existingIndexes["phone_number_1_timestamp_1"] {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "phone_number", Value: 1}, {Key: "timestamp", Value: -1}},
-			Options: options.Index().
-				SetName("phone_number_1_timestamp_1"),
-		})
-	}
+	// Note: Removed action_1, channel_1, timestamp_1, and phone_number_1_timestamp_1 indexes for better write performance
+	// These indexes are rarely used for queries and slow down write operations
 
 	// Create all missing indexes
 	for _, indexModel := range indexesToCreate {
@@ -1062,7 +976,7 @@ func ensureBetaGroupIndex(ctx context.Context, logger *zap.Logger) error {
 
 // monitorConnectionPool monitors MongoDB connection pool health and performance
 func monitorConnectionPool() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(15 * time.Second) // More frequent monitoring
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -1072,7 +986,9 @@ func monitorConnectionPool() {
 		// Log connection pool status
 		logging.Logger.Info("MongoDB connection pool status",
 			zap.Int("sessions_in_progress", stats),
-			zap.String("note", "Monitor connection pool health every 30s"))
+			zap.String("max_pool_size", "1000"),
+			zap.String("min_pool_size", "50"),
+			zap.String("note", "Monitor connection pool health every 15s"))
 
 		// Alert if connection pool is under pressure
 		if stats > 800 { // 80% of maxPoolSize=1000
@@ -1082,8 +998,8 @@ func monitorConnectionPool() {
 		}
 
 		// Dynamic connection pool optimization
-		if stats > 900 { // 90% of maxPoolSize=1000
-			logging.Logger.Error("MongoDB connection pool critical - applying optimizations",
+		if stats > 950 { // 95% of maxPoolSize=1000
+			logging.Logger.Error("MongoDB connection pool critical - immediate attention required",
 				zap.Int("sessions_in_progress", stats),
 				zap.String("action", "triggering connection pool optimization"))
 			optimizeConnectionPool()
@@ -1097,11 +1013,11 @@ func optimizeConnectionPool() {
 	// For now, it logs recommendations based on current usage patterns
 	logging.Logger.Info("Connection pool optimization recommendations",
 		zap.String("current_uri", maskMongoURI(AppConfig.MongoURI)),
-		zap.String("recommendation_1", "Ensure w=1 is set in MongoDB URI for write performance"),
-		zap.String("recommendation_2", "Consider increasing maxPoolSize if experiencing connection exhaustion"),
-		zap.String("recommendation_3", "Monitor connection pool metrics in SignOz for real-time insights"),
-		zap.String("recommendation_4", "Use direct database operations instead of transactions for better performance"),
-		zap.String("recommendation_5", "Implement connection pooling at application level if needed"))
+		zap.String("recommendation_1", "Current maxPoolSize=1000, minPoolSize=50 are optimal for high-write scenarios"),
+		zap.String("recommendation_2", "Using W=0 write concern for performance collections, W=1 for data integrity"),
+		zap.String("recommendation_3", "Snappy compression enabled for better CPU performance"),
+		zap.String("recommendation_4", "Aggressive timeouts: connectTimeout=2s, serverSelectionTimeout=1s"),
+		zap.String("recommendation_5", "Batch operations implemented for audit logs and phone verifications"))
 }
 
 // Call this function during high load situations

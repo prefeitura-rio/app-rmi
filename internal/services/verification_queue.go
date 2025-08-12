@@ -6,11 +6,14 @@ import (
 	"sync"
 	"time"
 
+	"sync/atomic"
+
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 )
 
@@ -226,38 +229,142 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 
 // processResults processes verification results
 func (vq *VerificationQueue) processResults() {
+	ticker := time.NewTicker(100 * time.Millisecond) // Process every 100ms
+	defer ticker.Stop()
+
+	var batch []VerificationResult
+	batchSize := 100 // Process in batches of 100
+
 	for {
 		select {
 		case result, ok := <-vq.results:
 			if !ok {
+				// Channel closed, process remaining batch and exit
+				if len(batch) > 0 {
+					if err := vq.processBatchResults(batch); err != nil {
+						logging.Logger.Error("failed to process final batch", zap.Error(err))
+					}
+				}
 				return
 			}
-			vq.handleResult(result)
+			batch = append(batch, result)
+
+			// Process batch when it reaches batchSize items
+			if len(batch) >= batchSize {
+				if err := vq.processBatchResults(batch); err != nil {
+					logging.Logger.Error("failed to process batch", zap.Error(err))
+				}
+				batch = batch[:0] // Reset slice but keep capacity
+			}
+		case <-ticker.C:
+			// Process any remaining items in batch
+			if len(batch) > 0 {
+				if err := vq.processBatchResults(batch); err != nil {
+					logging.Logger.Error("failed to process batch from ticker", zap.Error(err))
+				}
+				batch = batch[:0] // Reset slice but keep capacity
+			}
 		case <-vq.ctx.Done():
+			// Process remaining batch before exiting
+			if len(batch) > 0 {
+				if err := vq.processBatchResults(batch); err != nil {
+					logging.Logger.Error("failed to process final batch before shutdown", zap.Error(err))
+				}
+			}
 			return
 		}
 	}
 }
 
-// handleResult handles a verification result
-func (vq *VerificationQueue) handleResult(result VerificationResult) {
+// Note: handleResult function removed - now using batch processing for better performance
+
+// processBatchResults processes verification results in batches for better performance
+func (vq *VerificationQueue) processBatchResults(results []VerificationResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+
+	// Update statistics
 	vq.mu.Lock()
-	if !result.Success {
-		vq.processingStats.JobsFailed++
+	for _, result := range results {
+		if !result.Success {
+			vq.processingStats.JobsFailed++
+		}
 	}
 	vq.mu.Unlock()
 
-	// Log result
-	logger := logging.Logger.With(
-		zap.String("phone_number", result.PhoneNumber),
-		zap.Bool("success", result.Success),
-	)
-
-	if result.Success {
-		logger.Info("verification job completed successfully")
-	} else {
-		logger.Error("verification job failed", zap.String("error", result.Error))
+	// Log batch results
+	successCount := 0
+	failureCount := 0
+	for _, result := range results {
+		if result.Success {
+			successCount++
+		} else {
+			failureCount++
+		}
 	}
+
+	logging.Logger.Info("processing verification results batch",
+		zap.Int("total_results", len(results)),
+		zap.Int("successful", successCount),
+		zap.Int("failed", failureCount))
+
+	var operations []mongo.WriteModel
+
+	for _, result := range results {
+		operation := mongo.NewUpdateOneModel().
+			SetFilter(bson.M{"phone_number": result.PhoneNumber}).
+			SetUpdate(bson.M{"$set": bson.M{
+				"verification_status": result.Success,
+				"processed_at":        result.ProcessedAt,
+				"error":               result.Error,
+			}})
+		operations = append(operations, operation)
+	}
+
+	// Use W=0 for maximum performance (phone verifications are W=0)
+	opts := options.BulkWrite().SetOrdered(false)
+	_, err := config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection).
+		BulkWrite(context.Background(), operations, opts)
+
+	if err != nil {
+		logging.Logger.Error("failed to bulk update verification results",
+			zap.Error(err),
+			zap.Int("results_count", len(results)))
+		return fmt.Errorf("failed to bulk update verification results: %w", err)
+	}
+
+	logging.Logger.Info("bulk verification results update completed",
+		zap.Int("results_count", len(results)))
+
+	return nil
+}
+
+// BulkEnqueueJobs adds multiple verification jobs to the queue
+func (vq *VerificationQueue) BulkEnqueueJobs(jobs []VerificationJob) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+
+	enqueued := 0
+	for _, job := range jobs {
+		select {
+		case vq.queue <- job:
+			enqueued++
+			atomic.AddInt64(&vq.processingStats.JobsEnqueued, 1)
+		default:
+			// Queue is full, log warning
+			logging.Logger.Warn("verification queue is full, job dropped",
+				zap.String("phone_number", job.PhoneNumber))
+		}
+	}
+
+	logging.Logger.Info("bulk job enqueue completed",
+		zap.Int("total_jobs", len(jobs)),
+		zap.Int("enqueued_jobs", enqueued),
+		zap.Int("dropped_jobs", len(jobs)-enqueued))
+
+	return nil
 }
 
 // Enqueue adds a verification job to the queue

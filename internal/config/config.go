@@ -71,6 +71,10 @@ type Config struct {
 	VerificationWorkerCount int `json:"verification_worker_count"`
 	VerificationQueueSize   int `json:"verification_queue_size"`
 
+	// Database worker configuration
+	DBWorkerCount int `json:"db_worker_count"`
+	DBBatchSize   int `json:"db_batch_size"`
+
 	// Authorization configuration
 	AdminGroup string `json:"admin_group"`
 
@@ -233,6 +237,10 @@ func LoadConfig() error {
 		// Verification queue configuration
 		VerificationWorkerCount: getEnvAsIntOrDefault("VERIFICATION_WORKER_COUNT", 10),
 		VerificationQueueSize:   getEnvAsIntOrDefault("VERIFICATION_QUEUE_SIZE", 5000),
+
+		// Database worker configuration
+		DBWorkerCount: getEnvAsIntOrDefault("DB_WORKER_COUNT", 10),
+		DBBatchSize:   getEnvAsIntOrDefault("DB_BATCH_SIZE", 100),
 
 		// Authorization configuration
 		AdminGroup: getEnvOrDefault("ADMIN_GROUP", "rmi-admin"),

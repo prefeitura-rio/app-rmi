@@ -945,3 +945,76 @@ func (s *PhoneMappingService) recordOptInHistory(ctx context.Context, phoneNumbe
 		// Don't fail the main operation for this error
 	}
 }
+
+// BulkUpdatePhoneStatuses updates multiple phone statuses in a single bulk operation
+func (s *PhoneMappingService) BulkUpdatePhoneStatuses(ctx context.Context, updates []PhoneStatusUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	var operations []mongo.WriteModel
+
+	for _, update := range updates {
+		operation := mongo.NewUpdateOneModel().
+			SetFilter(bson.M{"phone_number": update.PhoneNumber}).
+			SetUpdate(bson.M{"$set": update.Fields})
+		operations = append(operations, operation)
+	}
+
+	// Use W=0 for maximum performance (phone mappings are W=0)
+	opts := options.BulkWrite().SetOrdered(false)
+	result, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).
+		BulkWrite(ctx, operations, opts)
+
+	if err != nil {
+		s.logger.Error("failed to bulk update phone statuses",
+			zap.Error(err),
+			zap.Int("updates_count", len(updates)))
+		return fmt.Errorf("failed to bulk update phone statuses: %w", err)
+	}
+
+	s.logger.Info("bulk phone status update completed",
+		zap.Int64("matched", result.MatchedCount),
+		zap.Int64("modified", result.ModifiedCount),
+		zap.Int("updates_count", len(updates)))
+
+	return nil
+}
+
+// BulkInsertPhoneMappings inserts multiple phone mappings in a single bulk operation
+func (s *PhoneMappingService) BulkInsertPhoneMappings(ctx context.Context, mappings []models.PhoneCPFMapping) error {
+	if len(mappings) == 0 {
+		return nil
+	}
+
+	var operations []mongo.WriteModel
+
+	for _, mapping := range mappings {
+		operation := mongo.NewInsertOneModel().SetDocument(mapping)
+		operations = append(operations, operation)
+	}
+
+	// Use W=0 for maximum performance (phone mappings are W=0)
+	opts := options.BulkWrite().SetOrdered(false)
+	result, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).
+		BulkWrite(ctx, operations, opts)
+
+	if err != nil {
+		s.logger.Error("failed to bulk insert phone mappings",
+			zap.Error(err),
+			zap.Int("mappings_count", len(mappings)))
+		return fmt.Errorf("failed to bulk insert phone mappings: %w", err)
+	}
+
+	s.logger.Info("bulk phone mapping insert completed",
+		zap.Int64("inserted", result.InsertedCount),
+		zap.Int("mappings_count", len(mappings)))
+
+	return nil
+}
+
+// PhoneStatusUpdate represents an update to a phone status
+type PhoneStatusUpdate struct {
+	PhoneNumber string                 `json:"phone_number"`
+	Fields      map[string]interface{} `json:"fields"`
+}
