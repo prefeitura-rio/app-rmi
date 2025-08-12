@@ -2794,7 +2794,7 @@
   ],
   "servers": [
     {
-      "url": "https://services.staging.app.dados.rio/rmi/v1"
+      "url": "https://services.app.dados.rio/rmi/v1"
     }
   ],
   "components": {
