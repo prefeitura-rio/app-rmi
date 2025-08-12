@@ -16,18 +16,103 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: SonarSource/sonarqube-scan-action@v4
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      - name: Check if k8s-only changes
+        id: check-k8s-only
+        run: |
+          # Get list of changed files
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
+          
+          # Check if only k8s/ files were changed
+          NON_K8S_FILES=$(echo "$CHANGED_FILES" | grep -v "^k8s/" || true)
+          
+          if [ -z "$NON_K8S_FILES" ] && [ -n "$CHANGED_FILES" ]; then
+            echo "k8s_only=true" >> $GITHUB_OUTPUT
+            echo "Only k8s/ files changed, skipping build"
+          else
+            echo "k8s_only=false" >> $GITHUB_OUTPUT
+            echo "Non-k8s files changed, proceeding with build"
+          fi
+
+      - name: Skip build if k8s-only
+        if: steps.check-k8s-only.outputs.k8s_only == 'true'
+        run: |
+          echo "Skipping build - only k8s/ files were modified"
+          exit 0
+
+      # - if: ${{ github.ref == 'refs/heads/staging' }}
+      #   uses: SonarSource/sonarqube-scan-action@v4
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      #     SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: Set up Go
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      - name: Install swag
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: |
+          mkdir -p bin
+          GOBIN="$PWD/bin" go install github.com/swaggo/swag/cmd/swag@latest
+          echo "$PWD/bin" >> $GITHUB_PATH
+
+      - name: Generate Swagger v2
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: swag init -g cmd/api/main.go
+
+      - name: Install swagger2openapi
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: npm install -g swagger2openapi
+
+      - name: Convert to OpenAPI v3
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: swagger2openapi docs/swagger.json -o docs/openapi-v3.json
+
+      - name: Post-process OpenAPI v3 JSON
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: |
+          if [ "${GITHUB_REF##*/}" == "main" ]; then
+            SERVER_URL="https://services.app.dados.rio/rmi/v1"
+          elif [ "${GITHUB_REF##*/}" == "staging" ]; then
+            SERVER_URL="https://services.staging.app.dados.rio/rmi/v1"
+          fi
+          jq --arg url "$SERVER_URL" '.servers = [{"url": $url}] |
+              .components.securitySchemes = {
+                "bearerAuth": {
+                  "type": "http",
+                  "scheme": "bearer",
+                  "bearerFormat": "JWT"
+                }
+              } |
+              .paths |= with_entries(.value |= with_entries(.value.security = [{"bearerAuth": []}]))' \
+          docs/openapi-v3.json > docs/openapi-v3.json.tmp && \
+          mv docs/openapi-v3.json.tmp docs/openapi-v3.json
+
+      - name: Configure Git
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'github-actions@github.com'
+
+      - name: Commit and push OpenAPI v3
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: |
+          git add docs/openapi-v3.json
+          git commit -m "chore: update OpenAPI v3 documentation" || echo "No changes to commit"
+          git push
 
       - name: Set up Docker Buildx
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
         uses: docker/setup-buildx-action@v2
 
       - name: Log in to GitHub Container Registry
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
 
       - name: Extract metadata for Docker tags
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
         id: meta
         run: |
           IMAGE_NAME="ghcr.io/${{ github.repository_owner }}/app-rmi"
@@ -45,6 +130,7 @@ jobs:
           echo "TAG2=$TAG2" >> $GITHUB_ENV
 
       - name: Build and Push Docker Image using Buildx
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
         run: |
           docker buildx build \
             --platform linux/amd64 \

@@ -2,9 +2,10 @@ package observability
 
 import (
 	"context"
-	"os"
 	"time"
 
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -23,17 +24,22 @@ var (
 
 // InitTracer initializes the OpenTelemetry tracer
 func InitTracer() {
+	if !config.AppConfig.TracingEnabled {
+		logging.Logger.Info("tracing is disabled")
+		return
+	}
+
 	ctx := context.Background()
 
 	// Create OTLP exporter
 	client := otlptracegrpc.NewClient(
 		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint("localhost:4317"),
+		otlptracegrpc.WithEndpoint(config.AppConfig.TracingEndpoint),
 		otlptracegrpc.WithDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
 	)
 	exporter, err := otlptrace.New(ctx, client)
 	if err != nil {
-		Logger.Error("failed to create OTLP exporter", zap.Error(err))
+		logging.Logger.Error("failed to create OTLP exporter", zap.Error(err))
 		return
 	}
 
@@ -45,7 +51,7 @@ func InitTracer() {
 		),
 	)
 	if err != nil {
-		Logger.Error("failed to create resource", zap.Error(err))
+		logging.Logger.Error("failed to create resource", zap.Error(err))
 		return
 	}
 
@@ -67,7 +73,7 @@ func InitTracer() {
 		propagation.Baggage{},
 	))
 
-	Logger.Info("tracer initialized")
+	logging.Logger.Info("tracer initialized")
 }
 
 // ShutdownTracer shuts down the tracer provider
@@ -80,13 +86,6 @@ func ShutdownTracer() {
 	defer cancel()
 
 	if err := tracerProvider.Shutdown(ctx); err != nil {
-		Logger.Error("failed to shutdown tracer provider", zap.Error(err))
+		logging.Logger.Error("failed to shutdown tracer provider", zap.Error(err))
 	}
 }
-
-func getEnvOrDefault(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return defaultValue
-} 

@@ -21,7 +21,7 @@ func RequestLogger() gin.HandlerFunc {
 		status := c.Writer.Status()
 
 		// Log request details with sensitive data masking
-		observability.Logger.Info("request completed",
+		observability.Logger().Info("request completed",
 			zap.String("path", path),
 			zap.String("query", query),
 			zap.String("ip", c.ClientIP()),
@@ -76,4 +76,4 @@ func randomString(n int) string {
 		b[i] = letterBytes[time.Now().UnixNano()%int64(len(letterBytes))]
 	}
 	return string(b)
-} 
+}

@@ -1,4 +1,4 @@
-basePath: /api/v1
+basePath: /v1
 definitions:
   handlers.ErrorResponse:
     properties:
@@ -16,236 +16,665 @@ definitions:
       timestamp:
         type: string
     type: object
+  handlers.PhoneValidationRequest:
+    description: Estrutura de entrada contendo o número de telefone a ser validado.
+    properties:
+      phone:
+        description: |-
+          Número de telefone em formato internacional ou nacional.
+          example: "+55 11 99988-7766"
+        type: string
+    required:
+    - phone
+    type: object
+  handlers.PhoneValidationResponse:
+    description: Resultado da validação, contendo a decomposição (DDI, DDD, número)
+      quando válida.
+    properties:
+      ddd:
+        description: DDD (código de área)
+        type: string
+      ddi:
+        description: DDI (código do país)
+        type: string
+      e164:
+        description: Representação E.164 do número
+        type: string
+      message:
+        description: Mensagem de retorno.
+        type: string
+      numero:
+        description: Número do assinante
+        type: string
+      region:
+        description: Região ISO 3166-1 alpha-2
+        type: string
+      valid:
+        description: Indica se o número é válido.
+        type: boolean
+    type: object
   handlers.SuccessResponse:
     properties:
       message:
         type: string
     type: object
-  models.CadastroUpdate:
+  models.Aluno:
     properties:
-      contato:
-        allOf:
-        - $ref: '#/definitions/models.ContatoUpdate'
-        description: Contact information
+      conceito:
+        type: string
+      frequencia:
+        type: number
+      indicador:
+        type: boolean
+    type: object
+  models.AssistenciaSocial:
+    properties:
+      cadunico:
+        $ref: '#/definitions/models.CadUnico'
+      cras:
+        $ref: '#/definitions/models.CRAS'
+    type: object
+  models.BetaGroupListResponse:
+    properties:
+      groups:
+        items:
+          $ref: '#/definitions/models.BetaGroupResponse'
+        type: array
+      pagination:
+        $ref: '#/definitions/models.PaginationInfo'
+      total_groups:
+        type: integer
+    type: object
+  models.BetaGroupRequest:
+    properties:
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  models.BetaGroupResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.BetaStatusResponse:
+    properties:
+      beta_whitelisted:
+        type: boolean
+      group_id:
+        type: string
+      group_name:
+        type: string
+      phone_number:
+        type: string
+    type: object
+  models.BetaWhitelistBulkRemoveRequest:
+    properties:
+      phone_numbers:
+        items:
+          type: string
+        type: array
+    required:
+    - phone_numbers
+    type: object
+  models.BetaWhitelistBulkRequest:
+    properties:
+      group_id:
+        type: string
+      phone_numbers:
+        items:
+          type: string
+        type: array
+    required:
+    - group_id
+    - phone_numbers
+    type: object
+  models.BetaWhitelistListResponse:
+    properties:
+      pagination:
+        $ref: '#/definitions/models.PaginationInfo'
+      total_count:
+        type: integer
+      whitelisted:
+        items:
+          $ref: '#/definitions/models.BetaWhitelistResponse'
+        type: array
+    type: object
+  models.BetaWhitelistMoveRequest:
+    properties:
+      from_group_id:
+        type: string
+      phone_numbers:
+        items:
+          type: string
+        type: array
+      to_group_id:
+        type: string
+    required:
+    - from_group_id
+    - phone_numbers
+    - to_group_id
+    type: object
+  models.BetaWhitelistRequest:
+    properties:
+      group_id:
+        type: string
+    required:
+    - group_id
+    type: object
+  models.BetaWhitelistResponse:
+    properties:
+      added_at:
+        type: string
+      group_id:
+        type: string
+      group_name:
+        type: string
+      phone_number:
+        type: string
+    type: object
+  models.BindRequest:
+    properties:
+      channel:
+        type: string
+      cpf:
+        type: string
+    required:
+    - channel
+    - cpf
+    type: object
+  models.BindResponse:
+    properties:
+      cpf:
+        type: string
+      message:
+        type: string
+      opt_in:
+        type: boolean
+      phone_number:
+        type: string
+      status:
+        type: string
+    type: object
+  models.CRAS:
+    properties:
       endereco:
-        allOf:
-        - $ref: '#/definitions/models.EnderecoUpdate'
-        description: Address information
+        type: string
+      nome:
+        type: string
+      telefone:
+        type: string
+    type: object
+  models.CadUnico:
+    properties:
+      data_cadastro:
+        type: string
+      data_limite_cadastro_atual:
+        type: string
+      data_ultima_atualizacao:
+        type: string
+      indicador:
+        type: boolean
+      status_cadastral:
+        type: string
     type: object
   models.Citizen:
     properties:
-      contato:
-        $ref: '#/definitions/models.Contato'
+      _id:
+        type: string
       cpf:
         type: string
+      email:
+        $ref: '#/definitions/models.Email'
       endereco:
         $ref: '#/definitions/models.Endereco'
-      fazenda:
-        $ref: '#/definitions/models.Fazenda'
+      mae:
+        $ref: '#/definitions/models.Mae'
+      menor_idade:
+        type: boolean
+      nascimento:
+        $ref: '#/definitions/models.Nascimento'
       nome:
         type: string
-      origens:
-        items:
-          $ref: '#/definitions/models.Origens'
-        type: array
-      profissional:
-        $ref: '#/definitions/models.Profissional'
+      nome_social:
+        type: string
+      obito:
+        $ref: '#/definitions/models.Obito'
+      raca:
+        type: string
+      sexo:
+        type: string
+      telefone:
+        $ref: '#/definitions/models.Telefone'
+    type: object
+  models.CitizenWallet:
+    properties:
+      assistencia_social:
+        $ref: '#/definitions/models.AssistenciaSocial'
+      cpf:
+        type: string
+      documentos:
+        $ref: '#/definitions/models.Documentos'
+      educacao:
+        $ref: '#/definitions/models.Educacao'
       saude:
         $ref: '#/definitions/models.Saude'
     type: object
   models.ClinicaFamilia:
     properties:
-      ap:
-        type: string
-      cap:
-        type: string
-      codigo:
+      email:
         type: string
       endereco:
         type: string
+      horario_atendimento:
+        type: string
+      id_cnes:
+        type: string
+      indicador:
+        type: boolean
       nome:
         type: string
+      telefone:
+        type: string
     type: object
-  models.Contato:
+  models.Documentos:
     properties:
-      emails:
+      cns:
         items:
-          $ref: '#/definitions/models.Email'
-        type: array
-      telefones:
-        items:
-          $ref: '#/definitions/models.Telefone'
+          type: string
         type: array
     type: object
-  models.ContatoUpdate:
+  models.Educacao:
     properties:
-      emails:
-        description: List of email addresses
-        items:
-          $ref: '#/definitions/models.EmailUpdate'
-        type: array
-      telefones:
-        description: List of phone numbers
-        items:
-          $ref: '#/definitions/models.TelefoneUpdate'
-        type: array
+      aluno:
+        $ref: '#/definitions/models.Aluno'
+      escola:
+        $ref: '#/definitions/models.Escola'
     type: object
   models.Email:
     properties:
-      email:
-        type: string
-      observacoes:
-        type: string
-      tipo:
-        type: string
+      alternativo:
+        items:
+          type: integer
+        type: array
+      indicador:
+        type: boolean
+      principal:
+        $ref: '#/definitions/models.EmailPrincipal'
     type: object
-  models.EmailUpdate:
+  models.EmailPrincipal:
     properties:
-      email:
-        description: |-
-          Valid email address
-          example: "user@example.com"
+      origem:
         type: string
-      observacoes:
-        description: |-
-          Optional notes about the email
-          example: "Email principal"
-          max: 200
-        maxLength: 200
+      sistema:
         type: string
-      tipo:
-        description: |-
-          Email type must be one of: PESSOAL, COMERCIAL
-          example: "PESSOAL"
-          enum: PESSOAL,COMERCIAL
-        enum:
-        - PESSOAL
-        - COMERCIAL
+      updated_at:
+        type: string
+      valor:
         type: string
     type: object
   models.Endereco:
     properties:
-      bairro:
-        type: string
-      cep:
-        type: string
-      cidade:
-        type: string
-      codigo_ibge:
-        type: string
-      complemento:
-        type: string
-      latitude:
-        type: string
-      logradouro:
-        type: string
-      longitude:
-        type: string
-      numero:
-        type: string
-      tipo_endereco:
-        type: string
-      uf:
-        type: string
+      alternativo:
+        items:
+          type: integer
+        type: array
+      indicador:
+        type: boolean
+      principal:
+        $ref: '#/definitions/models.EnderecoPrincipal'
     type: object
-  models.EnderecoUpdate:
+  models.EnderecoPrincipal:
     properties:
       bairro:
-        description: |-
-          Neighborhood
-          example: "Centro"
-          min: 3 max: 100
-        maxLength: 100
-        minLength: 3
         type: string
       cep:
-        description: |-
-          ZIP code (8 digits)
-          example: "20000000"
-          min: 8 max: 8
-        type: string
-      cidade:
-        description: |-
-          City name
-          example: "Rio de Janeiro"
-          min: 3 max: 100
-        maxLength: 100
-        minLength: 3
         type: string
       complemento:
-        description: |-
-          Additional address information
-          example: "Apto 101"
-          max: 100
-        maxLength: 100
+        type: string
+      estado:
         type: string
       logradouro:
-        description: |-
-          Street name
-          example: "Rua das Flores"
-          min: 3 max: 200
-        maxLength: 200
-        minLength: 3
+        type: string
+      municipio:
         type: string
       numero:
-        description: |-
-          Street number
-          example: "123"
-          max: 10
-        maxLength: 10
         type: string
-      tipo_endereco:
-        description: |-
-          Address type must be one of: RESIDENCIAL, COMERCIAL
-          example: "RESIDENCIAL"
-          enum: RESIDENCIAL,COMERCIAL
-        enum:
-        - RESIDENCIAL
-        - COMERCIAL
+      origem:
         type: string
-      uf:
-        description: |-
-          State abbreviation (2 letters)
-          example: "RJ"
-          min: 2 max: 2
+      sistema:
+        type: string
+      tipo_logradouro:
+        type: string
+      updated_at:
         type: string
     type: object
   models.EquipeSaudeFamilia:
     properties:
-      agente_vinculo:
+      enfermeiros:
+        items:
+          $ref: '#/definitions/models.ProfissionalSaude'
+        type: array
+      id_ine:
         type: string
-      area_atuacao:
+      indicador:
+        type: boolean
+      medicos:
+        items:
+          $ref: '#/definitions/models.ProfissionalSaude'
+        type: array
+      nome:
         type: string
-      codigo:
+      telefone:
         type: string
-      microarea:
+    type: object
+  models.Escola:
+    properties:
+      email:
+        type: string
+      endereco:
+        type: string
+      horario_funcionamento:
+        type: string
+      nome:
+        type: string
+      telefone:
+        type: string
+      whatsapp:
+        type: string
+    type: object
+  models.Mae:
+    properties:
+      cpf:
         type: string
       nome:
         type: string
     type: object
-  models.Fazenda:
+  models.MaintenanceRequest:
     properties:
-      inscricao_estadual:
+      categoria:
         type: string
-      nome_fazenda:
+      cpf:
+        type: string
+      data_alvo_diagnostico:
+        type: string
+      data_alvo_finalizacao:
+        type: string
+      data_fim:
+        type: string
+      data_inicio:
+        type: string
+      data_real_diagnostico:
+        type: string
+      dentro_prazo:
+        type: string
+      descricao:
+        type: string
+      id:
+        type: string
+      id_bairro:
+        type: string
+      id_chamado:
+        type: string
+      id_logradouro:
+        type: string
+      id_origem_ocorrencia:
+        type: string
+      id_subtipo:
+        type: string
+      id_territorialidade:
+        type: string
+      id_tipo:
+        type: string
+      id_unidade_organizacional:
+        type: string
+      id_unidade_organizacional_mae:
+        type: string
+      indicador:
+        type: boolean
+      justificativa_status: {}
+      latitude:
+        type: number
+      longitude:
+        type: number
+      nome_unidade_organizacional:
+        type: string
+      numero_logradouro:
+        type: integer
+      origem_ocorrencia:
+        type: string
+      prazo_tipo:
+        type: string
+      prazo_unidade:
+        type: string
+      reclamacoes:
+        type: integer
+      situacao:
+        type: string
+      status:
+        type: string
+      subtipo:
+        type: string
+      tempo_prazo: {}
+      tipo:
+        type: string
+      tipo_situacao:
+        type: string
+      total_chamados:
+        type: integer
+      total_fechados:
+        type: integer
+      unidade_organizacional_ouvidoria:
         type: string
     type: object
-  models.Origens:
+  models.Nascimento:
     properties:
-      data_origem:
+      data:
         type: string
-      origem:
+      municipio:
+        type: string
+      municipio_id:
+        type: string
+      pais:
+        type: string
+      pais_id:
+        type: string
+      uf:
         type: string
     type: object
-  models.Profissional:
+  models.Obito:
     properties:
-      cargo:
+      ano:
+        type: integer
+      indicador:
+        type: boolean
+    type: object
+  models.OptInRequest:
+    properties:
+      channel:
         type: string
-      data_admissao:
+      cpf:
         type: string
-      empresa:
+      validation_result:
+        $ref: '#/definitions/models.ValidationResult'
+    required:
+    - channel
+    - cpf
+    type: object
+  models.OptInResponse:
+    properties:
+      phone_mapping_id:
         type: string
-      profissao:
+      status:
+        type: string
+    type: object
+  models.OptOutRequest:
+    properties:
+      channel:
+        type: string
+      reason:
+        type: string
+    required:
+    - channel
+    - reason
+    type: object
+  models.OptOutResponse:
+    properties:
+      status:
+        type: string
+    type: object
+  models.PaginatedMaintenanceRequests:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.MaintenanceRequest'
+        type: array
+      pagination:
+        properties:
+          page:
+            type: integer
+          per_page:
+            type: integer
+          total:
+            type: integer
+          total_pages:
+            type: integer
+        type: object
+    type: object
+  models.PaginationInfo:
+    properties:
+      page:
+        type: integer
+      per_page:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+  models.PhoneCitizenResponse:
+    properties:
+      cpf:
+        type: string
+      first_name:
+        type: string
+      found:
+        type: boolean
+      name:
+        type: string
+    type: object
+  models.PhoneStatusResponse:
+    properties:
+      beta_group_id:
+        type: string
+      beta_group_name:
+        type: string
+      beta_whitelisted:
+        type: boolean
+      cpf:
+        type: string
+      found:
+        type: boolean
+      name:
+        type: string
+      phone_number:
+        type: string
+      quarantine_until:
+        type: string
+      quarantined:
+        type: boolean
+    type: object
+  models.PhoneVerificationValidateRequest:
+    properties:
+      code:
+        type: string
+      ddd:
+        type: string
+      ddi:
+        type: string
+      valor:
+        type: string
+    required:
+    - code
+    - ddd
+    - ddi
+    - valor
+    type: object
+  models.ProfissionalSaude:
+    properties:
+      id_profissional_sus:
+        type: string
+      nome:
+        type: string
+    type: object
+  models.QuarantineResponse:
+    properties:
+      message:
+        type: string
+      phone_number:
+        type: string
+      quarantine_until:
+        type: string
+      status:
+        type: string
+    type: object
+  models.QuarantineStats:
+    properties:
+      active_quarantines:
+        type: integer
+      expired_quarantines:
+        type: integer
+      quarantine_history_total:
+        type: integer
+      quarantines_with_cpf:
+        type: integer
+      quarantines_without_cpf:
+        type: integer
+      total_quarantined:
+        type: integer
+    type: object
+  models.QuarantinedListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.QuarantinedPhone'
+        type: array
+      pagination:
+        $ref: '#/definitions/models.PaginationInfo'
+    type: object
+  models.QuarantinedPhone:
+    properties:
+      cpf:
+        type: string
+      expired:
+        type: boolean
+      phone_number:
+        type: string
+      quarantine_until:
+        type: string
+    type: object
+  models.RejectRegistrationRequest:
+    properties:
+      channel:
+        type: string
+      cpf:
+        type: string
+      reason:
+        type: string
+    required:
+    - channel
+    - cpf
+    - reason
+    type: object
+  models.RejectRegistrationResponse:
+    properties:
+      status:
         type: string
     type: object
   models.Saude:
@@ -254,172 +683,1566 @@ definitions:
         $ref: '#/definitions/models.ClinicaFamilia'
       equipe_saude_familia:
         $ref: '#/definitions/models.EquipeSaudeFamilia'
-      numero_cartao_sus:
+    type: object
+  models.SelfDeclaredAddressInput:
+    properties:
+      bairro:
         type: string
+      cep:
+        type: string
+      complemento:
+        type: string
+      estado:
+        type: string
+      logradouro:
+        type: string
+      municipio:
+        type: string
+      numero:
+        type: string
+      tipo_logradouro:
+        type: string
+    required:
+    - bairro
+    - cep
+    - estado
+    - logradouro
+    - municipio
+    - numero
+    type: object
+  models.SelfDeclaredEmailInput:
+    properties:
+      valor:
+        type: string
+    required:
+    - valor
+    type: object
+  models.SelfDeclaredPhoneInput:
+    properties:
+      ddd:
+        description: DDD é obrigatório somente quando o DDI é 55 (Brasil)
+        type: string
+      ddi:
+        type: string
+      valor:
+        type: string
+    required:
+    - ddi
+    - valor
+    type: object
+  models.SelfDeclaredRacaInput:
+    properties:
+      valor:
+        type: string
+    required:
+    - valor
     type: object
   models.Telefone:
     properties:
-      ddd:
-        type: string
-      numero:
-        type: string
-      observacoes:
-        type: string
-      tipo:
-        type: string
+      alternativo:
+        items:
+          type: integer
+        type: array
+      indicador:
+        type: boolean
+      principal:
+        $ref: '#/definitions/models.TelefonePrincipal'
     type: object
-  models.TelefoneUpdate:
+  models.TelefonePrincipal:
     properties:
       ddd:
-        description: |-
-          DDD (area code) must be exactly 2 digits
-          example: "21"
-          min: 2 max: 2
         type: string
-      numero:
-        description: |-
-          Phone number must be 8 or 9 digits
-          example: "999887766"
-          min: 8 max: 9
-        maxLength: 9
-        minLength: 8
+      ddi:
         type: string
-      observacoes:
-        description: |-
-          Optional notes about the phone number
-          example: "Horário comercial"
-          max: 200
-        maxLength: 200
+      origem:
         type: string
-      tipo:
-        description: |-
-          Phone type must be one of: RESIDENCIAL, COMERCIAL, CELULAR
-          example: "CELULAR"
-          enum: RESIDENCIAL,COMERCIAL,CELULAR
-        enum:
-        - RESIDENCIAL
-        - COMERCIAL
-        - CELULAR
+      sistema:
         type: string
+      updated_at:
+        type: string
+      valor:
+        type: string
+    type: object
+  models.UserConfigOptInResponse:
+    properties:
+      opt_in:
+        type: boolean
+    type: object
+  models.UserConfigResponse:
+    properties:
+      firstlogin:
+        type: boolean
+    type: object
+  models.ValidateRegistrationRequest:
+    properties:
+      birth_date:
+        type: string
+      channel:
+        type: string
+      cpf:
+        type: string
+      name:
+        type: string
+    required:
+    - birth_date
+    - channel
+    - cpf
+    - name
+    type: object
+  models.ValidateRegistrationResponse:
+    properties:
+      matched_cpf:
+        type: string
+      matched_name:
+        type: string
+      valid:
+        type: boolean
+    type: object
+  models.ValidationResult:
+    properties:
+      valid:
+        type: boolean
     type: object
 host: localhost:8080
 info:
   contact:
-    email: support@swagger.io
-    name: API Support
-    url: http://www.swagger.io/support
-  description: API for managing citizen data with self-declared information. This
-    API provides endpoints for retrieving and updating citizen information, with support
-    for caching and data validation. Self-declared data takes precedence over base
-    data when available.
+    email: suporte@rio.rj.gov.br
+    name: Suporte RMI
+    url: http://www.rio.rj.gov.br
+  description: API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo
+    autodeclaração de informações e verificação de contato.
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  title: RMI API
+  termsOfService: http://swagger.io/terms/
+  title: API RMI
   version: "1.0"
 paths:
-  /citizen/{cpf}:
+  /admin/beta/groups:
     get:
+      description: Lista todos os grupos beta com paginação (apenas administradores)
+      parameters:
+      - description: 'Página (padrão: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 10)'
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaGroupListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Listar grupos beta
+      tags:
+      - Beta Groups
+    post:
       consumes:
       - application/json
-      description: Retrieves citizen data by CPF, combining base data with any self-declared
-        updates. Self-declared data takes precedence over base data. Results are cached
-        using Redis with configurable TTL.
+      description: Cria um novo grupo beta para o chatbot (apenas administradores)
       parameters:
-      - description: Citizen CPF (11 digits)
+      - description: Dados do grupo
+        in: body
+        name: group
+        required: true
+        schema:
+          $ref: '#/definitions/models.BetaGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.BetaGroupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Criar grupo beta
+      tags:
+      - Beta Groups
+  /admin/beta/groups/{group_id}:
+    delete:
+      description: Exclui um grupo beta e remove todas as associações de telefones
+        (apenas administradores)
+      parameters:
+      - description: ID do grupo
         in: path
-        maxLength: 11
-        minLength: 11
-        name: cpf
+        name: group_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Grupo excluído com sucesso
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Excluir grupo beta
+      tags:
+      - Beta Groups
+    get:
+      description: Obtém um grupo beta por ID (apenas administradores)
+      parameters:
+      - description: ID do grupo
+        in: path
+        name: group_id
         required: true
         type: string
       produces:
       - application/json
       responses:
         "200":
-          description: Complete citizen data
+          description: OK
           schema:
-            $ref: '#/definitions/models.Citizen'
+            $ref: '#/definitions/models.BetaGroupResponse'
         "400":
-          description: Invalid CPF format
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Citizen not found
+          description: Not Found
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal server error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Get citizen data
+      summary: Obter grupo beta
       tags:
-      - citizen
-  /citizen/{cpf}/self-declared:
+      - Beta Groups
     put:
       consumes:
       - application/json
-      description: Updates or creates self-declared information for a citizen. Only
-        specific fields (address and contact) can be updated. All fields are optional,
-        and only provided fields will be updated.
+      description: Atualiza um grupo beta existente (apenas administradores)
       parameters:
-      - description: Citizen CPF (11 digits)
+      - description: ID do grupo
         in: path
-        maxLength: 11
-        minLength: 11
-        name: cpf
+        name: group_id
         required: true
         type: string
-      - description: Update Data
+      - description: Dados do grupo
+        in: body
+        name: group
+        required: true
+        schema:
+          $ref: '#/definitions/models.BetaGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaGroupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Atualizar grupo beta
+      tags:
+      - Beta Groups
+  /admin/beta/whitelist:
+    get:
+      description: Lista telefones na whitelist beta com paginação (apenas administradores)
+      parameters:
+      - description: 'Página (padrão: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 10)'
+        in: query
+        name: per_page
+        type: integer
+      - description: Filtrar por ID do grupo
+        in: query
+        name: group_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaWhitelistListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Listar telefones na whitelist
+      tags:
+      - Beta Whitelist
+  /admin/beta/whitelist/{phone_number}:
+    delete:
+      description: Remove um número de telefone da whitelist beta (apenas administradores)
+      parameters:
+      - description: Número de telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaWhitelistResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Remover telefone da whitelist
+      tags:
+      - Beta Whitelist
+    post:
+      consumes:
+      - application/json
+      description: Adiciona um número de telefone a um grupo beta (apenas administradores)
+      parameters:
+      - description: Número de telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Dados da whitelist
         in: body
         name: data
         required: true
         schema:
-          $ref: '#/definitions/models.CadastroUpdate'
+          $ref: '#/definitions/models.BetaWhitelistRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: Data updated successfully
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaWhitelistResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Adicionar telefone à whitelist
+      tags:
+      - Beta Whitelist
+  /admin/beta/whitelist/bulk-add:
+    post:
+      consumes:
+      - application/json
+      description: Adiciona múltiplos números de telefone a um grupo beta (apenas
+        administradores)
+      parameters:
+      - description: Dados da operação em lote
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.BetaWhitelistBulkRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.BetaWhitelistResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Adicionar múltiplos telefones à whitelist
+      tags:
+      - Beta Whitelist
+  /admin/beta/whitelist/bulk-move:
+    post:
+      consumes:
+      - application/json
+      description: Move múltiplos números de telefone de um grupo beta para outro
+        (apenas administradores)
+      parameters:
+      - description: Dados da operação de movimentação
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.BetaWhitelistMoveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
           schema:
             $ref: '#/definitions/handlers.SuccessResponse'
         "400":
-          description: Invalid request body or validation errors
+          description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal server error
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-      summary: Update self-declared data
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Mover múltiplos telefones entre grupos
       tags:
-      - citizen
-  /health:
-    get:
-      description: Checks the health of the API and its dependencies (MongoDB and
-        Redis). Returns detailed status for each service.
+      - Beta Whitelist
+  /admin/beta/whitelist/bulk-remove:
+    post:
+      consumes:
+      - application/json
+      description: Remove múltiplos números de telefone da whitelist beta (apenas
+        administradores)
+      parameters:
+      - description: Dados da operação em lote
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.BetaWhitelistBulkRemoveRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: All services are healthy
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Remover múltiplos telefones da whitelist
+      tags:
+      - Beta Whitelist
+  /admin/phone/quarantine/stats:
+    get:
+      description: Obtém estatísticas sobre telefones em quarentena (apenas administradores)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.QuarantineStats'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Obter estatísticas de quarentena
+      tags:
+      - phone
+  /admin/phone/quarantined:
+    get:
+      description: Lista todos os telefones em quarentena com paginação (apenas administradores)
+      parameters:
+      - description: 'Página (padrão: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 10)'
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.QuarantinedListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Listar telefones em quarentena
+      tags:
+      - phone
+  /citizen/{cpf}:
+    get:
+      description: Obtém os dados completos de um cidadão, incluindo dados autodeclarados
+      parameters:
+      - description: Número do CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Citizen'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter dados do cidadão
+      tags:
+      - citizen
+  /citizen/{cpf}/address:
+    put:
+      consumes:
+      - application/json
+      description: Atualiza ou cria o endereço autodeclarado de um cidadão por CPF.
+        Apenas o campo de endereço é atualizado.
+      parameters:
+      - description: Número do CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Endereço autodeclarado
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.SelfDeclaredAddressInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar endereço autodeclarado
+      tags:
+      - citizen
+  /citizen/{cpf}/email:
+    put:
+      consumes:
+      - application/json
+      description: Atualiza ou cria o email autodeclarado de um cidadão por CPF. Apenas
+        o campo de email é atualizado.
+      parameters:
+      - description: Número do CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Email autodeclarado
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.SelfDeclaredEmailInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar email autodeclarado
+      tags:
+      - citizen
+  /citizen/{cpf}/ethnicity:
+    put:
+      consumes:
+      - application/json
+      description: Atualiza ou cria a etnia autodeclarada de um cidadão por CPF. Apenas
+        o campo de etnia é atualizado. O valor deve ser uma das opções válidas retornadas
+        pelo endpoint /citizen/ethnicity/options.
+      parameters:
+      - description: Número do CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Etnia autodeclarada
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.SelfDeclaredRacaInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Etnia atualizada com sucesso
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Formato de CPF inválido ou valor de etnia inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Cidadão não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar etnia autodeclarada
+      tags:
+      - citizen
+  /citizen/{cpf}/firstlogin:
+    get:
+      consumes:
+      - application/json
+      description: Verifica se este é o primeiro login do usuário
+      parameters:
+      - description: Número do CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserConfigResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter status do primeiro login
+      tags:
+      - citizen
+    put:
+      consumes:
+      - application/json
+      description: Define o status do primeiro login como falso para um usuário
+      parameters:
+      - description: Número do CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserConfigResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar status do primeiro login
+      tags:
+      - citizen
+  /citizen/{cpf}/maintenance-request:
+    get:
+      consumes:
+      - application/json
+      description: Recupera os chamados do 1746 de um cidadão por CPF com paginação.
+        Cada documento representa um chamado individual.
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: 'Número da página (padrão: 1)'
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 10, máximo: 100)'
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista paginada de chamados do 1746
+          schema:
+            $ref: '#/definitions/models.PaginatedMaintenanceRequests'
+        "400":
+          description: Formato de CPF inválido ou parâmetros de paginação inválidos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter chamados do 1746 do cidadão
+      tags:
+      - citizen
+  /citizen/{cpf}/optin:
+    get:
+      consumes:
+      - application/json
+      description: Verifica se o usuário optou por receber notificações
+      parameters:
+      - description: Número do CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserConfigOptInResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter status de opt-in
+      tags:
+      - citizen
+    put:
+      consumes:
+      - application/json
+      description: Atualiza o status de opt-in do usuário para notificações
+      parameters:
+      - description: Número do CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Status de opt-in
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.UserConfigOptInResponse'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserConfigOptInResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar status de opt-in
+      tags:
+      - citizen
+  /citizen/{cpf}/phone:
+    put:
+      consumes:
+      - application/json
+      description: Atualiza ou cria o telefone autodeclarado de um cidadão por CPF.
+        Apenas o campo de telefone é atualizado (armazenado como pendente até verificado).
+      parameters:
+      - description: Número do CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Telefone autodeclarado
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.SelfDeclaredPhoneInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar telefone autodeclarado
+      tags:
+      - citizen
+  /citizen/{cpf}/phone/validate:
+    post:
+      consumes:
+      - application/json
+      description: Valida o código de verificação enviado para o número de telefone
+      parameters:
+      - description: Número do CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Código de verificação e telefone
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.PhoneVerificationValidateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Validar verificação de telefone
+      tags:
+      - citizen
+  /citizen/{cpf}/wallet:
+    get:
+      consumes:
+      - application/json
+      description: Recupera os dados da carteira do cidadão por CPF, incluindo informações
+        de saúde e outros dados da carteira.
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Dados da carteira do cidadão
+          schema:
+            $ref: '#/definitions/models.CitizenWallet'
+        "400":
+          description: Formato de CPF inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Cidadão não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter dados da carteira do cidadão
+      tags:
+      - citizen
+  /citizen/ethnicity/options:
+    get:
+      consumes:
+      - application/json
+      description: Retorna a lista de opções válidas de etnia para autodeclaração.
+        Esta lista é usada para validar as atualizações de etnia autodeclarada.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de opções de etnia válidas
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Listar opções de etnia
+      tags:
+      - citizen
+  /config/channels:
+    get:
+      description: Obtém a lista de canais disponíveis para comunicação
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Obter canais disponíveis
+      tags:
+      - config
+  /config/opt-out-reasons:
+    get:
+      description: Obtém a lista de motivos válidos para opt-out
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Obter motivos de opt-out
+      tags:
+      - config
+  /health:
+    get:
+      description: Verifica a saúde da API e suas dependências (MongoDB e Redis).
+        Retorna status detalhado para cada serviço.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Todos os serviços estão saudáveis
           schema:
             $ref: '#/definitions/handlers.HealthResponse'
         "503":
-          description: One or more services are unhealthy
+          description: Um ou mais serviços estão indisponíveis
           schema:
             $ref: '#/definitions/handlers.HealthResponse'
-      summary: Health check endpoint
+      summary: Verificação de saúde
       tags:
       - health
+  /phone/{phone_number}/beta-status:
+    get:
+      description: Verifica se um número de telefone está na whitelist beta (com cache)
+      parameters:
+      - description: Número de telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BetaStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Verificar status beta
+      tags:
+      - Beta Whitelist
+  /phone/{phone_number}/bind:
+    post:
+      consumes:
+      - application/json
+      description: Vincula um número de telefone a um CPF sem definir opt-in
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Dados da vinculação
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.BindRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BindResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Vincular telefone a CPF
+      tags:
+      - phone
+  /phone/{phone_number}/citizen:
+    get:
+      description: Obtém informações do cidadão associado a um número de telefone
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PhoneCitizenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter cidadão por telefone
+      tags:
+      - phone
+  /phone/{phone_number}/opt-in:
+    post:
+      consumes:
+      - application/json
+      description: Realiza opt-in para receber notificações
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Dados do opt-in
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.OptInRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.OptInResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Realizar opt-in
+      tags:
+      - phone
+  /phone/{phone_number}/opt-out:
+    post:
+      consumes:
+      - application/json
+      description: Realiza opt-out para parar de receber notificações
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Dados do opt-out
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.OptOutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.OptOutResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Realizar opt-out
+      tags:
+      - phone
+  /phone/{phone_number}/quarantine:
+    delete:
+      description: Libera um número de telefone da quarentena (apenas administradores)
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.QuarantineResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Liberar telefone da quarentena
+      tags:
+      - phone
+    post:
+      consumes:
+      - application/json
+      description: Coloca um número de telefone em quarentena (apenas administradores)
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.QuarantineResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Colocar telefone em quarentena
+      tags:
+      - phone
+  /phone/{phone_number}/reject-registration:
+    post:
+      consumes:
+      - application/json
+      description: Rejeita um registro e bloqueia o mapeamento telefone-CPF
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Dados da rejeição
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.RejectRegistrationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.RejectRegistrationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Rejeitar registro
+      tags:
+      - phone
+  /phone/{phone_number}/status:
+    get:
+      description: Obtém o status de um número de telefone (quarentena, CPF vinculado,
+        etc.)
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PhoneStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Obter status do telefone
+      tags:
+      - phone
+  /phone/{phone_number}/validate-registration:
+    post:
+      consumes:
+      - application/json
+      description: Valida um registro de usuário contra dados base
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Dados do registro
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.ValidateRegistrationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ValidateRegistrationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Validar registro
+      tags:
+      - phone
+  /validate/phone:
+    post:
+      consumes:
+      - application/json
+      description: Valida DDI, DDD e número para qualquer telefone internacional.
+      parameters:
+      - description: Telefone a ser validado
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.PhoneValidationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.PhoneValidationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Valida número de telefone
+      tags:
+      - validation
+schemes:
+- http
+- https
 securityDefinitions:
-  ApiKeyAuth:
+  BearerAuth:
+    description: 'Tipo: Bearer token. Exemplo: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
     in: header
     name: Authorization
     type: apiKey
 swagger: "2.0"
 tags:
-- description: Operations about citizens
+- description: Operações relacionadas a cidadãos, incluindo consulta e atualização
+    de dados autodeclarados
   name: citizen
-- description: Health check operations
+- description: Operações de verificação de saúde da API
   name: health

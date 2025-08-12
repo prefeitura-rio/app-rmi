@@ -1,0 +1,14 @@
+---
+description: Explain what the "commit thing" is.
+alwaysApply: true
+---
+
+Whenever the user asks you to do the "commit thing", you must:
+- Check whether there's a justfile, Makefile or something similar so you know how commands should run
+- Format the code using a proper tool for the programming language
+- Check for linting and building issues
+- See the diff for all staged files (do not add other files)
+- Prepare a meaningful commit message, following conventional commits convention
+- Commit it!
+
+You should never do the commit thing without explicit consent from the user.

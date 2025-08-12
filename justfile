@@ -25,18 +25,35 @@ dev: swagger
     #!/usr/bin/env sh
     if ! command -v air > /dev/null; then
         echo "Installing air for hot reload..."
-        go install github.com/cosmtrek/air@latest
+        go install github.com/air-verse/air@latest
     fi
     air
 
-# Run tests
+# Run tests with a specific CPF
+test-cpf cpf:
+    go test -v ./... -cpf={{cpf}}
+
+# Run tests with default CPF
 test:
     go test -v ./...
 
 # Run tests with coverage
 test-coverage:
     go test -v -coverprofile=coverage.out ./...
-    go tool cover -html=coverage.out -o coverage.html
+    go tool cover -html=coverage.out
+
+# Run tests with race detection
+test-race:
+    go test -race -v ./...
+
+# Run tests with a specific CPF and race detection
+test-cpf-race cpf:
+    go test -race -v ./... -cpf={{cpf}}
+
+# Run tests with a specific CPF and coverage
+test-cpf-coverage cpf:
+    go test -v -coverprofile=coverage.out ./... -cpf={{cpf}}
+    go tool cover -html=coverage.out
 
 # Clean test cache and coverage files
 clean:
@@ -155,4 +172,8 @@ docs:
         open http://localhost:8080/swagger/index.html
     else
         echo "Please open http://localhost:8080/swagger/index.html in your browser"
-    fi 
+    fi
+
+load-test base_url cpf_csv token_file oauth_config:
+    #!/usr/bin/env sh
+    k6 run -e BASE_URL={{base_url}} -e CPF_CSV={{cpf_csv}} -e TOKEN_FILE={{token_file}} -e OAUTH_CONFIG={{oauth_config}} scripts/load_test/load-test.js 
