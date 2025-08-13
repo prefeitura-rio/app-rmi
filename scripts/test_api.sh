@@ -61,6 +61,7 @@ PHONE_NUMBER=$(generate_random_phone)
 echo -e "${BLUE}📱 Generated random phone number for testing: $PHONE_NUMBER${NC}"
 
 # Configuration
+# API_BASE_URL="https://services.staging.app.dados.rio/rmi/v1"
 API_BASE_URL="http://localhost:8080/v1"
 
 # Validation
@@ -133,7 +134,7 @@ make_request() {
     # Extract status code (last line)
     status_code=$(echo "$response" | tail -n1)
     # Extract response body (all lines except last)
-    response_body=$(echo "$response" | head -n -1)
+    response_body=$(echo "$response" | sed '$d')
     
     # Check if status code is 2xx or 404 (acceptable for data not found)
     # Also accept 409 (Conflict) for "already_opted_in" responses

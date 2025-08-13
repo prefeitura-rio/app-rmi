@@ -29,6 +29,7 @@ spec:
       containers:
         - name: rmi
           image: ghcr.io/prefeitura-rio/app-rmi:latest
+          command: ["./api"]
           envFrom:
             - secretRef:
                 name: rmi-secrets
@@ -59,6 +60,50 @@ spec:
             failureThreshold: 3
       restartPolicy: Always
 ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rmi-sync
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  minReadySeconds: 5
+  selector:
+    matchLabels:
+      app: rmi-sync
+  template:
+    metadata:
+      labels:
+        app: rmi-sync
+      annotations:
+        sidecar.istio.io/proxyCPU: "50m"
+        sidecar.istio.io/proxyCPULimit: "500m"
+        sidecar.istio.io/proxyMemory: "512Mi"
+        sidecar.istio.io/proxyMemoryLimit: "768Mi"
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: rmi-sync
+          image: ghcr.io/prefeitura-rio/app-rmi:latest
+          command: ["./sync"]
+          envFrom:
+            - secretRef:
+                name: rmi-secrets
+          resources:
+            # requests:
+            #   ephemeral-storage: 50Mi
+            #   cpu: 500m
+            #   memory: 512Mi
+            # limits:
+            #   cpu: 1000m
+            #   memory: 1024Mi
+      restartPolicy: Always
+---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -68,6 +113,16 @@ spec:
   selector:
     matchLabels:
       app: rmi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rmi-sync-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: rmi-sync
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -116,6 +171,54 @@ spec:
         threshold: "250"
         query: sum(rate(istio_requests_total{destination_workload="rmi"}[30s]))
         activationThreshold: "200"
+# ---
+# apiVersion: keda.sh/v1alpha1
+# kind: ScaledObject
+# metadata:
+#   name: rmi-sync-scaled-object
+#   annotations:
+#     autoscaling.keda.sh/trigger-authentication: "default"
+# spec:
+#   scaleTargetRef:
+#     name: rmi-sync
+#   minReplicaCount: 5
+#   maxReplicaCount: 50
+#   cooldownPeriod: 60
+#   pollingInterval: 15
+#   fallback:
+#     failureThreshold: 3
+#     replicas: 5
+#   advanced:
+#     horizontalPodAutoscalerConfig:
+#       behavior:
+#         scaleUp:
+#           stabilizationWindowSeconds: 120
+#           policies:
+#           - type: Percent
+#             value: 100
+#             periodSeconds: 30
+#           - type: Pods
+#             value: 5
+#             periodSeconds: 30
+#           selectPolicy: Max
+#         scaleDown:
+#           stabilizationWindowSeconds: 600
+#           policies:
+#           - type: Percent
+#             value: 20
+#             periodSeconds: 120
+#           - type: Pods
+#             value: 2
+#             periodSeconds: 120
+#           selectPolicy: Max
+#   triggers:
+#     - type: prometheus
+#       metadata:
+#         serverAddress: http://prometheus.istio-system.svc.cluster.local:9090
+#         metricName: rmi_sync_queue_depth
+#         threshold: "100"
+#         query: max(rmi_sync_queue_depth) by (queue)
+#         activationThreshold: "50"
 ---
 apiVersion: v1
 kind: Service

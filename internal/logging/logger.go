@@ -63,6 +63,13 @@ func (l *SafeLogger) Warn(msg string, fields ...zap.Field) {
 	}
 }
 
+// Debug logs a debug message
+func (l *SafeLogger) Debug(msg string, fields ...zap.Field) {
+	if l != nil && l.logger != nil {
+		l.logger.Debug(msg, fields...)
+	}
+}
+
 // Error logs an error message
 func (l *SafeLogger) Error(msg string, fields ...zap.Field) {
 	if l != nil && l.logger != nil {

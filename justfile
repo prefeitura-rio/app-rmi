@@ -29,6 +29,35 @@ dev: swagger
     fi
     air
 
+# Run the sync service
+run-sync:
+    go run cmd/sync/main.go
+
+# Run both API and sync service (in separate terminals)
+run-all: swagger
+    @echo "Starting API and Sync Service..."
+    @echo "API will run on port 8080"
+    @echo "Sync Service will run in background"
+    @echo ""
+    @echo "To run both services, use:"
+    @echo "  Terminal 1: just run"
+    @echo "  Terminal 2: just run-sync"
+    @echo ""
+    @echo "Or use tmux:"
+    @echo "  tmux new-session -d -s rmi 'just run'"
+    @echo "  tmux split-window -h 'just run-sync'"
+    @echo "  tmux attach-session -t rmi"
+
+# Start both services using the startup script
+start-services: swagger
+    @echo "Starting both services using startup script..."
+    ./scripts/start_services.sh
+
+# Run the cache demo script
+demo-cache:
+    @echo "Running multi-level cache demo..."
+    ./scripts/demo_cache.sh
+
 # Run tests with a specific CPF
 test-cpf cpf:
     go test -v ./... -cpf={{cpf}}
@@ -85,6 +114,13 @@ deps-update:
 # Build the application
 build:
     go build -o bin/api cmd/api/main.go
+
+# Build the sync service
+build-sync:
+    go build -o bin/sync cmd/sync/main.go
+
+# Build both API and sync service
+build-all: build build-sync
 
 # Build Docker image
 docker-build:

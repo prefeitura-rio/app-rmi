@@ -147,6 +147,252 @@ mongodb://root:PASSWORD@mongodb-0.mongodb-headless.rmi.svc.cluster.local:27017,m
 - **✅ Versionamento**: Configurações versionadas no código
 - **✅ Debugging**: Mais fácil de debugar e monitorar
 
+## 🚀 **Arquitetura Multi-Level Cache - IMPLEMENTADA**
+
+### **Visão Geral**
+
+A API RMI agora implementa uma **arquitetura de cache em múltiplas camadas** que melhora dramaticamente a performance sob cargas pesadas de escrita. Em vez de escrever diretamente no MongoDB (que pode ser lento), o sistema agora:
+
+1. **Escreve no Redis primeiro** (resposta rápida)
+2. **Enfileira jobs de sincronização** para processamento em background
+3. **Lê das camadas de cache** antes de recorrer ao MongoDB
+4. **Sincroniza com MongoDB assincronamente** via workers dedicados
+
+### **🏗️ Arquitetura**
+
+```
+┌─────────────────┐    ┌─────────────────┐
+│   API Service   │    │  Sync Service   │
+│  (Escritas Rápidas) │ (Background)    │
+└─────────────────┘    └─────────────────┘
+         │                       │
+         ▼                       ▼
+    ┌─────────────────────────────────┐
+    │           Redis                 │
+    │  ┌─────────────┐ ┌─────────────┐│
+    │  │ Write Buffer│ │ Job Queues  ││
+    │  │ (24h TTL)   │ │ (Sync Jobs) ││
+    │  └─────────────┘ └─────────────┘│
+    └─────────────────────────────────┘
+                       │
+                       ▼
+                  ┌─────────────┐
+                  │  MongoDB    │
+                  │ (Durabilidade) │
+                  └─────────────┘
+```
+
+### **✅ Componentes Implementados**
+
+#### **1. DataManager (`internal/services/data_manager.go`)**
+- **Write**: Escreve no Redis write buffer e enfileira job de sync
+- **Read**: Lê do write buffer → read cache → MongoDB (fallback)
+- **Delete**: Remove de todas as camadas de cache e MongoDB
+- **Cache Management**: Gerencia TTL e limpeza
+
+#### **2. SyncService (`internal/services/sync_service.go`)**
+- **Worker Pool**: Número configurável de sync workers
+- **Queue Processing**: Processa jobs das filas Redis
+- **Error Handling**: Lógica de retry com exponential backoff
+- **Dead Letter Queue**: Jobs falhados após max retries
+
+#### **3. SyncWorker (`internal/services/sync_worker.go`)**
+- **Job Processing**: Converte dados Redis para documentos MongoDB
+- **Upsert Operations**: Gerencia inserções e atualizações
+- **Cache Cleanup**: Remove do write buffer após sync bem-sucedido
+- **Cache Update**: Atualiza read cache com dados sincronizados
+
+#### **4. DegradedMode (`internal/services/degraded_mode.go`)**
+- **MongoDB Health**: Monitora conectividade MongoDB
+- **Redis Memory**: Verifica uso de memória Redis (>85% ativa modo degradado)
+- **Service Protection**: Previne novas escritas quando sistema está estressado
+
+#### **5. Metrics (`internal/services/metrics.go`)**
+- **Queue Depths**: Número de jobs em cada fila
+- **Sync Operations**: Contadores de sucesso/falha
+- **Cache Performance**: Taxas de hit/miss
+- **System Health**: Status do modo degradado
+
+### **📊 Fluxo de Dados**
+
+#### **Operação de Escrita**
+
+1. **API Request**: Cliente envia requisição de escrita
+2. **Redis Write**: Dados escritos no Redis write buffer (24h TTL)
+3. **Job Queue**: Job de sync enfileirado no Redis
+4. **Immediate Response**: API responde imediatamente (rápido)
+5. **Background Sync**: Sync worker processa job assincronamente
+6. **MongoDB Update**: Dados sincronizados com MongoDB
+7. **Cache Cleanup**: Write buffer limpo
+8. **Read Cache Update**: Read cache atualizado com dados finais
+
+#### **Operação de Leitura**
+
+1. **Cache Check**: Verifica Redis write buffer primeiro (dados mais recentes)
+2. **Read Cache**: Verifica Redis read cache (1h TTL)
+3. **MongoDB Fallback**: Se não estiver em cache, lê do MongoDB
+4. **Cache Update**: Atualiza read cache para requisições futuras
+
+### **🚀 Benefícios de Performance**
+
+#### **Melhorias Esperadas**
+- **Write Performance**: 40-60% melhoria com W=0 write concern
+- **Response Time**: Resposta imediata para escritas (Redis)
+- **Throughput**: 30-50% aumento em cenários de alta escrita
+- **Scalability**: Escalabilidade independente dos sync workers
+
+#### **Performance do Cache**
+- **Write Buffer**: 24 horas TTL para escritas pendentes
+- **Read Cache**: 1 hora TTL para dados frequentemente acessados
+- **Hit Ratio**: Meta de 80-90% de taxa de cache hit
+- **Memory Usage**: Limites de memória Redis configuráveis
+
+### **🔧 Configuração**
+
+#### **Variáveis de Ambiente**
+```bash
+# Configuração dos workers de banco de dados
+DB_WORKER_COUNT=10      # Número de sync workers
+DB_BATCH_SIZE=100       # Tamanho do lote para operações
+
+# Configuração Redis
+REDIS_URI=redis://localhost:6379
+REDIS_POOL_SIZE=100
+REDIS_MIN_IDLE_CONNS=10
+
+# Configuração MongoDB
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DATABASE=rmi
+```
+
+#### **Configuração das Coleções**
+Coleções são configuradas com diferentes write concerns:
+
+- **Performance Collections** (W=0): `citizens`, `phone_mappings`, `user_configs`, etc.
+- **Data Integrity Collections** (W=1): `self_declared`
+
+### **💻 Exemplos de Uso**
+
+#### **Operações Básicas de Dados**
+```go
+// Criar data manager
+dataManager := services.NewDataManager(redis, mongo, logger)
+
+// Operação de escrita
+op := &services.CitizenDataOperation{
+    CPF:  "12345678901",
+    Data: citizenData,
+}
+err := dataManager.Write(ctx, op)
+
+// Operação de leitura
+var citizen models.Citizen
+err = dataManager.Read(ctx, "12345678901", "citizens", "citizen", &citizen)
+```
+
+#### **Integração de Serviços**
+```go
+// Criar serviço de cache do cidadão
+citizenService := services.NewCitizenCacheService()
+
+// Atualizar cidadão (escrita rápida)
+err := citizenService.UpdateCitizen(ctx, cpf, citizenData)
+
+// Obter cidadão (leitura em cache)
+citizen, err := citizenService.GetCitizen(ctx, cpf)
+```
+
+### **🚨 Modo Degradado**
+
+O sistema entra automaticamente em **modo degradado** quando:
+
+- **MongoDB está down**
+- **Uso de memória Redis > 85%**
+
+No modo degradado:
+- ✅ **Leituras continuam** (do cache)
+- ❌ **Novas escritas são prevenidas**
+- 🔄 **Recuperação é automática**
+
+### **📈 Métricas**
+
+Todas as métricas são prefixadas com `rmi_`:
+
+- `rmi_sync_queue_depth_{queue}`: Profundidade das filas
+- `rmi_sync_operations_total_{queue}`: Operações de sync
+- `rmi_sync_failures_total_{queue}`: Falhas de sync
+- `rmi_cache_hit_ratio_{cache_type}`: Performance do cache
+- `rmi_degraded_mode_active`: Saúde do sistema
+
+### **🔍 Troubleshooting**
+
+#### **Problemas Comuns**
+
+1. **Alta Profundidade de Fila**: Aumentar `DB_WORKER_COUNT`
+2. **Alta Taxa de Falha**: Verificar conectividade MongoDB
+3. **Problemas de Memória**: Monitorar uso de memória Redis
+4. **Modo Degradado**: Verificar saúde MongoDB e memória Redis
+
+#### **Comandos de Debug**
+```bash
+# Verificar filas Redis
+redis-cli LLEN sync:queue:citizen
+
+# Verificar DLQ
+redis-cli LLEN sync:dlq:citizen
+
+# Monitorar sync workers
+ps aux | grep sync
+
+# Verificar conexão MongoDB
+mongo --eval "db.runCommand('ping')"
+```
+
+### **🔄 Migração**
+
+#### **De MongoDB Direto**
+
+1. **Atualizar Serviços**: Substituir chamadas MongoDB diretas por DataManager
+2. **Data Operations**: Implementar interface DataOperation para seus modelos
+3. **Service Updates**: Atualizar métodos de serviço para usar cache service
+4. **Testing**: Verificar comportamento do cache e operações de sync
+
+#### **Rollout Gradual**
+
+1. **Read-Only**: Começar com cache de leitura apenas
+2. **Write Buffer**: Habilitar buffer de escrita para operações não-críticas
+3. **Full Sync**: Habilitar sync completo para todas as operações
+4. **Monitoring**: Monitorar performance e ajustar contagem de workers
+
+### **📚 Documentação**
+
+- **Quick Start**: `README_CACHE_SYSTEM.md`
+- **Full Details**: `docs/MULTI_LEVEL_CACHE.md`
+- **Code Examples**: `internal/services/citizen_cache_service.go`
+
+### **🎉 O que é Novo**
+
+✅ **Multi-level caching** com Redis write buffer e read cache  
+✅ **Sincronização assíncrona MongoDB** via workers dedicados  
+✅ **Modo degradado** para proteção do sistema  
+✅ **Métricas abrangentes** com prefixo RMI  
+✅ **Lógica de retry** com exponential backoff  
+✅ **Dead letter queue** para jobs falhados  
+✅ **Escalabilidade independente** dos sync workers  
+✅ **Scripts de startup fáceis** para desenvolvimento  
+
+### **🚀 Próximos Passos**
+
+1. **Iniciar os serviços**: `just start-services`
+2. **Executar o demo**: `just demo-cache`
+3. **Monitorar performance**: Verificar chaves Redis e profundidade das filas
+4. **Integrar com seu código**: Usar DataManager e cache services
+5. **Escalar workers**: Ajustar `DB_WORKER_COUNT` baseado na carga
+
+---
+
+**Feliz caching! 🎯** O sistema é projetado para lidar com altas cargas de escrita mantendo integridade de dados e fornecendo excelente performance.
+
 ### **🔧 Otimizações de Connection Pool**
 
 #### **Problema Resolvido: Connection Pool Exhaustion**
@@ -1508,3 +1754,189 @@ go test ./...
 ## Licença
 
 MIT
+
+### 🚀 **Executando os Serviços**
+
+### **Comandos Justfile Disponíveis**
+
+A API RMI agora inclui comandos justfile para facilitar o desenvolvimento e execução dos serviços:
+
+#### **🔨 Build Commands**
+```bash
+# Build do serviço API
+just build
+
+# Build do serviço Sync
+just build-sync
+
+# Build de ambos os serviços
+just build-all
+```
+
+#### **🏃‍♂️ Run Commands**
+```bash
+# Executar apenas a API
+just run
+
+# Executar apenas o serviço Sync
+just run-sync
+
+# Executar ambos os serviços (em terminais separados)
+just run-all
+
+# Iniciar ambos os serviços usando script de startup
+just start-services
+```
+
+#### **🧪 Test Commands**
+```bash
+# Executar testes
+just test
+
+# Executar testes com cobertura
+just test-coverage
+
+# Executar testes com race detection
+just test-race
+
+# Executar demo do sistema de cache
+just demo-cache
+```
+
+#### **🐳 Docker Commands**
+```bash
+# Build da imagem Docker
+just docker-build
+
+# Executar container Docker
+just docker-run
+```
+
+#### **📊 Dependencies Commands**
+```bash
+# Iniciar todas as dependências (MongoDB + Redis)
+just start-deps
+
+# Parar todas as dependências
+just stop-deps
+
+# Iniciar MongoDB
+just mongodb-start
+
+# Iniciar Redis
+just redis-start
+```
+
+### **🔄 Executando o Sistema Completo**
+
+#### **Opção 1: Script de Startup (Recomendado)**
+```bash
+# 1. Iniciar dependências
+just start-deps
+
+# 2. Iniciar ambos os serviços
+just start-services
+```
+
+#### **Opção 2: Terminais Separados**
+```bash
+# Terminal 1: API Service
+just run
+
+# Terminal 2: Sync Service  
+just run-sync
+```
+
+#### **Opção 3: Usando Tmux**
+```bash
+# Criar sessão tmux com ambos os serviços
+just run-all
+```
+
+### **📊 Monitorando o Sistema**
+
+#### **Verificar Status dos Serviços**
+```bash
+# Verificar se a API está rodando
+curl http://localhost:8080/v1/health
+
+# Verificar processos
+ps aux | grep api
+ps aux | grep sync
+
+# Verificar portas
+netstat -an | grep 8080
+```
+
+#### **Monitorar Redis**
+```bash
+# Verificar filas de sync
+redis-cli LLEN sync:queue:citizen
+redis-cli LLEN sync:queue:phone_mapping
+
+# Verificar chaves de cache
+redis-cli keys "citizen:write:*"
+redis-cli keys "citizen:cache:*"
+
+# Verificar DLQ
+redis-cli LLEN sync:dlq:citizen
+```
+
+#### **Executar Demo do Cache**
+```bash
+# Executar script de demonstração
+just demo-cache
+```
+
+### **🔧 Desenvolvimento**
+
+#### **Hot Reload para API**
+```bash
+# Executar com hot reload usando Air
+just dev
+```
+
+#### **Logs em Tempo Real**
+```bash
+# Ver logs da API (se disponível)
+tail -f logs/api.log
+
+# Ver logs do sync (se disponível)
+tail -f logs/sync.log
+```
+
+#### **Debug e Troubleshooting**
+```bash
+# Verificar linting
+just lint
+
+# Verificar dependências
+just deps-check
+
+# Atualizar dependências
+just deps-update
+```
+
+### **📋 Checklist de Deploy**
+
+#### **Antes de Executar**
+- [ ] MongoDB rodando na porta 27017
+- [ ] Redis rodando na porta 6379
+- [ ] Variáveis de ambiente configuradas
+- [ ] Dependências Go instaladas
+
+#### **Verificação de Funcionamento**
+- [ ] API responde em `/v1/health`
+- [ ] Sync workers estão processando jobs
+- [ ] Redis filas estão sendo consumidas
+- [ ] Métricas estão sendo coletadas
+
+#### **Monitoramento Contínuo**
+- [ ] Profundidade das filas Redis
+- [ ] Taxa de sucesso dos sync workers
+- [ ] Uso de memória Redis
+- [ ] Status do modo degradado
+
+---
+
+**💡 Dica**: Use `just start-services` para uma experiência de desenvolvimento mais fluida. O script gerencia ambos os serviços automaticamente e fornece logs consolidados.
