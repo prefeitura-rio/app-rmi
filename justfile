@@ -58,6 +58,16 @@ demo-cache:
     @echo "Running multi-level cache demo..."
     ./scripts/demo_cache.sh
 
+# Test the cache system
+test-cache:
+    @echo "Testing RMI cache system..."
+    ./scripts/test_cache_system.sh
+
+# Debug cache issues
+debug-cache:
+    @echo "Debugging RMI cache system..."
+    ./scripts/debug_cache.sh
+
 # Run tests with a specific CPF
 test-cpf cpf:
     go test -v ./... -cpf={{cpf}}

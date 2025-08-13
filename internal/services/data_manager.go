@@ -90,13 +90,37 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 func (dm *DataManager) Read(ctx context.Context, key string, collection string, dataType string, result interface{}) error {
 	// 1. Check Redis write buffer first (most recent data)
 	writeKey := fmt.Sprintf("%s:write:%s", dataType, key)
+	dm.logger.Info("DEBUG: DataManager.Read attempting to read from write buffer",
+		zap.String("type", dataType),
+		zap.String("key", key),
+		zap.String("writeKey", writeKey))
+	
 	if data, err := dm.redis.Get(ctx, writeKey).Result(); err == nil {
+		dataStr := string(data)
+		if len(dataStr) > 100 {
+			dataStr = dataStr[:100] + "..."
+		}
+		dm.logger.Info("DEBUG: Found data in write buffer",
+			zap.String("type", dataType),
+			zap.String("key", key),
+			zap.String("data", dataStr))
+		
 		if err := json.Unmarshal([]byte(data), result); err == nil {
-			dm.logger.Debug("data read from write buffer",
+			dm.logger.Info("DEBUG: Successfully unmarshaled data from write buffer",
 				zap.String("type", dataType),
 				zap.String("key", key))
 			return nil
+		} else {
+			dm.logger.Info("DEBUG: Failed to unmarshal data from write buffer",
+				zap.String("type", dataType),
+				zap.String("key", key),
+				zap.Error(err))
 		}
+	} else {
+		dm.logger.Info("DEBUG: Failed to read from write buffer",
+			zap.String("type", dataType),
+			zap.String("key", key),
+			zap.Error(err))
 	}
 
 	// 2. Check Redis read cache
@@ -111,7 +135,31 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 	}
 
 	// 3. Fall back to MongoDB
-	err := dm.mongo.Collection(collection).FindOne(ctx, bson.M{"_id": key}).Decode(result)
+	// Use appropriate filter based on collection type
+	var filter bson.M
+	switch collection {
+	case "citizens":
+		filter = bson.M{"cpf": key}
+	case "self_declared":
+		filter = bson.M{"cpf": key}
+	case "user_configs":
+		filter = bson.M{"cpf": key}
+	case "phone_cpf_mappings":
+		filter = bson.M{"phone": key}
+	case "opt_in_histories":
+		filter = bson.M{"cpf": key}
+	case "beta_groups":
+		filter = bson.M{"cpf": key}
+	case "phone_verifications":
+		filter = bson.M{"phone": key}
+	case "maintenance_requests":
+		filter = bson.M{"cpf": key}
+	default:
+		// Default to _id for other collections
+		filter = bson.M{"_id": key}
+	}
+
+	err := dm.mongo.Collection(collection).FindOne(ctx, filter).Decode(result)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return fmt.Errorf("document not found: %s", key)

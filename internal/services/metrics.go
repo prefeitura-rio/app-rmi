@@ -1,9 +1,14 @@
 package services
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Metrics holds all the metrics for the sync service
@@ -35,6 +40,17 @@ func (m *Metrics) RecordQueueDepth(queue string, depth int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.queueDepth[queue] = depth
+
+	// Update Prometheus metrics
+	observability.RMISyncQueueDepth.WithLabelValues(queue).Set(float64(depth))
+
+	// Send to OTLP via tracer if available
+	if span := trace.SpanFromContext(context.Background()); span != nil {
+		span.SetAttributes(
+			attribute.String("rmi.queue", queue),
+			attribute.Int64("rmi.queue_depth", depth),
+		)
+	}
 }
 
 // GetQueueDepth returns the current queue depth
@@ -50,6 +66,17 @@ func (m *Metrics) IncrementSyncOperations(queue string) {
 	defer m.mu.Unlock()
 	m.syncOperations[queue]++
 	m.lastSyncTime[queue] = time.Now()
+
+	// Update Prometheus metrics
+	observability.RMISyncOperationsTotal.WithLabelValues(queue, "success").Inc()
+
+	// Send to OTLP via tracer if available
+	if span := trace.SpanFromContext(context.Background()); span != nil {
+		span.SetAttributes(
+			attribute.String("rmi.queue", queue),
+			attribute.String("rmi.operation", "sync_success"),
+		)
+	}
 }
 
 // IncrementSyncFailures increments the sync failures counter
@@ -57,6 +84,18 @@ func (m *Metrics) IncrementSyncFailures(queue string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.syncFailures[queue]++
+
+	// Update Prometheus metrics
+	observability.RMISyncFailuresTotal.WithLabelValues(queue).Inc()
+	observability.RMISyncOperationsTotal.WithLabelValues(queue, "failure").Inc()
+
+	// Send to OTLP via tracer if available
+	if span := trace.SpanFromContext(context.Background()); span != nil {
+		span.SetAttributes(
+			attribute.String("rmi.queue", queue),
+			attribute.String("rmi.operation", "sync_failure"),
+		)
+	}
 }
 
 // IncrementCacheHits increments the cache hits counter
@@ -64,6 +103,17 @@ func (m *Metrics) IncrementCacheHits(cacheType string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.cacheHits[cacheType]++
+
+	// Update Prometheus metrics
+	observability.CacheHits.WithLabelValues(cacheType).Inc()
+
+	// Send to OTLP via tracer if available
+	if span := trace.SpanFromContext(context.Background()); span != nil {
+		span.SetAttributes(
+			attribute.String("rmi.cache_type", cacheType),
+			attribute.String("rmi.cache_result", "hit"),
+		)
+	}
 }
 
 // IncrementCacheMisses increments the cache misses counter
@@ -71,14 +121,31 @@ func (m *Metrics) IncrementCacheMisses(cacheType string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.cacheMisses[cacheType]++
+
+	// Send to OTLP via tracer if available
+	if span := trace.SpanFromContext(context.Background()); span != nil {
+		span.SetAttributes(
+			attribute.String("rmi.cache_type", cacheType),
+			attribute.String("rmi.cache_result", "miss"),
+		)
+	}
 }
 
 // SetDegradedMode sets whether degraded mode is active
 func (m *Metrics) SetDegradedMode(active bool) {
 	if active {
 		atomic.StoreInt64(&m.degradedMode, 1)
+		observability.RMIDegradedModeActive.Set(1)
 	} else {
 		atomic.StoreInt64(&m.degradedMode, 0)
+		observability.RMIDegradedModeActive.Set(0)
+	}
+
+	// Send to OTLP via tracer if available
+	if span := trace.SpanFromContext(context.Background()); span != nil {
+		span.SetAttributes(
+			attribute.Bool("rmi.degraded_mode", active),
+		)
 	}
 }
 
@@ -100,7 +167,12 @@ func (m *Metrics) GetCacheHitRatio(cacheType string) float64 {
 		return 0.0
 	}
 
-	return float64(hits) / float64(total)
+	ratio := float64(hits) / float64(total)
+
+	// Update Prometheus metrics
+	observability.RMICacheHitRatio.WithLabelValues(cacheType).Set(ratio)
+
+	return ratio
 }
 
 // GetLastSyncTime returns the last sync time for a queue

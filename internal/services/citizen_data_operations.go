@@ -222,3 +222,147 @@ func (op *MaintenanceRequestDataOperation) GetTTL() time.Duration {
 func (op *MaintenanceRequestDataOperation) GetType() string {
 	return "maintenance_request"
 }
+
+// SelfDeclaredAddressDataOperation implements DataOperation for self-declared address data
+type SelfDeclaredAddressDataOperation struct {
+	CPF       string
+	Endereco  *models.Endereco
+	UpdatedAt time.Time
+}
+
+// GetKey returns the CPF as the key
+func (op *SelfDeclaredAddressDataOperation) GetKey() string {
+	return op.CPF
+}
+
+// GetCollection returns the self-declared collection name
+func (op *SelfDeclaredAddressDataOperation) GetCollection() string {
+	return "self_declared"
+}
+
+// GetData returns the self-declared address data
+func (op *SelfDeclaredAddressDataOperation) GetData() interface{} {
+	return map[string]interface{}{
+		"cpf":        op.CPF,
+		"endereco":   op.Endereco,
+		"updated_at": op.UpdatedAt,
+	}
+}
+
+// GetTTL returns the TTL for self-declared address data (24 hours)
+func (op *SelfDeclaredAddressDataOperation) GetTTL() time.Duration {
+	return 24 * time.Hour
+}
+
+// GetType returns the operation type
+func (op *SelfDeclaredAddressDataOperation) GetType() string {
+	return "self_declared_address"
+}
+
+// SelfDeclaredEmailDataOperation implements DataOperation for self-declared email data
+type SelfDeclaredEmailDataOperation struct {
+	CPF       string
+	Email     *models.Email
+	UpdatedAt time.Time
+}
+
+// GetKey returns the CPF as the key
+func (op *SelfDeclaredEmailDataOperation) GetKey() string {
+	return op.CPF
+}
+
+// GetCollection returns the self-declared collection name
+func (op *SelfDeclaredEmailDataOperation) GetCollection() string {
+	return "self_declared"
+}
+
+// GetData returns the self-declared email data
+func (op *SelfDeclaredEmailDataOperation) GetData() interface{} {
+	return map[string]interface{}{
+		"cpf":        op.CPF,
+		"email":      op.Email,
+		"updated_at": op.UpdatedAt,
+	}
+}
+
+// GetTTL returns the TTL for self-declared email data (24 hours)
+func (op *SelfDeclaredEmailDataOperation) GetTTL() time.Duration {
+	return 24 * time.Hour
+}
+
+// GetType returns the operation type
+func (op *SelfDeclaredEmailDataOperation) GetType() string {
+	return "self_declared_email"
+}
+
+// SelfDeclaredPhoneDataOperation implements DataOperation for self-declared phone data
+type SelfDeclaredPhoneDataOperation struct {
+	CPF       string
+	Telefone  *models.Telefone
+	UpdatedAt time.Time
+}
+
+// GetKey returns the CPF as the key
+func (op *SelfDeclaredPhoneDataOperation) GetKey() string {
+	return op.CPF
+}
+
+// GetCollection returns the self-declared collection name
+func (op *SelfDeclaredPhoneDataOperation) GetCollection() string {
+	return "self_declared"
+}
+
+// GetData returns the self-declared phone data
+func (op *SelfDeclaredPhoneDataOperation) GetData() interface{} {
+	return map[string]interface{}{
+		"cpf":        op.CPF,
+		"telefone":   op.Telefone,
+		"updated_at": op.UpdatedAt,
+	}
+}
+
+// GetTTL returns the TTL for self-declared phone data (24 hours)
+func (op *SelfDeclaredPhoneDataOperation) GetTTL() time.Duration {
+	return 24 * time.Hour
+}
+
+// GetType returns the operation type
+func (op *SelfDeclaredPhoneDataOperation) GetType() string {
+	return "self_declared_phone"
+}
+
+// SelfDeclaredRacaDataOperation implements DataOperation for self-declared ethnicity data
+type SelfDeclaredRacaDataOperation struct {
+	CPF       string
+	Raca      string
+	UpdatedAt time.Time
+}
+
+// GetKey returns the CPF as the key
+func (op *SelfDeclaredRacaDataOperation) GetKey() string {
+	return op.CPF
+}
+
+// GetCollection returns the self-declared collection name
+func (op *SelfDeclaredRacaDataOperation) GetCollection() string {
+	return "self_declared"
+}
+
+// GetData returns the self-declared ethnicity data
+func (op *SelfDeclaredRacaDataOperation) GetData() interface{} {
+	return map[string]interface{}{
+		"cpf":        op.CPF,
+		"raca":       op.Raca,
+		"updated_at": op.UpdatedAt,
+	}
+}
+
+// GetTTL returns the TTL for self-declared ethnicity data (24 hours)
+func (op *SelfDeclaredRacaDataOperation) GetTTL() time.Duration {
+	return 24 * time.Hour
+}
+
+// GetType returns the operation type
+func (op *SelfDeclaredRacaDataOperation) GetType() string {
+	return "self_declared_raca"
+}

@@ -9,10 +9,10 @@ definitions:
     properties:
       services:
         additionalProperties:
-          type: string
+          $ref: '#/definitions/handlers.ServiceHealth'
         type: object
       status:
-        type: string
+        type: boolean
       timestamp:
         type: string
     type: object
@@ -52,6 +52,15 @@ definitions:
       valid:
         description: Indica se o número é válido.
         type: boolean
+    type: object
+  handlers.ServiceHealth:
+    properties:
+      message:
+        type: string
+      status:
+        type: boolean
+      timestamp:
+        type: string
     type: object
   handlers.SuccessResponse:
     properties:
@@ -1242,10 +1251,15 @@ paths:
       - phone
   /citizen/{cpf}:
     get:
-      description: Obtém os dados completos de um cidadão, incluindo dados autodeclarados
+      consumes:
+      - application/json
+      description: Recupera os dados do cidadão por CPF, incluindo informações básicas
+        e dados autodeclarados.
       parameters:
-      - description: Número do CPF
+      - description: CPF do cidadão (11 dígitos)
         in: path
+        maxLength: 11
+        minLength: 11
         name: cpf
         required: true
         type: string
@@ -1253,11 +1267,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Dados do cidadão
           schema:
             $ref: '#/definitions/models.Citizen'
         "400":
-          description: Bad Request
+          description: Formato de CPF inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1314,8 +1328,8 @@ paths:
           description: Acesso negado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
+        "409":
+          description: Endereço não alterado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
@@ -1841,13 +1855,26 @@ paths:
           description: Todos os serviços estão saudáveis
           schema:
             $ref: '#/definitions/handlers.HealthResponse'
-        "503":
-          description: Um ou mais serviços estão indisponíveis
+        "500":
+          description: Um ou mais serviços não estão saudáveis
           schema:
-            $ref: '#/definitions/handlers.HealthResponse'
+            $ref: '#/definitions/handlers.ErrorResponse'
       summary: Verificação de saúde
       tags:
       - health
+  /metrics:
+    get:
+      description: Expõe métricas Prometheus para monitoramento do sistema
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Métricas Prometheus
+          schema:
+            type: string
+      summary: Métricas Prometheus
+      tags:
+      - metrics
   /phone/{phone_number}/beta-status:
     get:
       description: Verifica se um número de telefone está na whitelist beta (com cache)

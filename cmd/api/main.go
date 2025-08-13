@@ -68,6 +68,10 @@ func main() {
 	observability.InitTracer()
 	defer observability.ShutdownTracer()
 
+	// Initialize metrics system
+	observability.InitMetrics()
+	defer observability.ShutdownMetrics()
+
 	// Initialize database connections
 	config.InitMongoDB()
 	config.InitRedis()
@@ -115,6 +119,9 @@ func main() {
 	{
 		// Health check endpoint (no auth required)
 		v1.GET("/health", handlers.HealthCheck)
+
+		// Metrics endpoint (no auth required) - for Prometheus scraping
+		v1.GET("/metrics", handlers.MetricsHandler)
 
 		// Citizen endpoints (require auth)
 		citizen := v1.Group("/citizen")

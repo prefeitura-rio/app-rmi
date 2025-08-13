@@ -9,6 +9,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -115,53 +116,56 @@ func ValidatePhoneVerification(c *gin.Context) {
 	utils.AddSpanAttribute(findSpan, "verification.expires_at", verification.ExpiresAt.String())
 	findSpan.End()
 
-	// Update self-declared data to replace the phone number with the verified one with tracing
-	ctx, prepareSpan := utils.TraceBusinessLogic(ctx, "prepare_phone_verification_update")
+	// Prepare verified phone data with tracing
+	ctx, prepareSpan := utils.TraceBusinessLogic(ctx, "prepare_verified_phone_data")
 	origem := "self-declared"
 	sistema := "rmi"
 	now := time.Now()
-	if verification.Telefone != nil {
-		verification.Telefone.Indicador = new(bool)
-		*verification.Telefone.Indicador = true
-		if verification.Telefone.Principal != nil {
-			verification.Telefone.Principal.Origem = &origem
-			verification.Telefone.Principal.Sistema = &sistema
-			verification.Telefone.Principal.UpdatedAt = &now
-		}
+	
+	// Build verified phone object
+	telefone := models.Telefone{
+		Indicador: utils.BoolPtr(true), // Set to true since it's now verified
+		Principal: &models.TelefonePrincipal{
+			DDI:       &req.DDI,
+			DDD:       &req.DDD,
+			Valor:     &req.Valor,
+			Origem:    &origem,
+			Sistema:   &sistema,
+			UpdatedAt: &now,
+		},
 	}
 	prepareSpan.End()
 
-	update := bson.M{
-		"$set": bson.M{
-			"telefone":   verification.Telefone,
-			"updated_at": time.Now(),
-		},
-		"$unset": bson.M{
-			"telefone_pending": "",
-		},
-	}
-
-	// Update self-declared data directly (no transaction needed for single collection)
-	ctx, updateSpan := utils.TraceDatabaseUpsert(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
-	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
-		ctx,
-		bson.M{"cpf": cpf},
-		update,
-		utils.GetUpdateOptionsWithWriteConcern("user_data", true),
-	)
+	// Use cache service for verified phone update with tracing
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_verified_phone_via_cache")
+	cacheService := services.NewCacheService()
+	err = cacheService.UpdateSelfDeclaredPhone(ctx, cpf, &telefone)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.SelfDeclaredCollection,
-			"db.operation":  "upsert",
+			"cache.operation": "update_verified_phone",
+			"cache.service":   "unified_cache_service",
 		})
 		updateSpan.End()
-		observability.Logger().Error("failed to update self-declared data", zap.Error(err))
+		observability.Logger().Error("failed to update verified phone via cache service", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Error: "Failed to update phone data",
 		})
 		return
 	}
 	updateSpan.End()
+
+	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+
+	// Invalidate cache with tracing
+	ctx, cacheInvalidateSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
+	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
+		utils.RecordErrorInSpan(cacheInvalidateSpan, err, map[string]interface{}{
+			"cache.key": cacheKey,
+		})
+		observability.Logger().Warn("failed to invalidate cache", zap.Error(err))
+	}
+	cacheInvalidateSpan.End()
 
 	// Clean up verification data separately
 	ctx, cleanupSpan, cleanupCleanup := utils.TraceDatabaseOperation(ctx, "cleanup_verification", "delete", "cpf")

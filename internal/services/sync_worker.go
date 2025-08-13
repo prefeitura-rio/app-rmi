@@ -44,6 +44,10 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 			"beta_group",
 			"phone_verification",
 			"maintenance_request",
+			"self_declared_address",
+			"self_declared_email",
+			"self_declared_phone",
+			"self_declared_raca",
 		},
 	}
 }
@@ -80,14 +84,25 @@ func (w *SyncWorker) processQueues() {
 			continue
 		}
 
+		// Log which queue we're checking
+		w.logger.Info("checking queue for jobs", zap.String("queue", queue))
+
 		// Try to get a job from the queue
 		job, err := w.getJob(queue)
 		if err != nil {
+			w.logger.Info("error getting job from queue",
+				zap.String("queue", queue),
+				zap.Error(err))
 			continue
 		}
 
 		if job != nil {
+			w.logger.Info("found job to process",
+				zap.String("queue", queue),
+				zap.String("job_id", job.ID))
 			w.processJob(job)
+		} else {
+			w.logger.Info("no jobs available in queue", zap.String("queue", queue))
 		}
 	}
 }

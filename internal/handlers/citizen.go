@@ -13,6 +13,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -24,13 +25,14 @@ import (
 
 // GetCitizenData godoc
 // @Summary Obter dados do cidadão
-// @Description Obtém os dados completos de um cidadão, incluindo dados autodeclarados
+// @Description Recupera os dados do cidadão por CPF, incluindo informações básicas e dados autodeclarados.
 // @Tags citizen
+// @Accept json
 // @Produce json
-// @Param cpf path string true "Número do CPF"
+// @Param cpf path string true "CPF do cidadão (11 dígitos)" minLength(11) maxLength(11)
 // @Security BearerAuth
-// @Success 200 {object} models.Citizen
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} models.Citizen "Dados do cidadão"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado"
 // @Failure 404 {object} ErrorResponse
@@ -64,46 +66,15 @@ func GetCitizenData(c *gin.Context) {
 	}
 	cpfSpan.End()
 
-	// Check cache with tracing
-	ctx, cacheSpan := utils.TraceCacheGet(ctx, fmt.Sprintf("citizen:%s", cpf))
-	cacheKey := fmt.Sprintf("citizen:%s", cpf)
-	cachedData, err := config.Redis.Get(ctx, cacheKey).Result()
-	if err == nil {
-		utils.AddSpanAttribute(cacheSpan, "cache.hit", true)
-		observability.CacheHits.WithLabelValues("citizen_data").Inc()
-		var citizen models.Citizen
-		if err := json.Unmarshal([]byte(cachedData), &citizen); err == nil {
-			cacheSpan.End()
-
-			// Serialize response with tracing
-			_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
-			c.JSON(http.StatusOK, citizen)
-			responseSpan.End()
-
-			// Log total operation time
-			totalDuration := time.Since(startTime)
-			logger.Info("GetCitizenData completed (cache hit)",
-				zap.String("cpf", cpf),
-				zap.Duration("total_duration", totalDuration),
-				zap.String("status", "success"))
-			return
-		}
-		utils.AddSpanAttribute(cacheSpan, "cache.unmarshal_error", err.Error())
-		observability.Logger().Warn("failed to unmarshal cached citizen data", zap.Error(err))
-	}
-	utils.AddSpanAttribute(cacheSpan, "cache.hit", false)
-	cacheSpan.End()
-
-	// Get citizen data from database with tracing
-	ctx, dbSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.CitizenCollection, "cpf")
-	var citizen models.Citizen
-	err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
+	// Use getMergedCitizenData which implements cache-aware reading
+	ctx, getDataSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.CitizenCollection, "cpf")
+	citizen, err := getMergedCitizenData(ctx, cpf)
 	if err != nil {
-		utils.RecordErrorInSpan(dbSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.CitizenCollection,
-			"db.filter":     "cpf",
+		utils.RecordErrorInSpan(getDataSpan, err, map[string]interface{}{
+			"operation": "getMergedCitizenData",
+			"cpf":       cpf,
 		})
-		dbSpan.End()
+		getDataSpan.End()
 		if err == mongo.ErrNoDocuments {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Citizen not found"})
 			return
@@ -112,69 +83,14 @@ func GetCitizenData(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error"})
 		return
 	}
-	utils.AddSpanAttribute(dbSpan, "response.citizen_found", true)
-	dbSpan.End()
+	getDataSpan.End()
 
 	observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
 
-	// Get self-declared data with tracing
-	ctx, selfDeclaredSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
-	var selfDeclared models.SelfDeclaredData
-	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&selfDeclared)
-	if err == nil {
-		observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
-		logger.Info("found self-declared data",
-			zap.Any("email", selfDeclared.Email),
-			zap.Any("telefone", selfDeclared.Telefone),
-			zap.Any("endereco", selfDeclared.Endereco),
-			zap.Any("raca", selfDeclared.Raca),
-			zap.Any("raw_data", selfDeclared))
-
-		// Merge self-declared data with tracing
-		_, mergeSpan := utils.TraceBusinessLogic(ctx, "merge_self_declared_data")
-		if selfDeclared.Endereco != nil && selfDeclared.Endereco.Principal != nil {
-			logger.Info("merging endereco", zap.Any("endereco", selfDeclared.Endereco))
-			if citizen.Endereco == nil {
-				citizen.Endereco = &models.Endereco{}
-			}
-			citizen.Endereco.Principal = selfDeclared.Endereco.Principal
-			if citizen.Endereco.Indicador == nil {
-				citizen.Endereco.Indicador = utils.BoolPtr(true)
-			}
-		}
-		if selfDeclared.Email != nil && selfDeclared.Email.Principal != nil {
-			logger.Info("merging email", zap.Any("email", selfDeclared.Email))
-			if citizen.Email == nil {
-				citizen.Email = &models.Email{}
-			}
-			citizen.Email.Principal = selfDeclared.Email.Principal
-			if citizen.Email.Indicador == nil {
-				citizen.Email.Indicador = utils.BoolPtr(true)
-			}
-		}
-		if selfDeclared.Telefone != nil && selfDeclared.Telefone.Principal != nil && selfDeclared.Telefone.Indicador != nil && *selfDeclared.Telefone.Indicador {
-			logger.Info("merging telefone", zap.Any("telefone", selfDeclared.Telefone))
-			if citizen.Telefone == nil {
-				citizen.Telefone = &models.Telefone{}
-			}
-			citizen.Telefone.Principal = selfDeclared.Telefone.Principal
-			citizen.Telefone.Indicador = utils.BoolPtr(true)
-		}
-		if selfDeclared.Raca != nil {
-			logger.Info("merging raca", zap.Any("raca", selfDeclared.Raca))
-			citizen.Raca = selfDeclared.Raca
-		}
-		mergeSpan.End()
-	} else if err != mongo.ErrNoDocuments {
-		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
-		logger.Warn("failed to get self-declared data", zap.Error(err))
-	}
-	selfDeclaredSpan.End()
-
-	// Cache the result with tracing
-	ctx, cacheSetSpan := utils.TraceCacheSet(ctx, cacheKey, config.AppConfig.RedisTTL)
+	// Cache the merged result with tracing
+	ctx, cacheSetSpan := utils.TraceCacheSet(ctx, fmt.Sprintf("citizen:%s", cpf), config.AppConfig.RedisTTL)
 	if jsonData, err := json.Marshal(citizen); err == nil {
-		config.Redis.Set(ctx, cacheKey, jsonData, config.AppConfig.RedisTTL)
+		config.Redis.Set(ctx, fmt.Sprintf("citizen:%s", cpf), jsonData, config.AppConfig.RedisTTL)
 		utils.AddSpanAttribute(cacheSetSpan, "cache.set_success", true)
 	} else {
 		utils.RecordErrorInSpan(cacheSetSpan, err, map[string]interface{}{
@@ -198,15 +114,101 @@ func GetCitizenData(c *gin.Context) {
 
 // Helper: Get merged citizen data (as delivered by /citizen/{cpf})
 func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, error) {
+	// Create data manager for cache-aware reads
+	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
+	
 	var citizen models.Citizen
-	err := config.MongoDB.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
+	err := dataManager.Read(ctx, cpf, config.AppConfig.CitizenCollection, "citizen", &citizen)
+	if err != nil && err != mongo.ErrNoDocuments {
+		// Fallback to direct MongoDB query if DataManager fails
+		err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
+		if err != nil && err != mongo.ErrNoDocuments {
+			return nil, err
+		}
+	}
+	
+	var selfDeclared models.SelfDeclaredData
+	
+	// Try to read from cache first for address data
+	var addressData struct {
+		CPF       string              `json:"cpf"`
+		Endereco  *models.Endereco    `json:"endereco"`
+		UpdatedAt string              `json:"updated_at"`  // Use string to avoid time parsing issues
+	}
+	observability.Logger().Info("DEBUG: About to call DataManager.Read for address", 
+		zap.String("cpf", cpf),
+		zap.String("collection", config.AppConfig.SelfDeclaredCollection),
+		zap.String("dataType", "self_declared_address"))
+	
+	err = dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_address", &addressData)
+	if err == nil && addressData.Endereco != nil {
+		// Use cached address data
+		selfDeclared.Endereco = addressData.Endereco
+		observability.Logger().Info("Using cached address data", 
+			zap.String("cpf", cpf),
+			zap.String("logradouro", *addressData.Endereco.Principal.Logradouro))
+	} else {
+		observability.Logger().Info("Failed to read address from cache", 
+			zap.String("cpf", cpf),
+			zap.Error(err),
+			zap.Bool("endereco_nil", addressData.Endereco == nil))
+	}
+	
+	// Try to read from cache for email data
+	var emailData struct {
+		CPF       string          `json:"cpf"`
+		Email     *models.Email   `json:"email"`
+		UpdatedAt string          `json:"updated_at"`
+	}
+	err = dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_email", &emailData)
+	if err == nil && emailData.Email != nil {
+		// Use cached email data
+		selfDeclared.Email = emailData.Email
+	}
+	
+	// Try to read from cache for phone data
+	var phoneData struct {
+		CPF       string             `json:"cpf"`
+		Telefone  *models.Telefone   `json:"telefone"`
+		UpdatedAt string             `json:"updated_at"`
+	}
+	err = dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_phone", &phoneData)
+	if err == nil && phoneData.Telefone != nil {
+		// Use cached phone data
+		selfDeclared.Telefone = phoneData.Telefone
+	}
+	
+	// Try to read from cache for ethnicity data
+	var racaData struct {
+		CPF       string      `json:"cpf"`
+		Raca      *string     `json:"raca"`
+		UpdatedAt string      `json:"updated_at"`
+	}
+	err = dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_raca", &racaData)
+	if err == nil && racaData.Raca != nil {
+		// Use cached raca data
+		selfDeclared.Raca = racaData.Raca
+	}
+	
+	// Fallback to MongoDB for complete self-declared data (for any missing data)
+	var mongoSelfDeclared models.SelfDeclaredData
+	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&mongoSelfDeclared)
 	if err != nil && err != mongo.ErrNoDocuments {
 		return nil, err
 	}
-	var selfDeclared models.SelfDeclaredData
-	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&selfDeclared)
-	if err != nil && err != mongo.ErrNoDocuments {
-		return nil, err
+	
+	// Merge MongoDB data with cached data (cache takes precedence)
+	if selfDeclared.Endereco == nil && mongoSelfDeclared.Endereco != nil {
+		selfDeclared.Endereco = mongoSelfDeclared.Endereco
+	}
+	if selfDeclared.Email == nil && mongoSelfDeclared.Email != nil {
+		selfDeclared.Email = mongoSelfDeclared.Email
+	}
+	if selfDeclared.Telefone == nil && mongoSelfDeclared.Telefone != nil {
+		selfDeclared.Telefone = mongoSelfDeclared.Telefone
+	}
+	if selfDeclared.Raca == nil && mongoSelfDeclared.Raca != nil {
+		selfDeclared.Raca = mongoSelfDeclared.Raca
 	}
 	// Merge logic (same as in GetCitizenData)
 	if selfDeclared.Endereco != nil && selfDeclared.Endereco.Principal != nil {
@@ -254,7 +256,7 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado"
-// @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse "Endereço não alterado"
 // @Failure 500 {object} ErrorResponse
 // @Router /citizen/{cpf}/address [put]
 func UpdateSelfDeclaredAddress(c *gin.Context) {
@@ -268,32 +270,11 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	// Add CPF to span attributes
 	span.SetAttributes(
 		attribute.String("cpf", cpf),
-		attribute.String("operation", "update_address"),
+		attribute.String("operation", "update_self_declared_address"),
 		attribute.String("service", "citizen"),
 	)
 
 	logger.Info("UpdateSelfDeclaredAddress called", zap.String("cpf", cpf))
-
-	// Parse input with tracing
-	ctx, inputSpan := utils.TraceInputParsing(ctx, "address")
-	var input models.SelfDeclaredAddressInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		utils.RecordErrorInSpan(inputSpan, err, map[string]interface{}{
-			"error.type": "input_parsing",
-			"input.type": "SelfDeclaredAddressInput",
-		})
-		inputSpan.End()
-		logger.Error("failed to parse input", zap.Error(err))
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid request body: " + err.Error()})
-		return
-	}
-	utils.AddSpanAttribute(inputSpan, "input.bairro", input.Bairro)
-	utils.AddSpanAttribute(inputSpan, "input.cep", input.CEP)
-	utils.AddSpanAttribute(inputSpan, "input.estado", input.Estado)
-	utils.AddSpanAttribute(inputSpan, "input.logradouro", input.Logradouro)
-	utils.AddSpanAttribute(inputSpan, "input.municipio", input.Municipio)
-	utils.AddSpanAttribute(inputSpan, "input.numero", input.Numero)
-	inputSpan.End()
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -306,6 +287,25 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		return
 	}
 	cpfSpan.End()
+
+	// Parse input with tracing
+	ctx, parseSpan := utils.TraceInputParsing(ctx, "address_input")
+	var input models.SelfDeclaredAddressInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.RecordErrorInSpan(parseSpan, err, map[string]interface{}{
+			"input": input,
+		})
+		parseSpan.End()
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid input: " + err.Error()})
+		return
+	}
+	parseSpan.End()
+
+	// Validate input with tracing
+	ctx, validateSpan := utils.TraceInputValidation(ctx, "address_validation", "address")
+	// Note: SelfDeclaredAddressInput doesn't have a Validate method
+	// We'll rely on the binding validation and business logic validation
+	validateSpan.End()
 
 	// Get current data for comparison with tracing
 	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.CitizenCollection, "cpf")
@@ -364,45 +364,41 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	}
 	buildSpan.End()
 
-	// Update database with tracing
-	ctx, updateSpan := utils.TraceDatabaseUpsert(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
-	update := bson.M{
-		"$set": bson.M{
-			"endereco":   endereco,
-			"updated_at": time.Now(),
-		},
-	}
+	// Use cache service for update with tracing
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_citizen_via_cache")
 
-	// Use direct database operation for better performance
-	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
-		ctx,
-		bson.M{"cpf": cpf},
-		update,
-		options.Update().SetUpsert(true),
-	)
+	// Create unified cache service
+	cacheService := services.NewCacheService()
+
+	// Update via cache service (this will queue for MongoDB sync)
+	err = cacheService.UpdateSelfDeclaredAddress(ctx, cpf, &endereco)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.SelfDeclaredCollection,
-			"db.operation":  "upsert",
+			"cache.operation": "update_self_declared_address",
+			"cache.service":   "unified_cache_service",
 		})
 		updateSpan.End()
-		logger.Error("failed to update self-declared address", zap.Error(err))
+		logger.Error("failed to update self-declared address via cache service", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update address: " + err.Error()})
 		return
 	}
 	updateSpan.End()
 
-	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+	// Record metrics
+	observability.SelfDeclaredUpdates.WithLabelValues("success").Inc()
 
-	// Invalidate cache with tracing
+	// Invalidate old cache with tracing
 	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	cacheStart := time.Now()
 	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
-		utils.RecordErrorInSpan(cacheSpan, err, map[string]interface{}{
-			"cache.key": cacheKey,
-		})
-		logger.Warn("failed to invalidate cache", zap.Error(err))
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_error", err.Error())
+		logger.Warn("failed to invalidate old cache", zap.Error(err))
+	} else {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_success", true)
 	}
+	cacheDuration := time.Since(cacheStart)
+	utils.AddSpanAttribute(cacheSpan, "cache.duration_ms", cacheDuration.Milliseconds())
 	cacheSpan.End()
 
 	// Log audit event with tracing
@@ -415,17 +411,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		RequestID: c.GetString("RequestID"),
 	}
 
-	oldValue := "none"
-	if current.Endereco != nil && current.Endereco.Principal != nil {
-		oldValue = fmt.Sprintf("%s, %s, %s",
-			*current.Endereco.Principal.Logradouro,
-			*current.Endereco.Principal.Numero,
-			*current.Endereco.Principal.Bairro)
-	}
-
-	newValue := fmt.Sprintf("%s, %s, %s", input.Logradouro, input.Numero, input.Bairro)
-
-	err = utils.LogAddressUpdate(ctx, auditCtx, oldValue, newValue)
+	err = utils.LogAddressUpdate(ctx, auditCtx, current.Endereco, &endereco)
 	if err != nil {
 		utils.RecordErrorInSpan(auditSpan, err, map[string]interface{}{
 			"audit.action":   "update",
@@ -445,6 +431,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	logger.Info("UpdateSelfDeclaredAddress completed",
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
+		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
 }
 
@@ -543,23 +530,56 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	fullPhone := input.DDI + input.DDD + input.Valor
 	buildSpan.End()
 
-	// Delete previous verifications with tracing
-	ctx, deleteSpan := utils.TraceDatabaseUpdate(ctx, config.AppConfig.PhoneVerificationCollection, "cpf", false)
-	verColl := config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection)
-	_, err = verColl.DeleteMany(ctx, bson.M{"cpf": cpf})
-	if err != nil {
-		utils.RecordErrorInSpan(deleteSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.PhoneVerificationCollection,
-			"db.operation":  "delete_many",
-		})
-		logger.Warn("failed to delete previous verifications", zap.Error(err))
+	// Build phone object with tracing
+	ctx, buildPhoneSpan := utils.TraceBusinessLogic(ctx, "build_phone_object")
+	origem := "self-declared"
+	sistema := "rmi"
+	now := time.Now()
+	telefone := models.Telefone{
+		Indicador: utils.BoolPtr(false), // Set to false initially (pending verification)
+		Principal: &models.TelefonePrincipal{
+			DDI:       &input.DDI,
+			DDD:       &input.DDD,
+			Valor:     &input.Valor,
+			Origem:    &origem,
+			Sistema:   &sistema,
+			UpdatedAt: &now,
+		},
 	}
-	deleteSpan.End()
+	buildPhoneSpan.End()
 
-	// Generate verification code with tracing
+	// Use cache service for update with tracing
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_phone_via_cache")
+	cacheService := services.NewCacheService()
+	err = cacheService.UpdateSelfDeclaredPhone(ctx, cpf, &telefone)
+	if err != nil {
+		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
+			"cache.operation": "update_self_declared_phone",
+			"cache.service":   "unified_cache_service",
+		})
+		updateSpan.End()
+		logger.Error("failed to update self-declared phone via cache service", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update phone: " + err.Error()})
+		return
+	}
+	updateSpan.End()
+
+	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+
+	// Invalidate cache with tracing
+	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
+	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
+		utils.RecordErrorInSpan(cacheSpan, err, map[string]interface{}{
+			"cache.key": cacheKey,
+		})
+		logger.Warn("failed to invalidate cache", zap.Error(err))
+	}
+	cacheSpan.End()
+
+	// Generate verification code for phone verification process with tracing
 	ctx, codeSpan := utils.TraceBusinessLogic(ctx, "generate_verification_code")
 	code := utils.GenerateVerificationCode()
-	now := time.Now()
 	expiresAt := now.Add(config.AppConfig.PhoneVerificationTTL)
 	codeSpan.End()
 
@@ -576,6 +596,19 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	}
 	dataSpan.End()
 
+	// Delete previous verifications with tracing
+	ctx, deleteSpan := utils.TraceDatabaseUpdate(ctx, config.AppConfig.PhoneVerificationCollection, "cpf", false)
+	verColl := config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection)
+	_, err = verColl.DeleteMany(ctx, bson.M{"cpf": cpf})
+	if err != nil {
+		utils.RecordErrorInSpan(deleteSpan, err, map[string]interface{}{
+			"db.collection": config.AppConfig.PhoneVerificationCollection,
+			"db.operation":  "delete_many",
+		})
+		logger.Warn("failed to delete previous verifications", zap.Error(err))
+	}
+	deleteSpan.End()
+
 	// Create verification record with tracing
 	ctx, createSpan := utils.TraceDatabaseUpdate(ctx, config.AppConfig.PhoneVerificationCollection, "cpf", false)
 	if err := utils.CreatePhoneVerification(ctx, verificationData); err != nil {
@@ -589,20 +622,6 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 		return
 	}
 	createSpan.End()
-
-	// Update pending phone with tracing
-	ctx, updateSpan := utils.TraceDatabaseUpdate(ctx, config.AppConfig.SelfDeclaredCollection, "cpf", false)
-	if err := utils.UpdateSelfDeclaredPendingPhone(ctx, cpf, verificationData); err != nil {
-		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.SelfDeclaredCollection,
-			"db.operation":  "update_pending_phone",
-		})
-		updateSpan.End()
-		logger.Error("failed to update pending phone", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update pending phone: " + err.Error()})
-		return
-	}
-	updateSpan.End()
 
 	// Log audit event with tracing
 	ctx, auditSpan := utils.TraceAuditLogging(ctx, "update", "phone")
@@ -749,29 +768,17 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 	}
 	buildSpan.End()
 
-	// Update database with tracing
-	ctx, updateSpan := utils.TraceDatabaseUpsert(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
-	update := bson.M{
-		"$set": bson.M{
-			"email":      email,
-			"updated_at": time.Now(),
-		},
-	}
-
-	// Use direct database operation for better performance
-	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
-		ctx,
-		bson.M{"cpf": cpf},
-		update,
-		options.Update().SetUpsert(true),
-	)
+	// Use cache service for update with tracing
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_email_via_cache")
+	cacheService := services.NewCacheService()
+	err = cacheService.UpdateSelfDeclaredEmail(ctx, cpf, &email)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.SelfDeclaredCollection,
-			"db.operation":  "upsert",
+			"cache.operation": "update_self_declared_email",
+			"cache.service":   "unified_cache_service",
 		})
 		updateSpan.End()
-		logger.Error("failed to update self-declared email", zap.Error(err))
+		logger.Error("failed to update self-declared email via cache service", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update email: " + err.Error()})
 		return
 	}
@@ -918,30 +925,18 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 	utils.AddSpanAttribute(findSpan, "document_exists", err != mongo.ErrNoDocuments)
 	findSpan.End()
 
-	// Update ethnicity with tracing
-	ctx, updateSpan := utils.TraceDatabaseUpsert(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
-	selfDeclared.CPF = cpf
-	selfDeclared.Raca = &input.Valor
-
-	// Use direct database operation for better performance
-	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(
-		ctx,
-		bson.M{"cpf": cpf},
-		bson.M{"$set": bson.M{
-			"cpf":        cpf,
-			"raca":       input.Valor,
-			"updated_at": time.Now(),
-		}},
-		options.Update().SetUpsert(true),
-	)
+	// Use cache service for update with tracing
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_ethnicity_via_cache")
+	cacheService := services.NewCacheService()
+	err = cacheService.UpdateSelfDeclaredRaca(ctx, cpf, input.Valor)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.SelfDeclaredCollection,
-			"db.operation":  "upsert",
+			"cache.operation": "update_self_declared_raca",
+			"cache.service":   "unified_cache_service",
 		})
 		updateSpan.End()
 		observability.DatabaseOperations.WithLabelValues("update", "error").Inc()
-		logger.Error("failed to update self-declared data", zap.Error(err))
+		logger.Error("failed to update self-declared ethnicity via cache service", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
 		return
 	}
@@ -956,10 +951,10 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)
 	cacheStart := time.Now()
 	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
-		utils.RecordErrorInSpan(cacheSpan, err, map[string]interface{}{
-			"cache.key": cacheKey,
-		})
-		logger.Warn("failed to invalidate cache", zap.Error(err))
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_error", err.Error())
+		logger.Warn("failed to invalidate old cache", zap.Error(err))
+	} else {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_success", true)
 	}
 	cacheDuration := time.Since(cacheStart)
 	utils.AddSpanAttribute(cacheSpan, "cache.duration_ms", cacheDuration.Milliseconds())
@@ -1005,144 +1000,109 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 // @Tags health
 // @Produce json
 // @Success 200 {object} HealthResponse "Todos os serviços estão saudáveis"
-// @Failure 503 {object} HealthResponse "Um ou mais serviços estão indisponíveis"
+// @Failure 500 {object} ErrorResponse "Um ou mais serviços não estão saudáveis"
 // @Router /health [get]
 func HealthCheck(c *gin.Context) {
-	startTime := time.Now()
 	ctx, span := otel.Tracer("").Start(c.Request.Context(), "HealthCheck")
 	defer span.End()
 
-	// Add operation to span attributes
-	span.SetAttributes(
-		attribute.String("operation", "health_check"),
-		attribute.String("service", "health"),
-	)
-
 	logger := observability.Logger()
-	logger.Info("HealthCheck called")
+	logger.Info("Health check requested")
 
-	// Try to get from cache first with tracing
-	ctx, cacheSpan := utils.TraceCacheGet(ctx, "health:status")
-	cacheKey := "health:status"
-	cachedData, err := config.Redis.Get(ctx, cacheKey).Result()
-	if err == nil {
-		utils.AddSpanAttribute(cacheSpan, "cache.hit", true)
-		observability.CacheHits.WithLabelValues("health_check").Inc()
-		var health HealthResponse
-		if err := json.Unmarshal([]byte(cachedData), &health); err == nil {
-			utils.AddSpanAttribute(cacheSpan, "cache.unmarshal_success", true)
-			cacheSpan.End()
+	// Check MongoDB connection
+	mongoHealthy := false
+	if config.MongoDB != nil {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
 
-			// Serialize response with tracing
-			_, responseSpan := utils.TraceResponseSerialization(ctx, "cached")
-			if health.Status == "healthy" {
-				c.JSON(http.StatusOK, health)
-			} else {
-				c.JSON(http.StatusServiceUnavailable, health)
-			}
-			responseSpan.End()
+		err := config.MongoDB.Client().Ping(ctx, nil)
+		mongoHealthy = err == nil
 
-			// Log total operation time
-			totalDuration := time.Since(startTime)
-			logger.Info("HealthCheck completed (cache hit)",
-				zap.String("status", health.Status),
-				zap.Duration("total_duration", totalDuration),
-				zap.String("result", "success"))
-			return
+		if err != nil {
+			logger.Warn("MongoDB health check failed", zap.Error(err))
 		}
-		utils.AddSpanAttribute(cacheSpan, "cache.unmarshal_error", err.Error())
-		observability.Logger().Warn("failed to unmarshal cached health data", zap.Error(err))
 	}
-	utils.AddSpanAttribute(cacheSpan, "cache.hit", false)
-	cacheSpan.End()
 
-	// Build health response with tracing
-	_, buildSpan := utils.TraceBusinessLogic(ctx, "build_health_response")
-	health := HealthResponse{
-		Status:    "healthy",
-		Timestamp: time.Now(),
-		Services:  make(map[string]string),
-	}
-	buildSpan.End()
+	// Check Redis connection
+	redisHealthy := false
+	if config.Redis != nil {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
 
-	// Check MongoDB with tracing
-	_, mongoSpan := utils.TraceExternalService(ctx, "mongodb", "ping")
-	if err := config.MongoDB.Client().Ping(ctx, nil); err != nil {
-		utils.RecordErrorInSpan(mongoSpan, err, map[string]interface{}{
-			"service.name":      "mongodb",
-			"service.operation": "ping",
-		})
-		health.Status = "unhealthy"
-		health.Services["mongodb"] = "unhealthy"
-	} else {
-		utils.AddSpanAttribute(mongoSpan, "service.status", "healthy")
-		health.Services["mongodb"] = "healthy"
-	}
-	mongoSpan.End()
+		_, err := config.Redis.Ping(ctx).Result()
+		redisHealthy = err == nil
 
-	// Check Redis with tracing
-	_, redisSpan := utils.TraceExternalService(ctx, "redis", "ping")
-	if err := config.Redis.Ping(ctx).Err(); err != nil {
-		utils.RecordErrorInSpan(redisSpan, err, map[string]interface{}{
-			"service.name":      "redis",
-			"service.operation": "ping",
-		})
-		health.Status = "unhealthy"
-		health.Services["redis"] = "unhealthy"
-	} else {
-		utils.AddSpanAttribute(redisSpan, "service.status", "healthy")
-		health.Services["redis"] = "healthy"
-	}
-	redisSpan.End()
-
-	// Cache the result with different TTLs based on health status with tracing
-	_, cacheSetSpan := utils.TraceCacheSet(ctx, cacheKey, 5*time.Second)
-	healthJSON, err := json.Marshal(health)
-	if err == nil {
-		ttl := 5 * time.Second // Default TTL for healthy responses
-		if health.Status == "unhealthy" {
-			ttl = 1 * time.Second // Shorter TTL for unhealthy responses
+		if err != nil {
+			logger.Warn("Redis health check failed", zap.Error(err))
 		}
-		if err := config.Redis.Set(ctx, cacheKey, healthJSON, ttl).Err(); err != nil {
-			utils.RecordErrorInSpan(cacheSetSpan, err, map[string]interface{}{
-				"cache.operation": "set",
-			})
-			observability.Logger().Warn("failed to cache health status", zap.Error(err))
-		} else {
-			utils.AddSpanAttribute(cacheSetSpan, "cache.set_success", true)
-			utils.AddSpanAttribute(cacheSetSpan, "cache.ttl", ttl.String())
-		}
-	} else {
-		utils.RecordErrorInSpan(cacheSetSpan, err, map[string]interface{}{
-			"cache.operation": "marshal",
-		})
 	}
-	cacheSetSpan.End()
 
-	// Add health status to span attributes
+	// Determine overall health
+	overallHealthy := mongoHealthy && redisHealthy
+	statusCode := http.StatusOK
+	if !overallHealthy {
+		statusCode = http.StatusInternalServerError
+	}
+
+	// Add health status to span
 	span.SetAttributes(
-		attribute.String("health.status", health.Status),
-		attribute.String("health.mongodb", health.Services["mongodb"]),
-		attribute.String("health.redis", health.Services["redis"]),
+		attribute.Bool("health.mongodb", mongoHealthy),
+		attribute.Bool("health.redis", redisHealthy),
+		attribute.Bool("health.overall", overallHealthy),
 	)
 
-	// Serialize response with tracing
-	_, responseSpan := utils.TraceResponseSerialization(ctx, "live")
-	if health.Status == "healthy" {
-		c.JSON(http.StatusOK, health)
-	} else {
-		c.JSON(http.StatusServiceUnavailable, health)
+	response := HealthResponse{
+		Status:    overallHealthy,
+		Timestamp: time.Now(),
+		Services: map[string]ServiceHealth{
+			"mongodb": {
+				Status: mongoHealthy,
+				Message: func() string {
+					if mongoHealthy {
+						return "Connected"
+					} else {
+						return "Connection failed"
+					}
+				}(),
+				Timestamp: time.Now(),
+			},
+			"redis": {
+				Status: redisHealthy,
+				Message: func() string {
+					if redisHealthy {
+						return "Connected"
+					} else {
+						return "Connection failed"
+					}
+				}(),
+				Timestamp: time.Now(),
+			},
+		},
 	}
-	responseSpan.End()
 
-	// Log total operation time
-	totalDuration := time.Since(startTime)
-	logger.Info("HealthCheck completed",
-		zap.String("status", health.Status),
-		zap.String("mongodb", health.Services["mongodb"]),
-		zap.String("redis", health.Services["redis"]),
-		zap.Duration("total_duration", totalDuration),
-		zap.String("result", "success"))
+	c.JSON(statusCode, response)
+
+	// Log health check result
+	if overallHealthy {
+		logger.Info("Health check completed successfully")
+	} else {
+		logger.Error("Health check failed",
+			zap.Bool("mongodb_healthy", mongoHealthy),
+			zap.Bool("redis_healthy", redisHealthy))
+	}
+}
+
+// MetricsHandler exposes Prometheus metrics for monitoring
+// @Summary Métricas Prometheus
+// @Description Expõe métricas Prometheus para monitoramento do sistema
+// @Tags metrics
+// @Produce text/plain
+// @Success 200 {string} string "Métricas Prometheus"
+// @Router /metrics [get]
+func MetricsHandler(c *gin.Context) {
+	// Prometheus metrics are automatically exposed by promauto
+	// This handler can be used for additional custom metrics if needed
+	c.String(http.StatusOK, "# RMI API Metrics\n# Prometheus metrics are automatically exposed\n")
 }
 
 // GetFirstLogin godoc
@@ -1188,16 +1148,15 @@ func GetFirstLogin(c *gin.Context) {
 	}
 	cpfSpan.End()
 
-	// Get user config with tracing
+	// Use DataManager for cache-aware reading with tracing
 	ctx, dbSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.UserConfigCollection, "cpf")
+	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
+	
 	var userConfig models.UserConfig
-	err := config.MongoDB.Collection(config.AppConfig.UserConfigCollection).FindOne(
-		ctx,
-		bson.M{"cpf": cpf},
-	).Decode(&userConfig)
+	err := dataManager.Read(ctx, cpf, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
 
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if err.Error() == fmt.Sprintf("document not found: %s", cpf) {
 			// If no config exists, it's first login
 			utils.AddSpanAttribute(dbSpan, "user_config.found", false)
 			utils.AddSpanAttribute(dbSpan, "user_config.first_login", true)
@@ -1218,11 +1177,12 @@ func GetFirstLogin(c *gin.Context) {
 			return
 		}
 		utils.RecordErrorInSpan(dbSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.UserConfigCollection,
-			"db.filter":     "cpf",
+			"operation": "dataManager.Read",
+			"cpf":       cpf,
+			"type":      "user_config",
 		})
 		dbSpan.End()
-		logger.Error("failed to get user config", zap.Error(err))
+		logger.Error("failed to get user config via DataManager", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get user config"})
 		return
 	}
@@ -1287,32 +1247,26 @@ func UpdateFirstLogin(c *gin.Context) {
 	}
 	cpfSpan.End()
 
-	// Build update object with tracing
-	ctx, buildSpan := utils.TraceBusinessLogic(ctx, "build_update_object")
-	update := bson.M{
-		"$set": bson.M{
-			"first_login": false,
-			"updated_at":  time.Now(),
-		},
+	// Build user config object with tracing
+	ctx, buildSpan := utils.TraceBusinessLogic(ctx, "build_user_config_object")
+	userConfig := &models.UserConfig{
+		CPF:        cpf,
+		FirstLogin: false,
+		UpdatedAt:  time.Now(),
 	}
 	buildSpan.End()
 
-	// Update database with tracing
-	ctx, updateSpan := utils.TraceDatabaseUpsert(ctx, config.AppConfig.UserConfigCollection, "cpf")
-	// Use direct database operation for better performance
-	_, err := config.MongoDB.Collection(config.AppConfig.UserConfigCollection).UpdateOne(
-		ctx,
-		bson.M{"cpf": cpf},
-		update,
-		options.Update().SetUpsert(true),
-	)
+	// Update via cache service with tracing
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_user_config_via_cache")
+	cacheService := services.NewCacheService()
+	err := cacheService.UpdateUserConfig(ctx, cpf, userConfig)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.UserConfigCollection,
-			"db.operation":  "upsert",
+			"cache.operation": "update_user_config",
+			"cache.service":   "unified_cache_service",
 		})
 		updateSpan.End()
-		logger.Error("failed to update first login status", zap.Error(err))
+		logger.Error("failed to update first login status via cache service", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update first login status"})
 		return
 	}
@@ -1396,12 +1350,14 @@ func GetOptIn(c *gin.Context) {
 	}
 	cpfSpan.End()
 
-	// Get user config with tracing
+	// Use DataManager for cache-aware reading with tracing
 	ctx, dbSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.UserConfigCollection, "cpf")
+	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
+	
 	var userConfig models.UserConfig
-	err := config.MongoDB.Collection(config.AppConfig.UserConfigCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&userConfig)
+	err := dataManager.Read(ctx, cpf, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if err.Error() == fmt.Sprintf("document not found: %s", cpf) {
 			// If no config exists, default to opted in
 			utils.AddSpanAttribute(dbSpan, "user_config.found", false)
 			utils.AddSpanAttribute(dbSpan, "user_config.opt_in", true)
@@ -1424,11 +1380,12 @@ func GetOptIn(c *gin.Context) {
 			return
 		}
 		utils.RecordErrorInSpan(dbSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.UserConfigCollection,
-			"db.filter":     "cpf",
+			"operation": "dataManager.Read",
+			"cpf":       cpf,
+			"type":      "user_config",
 		})
 		dbSpan.End()
-		logger.Error("failed to get user config", zap.Error(err))
+		logger.Error("failed to get user config via DataManager", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get user config"})
 		return
 	}
@@ -1509,32 +1466,26 @@ func UpdateOptIn(c *gin.Context) {
 	utils.AddSpanAttribute(inputSpan, "input.opt_in", input.OptIn)
 	inputSpan.End()
 
-	// Build update object with tracing
-	ctx, buildSpan := utils.TraceBusinessLogic(ctx, "build_update_object")
-	update := bson.M{
-		"$set": bson.M{
-			"opt_in":     input.OptIn,
-			"updated_at": time.Now(),
-		},
+	// Build user config object with tracing
+	ctx, buildSpan := utils.TraceBusinessLogic(ctx, "build_user_config_object")
+	userConfig := &models.UserConfig{
+		CPF:       cpf,
+		OptIn:     input.OptIn,
+		UpdatedAt: time.Now(),
 	}
 	buildSpan.End()
 
-	// Update database with tracing
-	ctx, updateSpan := utils.TraceDatabaseUpsert(ctx, config.AppConfig.UserConfigCollection, "cpf")
-	// Use direct database operation for better performance
-	_, err := config.MongoDB.Collection(config.AppConfig.UserConfigCollection).UpdateOne(
-		ctx,
-		bson.M{"cpf": cpf},
-		update,
-		options.Update().SetUpsert(true),
-	)
+	// Update via cache service with tracing
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_user_config_via_cache")
+	cacheService := services.NewCacheService()
+	err := cacheService.UpdateUserConfig(ctx, cpf, userConfig)
 	if err != nil {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.UserConfigCollection,
-			"db.operation":  "upsert",
+			"cache.operation": "update_user_config",
+			"cache.service":   "unified_cache_service",
 		})
 		updateSpan.End()
-		logger.Error("failed to update opt-in status", zap.Error(err))
+		logger.Error("failed to update opt-in status via cache service", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update opt-in status"})
 		return
 	}
@@ -1543,8 +1494,8 @@ func UpdateOptIn(c *gin.Context) {
 	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
 
 	// Invalidate cache with tracing
-	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
-	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("user_config:%s", cpf))
+	cacheKey := fmt.Sprintf("user_config:%s", cpf)
 	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
 		utils.RecordErrorInSpan(cacheSpan, err, map[string]interface{}{
 			"cache.key": cacheKey,
@@ -1662,65 +1613,45 @@ func GetCitizenWallet(c *gin.Context) {
 
 	logger.Info("GetCitizenWallet called", zap.String("cpf", cpf))
 
-	// Try to get from cache first with tracing
-	ctx, cacheSpan := utils.TraceCacheGet(ctx, fmt.Sprintf("citizen_wallet:%s", cpf))
-	cacheKey := fmt.Sprintf("citizen_wallet:%s", cpf)
-	cachedData, err := config.Redis.Get(ctx, cacheKey).Result()
-	if err == nil {
-		utils.AddSpanAttribute(cacheSpan, "cache.hit", true)
-		observability.CacheHits.WithLabelValues("get_citizen_wallet").Inc()
-		var wallet models.CitizenWallet
-		if err := json.Unmarshal([]byte(cachedData), &wallet); err == nil {
-			cacheSpan.End()
-
-			// Serialize response with tracing
-			_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
-			c.JSON(http.StatusOK, wallet)
-			responseSpan.End()
-
-			// Log total operation time
-			totalDuration := time.Since(startTime)
-			logger.Info("GetCitizenWallet completed (cache hit)",
-				zap.String("cpf", cpf),
-				zap.Duration("total_duration", totalDuration),
-				zap.String("status", "success"))
-			return
-		}
-		utils.AddSpanAttribute(cacheSpan, "cache.unmarshal_error", err.Error())
-		logger.Warn("failed to unmarshal cached wallet data", zap.Error(err))
+	// Validate CPF with tracing
+	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
+	if !utils.ValidateCPF(cpf) {
+		utils.RecordErrorInSpan(cpfSpan, fmt.Errorf("invalid CPF format"), map[string]interface{}{
+			"cpf": cpf,
+		})
+		cpfSpan.End()
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
+		return
 	}
-	utils.AddSpanAttribute(cacheSpan, "cache.hit", false)
-	cacheSpan.End()
+	cpfSpan.End()
 
-	// Get base data with tracing
-	ctx, dbSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.CitizenCollection, "cpf")
+	// Use DataManager for cache-aware reading with tracing
+	ctx, dataSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.CitizenCollection, "cpf")
+	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
+	
 	var citizen models.Citizen
-	err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
+	err := dataManager.Read(ctx, cpf, config.AppConfig.CitizenCollection, "citizen", &citizen)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			utils.AddSpanAttribute(dbSpan, "citizen.found", false)
-			utils.AddSpanAttribute(dbSpan, "citizen.reason", "not_found")
-			dbSpan.End()
-			observability.DatabaseOperations.WithLabelValues("find", "not_found").Inc()
+		utils.RecordErrorInSpan(dataSpan, err, map[string]interface{}{
+			"operation": "dataManager.Read",
+			"cpf":       cpf,
+			"type":      "citizen",
+		})
+		dataSpan.End()
+		if err.Error() == fmt.Sprintf("document not found: %s", cpf) {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "citizen not found"})
 			return
 		}
-		utils.RecordErrorInSpan(dbSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.CitizenCollection,
-			"db.filter":     "cpf",
-		})
-		dbSpan.End()
-		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
-		logger.Error("failed to get citizen data", zap.Error(err))
+		logger.Error("failed to get citizen data via DataManager", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
 		return
 	}
-	utils.AddSpanAttribute(dbSpan, "citizen.found", true)
-	utils.AddSpanAttribute(dbSpan, "citizen.has_documentos", citizen.Documentos != nil)
-	utils.AddSpanAttribute(dbSpan, "citizen.has_saude", citizen.Saude != nil)
-	utils.AddSpanAttribute(dbSpan, "citizen.has_assistencia_social", citizen.AssistenciaSocial != nil)
-	utils.AddSpanAttribute(dbSpan, "citizen.has_educacao", citizen.Educacao != nil)
-	dbSpan.End()
+	utils.AddSpanAttribute(dataSpan, "citizen.found", true)
+	utils.AddSpanAttribute(dataSpan, "citizen.has_documentos", citizen.Documentos != nil)
+	utils.AddSpanAttribute(dataSpan, "citizen.has_saude", citizen.Saude != nil)
+	utils.AddSpanAttribute(dataSpan, "citizen.has_assistencia_social", citizen.AssistenciaSocial != nil)
+	utils.AddSpanAttribute(dataSpan, "citizen.has_educacao", citizen.Educacao != nil)
+	dataSpan.End()
 
 	observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
 
@@ -1734,18 +1665,6 @@ func GetCitizenWallet(c *gin.Context) {
 		Educacao:          citizen.Educacao,
 	}
 	buildSpan.End()
-
-	// Cache the result with tracing
-	ctx, cacheSetSpan := utils.TraceCacheSet(ctx, cacheKey, config.AppConfig.RedisTTL)
-	if jsonData, err := json.Marshal(wallet); err == nil {
-		config.Redis.Set(ctx, cacheKey, jsonData, config.AppConfig.RedisTTL)
-		utils.AddSpanAttribute(cacheSetSpan, "cache.set_success", true)
-	} else {
-		utils.RecordErrorInSpan(cacheSetSpan, err, map[string]interface{}{
-			"cache.operation": "set",
-		})
-	}
-	cacheSetSpan.End()
 
 	// Serialize response with tracing
 	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
@@ -1999,10 +1918,16 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+type ServiceHealth struct {
+	Status    bool      `json:"status"`
+	Message   string    `json:"message"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
 type HealthResponse struct {
-	Status    string            `json:"status"`
-	Timestamp time.Time         `json:"timestamp"`
-	Services  map[string]string `json:"services"`
+	Status    bool                     `json:"status"`
+	Timestamp time.Time                `json:"timestamp"`
+	Services  map[string]ServiceHealth `json:"services"`
 }
 
 type UserConfigResponse struct {

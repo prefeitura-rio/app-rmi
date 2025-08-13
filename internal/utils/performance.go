@@ -91,7 +91,7 @@ func (pm *PerformanceMonitor) End() {
 
 	// Update metrics
 	observability.OperationDuration.WithLabelValues(pm.operation).Observe(totalDuration.Seconds())
-	observability.OperationMemoryUsage.WithLabelValues(pm.operation).Observe(float64(totalMemoryDelta))
+	// Note: OperationMemoryUsage metric was removed, using only OperationDuration
 }
 
 // PerformanceWarning logs a performance warning if duration exceeds threshold

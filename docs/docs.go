@@ -698,7 +698,10 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Obtém os dados completos de um cidadão, incluindo dados autodeclarados",
+                "description": "Recupera os dados do cidadão por CPF, incluindo informações básicas e dados autodeclarados.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -708,8 +711,10 @@ const docTemplate = `{
                 "summary": "Obter dados do cidadão",
                 "parameters": [
                     {
+                        "maxLength": 11,
+                        "minLength": 11,
                         "type": "string",
-                        "description": "Número do CPF",
+                        "description": "CPF do cidadão (11 dígitos)",
                         "name": "cpf",
                         "in": "path",
                         "required": true
@@ -717,13 +722,13 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Dados do cidadão",
                         "schema": {
                             "$ref": "#/definitions/models.Citizen"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Formato de CPF inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -810,8 +815,8 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
-                    "404": {
-                        "description": "Not Found",
+                    "409": {
+                        "description": "Endereço não alterado",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -1576,10 +1581,30 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.HealthResponse"
                         }
                     },
-                    "503": {
-                        "description": "Um ou mais serviços estão indisponíveis",
+                    "500": {
+                        "description": "Um ou mais serviços não estão saudáveis",
                         "schema": {
-                            "$ref": "#/definitions/handlers.HealthResponse"
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/metrics": {
+            "get": {
+                "description": "Expõe métricas Prometheus para monitoramento do sistema",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "metrics"
+                ],
+                "summary": "Métricas Prometheus",
+                "responses": {
+                    "200": {
+                        "description": "Métricas Prometheus",
+                        "schema": {
+                            "type": "string"
                         }
                     }
                 }
@@ -2194,11 +2219,11 @@ const docTemplate = `{
                 "services": {
                     "type": "object",
                     "additionalProperties": {
-                        "type": "string"
+                        "$ref": "#/definitions/handlers.ServiceHealth"
                     }
                 },
                 "status": {
-                    "type": "string"
+                    "type": "boolean"
                 },
                 "timestamp": {
                     "type": "string"
@@ -2249,6 +2274,20 @@ const docTemplate = `{
                 "valid": {
                     "description": "Indica se o número é válido.",
                     "type": "boolean"
+                }
+            }
+        },
+        "handlers.ServiceHealth": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "boolean"
+                },
+                "timestamp": {
+                    "type": "string"
                 }
             }
         },

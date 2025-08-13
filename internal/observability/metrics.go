@@ -77,75 +77,55 @@ var (
 		[]string{"operation"},
 	)
 
-	// OperationMemoryUsage tracks operation memory usage
-	OperationMemoryUsage = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "app_rmi_operation_memory_bytes",
-			Help: "Memory usage of operations in bytes",
+	// RMI Cache and Sync Metrics (Prometheus + OTLP via existing tracer)
+	RMISyncQueueDepth = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "rmi_sync_queue_depth",
+			Help: "Current depth of sync queues",
 		},
-		[]string{"operation"},
+		[]string{"queue"},
 	)
 
-	// RedisOperations tracks Redis operations
-	RedisOperations = promauto.NewCounterVec(
+	RMISyncOperationsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "app_rmi_redis_operations_total",
-			Help: "Number of Redis operations",
+			Name: "rmi_sync_operations_total",
+			Help: "Total number of sync operations",
 		},
-		[]string{"operation", "status"},
+		[]string{"queue", "status"},
 	)
 
-	// RedisOperationDuration tracks Redis operation duration
-	RedisOperationDuration = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "app_rmi_redis_operation_duration_seconds",
-			Help: "Duration of Redis operations in seconds",
+	RMISyncFailuresTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "rmi_sync_failures_total",
+			Help: "Total number of sync failures",
 		},
-		[]string{"operation"},
+		[]string{"queue"},
 	)
 
-	// RedisConnectionPool tracks Redis connection pool status
-	RedisConnectionPool = promauto.NewGaugeVec(
+	RMICacheHitRatio = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "app_rmi_redis_connection_pool",
-			Help: "Redis connection pool status",
+			Name: "rmi_cache_hit_ratio",
+			Help: "Cache hit ratio for different cache types",
 		},
-		[]string{"status", "uri"},
+		[]string{"cache_type"},
 	)
 
-	// RedisConnectionPoolSize tracks Redis connection pool configuration
-	RedisConnectionPoolSize = promauto.NewGaugeVec(
+	RMIDegradedModeActive = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "app_rmi_redis_connection_pool_size",
-			Help: "Redis connection pool configuration",
+			Name: "rmi_degraded_mode_active",
+			Help: "Whether degraded mode is currently active",
 		},
-		[]string{"type", "uri"},
-	)
-
-	// RedisLatency tracks Redis operation latency
-	RedisLatency = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "app_rmi_redis_latency_seconds",
-			Help: "Redis operation latency in seconds",
-		},
-		[]string{"operation", "uri"},
-	)
-
-	// MongoDBConnectionPool tracks MongoDB connection pool status
-	MongoDBConnectionPool = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "app_rmi_mongodb_connection_pool",
-			Help: "MongoDB connection pool status",
-		},
-		[]string{"status", "database"},
-	)
-
-	// MongoDBOperationDuration tracks MongoDB operation duration
-	MongoDBOperationDuration = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "app_rmi_mongodb_operation_duration_seconds",
-			Help: "Duration of MongoDB operations in seconds",
-		},
-		[]string{"operation", "collection", "database"},
 	)
 )
+
+// InitMetrics initializes the metrics system
+func InitMetrics() {
+	// Metrics are automatically initialized by promauto
+	// This function can be used for any additional setup
+}
+
+// ShutdownMetrics shuts down the metrics system
+func ShutdownMetrics() {
+	// Prometheus metrics don't need explicit shutdown
+	// This function can be used for any cleanup if needed
+}

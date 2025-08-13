@@ -10,8 +10,18 @@ services:
       - "8080:8080"
     environment:
       - GIN_MODE=release
-    env_file:
-      - .env
+      - MONGODB_URI=mongodb://root:password@mongodb:27017
+      - MONGODB_DATABASE=rmi
+      - REDIS_URI=redis:6379
+      - MONGODB_CITIZEN_COLLECTION=citizens
+      - MONGODB_MAINTENANCE_REQUEST_COLLECTION=maintenance_requests
+      - WHATSAPP_ENABLED=false
+      - WHATSAPP_API_BASE_URL=http://localhost:8080
+      - WHATSAPP_API_USERNAME=test
+      - WHATSAPP_API_PASSWORD=test
+      - WHATSAPP_HSM_ID=test
+      - WHATSAPP_COST_CENTER_ID=test
+      - WHATSAPP_CAMPAIGN_NAME=test
     networks:
       - rmi-network
     restart: unless-stopped
@@ -30,8 +40,18 @@ services:
     container_name: rmi-sync
     environment:
       - GIN_MODE=release
-    env_file:
-      - .env
+      - MONGODB_URI=mongodb://root:password@mongodb:27017
+      - MONGODB_DATABASE=rmi
+      - REDIS_URI=redis:6379
+      - MONGODB_CITIZEN_COLLECTION=citizens
+      - MONGODB_MAINTENANCE_REQUEST_COLLECTION=maintenance_requests
+      - WHATSAPP_ENABLED=false
+      - WHATSAPP_API_BASE_URL=http://localhost:8080
+      - WHATSAPP_API_USERNAME=test
+      - WHATSAPP_API_PASSWORD=test
+      - WHATSAPP_HSM_ID=test
+      - WHATSAPP_COST_CENTER_ID=test
+      - WHATSAPP_CAMPAIGN_NAME=test
     networks:
       - rmi-network
     restart: unless-stopped
@@ -59,7 +79,7 @@ services:
     image: redis:7-alpine
     container_name: rmi-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     networks:
