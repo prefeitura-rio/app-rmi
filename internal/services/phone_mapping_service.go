@@ -49,6 +49,7 @@ func (s *PhoneMappingService) GetPhoneStatus(ctx context.Context, phoneNumber st
 				PhoneNumber:     phoneNumber,
 				Found:           false,
 				Quarantined:     false,
+				OptedOut:        false,
 				BetaWhitelisted: false,
 			}, nil
 		}
@@ -60,10 +61,14 @@ func (s *PhoneMappingService) GetPhoneStatus(ctx context.Context, phoneNumber st
 	now := time.Now()
 	quarantined := mapping.QuarantineUntil != nil && mapping.QuarantineUntil.After(now)
 
+	// Check if opted out (status is blocked)
+	optedOut := mapping.Status == models.MappingStatusBlocked
+
 	response := &models.PhoneStatusResponse{
 		PhoneNumber:     phoneNumber,
 		Found:           true,
 		Quarantined:     quarantined,
+		OptedOut:        optedOut,
 		QuarantineUntil: mapping.QuarantineUntil,
 	}
 
@@ -821,8 +826,30 @@ func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber, reason, c
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
+			// Phone number not found - create a new mapping record to track the opt-out preference
+			s.logger.Info("creating opt-out record for unknown phone number", zap.String("phone_number", storagePhone))
+			
+			// Create new mapping with blocked status to record the opt-out preference
+			newMapping := models.PhoneCPFMapping{
+				PhoneNumber: storagePhone,
+				// CPF is empty since this phone is not bound to any CPF
+				Status:    models.MappingStatusBlocked,
+				Channel:   channel,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			
+			_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
+			if err != nil {
+				s.logger.Error("failed to create opt-out record", zap.Error(err), zap.String("phone_number", storagePhone))
+				return nil, fmt.Errorf("failed to create opt-out record: %w", err)
+			}
+			
+			// Record opt-out history (with empty CPF since phone is not bound)
+			s.recordOptInHistory(ctx, phoneNumber, "", "opt_out", channel, reason)
+			
 			return &models.OptOutResponse{
-				Status: "not_found",
+				Status: "opted_out",
 			}, nil
 		}
 		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))

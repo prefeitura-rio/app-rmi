@@ -52,3 +52,6 @@ Thumbs.db
 data/
 tmp/ 
 .direnv
+
+# Claude session files
+claude-session/

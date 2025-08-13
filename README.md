@@ -940,10 +940,13 @@ Processa opt-in para um número de telefone.
 
 ### POST /phone/{phone_number}/opt-out
 Processa opt-out para um número de telefone.
-- Requer autenticação JWT
-- Bloqueia mapeamento phone-CPF
+- **Nova funcionalidade**: Números que nunca fizeram opt-in podem agora fazer opt-out
+- Cria mapeamento phone-CPF com status "blocked" para números desconhecidos
+- Não requer autenticação JWT para números desconhecidos
 - Registra histórico de opt-out com motivo
-- Atualiza dados autodeclarados
+- Para números conhecidos: requer autenticação e atualiza dados autodeclarados
+- **Status na resposta**: `"opted_out"` para todas as operações de opt-out bem-sucedidas
+- **Campo opted_out**: Adicionado ao modelo `PhoneStatusResponse` para indicar status de opt-out
 
 ### POST /phone/{phone_number}/reject-registration
 Rejeita um registro e bloqueia mapeamento phone-CPF.

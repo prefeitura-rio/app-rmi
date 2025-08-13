@@ -27,6 +27,7 @@ NC='\033[0m' # No Color
 SKIP_PHONE=false
 CPF=""
 BEARER_TOKEN=""
+AUTO_TOKEN=false
 
 # Parse positional arguments and flags
 while [[ $# -gt 0 ]]; do
@@ -35,10 +36,14 @@ while [[ $# -gt 0 ]]; do
             SKIP_PHONE=true
             shift
             ;;
+        --auto-token)
+            AUTO_TOKEN=true
+            shift
+            ;;
         *)
             if [[ -z "$CPF" ]]; then
                 CPF="$1"
-            elif [[ -z "$BEARER_TOKEN" ]]; then
+            elif [[ -z "$BEARER_TOKEN" ]] && [[ "$AUTO_TOKEN" != "true" ]]; then
                 BEARER_TOKEN="$1"
             fi
             shift
@@ -64,18 +69,57 @@ echo -e "${BLUE}📱 Generated random phone number for testing: $PHONE_NUMBER${N
 # API_BASE_URL="https://services.staging.app.dados.rio/rmi/v1"
 API_BASE_URL="http://localhost:8080/v1"
 
+# Auto-generate token if requested
+if [[ "$AUTO_TOKEN" == "true" ]]; then
+    echo -e "${BLUE}🔑 Auto-generating access token using curl...${NC}"
+    
+    # Check required environment variables
+    if [[ -z "$KEYCLOAK_ISSUER" || -z "$KEYCLOAK_CLIENT_ID" || -z "$KEYCLOAK_CLIENT_SECRET" ]]; then
+        echo -e "${RED}Error: Required environment variables not set:${NC}"
+        echo "  - KEYCLOAK_ISSUER"
+        echo "  - KEYCLOAK_CLIENT_ID" 
+        echo "  - KEYCLOAK_CLIENT_SECRET"
+        exit 1
+    fi
+    
+    # Generate token using curl (no Node.js dependency)
+    TOKEN_RESPONSE=$(curl -s -X POST "${KEYCLOAK_ISSUER}/protocol/openid-connect/token" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "grant_type=client_credentials" \
+        -d "client_id=${KEYCLOAK_CLIENT_ID}" \
+        -d "client_secret=${KEYCLOAK_CLIENT_SECRET}")
+    
+    if [[ $? -eq 0 ]] && echo "$TOKEN_RESPONSE" | grep -q "access_token"; then
+        # Extract access token using basic text processing (no jq dependency)
+        ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | sed -n 's/.*"access_token":"\([^"]*\).*/\1/p')
+        if [[ -n "$ACCESS_TOKEN" ]]; then
+            BEARER_TOKEN="$ACCESS_TOKEN"
+            echo -e "${GREEN}✅ Token generated successfully${NC}"
+        else
+            echo -e "${RED}Error: Failed to extract access token from response${NC}"
+            echo "Response: $TOKEN_RESPONSE"
+            exit 1
+        fi
+    else
+        echo -e "${RED}Error: Failed to generate token. Check your environment variables and Keycloak configuration${NC}"
+        echo "Response: $TOKEN_RESPONSE"
+        exit 1
+    fi
+fi
+
 # Validation
 if [[ -z "$CPF" ]]; then
     echo -e "${RED}Error: CPF is required${NC}"
-    echo "Usage: $0 <CPF> <BEARER_TOKEN> [--skip-phone]"
+    echo "Usage: $0 <CPF> [BEARER_TOKEN] [--skip-phone] [--auto-token]"
     echo "Example: $0 12345678901 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'"
-    echo "Example: $0 12345678901 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' --skip-phone"
+    echo "Example: $0 12345678901 --auto-token --skip-phone"
     exit 1
 fi
 
 if [[ -z "$BEARER_TOKEN" ]]; then
     echo -e "${RED}Error: Bearer token is required${NC}"
-    echo "Usage: $0 <CPF> <BEARER_TOKEN> [PHONE_NUMBER]"
+    echo "Usage: $0 <CPF> [BEARER_TOKEN] [--skip-phone] [--auto-token]"
+    echo "Use --auto-token to generate token automatically, or provide a token manually"
     exit 1
 fi
 
@@ -229,8 +273,8 @@ make_request "GET" "/citizen/$CPF/maintenance-request" "" "Get Maintenance Reque
 # Test 7: Get First Login Status (Original)
 make_request "GET" "/citizen/$CPF/firstlogin" "" "Get First Login Status (Original)"
 
-# Test 8: Get Opt-In Status (Original)
-make_request "GET" "/citizen/$CPF/optin" "" "Get Opt-In Status (Original)"
+# Test 8: Get Opt-In Status (will be captured before update)
+# Note: Actual "Original" status will be captured just before opt-in update
 
 # Test 9: Update Address
 # Generate random data to avoid 409 conflicts
@@ -290,8 +334,9 @@ firstlogin_data='{
 }'
 make_request "PUT" "/citizen/$CPF/firstlogin" "$firstlogin_data" "Update First Login"
 
-# Test 13: Update Opt-In (change to true to test update)
-# First get current opt-in status to ensure we make a change
+# Test 13: Update Opt-In (change to opposite value to test update)
+# First get current opt-in status to ensure we make a change AND store as original
+make_request "GET" "/citizen/$CPF/optin" "" "Get Opt-In Status (Original)"
 current_optin_response=$(curl -s -H "Authorization: Bearer $BEARER_TOKEN" "$API_BASE_URL/citizen/$CPF/optin")
 current_optin=$(echo "$current_optin_response" | jq -r '.opt_in' 2>/dev/null)
 
@@ -301,6 +346,8 @@ if [[ "$current_optin" == "true" ]]; then
 else
     new_optin_value="true"
 fi
+
+# Debug output removed
 
 optin_data="{
     \"opt_in\": $new_optin_value
@@ -866,6 +913,101 @@ if [[ -n "$GROUP_ID2" && "$GROUP_ID2" != "null" ]]; then
     make_request "DELETE" "/admin/beta/groups/$GROUP_ID2" "" "Delete Beta Group 2"
 fi
 
+# NEW FUNCTIONALITY TESTS: Opt-out for Numbers That Never Opted-In
+echo -e "${BLUE}=== Testing New Opt-Out Functionality for Unknown Numbers ===${NC}"
+
+# Generate a completely new phone number that has never been used
+UNKNOWN_PHONE_NUMBER=$(generate_random_phone)
+echo -e "${BLUE}📱 Generated unknown phone number for testing: $UNKNOWN_PHONE_NUMBER${NC}"
+
+# Test 83: Get Status of Unknown Phone Number (should not be found)
+echo -e "${BLUE}Test 83: Get Status of Unknown Phone Number (should not be found)${NC}"
+make_request "GET" "/phone/$UNKNOWN_PHONE_NUMBER/status" "" "Get Status of Unknown Phone Number"
+
+# Test 84: Opt-out Unknown Phone Number (new functionality)
+echo -e "${BLUE}Test 84: Opt-out Unknown Phone Number (should create blocked mapping)${NC}"
+unknown_optout_data='{
+    "channel": "whatsapp",
+    "reason": "irrelevant_content"
+}'
+make_request "POST" "/phone/$UNKNOWN_PHONE_NUMBER/opt-out" "$unknown_optout_data" "Opt-out Unknown Phone Number"
+
+# Test 85: Get Status After Opt-out (should show opted_out: true)
+echo -e "${BLUE}Test 85: Get Status After Opt-out (should show opted_out: true)${NC}"
+make_request "GET" "/phone/$UNKNOWN_PHONE_NUMBER/status" "" "Get Status After Opt-out (Unknown Number)"
+
+# Test 86: Try to Get Citizen by Opted-Out Unknown Number (should fail)
+echo -e "${BLUE}Test 86: Try to Get Citizen by Opted-Out Unknown Number (should fail appropriately)${NC}"
+make_request "GET" "/phone/$UNKNOWN_PHONE_NUMBER/citizen" "" "Get Citizen by Opted-Out Unknown Number"
+
+# Test 87: Try to Opt-in Previously Unknown Number (should work)
+echo -e "${BLUE}Test 87: Try to Opt-in Previously Unknown Number (should work)${NC}"
+unknown_optin_data='{
+    "cpf": "'$CPF'",
+    "channel": "whatsapp",
+    "validation_result": {
+        "valid": true
+    }
+}'
+make_request "POST" "/phone/$UNKNOWN_PHONE_NUMBER/opt-in" "$unknown_optin_data" "Opt-in Previously Unknown Number"
+
+# Test 88: Get Status After Opt-in (should show active mapping)
+echo -e "${BLUE}Test 88: Get Status After Opt-in (should show active mapping)${NC}"
+make_request "GET" "/phone/$UNKNOWN_PHONE_NUMBER/status" "" "Get Status After Opt-in (Previously Unknown)"
+
+# Test 89: Get Citizen by Phone After Opt-in (should work now)
+echo -e "${BLUE}Test 89: Get Citizen by Phone After Opt-in (should work now)${NC}"
+make_request "GET" "/phone/$UNKNOWN_PHONE_NUMBER/citizen" "" "Get Citizen by Phone After Opt-in"
+
+# Verification Section for New Functionality
+echo -e "${BLUE}🔍 Verifying New Opt-Out Functionality...${NC}"
+echo "=================================================="
+
+# Verify the opt-out response shows "opted_out" status
+if [[ -f "/tmp/api_response_Opt_out_Unknown_Phone_Number" ]]; then
+    unknown_optout_response=$(cat "/tmp/api_response_Opt_out_Unknown_Phone_Number")
+    echo -e "${BLUE}📋 Unknown Number Opt-out Response Analysis:${NC}"
+    echo "  Response: $unknown_optout_response"
+    
+    if echo "$unknown_optout_response" | grep -q '"status":"opted_out"'; then
+        echo -e "${GREEN}✅ Unknown number opt-out returned correct 'opted_out' status${NC}"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}❌ Unknown number opt-out did not return 'opted_out' status${NC}"
+        ((TESTS_FAILED++))
+    fi
+else
+    echo -e "${YELLOW}⚠️  Unknown number opt-out response not available for verification${NC}"
+fi
+
+# Verify status shows opted_out: true
+if [[ -f "/tmp/api_response_Get_Status_After_Opt_out__Unknown_Number_" ]]; then
+    status_after_optout=$(cat "/tmp/api_response_Get_Status_After_Opt_out__Unknown_Number_")
+    echo -e "${BLUE}📋 Status After Opt-out Analysis:${NC}"
+    echo "  Status response: $status_after_optout"
+    
+    if echo "$status_after_optout" | grep -q '"opted_out":true'; then
+        echo -e "${GREEN}✅ Phone status correctly shows opted_out: true${NC}"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}❌ Phone status does not show opted_out: true${NC}"
+        ((TESTS_FAILED++))
+    fi
+    
+    if echo "$status_after_optout" | grep -q '"found":true'; then
+        echo -e "${GREEN}✅ Phone mapping was created (found: true)${NC}"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}❌ Phone mapping was not created properly${NC}"
+        ((TESTS_FAILED++))
+    fi
+else
+    echo -e "${YELLOW}⚠️  Status after opt-out response not available for verification${NC}"
+fi
+
+echo -e "${GREEN}✅ New opt-out functionality tests completed${NC}"
+echo ""
+
 # Clean up temporary files
 rm -f /tmp/api_response_*
 
@@ -874,7 +1016,6 @@ echo -e "${BLUE}📊 Test Results Summary:${NC}"
 echo -e "${GREEN}✅ Tests Passed: $TESTS_PASSED${NC}"
 echo -e "${RED}❌ Tests Failed: $TESTS_FAILED${NC}"
 echo -e "${BLUE}📈 Total Tests: $((TESTS_PASSED + TESTS_FAILED))${NC}"
-echo -e "${BLUE}📋 Note: Includes opt-out tests with conditional blocking logic and beta whitelist functionality${NC}"
 
 if [[ $TESTS_FAILED -eq 0 ]]; then
     echo -e "${GREEN}🎉 All tests passed!${NC}"

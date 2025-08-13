@@ -111,8 +111,10 @@ func (aw *AuditWorker) start() {
 
 // processAuditLogs processes audit logs in batches for better performance
 func (aw *AuditWorker) processAuditLogs() {
-	ticker := time.NewTicker(100 * time.Millisecond) // Process every 100ms
-	defer ticker.Stop()
+	batchTicker := time.NewTicker(100 * time.Millisecond) // Process batches every 100ms
+	monitorTicker := time.NewTicker(30 * time.Second)      // Monitor buffer every 30 seconds
+	defer batchTicker.Stop()
+	defer monitorTicker.Stop()
 
 	var batch []AuditLog
 	batchSize := 100 // Process in batches of 100
@@ -134,14 +136,14 @@ func (aw *AuditWorker) processAuditLogs() {
 				aw.flushBatch(batch)
 				batch = batch[:0] // Reset slice but keep capacity
 			}
-		case <-ticker.C:
+		case <-batchTicker.C:
 			// Process any remaining items in batch
 			if len(batch) > 0 {
 				aw.flushBatch(batch)
 				batch = batch[:0] // Reset slice but keep capacity
 			}
-
-			// Monitor buffer usage and adjust processing if needed
+		case <-monitorTicker.C:
+			// Monitor buffer usage less frequently
 			aw.adjustAuditWorkerBuffer()
 		}
 	}
@@ -438,22 +440,21 @@ func (aw *AuditWorker) adjustAuditWorkerBuffer() {
 	// Calculate buffer usage percentage
 	bufferUsagePercentage := float64(currentBufferUsage) / float64(bufferCapacity) * 100
 
-	logging.Logger.Info("audit worker buffer status",
-		zap.Int("current_usage", currentBufferUsage),
-		zap.Int("buffer_capacity", bufferCapacity),
-		zap.Float64("usage_percentage", bufferUsagePercentage))
-
-	// Adjust batch processing frequency based on buffer usage
+	// Only log when there are actual issues or significant changes
 	if bufferUsagePercentage > 80 {
 		// High buffer usage - process batches more frequently
-		logging.Logger.Warn("high audit buffer usage detected - increasing batch processing frequency",
+		logging.Logger.Warn("high audit buffer usage detected",
+			zap.Int("current_usage", currentBufferUsage),
+			zap.Int("buffer_capacity", bufferCapacity),
 			zap.Float64("usage_percentage", bufferUsagePercentage))
-		// In a real implementation, you'd adjust the ticker frequency here
-	} else if bufferUsagePercentage < 20 {
-		// Low buffer usage - can process batches less frequently
-		logging.Logger.Info("low audit buffer usage - batch processing frequency is optimal",
+	} else if bufferUsagePercentage > 50 {
+		// Medium buffer usage - log at debug level
+		logging.Logger.Debug("audit worker buffer status",
+			zap.Int("current_usage", currentBufferUsage),
+			zap.Int("buffer_capacity", bufferCapacity),
 			zap.Float64("usage_percentage", bufferUsagePercentage))
 	}
+	// For low usage (< 50%), don't log anything to reduce noise
 }
 
 // GetAuditWorkerStats returns current audit worker statistics

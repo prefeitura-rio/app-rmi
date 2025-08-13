@@ -3102,6 +3102,9 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "opted_out": {
+                    "type": "boolean"
+                },
                 "phone_number": {
                     "type": "string"
                 },

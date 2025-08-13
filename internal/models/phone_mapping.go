@@ -37,6 +37,7 @@ type PhoneStatusResponse struct {
 	PhoneNumber     string     `json:"phone_number"`
 	Found           bool       `json:"found"`
 	Quarantined     bool       `json:"quarantined"`
+	OptedOut        bool       `json:"opted_out"`
 	CPF             string     `json:"cpf,omitempty"`
 	Name            string     `json:"name,omitempty"`
 	QuarantineUntil *time.Time `json:"quarantine_until,omitempty"`
