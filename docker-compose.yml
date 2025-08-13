@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # API Service
+  rmi-api:
+    build: .
+    image: rmi-service
+    container_name: rmi-api
+    ports:
+      - "8080:8080"
+    environment:
+      - GIN_MODE=release
+    env_file:
+      - .env
+    networks:
+      - rmi-network
+    restart: unless-stopped
+    command: ["./api"]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Sync Service
+  rmi-sync:
+    build: .
+    image: rmi-service
+    container_name: rmi-sync
+    environment:
+      - GIN_MODE=release
+    env_file:
+      - .env
+    networks:
+      - rmi-network
+    restart: unless-stopped
+    command: ["./sync"]
+    depends_on:
+      - rmi-api
+
+  # MongoDB (if not using external)
+  mongodb:
+    image: mongo:7.0
+    container_name: rmi-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - rmi-network
+    restart: unless-stopped
+
+  # Redis (if not using external)
+  redis:
+    image: redis:7-alpine
+    container_name: rmi-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - rmi-network
+    restart: unless-stopped
+
+networks:
+  rmi-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  redis_data:

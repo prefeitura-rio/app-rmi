@@ -124,11 +124,66 @@ build-all: build build-sync
 
 # Build Docker image
 docker-build:
-    docker build -t rmi-api .
+	docker build -t rmi-service .
 
-# Run Docker container
+# Run Docker container (API service by default)
 docker-run: docker-build
-    docker run -p 8080:8080 --env-file .env rmi-api
+	docker run -p 8080:8080 --env-file .env rmi-service
+
+# Run Docker container (API service)
+docker-run-api: docker-build
+	docker run -p 8080:8080 --env-file .env rmi-service ./api
+
+# Run Docker container (Sync service)
+docker-run-sync: docker-build
+	docker run --env-file .env rmi-service ./sync
+
+# Run both services in separate containers
+docker-run-all: docker-build
+	@echo "Starting API service..."
+	docker run -d --name rmi-api -p 8080:8080 --env-file .env rmi-service ./api
+	@echo "Starting Sync service..."
+	docker run -d --name rmi-sync --env-file .env rmi-service ./sync
+	@echo "Services started:"
+	@echo "  API: http://localhost:8080"
+	@echo "  Sync: running in background"
+	@echo ""
+	@echo "To stop both services:"
+	@echo "  docker stop rmi-api rmi-sync"
+	@echo "  docker rm rmi-api rmi-sync"
+
+# Stop and remove all RMI containers
+docker-stop-all:
+	@echo "Stopping all RMI containers..."
+	docker stop rmi-api rmi-sync 2>/dev/null || true
+	docker rm rmi-api rmi-sync 2>/dev/null || true
+	@echo "All RMI containers stopped and removed"
+
+# Docker Compose commands
+docker-compose-up:
+	@echo "Starting all services with Docker Compose..."
+	docker-compose up -d
+	@echo "Services started:"
+	@echo "  API: http://localhost:8080"
+	@echo "  Sync: running in background"
+	@echo "  MongoDB: localhost:27017"
+	@echo "  Redis: localhost:6379"
+
+docker-compose-down:
+	@echo "Stopping all services..."
+	docker-compose down
+
+docker-compose-logs:
+	@echo "Showing logs for all services..."
+	docker-compose logs -f
+
+docker-compose-logs-api:
+	@echo "Showing API service logs..."
+	docker-compose logs -f rmi-api
+
+docker-compose-logs-sync:
+	@echo "Showing Sync service logs..."
+	docker-compose logs -f rmi-sync
 
 # Setup development environment
 setup:

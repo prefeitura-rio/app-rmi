@@ -19,8 +19,9 @@ COPY . .
 RUN go install github.com/swaggo/swag/cmd/swag@latest && \
     swag init -g cmd/api/main.go
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o app cmd/api/main.go
+# Build both binaries
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o api cmd/api/main.go && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o sync cmd/sync/main.go
 
 # Final stage
 FROM scratch
@@ -30,8 +31,9 @@ WORKDIR /app
 # Copy ca-certificates
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-# Copy binary
-COPY --from=builder /app/app .
+# Copy both binaries
+COPY --from=builder /app/api .
+COPY --from=builder /app/sync .
 
 # Copy swagger docs
 COPY --from=builder /app/docs ./docs
@@ -42,5 +44,5 @@ EXPOSE 8080
 # Set environment variables
 ENV GIN_MODE=release
 
-# Run the application
-CMD ["./app"]
+# Default to API service
+CMD ["./api"]
