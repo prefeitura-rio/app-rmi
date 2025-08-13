@@ -52,7 +52,7 @@ func GetCitizenData(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("GetCitizenData called", zap.String("cpf", cpf))
+	logger.Debug("GetCitizenData called", zap.String("cpf", cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -106,7 +106,7 @@ func GetCitizenData(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("GetCitizenData completed",
+	logger.Debug("GetCitizenData completed",
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -274,7 +274,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("UpdateSelfDeclaredAddress called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredAddress called", zap.String("cpf", cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -428,7 +428,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("UpdateSelfDeclaredAddress completed",
+	logger.Debug("UpdateSelfDeclaredAddress completed",
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
@@ -466,7 +466,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("UpdateSelfDeclaredPhone called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredPhone called", zap.String("cpf", cpf))
 
 	// Parse input with tracing
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "phone")
@@ -660,7 +660,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("UpdateSelfDeclaredPhone completed",
+	logger.Debug("UpdateSelfDeclaredPhone completed",
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -697,7 +697,7 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("UpdateSelfDeclaredEmail called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredEmail called", zap.String("cpf", cpf))
 
 	// Parse input with tracing
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "email")
@@ -831,7 +831,7 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("UpdateSelfDeclaredEmail completed",
+	logger.Debug("UpdateSelfDeclaredEmail completed",
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -868,7 +868,7 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("UpdateSelfDeclaredRaca called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredRaca called", zap.String("cpf", cpf))
 
 	// Parse input with tracing
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "ethnicity")
@@ -987,7 +987,7 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("UpdateSelfDeclaredRaca completed",
+	logger.Debug("UpdateSelfDeclaredRaca completed",
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
@@ -1084,7 +1084,7 @@ func HealthCheck(c *gin.Context) {
 
 	// Log health check result
 	if overallHealthy {
-		logger.Info("Health check completed successfully")
+		logger.Debug("Health check completed successfully")
 	} else {
 		logger.Error("Health check failed",
 			zap.Bool("mongodb_healthy", mongoHealthy),
@@ -1134,7 +1134,7 @@ func GetFirstLogin(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("GetFirstLogin called", zap.String("cpf", cpf))
+	logger.Debug("GetFirstLogin called", zap.String("cpf", cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1169,7 +1169,7 @@ func GetFirstLogin(c *gin.Context) {
 
 			// Log total operation time
 			totalDuration := time.Since(startTime)
-			logger.Info("GetFirstLogin completed (first login)",
+			logger.Debug("GetFirstLogin completed (first login)",
 				zap.String("cpf", cpf),
 				zap.Bool("first_login", true),
 				zap.Duration("total_duration", totalDuration),
@@ -1197,7 +1197,7 @@ func GetFirstLogin(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("GetFirstLogin completed",
+	logger.Debug("GetFirstLogin completed",
 		zap.String("cpf", cpf),
 		zap.Bool("first_login", userConfig.FirstLogin),
 		zap.Duration("total_duration", totalDuration),
@@ -1233,7 +1233,7 @@ func UpdateFirstLogin(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("UpdateFirstLogin called", zap.String("cpf", cpf))
+	logger.Debug("UpdateFirstLogin called", zap.String("cpf", cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1301,7 +1301,7 @@ func UpdateFirstLogin(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("UpdateFirstLogin completed",
+	logger.Debug("UpdateFirstLogin completed",
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -1336,7 +1336,7 @@ func GetOptIn(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("GetOptIn called", zap.String("cpf", cpf))
+	logger.Debug("GetOptIn called", zap.String("cpf", cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1371,7 +1371,7 @@ func GetOptIn(c *gin.Context) {
 
 			// Log total operation time
 			totalDuration := time.Since(startTime)
-			logger.Info("GetOptIn completed (default value)",
+			logger.Debug("GetOptIn completed (default value)",
 				zap.String("cpf", cpf),
 				zap.Bool("opt_in", true),
 				zap.Bool("default_value", true),
@@ -1400,7 +1400,7 @@ func GetOptIn(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("GetOptIn completed",
+	logger.Debug("GetOptIn completed",
 		zap.String("cpf", cpf),
 		zap.Bool("opt_in", userConfig.OptIn),
 		zap.Duration("total_duration", totalDuration),
@@ -1437,7 +1437,7 @@ func UpdateOptIn(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("UpdateOptIn called", zap.String("cpf", cpf))
+	logger.Debug("UpdateOptIn called", zap.String("cpf", cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1531,7 +1531,7 @@ func UpdateOptIn(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("UpdateOptIn completed",
+	logger.Debug("UpdateOptIn completed",
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Bool("new_opt_in_status", input.OptIn),
@@ -1560,7 +1560,7 @@ func GetEthnicityOptions(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("GetEthnicityOptions called")
+	logger.Debug("GetEthnicityOptions called")
 
 	// Get ethnicity options with tracing
 	ctx, optionsSpan := utils.TraceBusinessLogic(ctx, "get_valid_ethnicity_options")
@@ -1575,7 +1575,7 @@ func GetEthnicityOptions(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("GetEthnicityOptions completed",
+	logger.Debug("GetEthnicityOptions completed",
 		zap.Int("options_count", len(options)),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -1611,7 +1611,7 @@ func GetCitizenWallet(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("GetCitizenWallet called", zap.String("cpf", cpf))
+	logger.Debug("GetCitizenWallet called", zap.String("cpf", cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1673,7 +1673,7 @@ func GetCitizenWallet(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("GetCitizenWallet completed",
+	logger.Debug("GetCitizenWallet completed",
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -1710,7 +1710,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Info("GetMaintenanceRequests called", zap.String("cpf", cpf))
+	logger.Debug("GetMaintenanceRequests called", zap.String("cpf", cpf))
 
 	// Parse pagination parameters with tracing
 	ctx, paginationSpan := utils.TraceInputParsing(ctx, "pagination_parameters")
@@ -1767,7 +1767,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 
 			// Log total operation time
 			totalDuration := time.Since(startTime)
-			logger.Info("GetMaintenanceRequests completed (cache hit)",
+			logger.Debug("GetMaintenanceRequests completed (cache hit)",
 				zap.String("cpf", cpf),
 				zap.Int("page", page),
 				zap.Int("per_page", perPage),
@@ -1886,7 +1886,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("GetMaintenanceRequests completed",
+	logger.Debug("GetMaintenanceRequests completed",
 		zap.String("cpf", cpf),
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),

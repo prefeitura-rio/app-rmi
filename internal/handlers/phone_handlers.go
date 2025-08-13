@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -32,6 +33,14 @@ func NewPhoneHandlers(logger *logging.SafeLogger, phoneMappingService *services.
 	}
 }
 
+// isPhoneParsingError checks if an error is related to phone number parsing
+func isPhoneParsingError(err error) bool {
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "invalid phone number") || 
+		   strings.Contains(errMsg, "failed to parse phone number") ||
+		   strings.Contains(errMsg, "invalid phone number format")
+}
+
 // GetPhoneStatus godoc
 // @Summary Obter status do telefone
 // @Description Obtém o status de um número de telefone (quarentena, CPF vinculado, etc.)
@@ -56,7 +65,7 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Info("GetPhoneStatus called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("GetPhoneStatus called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -79,6 +88,14 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 			"service.operation": "get_phone_status",
 		})
 		serviceSpan.End()
+		
+		// Check if it's a phone parsing error and return 400 instead of 500
+		if isPhoneParsingError(err) {
+			h.logger.Warn("invalid phone number format", zap.Error(err), zap.String("phone_number", phoneNumber))
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Formato de número de telefone inválido"})
+			return
+		}
+		
 		h.logger.Error("failed to get phone status", zap.Error(err), zap.String("phone_number", phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
@@ -106,7 +123,7 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("GetPhoneStatus completed",
+	h.logger.Debug("GetPhoneStatus completed",
 		zap.String("phone_number", phoneNumber),
 		zap.Bool("found", response.Found),
 		zap.Bool("quarantined", response.Quarantined),
@@ -141,7 +158,7 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Info("GetCitizenByPhone called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("GetCitizenByPhone called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -176,6 +193,14 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 			"service.operation": "get_citizen_by_phone",
 		})
 		serviceSpan.End()
+		
+		// Check if it's a phone parsing error and return 400 instead of 500
+		if isPhoneParsingError(err) {
+			h.logger.Warn("invalid phone number format", zap.Error(err), zap.String("phone_number", phoneNumber))
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Formato de número de telefone inválido"})
+			return
+		}
+		
 		h.logger.Error("failed to get citizen by phone", zap.Error(err), zap.String("phone_number", phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
@@ -195,7 +220,7 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("GetCitizenByPhone completed",
+	h.logger.Debug("GetCitizenByPhone completed",
 		zap.String("phone_number", phoneNumber),
 		zap.Bool("found", response.Found),
 		zap.Duration("total_duration", totalDuration),
@@ -230,7 +255,7 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Info("ValidateRegistration called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("ValidateRegistration called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -301,7 +326,7 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("ValidateRegistration completed",
+	h.logger.Debug("ValidateRegistration completed",
 		zap.String("phone_number", phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.Bool("validation_result", response.Valid),
@@ -336,7 +361,7 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Info("PhoneOptIn called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("PhoneOptIn called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -401,7 +426,7 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("PhoneOptIn completed",
+	h.logger.Debug("PhoneOptIn completed",
 		zap.String("phone_number", phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -435,7 +460,7 @@ func (h *PhoneHandlers) OptOut(c *gin.Context) {
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Info("PhoneOptOut called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("PhoneOptOut called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -500,7 +525,7 @@ func (h *PhoneHandlers) OptOut(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("PhoneOptOut completed",
+	h.logger.Debug("PhoneOptOut completed",
 		zap.String("phone_number", phoneNumber),
 		zap.String("reason", req.Reason),
 		zap.String("channel", req.Channel),
@@ -536,7 +561,7 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Info("RejectRegistration called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("RejectRegistration called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -602,7 +627,7 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("RejectRegistration completed",
+	h.logger.Debug("RejectRegistration completed",
 		zap.String("phone_number", phoneNumber),
 		zap.String("cpf", req.CPF),
 		zap.String("channel", req.Channel),
@@ -639,7 +664,7 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Info("BindPhoneToCPF called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("BindPhoneToCPF called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -706,7 +731,7 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("BindPhoneToCPF completed",
+	h.logger.Debug("BindPhoneToCPF completed",
 		zap.String("phone_number", phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -739,7 +764,7 @@ func (h *PhoneHandlers) QuarantinePhone(c *gin.Context) {
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Info("QuarantinePhone called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("QuarantinePhone called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -791,7 +816,7 @@ func (h *PhoneHandlers) QuarantinePhone(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("QuarantinePhone completed",
+	h.logger.Debug("QuarantinePhone completed",
 		zap.String("phone_number", phoneNumber),
 		zap.String("status", response.Status),
 		zap.Time("quarantine_until", response.QuarantineUntil),
@@ -825,7 +850,7 @@ func (h *PhoneHandlers) ReleaseQuarantine(c *gin.Context) {
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Info("ReleaseQuarantine called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("ReleaseQuarantine called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -877,7 +902,7 @@ func (h *PhoneHandlers) ReleaseQuarantine(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("ReleaseQuarantine completed",
+	h.logger.Debug("ReleaseQuarantine completed",
 		zap.String("phone_number", phoneNumber),
 		zap.String("status", response.Status),
 		zap.Time("quarantine_until", response.QuarantineUntil),
@@ -907,7 +932,7 @@ func (h *PhoneHandlers) GetQuarantinedPhones(c *gin.Context) {
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Info("GetQuarantinedPhones called")
+	h.logger.Debug("GetQuarantinedPhones called")
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -962,7 +987,7 @@ func (h *PhoneHandlers) GetQuarantinedPhones(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("GetQuarantinedPhones completed",
+	h.logger.Debug("GetQuarantinedPhones completed",
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.Int("total_count", response.Pagination.Total),
@@ -989,7 +1014,7 @@ func (h *PhoneHandlers) GetQuarantineStats(c *gin.Context) {
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Info("GetQuarantineStats called")
+	h.logger.Debug("GetQuarantineStats called")
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -1030,7 +1055,7 @@ func (h *PhoneHandlers) GetQuarantineStats(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("GetQuarantineStats completed",
+	h.logger.Debug("GetQuarantineStats completed",
 		zap.Int("total_quarantined", response.TotalQuarantined),
 		zap.Int("expired_quarantines", response.ExpiredQuarantines),
 		zap.Int("active_quarantines", response.ActiveQuarantines),
@@ -1056,7 +1081,7 @@ func (h *PhoneHandlers) GetAvailableChannels(c *gin.Context) {
 		attribute.String("service", "config"),
 	)
 
-	h.logger.Info("GetAvailableChannels called")
+	h.logger.Debug("GetAvailableChannels called")
 
 	// Get available channels with tracing
 	ctx, serviceSpan := utils.TraceExternalService(ctx, "phone_mapping_service", "get_available_channels")
@@ -1071,7 +1096,7 @@ func (h *PhoneHandlers) GetAvailableChannels(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("GetAvailableChannels completed",
+	h.logger.Debug("GetAvailableChannels completed",
 		zap.Int("channels_count", len(channels.Channels)),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -1095,7 +1120,7 @@ func (h *PhoneHandlers) GetOptOutReasons(c *gin.Context) {
 		attribute.String("service", "config"),
 	)
 
-	h.logger.Info("GetOptOutReasons called")
+	h.logger.Debug("GetOptOutReasons called")
 
 	// Get opt-out reasons with tracing
 	ctx, serviceSpan := utils.TraceExternalService(ctx, "phone_mapping_service", "get_opt_out_reasons")
@@ -1110,7 +1135,7 @@ func (h *PhoneHandlers) GetOptOutReasons(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("GetOptOutReasons completed",
+	h.logger.Debug("GetOptOutReasons completed",
 		zap.Int("reasons_count", len(reasons.Reasons)),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))

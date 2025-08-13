@@ -183,13 +183,45 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) error {
 		return fmt.Errorf("failed to unmarshal to BSON: %w", err)
 	}
 
-	// Use upsert to handle both insert and update cases
-	filter := bson.M{"_id": job.Key}
+	// Use appropriate filter based on collection type to match unique indexes
+	var filter bson.M
+	switch job.Collection {
+	case "citizens":
+		filter = bson.M{"cpf": job.Key}
+	case "self_declared":
+		filter = bson.M{"cpf": job.Key}
+	case "user_configs":
+		filter = bson.M{"cpf": job.Key}
+	case "phone_cpf_mappings":
+		filter = bson.M{"phone_number": job.Key}
+	case "opt_in_histories":
+		filter = bson.M{"cpf": job.Key}
+	case "beta_groups":
+		filter = bson.M{"cpf": job.Key}
+	case "phone_verifications":
+		filter = bson.M{"phone_number": job.Key}
+	case "maintenance_requests":
+		filter = bson.M{"cpf": job.Key}
+	default:
+		// Default to _id for other collections
+		filter = bson.M{"_id": job.Key}
+	}
+
 	update := bson.M{"$set": bsonData}
 	opts := options.Update().SetUpsert(true)
 
 	_, err = w.mongo.Collection(job.Collection).UpdateOne(ctx, filter, update, opts)
 	if err != nil {
+		// Check if it's a duplicate key error - this is expected and not an error
+		if mongo.IsDuplicateKeyError(err) {
+			w.logger.Debug("duplicate key during sync - data already exists",
+				zap.String("job_id", job.ID),
+				zap.String("type", job.Type),
+				zap.String("key", job.Key),
+				zap.String("collection", job.Collection))
+			// Return nil because this is not an error - the data already exists
+			return nil
+		}
 		return fmt.Errorf("failed to sync to MongoDB: %w", err)
 	}
 

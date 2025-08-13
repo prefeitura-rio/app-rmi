@@ -79,7 +79,7 @@ func ValidatePhoneNumber(c *gin.Context) {
 	span.SetAttributes(attribute.String("input.phone", req.Phone))
 
 	logger := logging.Logger.With(zap.String("phone", req.Phone))
-	logger.Info("ValidatePhoneNumber called", zap.String("phone", req.Phone))
+	logger.Debug("ValidatePhoneNumber called", zap.String("phone", req.Phone))
 
 	// Parse phone number with tracing
 	ctx, parseSpan := utils.TraceBusinessLogic(ctx, "parse_phone_number")
@@ -155,7 +155,7 @@ func ValidatePhoneNumber(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("ValidatePhoneNumber completed",
+	logger.Debug("ValidatePhoneNumber completed",
 		zap.String("phone", req.Phone),
 		zap.Bool("valid", true),
 		zap.String("country_code", fmt.Sprintf("%d", countryCode)),

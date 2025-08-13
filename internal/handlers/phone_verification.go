@@ -48,7 +48,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 	)
 
 	logger := observability.Logger().With(zap.String("cpf", cpf))
-	logger.Info("ValidatePhoneVerification called", zap.String("cpf", cpf))
+	logger.Debug("ValidatePhoneVerification called", zap.String("cpf", cpf))
 
 	// Parse input with tracing
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "phone_verification_validate_request")
@@ -216,7 +216,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	logger.Info("ValidatePhoneVerification completed",
+	logger.Debug("ValidatePhoneVerification completed",
 		zap.String("cpf", cpf),
 		zap.String("phone_number", fullPhone),
 		zap.String("code", req.Code),

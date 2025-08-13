@@ -57,18 +57,16 @@ func InitMongoDB() {
 		// The code-level read preference will override URI settings
 
 	// Add connection pool monitoring
+	// Pool monitoring disabled to reduce log verbosity
+	// Only monitor connection failures which are important
 	opts.SetPoolMonitor(&event.PoolMonitor{
 		Event: func(evt *event.PoolEvent) {
 			switch evt.Type {
-			case event.GetSucceeded:
-				logging.Logger.Info("MongoDB connection acquired",
-					zap.Uint64("connection_id", evt.ConnectionID))
 			case event.GetFailed:
 				logging.Logger.Warn("MongoDB connection acquisition failed",
 					zap.Uint64("connection_id", evt.ConnectionID))
-			case event.ConnectionReturned:
-				logging.Logger.Info("MongoDB connection returned to pool",
-					zap.Uint64("connection_id", evt.ConnectionID))
+			case event.PoolCleared:
+				logging.Logger.Warn("MongoDB connection pool cleared")
 			}
 		},
 	})
@@ -139,7 +137,7 @@ func configureCollectionWriteConcerns() {
 	for collectionName, wc := range collections {
 		// Note: Write concerns are typically set at the collection level via options
 		// This is a reference for what should be configured
-		logging.Logger.Info("Collection write concern configured",
+		logging.Logger.Debug("Collection write concern configured",
 			zap.String("collection", collectionName),
 			zap.String("write_concern", fmt.Sprintf("W(%d)", wc.W)),
 			zap.String("note", "Write concerns applied via URI and collection options"))

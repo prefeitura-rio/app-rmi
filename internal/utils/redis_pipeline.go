@@ -44,7 +44,7 @@ func (rp *RedisPipeline) BatchDelete(keys []string) error {
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Info("Redis pipeline batch delete completed",
+	logging.Logger.Debug("Redis pipeline batch delete completed",
 		zap.Int("key_count", len(keys)),
 		zap.Int("command_count", len(cmds)),
 		zap.Duration("duration", duration))
@@ -77,7 +77,7 @@ func (rp *RedisPipeline) BatchSet(keyValues map[string]interface{}, ttl time.Dur
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Info("Redis pipeline batch set completed",
+	logging.Logger.Debug("Redis pipeline batch set completed",
 		zap.Int("key_count", len(keyValues)),
 		zap.Int("command_count", len(cmds)),
 		zap.Duration("duration", duration))
@@ -119,7 +119,7 @@ func (rp *RedisPipeline) BatchGet(keys []string) (map[string]interface{}, error)
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Info("Redis pipeline batch get completed",
+	logging.Logger.Debug("Redis pipeline batch get completed",
 		zap.Int("key_count", len(keys)),
 		zap.Int("result_count", len(results)),
 		zap.Duration("duration", duration))
@@ -152,7 +152,7 @@ func (rp *RedisPipeline) BatchExpire(keys []string, ttl time.Duration) error {
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Info("Redis pipeline batch expire completed",
+	logging.Logger.Debug("Redis pipeline batch expire completed",
 		zap.Int("key_count", len(keys)),
 		zap.Int("command_count", len(cmds)),
 		zap.Duration("duration", duration))
@@ -194,7 +194,7 @@ func (rp *RedisPipeline) BatchExists(keys []string) (map[string]bool, error) {
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Info("Redis pipeline batch exists completed",
+	logging.Logger.Debug("Redis pipeline batch exists completed",
 		zap.Int("key_count", len(keys)),
 		zap.Int("result_count", len(results)),
 		zap.Duration("duration", duration))
@@ -236,7 +236,7 @@ func (rp *RedisPipeline) BatchIncr(keys []string) (map[string]int64, error) {
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Info("Redis pipeline batch incr completed",
+	logging.Logger.Debug("Redis pipeline batch incr completed",
 		zap.Int("key_count", len(keys)),
 		zap.Int("result_count", len(results)),
 		zap.Duration("duration", duration))

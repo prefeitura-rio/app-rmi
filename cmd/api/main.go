@@ -95,10 +95,8 @@ func main() {
 	phoneHandlers := handlers.NewPhoneHandlers(observability.Logger(), phoneMappingService, configService)
 	betaGroupHandlers := handlers.NewBetaGroupHandlers(observability.Logger(), betaGroupService)
 
-	// Set Gin mode
-	if config.AppConfig.Environment == "production" {
-		gin.SetMode(gin.ReleaseMode)
-	}
+	// Set Gin mode to reduce verbose route logging
+	gin.SetMode(gin.ReleaseMode)
 
 	// Create router with middleware
 	router := gin.New()

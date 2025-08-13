@@ -78,7 +78,7 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 		return fmt.Errorf("failed to queue sync job: %w", err)
 	}
 
-	dm.logger.Info("data written to cache and queued for sync",
+	dm.logger.Debug("data written to cache and queued for sync",
 		zap.String("type", op.GetType()),
 		zap.String("key", op.GetKey()),
 		zap.String("collection", op.GetCollection()))
@@ -90,37 +90,34 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 func (dm *DataManager) Read(ctx context.Context, key string, collection string, dataType string, result interface{}) error {
 	// 1. Check Redis write buffer first (most recent data)
 	writeKey := fmt.Sprintf("%s:write:%s", dataType, key)
-	dm.logger.Info("DEBUG: DataManager.Read attempting to read from write buffer",
+	dm.logger.Debug("attempting to read from write buffer",
 		zap.String("type", dataType),
-		zap.String("key", key),
-		zap.String("writeKey", writeKey))
+		zap.String("key", key))
 	
 	if data, err := dm.redis.Get(ctx, writeKey).Result(); err == nil {
 		dataStr := string(data)
 		if len(dataStr) > 100 {
 			dataStr = dataStr[:100] + "..."
 		}
-		dm.logger.Info("DEBUG: Found data in write buffer",
+		dm.logger.Debug("found data in write buffer",
 			zap.String("type", dataType),
-			zap.String("key", key),
-			zap.String("data", dataStr))
+			zap.String("key", key))
 		
 		if err := json.Unmarshal([]byte(data), result); err == nil {
-			dm.logger.Info("DEBUG: Successfully unmarshaled data from write buffer",
+			dm.logger.Debug("successfully read from write buffer",
 				zap.String("type", dataType),
 				zap.String("key", key))
 			return nil
 		} else {
-			dm.logger.Info("DEBUG: Failed to unmarshal data from write buffer",
+			dm.logger.Warn("failed to unmarshal data from write buffer",
 				zap.String("type", dataType),
 				zap.String("key", key),
 				zap.Error(err))
 		}
 	} else {
-		dm.logger.Info("DEBUG: Failed to read from write buffer",
+		dm.logger.Debug("write buffer miss, checking read cache",
 			zap.String("type", dataType),
-			zap.String("key", key),
-			zap.Error(err))
+			zap.String("key", key))
 	}
 
 	// 2. Check Redis read cache
@@ -199,7 +196,7 @@ func (dm *DataManager) Delete(ctx context.Context, key string, collection string
 		return fmt.Errorf("failed to delete from MongoDB: %w", err)
 	}
 
-	dm.logger.Info("data deleted from all layers",
+	dm.logger.Debug("data deleted from all layers",
 		zap.String("type", dataType),
 		zap.String("key", key),
 		zap.String("collection", collection))

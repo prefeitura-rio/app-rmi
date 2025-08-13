@@ -54,7 +54,7 @@ func (h *BetaGroupHandlers) CreateGroup(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("CreateBetaGroup called")
+	h.logger.Debug("CreateBetaGroup called")
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -117,7 +117,7 @@ func (h *BetaGroupHandlers) CreateGroup(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("CreateBetaGroup completed",
+	h.logger.Debug("CreateBetaGroup completed",
 		zap.String("group_name", req.Name),
 		zap.String("group_id", group.ID),
 		zap.Duration("total_duration", totalDuration),
@@ -149,7 +149,7 @@ func (h *BetaGroupHandlers) GetGroup(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("GetBetaGroup called", zap.String("group_id", groupID))
+	h.logger.Debug("GetBetaGroup called", zap.String("group_id", groupID))
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -209,7 +209,7 @@ func (h *BetaGroupHandlers) GetGroup(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("GetBetaGroup completed",
+	h.logger.Debug("GetBetaGroup completed",
 		zap.String("group_id", groupID),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -237,7 +237,7 @@ func (h *BetaGroupHandlers) ListGroups(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("ListBetaGroups called")
+	h.logger.Debug("ListBetaGroups called")
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -292,7 +292,7 @@ func (h *BetaGroupHandlers) ListGroups(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("ListBetaGroups completed",
+	h.logger.Debug("ListBetaGroups completed",
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.Int64("total_groups", groups.TotalGroups),
@@ -328,7 +328,7 @@ func (h *BetaGroupHandlers) UpdateGroup(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("UpdateBetaGroup called", zap.String("group_id", groupID))
+	h.logger.Debug("UpdateBetaGroup called", zap.String("group_id", groupID))
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -405,7 +405,7 @@ func (h *BetaGroupHandlers) UpdateGroup(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("UpdateBetaGroup completed",
+	h.logger.Debug("UpdateBetaGroup completed",
 		zap.String("group_id", groupID),
 		zap.String("new_name", req.Name),
 		zap.Duration("total_duration", totalDuration),
@@ -437,7 +437,7 @@ func (h *BetaGroupHandlers) DeleteGroup(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("DeleteBetaGroup called", zap.String("group_id", groupID))
+	h.logger.Debug("DeleteBetaGroup called", zap.String("group_id", groupID))
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -495,7 +495,7 @@ func (h *BetaGroupHandlers) DeleteGroup(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("DeleteBetaGroup completed",
+	h.logger.Debug("DeleteBetaGroup completed",
 		zap.String("group_id", groupID),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -524,7 +524,7 @@ func (h *BetaGroupHandlers) GetBetaStatus(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("GetBetaStatus called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("GetBetaStatus called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -565,7 +565,7 @@ func (h *BetaGroupHandlers) GetBetaStatus(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("GetBetaStatus completed",
+	h.logger.Debug("GetBetaStatus completed",
 		zap.String("phone_number", phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.Bool("beta_whitelisted", status.BetaWhitelisted),
@@ -600,7 +600,7 @@ func (h *BetaGroupHandlers) AddToWhitelist(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("AddToWhitelist called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("AddToWhitelist called", zap.String("phone_number", phoneNumber))
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -678,7 +678,7 @@ func (h *BetaGroupHandlers) AddToWhitelist(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("AddToWhitelist completed",
+	h.logger.Debug("AddToWhitelist completed",
 		zap.String("phone_number", phoneNumber),
 		zap.String("group_id", req.GroupID),
 		zap.Duration("total_duration", totalDuration),
@@ -710,7 +710,7 @@ func (h *BetaGroupHandlers) RemoveFromWhitelist(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("RemoveFromWhitelist called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("RemoveFromWhitelist called", zap.String("phone_number", phoneNumber))
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -767,7 +767,7 @@ func (h *BetaGroupHandlers) RemoveFromWhitelist(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("RemoveFromWhitelist completed",
+	h.logger.Debug("RemoveFromWhitelist completed",
 		zap.String("phone_number", phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -796,7 +796,7 @@ func (h *BetaGroupHandlers) ListWhitelistedPhones(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("ListWhitelistedPhones called")
+	h.logger.Debug("ListWhitelistedPhones called")
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -855,7 +855,7 @@ func (h *BetaGroupHandlers) ListWhitelistedPhones(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("ListWhitelistedPhones completed",
+	h.logger.Debug("ListWhitelistedPhones completed",
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.String("group_id_filter", groupID),
@@ -887,7 +887,7 @@ func (h *BetaGroupHandlers) BulkAddToWhitelist(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("BulkAddToWhitelist called")
+	h.logger.Debug("BulkAddToWhitelist called")
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -951,7 +951,7 @@ func (h *BetaGroupHandlers) BulkAddToWhitelist(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("BulkAddToWhitelist completed",
+	h.logger.Debug("BulkAddToWhitelist completed",
 		zap.String("group_id", req.GroupID),
 		zap.Int("phone_count", len(req.PhoneNumbers)),
 		zap.Int("added_count", len(response)),
@@ -981,7 +981,7 @@ func (h *BetaGroupHandlers) BulkRemoveFromWhitelist(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("BulkRemoveFromWhitelist called")
+	h.logger.Debug("BulkRemoveFromWhitelist called")
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -1036,7 +1036,7 @@ func (h *BetaGroupHandlers) BulkRemoveFromWhitelist(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("BulkRemoveFromWhitelist completed",
+	h.logger.Debug("BulkRemoveFromWhitelist completed",
 		zap.Int("phone_count", len(req.PhoneNumbers)),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -1065,7 +1065,7 @@ func (h *BetaGroupHandlers) BulkMoveWhitelist(c *gin.Context) {
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Info("BulkMoveWhitelist called")
+	h.logger.Debug("BulkMoveWhitelist called")
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -1130,7 +1130,7 @@ func (h *BetaGroupHandlers) BulkMoveWhitelist(c *gin.Context) {
 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
-	h.logger.Info("BulkMoveWhitelist completed",
+	h.logger.Debug("BulkMoveWhitelist completed",
 		zap.String("from_group_id", req.FromGroupID),
 		zap.String("to_group_id", req.ToGroupID),
 		zap.Int("phone_count", len(req.PhoneNumbers)),
