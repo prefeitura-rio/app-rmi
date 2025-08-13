@@ -307,16 +307,16 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	// We'll rely on the binding validation and business logic validation
 	validateSpan.End()
 
-	// Get current data for comparison with tracing
-	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.CitizenCollection, "cpf")
-	current, err := getMergedCitizenData(ctx, cpf)
+	// Get current address data for comparison with tracing (optimized to fetch only address field)
+	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
+	current, err := getCurrentAddressData(ctx, cpf)
 	if err != nil {
 		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.CitizenCollection,
+			"db.collection": config.AppConfig.SelfDeclaredCollection,
 			"db.filter":     "cpf",
 		})
 		findSpan.End()
-		logger.Error("failed to fetch current data for comparison", zap.Error(err))
+		logger.Error("failed to fetch current address data for comparison", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to check current data: " + err.Error()})
 		return
 	}
@@ -324,17 +324,17 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 
 	// Compare data with tracing
 	ctx, compareSpan := utils.TraceDataComparison(ctx, "address_comparison")
-	if current.Endereco != nil && current.Endereco.Principal != nil &&
-		*current.Endereco.Principal.Bairro == input.Bairro &&
-		*current.Endereco.Principal.CEP == input.CEP &&
-		(current.Endereco.Principal.Complemento == nil && input.Complemento == nil ||
-			(current.Endereco.Principal.Complemento != nil && input.Complemento != nil && *current.Endereco.Principal.Complemento == *input.Complemento)) &&
-		*current.Endereco.Principal.Estado == input.Estado &&
-		*current.Endereco.Principal.Logradouro == input.Logradouro &&
-		*current.Endereco.Principal.Municipio == input.Municipio &&
-		*current.Endereco.Principal.Numero == input.Numero &&
-		(current.Endereco.Principal.TipoLogradouro == nil && input.TipoLogradouro == nil ||
-			(current.Endereco.Principal.TipoLogradouro != nil && input.TipoLogradouro != nil && *current.Endereco.Principal.TipoLogradouro == *input.TipoLogradouro)) {
+	if current != nil && current.Principal != nil &&
+		*current.Principal.Bairro == input.Bairro &&
+		*current.Principal.CEP == input.CEP &&
+		(current.Principal.Complemento == nil && input.Complemento == nil ||
+			(current.Principal.Complemento != nil && input.Complemento != nil && *current.Principal.Complemento == *input.Complemento)) &&
+		*current.Principal.Estado == input.Estado &&
+		*current.Principal.Logradouro == input.Logradouro &&
+		*current.Principal.Municipio == input.Municipio &&
+		*current.Principal.Numero == input.Numero &&
+		(current.Principal.TipoLogradouro == nil && input.TipoLogradouro == nil ||
+			(current.Principal.TipoLogradouro != nil && input.TipoLogradouro != nil && *current.Principal.TipoLogradouro == *input.TipoLogradouro)) {
 		compareSpan.End()
 		c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: address matches current data"})
 		return
@@ -411,7 +411,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		RequestID: c.GetString("RequestID"),
 	}
 
-	err = utils.LogAddressUpdate(ctx, auditCtx, current.Endereco, &endereco)
+	err = utils.LogAddressUpdate(ctx, auditCtx, current, &endereco)
 	if err != nil {
 		utils.RecordErrorInSpan(auditSpan, err, map[string]interface{}{
 			"audit.action":   "update",
@@ -498,16 +498,16 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	}
 	cpfSpan.End()
 
-	// Get current data for comparison with tracing
-	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.CitizenCollection, "cpf")
-	current, err := getMergedCitizenData(ctx, cpf)
+	// Get current phone data for comparison with tracing (optimized to fetch only phone field)
+	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
+	current, err := getCurrentPhoneData(ctx, cpf)
 	if err != nil {
 		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.CitizenCollection,
+			"db.collection": config.AppConfig.SelfDeclaredCollection,
 			"db.filter":     "cpf",
 		})
 		findSpan.End()
-		logger.Error("failed to fetch current data for comparison", zap.Error(err))
+		logger.Error("failed to fetch current phone data for comparison", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to check current data: " + err.Error()})
 		return
 	}
@@ -515,10 +515,10 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 
 	// Compare data with tracing
 	ctx, compareSpan := utils.TraceDataComparison(ctx, "phone_comparison")
-	if current.Telefone != nil && current.Telefone.Principal != nil &&
-		current.Telefone.Principal.DDI != nil && *current.Telefone.Principal.DDI == input.DDI &&
-		current.Telefone.Principal.DDD != nil && *current.Telefone.Principal.DDD == input.DDD &&
-		current.Telefone.Principal.Valor != nil && *current.Telefone.Principal.Valor == input.Valor {
+	if current != nil && current.Principal != nil &&
+		current.Principal.DDI != nil && *current.Principal.DDI == input.DDI &&
+		current.Principal.DDD != nil && *current.Principal.DDD == input.DDD &&
+		current.Principal.Valor != nil && *current.Principal.Valor == input.Valor {
 		compareSpan.End()
 		c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: phone matches current data"})
 		return
@@ -634,11 +634,11 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	}
 
 	oldValue := "none"
-	if current.Telefone != nil && current.Telefone.Principal != nil {
+	if current != nil && current.Principal != nil {
 		oldValue = fmt.Sprintf("%s%s%s",
-			*current.Telefone.Principal.DDI,
-			*current.Telefone.Principal.DDD,
-			*current.Telefone.Principal.Valor)
+			*current.Principal.DDI,
+			*current.Principal.DDD,
+			*current.Principal.Valor)
 	}
 
 	newValue := fullPhone
@@ -727,16 +727,16 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 	}
 	cpfSpan.End()
 
-	// Get current data for comparison with tracing
-	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.CitizenCollection, "cpf")
-	current, err := getMergedCitizenData(ctx, cpf)
+	// Get current email data for comparison with tracing (optimized to fetch only email field)
+	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
+	current, err := getCurrentEmailData(ctx, cpf)
 	if err != nil {
 		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.CitizenCollection,
+			"db.collection": config.AppConfig.SelfDeclaredCollection,
 			"db.filter":     "cpf",
 		})
 		findSpan.End()
-		logger.Error("failed to fetch current data for comparison", zap.Error(err))
+		logger.Error("failed to fetch current email data for comparison", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to check current data: " + err.Error()})
 		return
 	}
@@ -744,8 +744,8 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 
 	// Compare data with tracing
 	ctx, compareSpan := utils.TraceDataComparison(ctx, "email_comparison")
-	if current.Email != nil && current.Email.Principal != nil &&
-		current.Email.Principal.Valor != nil && *current.Email.Principal.Valor == input.Valor {
+	if current != nil && current.Principal != nil &&
+		current.Principal.Valor != nil && *current.Principal.Valor == input.Valor {
 		compareSpan.End()
 		c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: email matches current data"})
 		return
@@ -808,8 +808,8 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 	}
 
 	oldValue := "none"
-	if current.Email != nil && current.Email.Principal != nil {
-		oldValue = *current.Email.Principal.Valor
+	if current != nil && current.Principal != nil {
+		oldValue = *current.Principal.Valor
 	}
 
 	newValue := input.Valor
@@ -1936,4 +1936,112 @@ type UserConfigResponse struct {
 
 type UserConfigOptInResponse struct {
 	OptIn bool `json:"opt_in"`
+}
+
+// getCurrentAddressData gets only the address field from self_declared data for comparison
+func getCurrentAddressData(ctx context.Context, cpf string) (*models.Endereco, error) {
+	// Try to get from cache first using DataManager
+	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
+	
+	var addressData struct {
+		CPF       string              `json:"cpf"`
+		Endereco  *models.Endereco    `json:"endereco"`
+		UpdatedAt string              `json:"updated_at"`
+	}
+	
+	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_address", &addressData)
+	if err == nil && addressData.Endereco != nil {
+		return addressData.Endereco, nil
+	}
+	
+	// Fallback to MongoDB with field projection (only get endereco field)
+	var selfDeclared struct {
+		Endereco *models.Endereco `bson:"endereco"`
+	}
+	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(
+		ctx, 
+		bson.M{"cpf": cpf},
+		options.FindOne().SetProjection(bson.M{"endereco": 1}),
+	).Decode(&selfDeclared)
+	
+	if err == mongo.ErrNoDocuments {
+		return nil, nil // No data found, this is okay
+	}
+	if err != nil {
+		return nil, err
+	}
+	
+	return selfDeclared.Endereco, nil
+}
+
+// getCurrentPhoneData gets only the phone field from self_declared data for comparison
+func getCurrentPhoneData(ctx context.Context, cpf string) (*models.Telefone, error) {
+	// Try to get from cache first using DataManager
+	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
+	
+	var phoneData struct {
+		CPF       string             `json:"cpf"`
+		Telefone  *models.Telefone   `json:"telefone"`
+		UpdatedAt string             `json:"updated_at"`
+	}
+	
+	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_phone", &phoneData)
+	if err == nil && phoneData.Telefone != nil {
+		return phoneData.Telefone, nil
+	}
+	
+	// Fallback to MongoDB with field projection (only get telefone field)
+	var selfDeclared struct {
+		Telefone *models.Telefone `bson:"telefone"`
+	}
+	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(
+		ctx, 
+		bson.M{"cpf": cpf},
+		options.FindOne().SetProjection(bson.M{"telefone": 1}),
+	).Decode(&selfDeclared)
+	
+	if err == mongo.ErrNoDocuments {
+		return nil, nil // No data found, this is okay
+	}
+	if err != nil {
+		return nil, err
+	}
+	
+	return selfDeclared.Telefone, nil
+}
+
+// getCurrentEmailData gets only the email field from self_declared data for comparison
+func getCurrentEmailData(ctx context.Context, cpf string) (*models.Email, error) {
+	// Try to get from cache first using DataManager
+	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
+	
+	var emailData struct {
+		CPF       string          `json:"cpf"`
+		Email     *models.Email   `json:"email"`
+		UpdatedAt string          `json:"updated_at"`
+	}
+	
+	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_email", &emailData)
+	if err == nil && emailData.Email != nil {
+		return emailData.Email, nil
+	}
+	
+	// Fallback to MongoDB with field projection (only get email field)
+	var selfDeclared struct {
+		Email *models.Email `bson:"email"`
+	}
+	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(
+		ctx, 
+		bson.M{"cpf": cpf},
+		options.FindOne().SetProjection(bson.M{"email": 1}),
+	).Decode(&selfDeclared)
+	
+	if err == mongo.ErrNoDocuments {
+		return nil, nil // No data found, this is okay
+	}
+	if err != nil {
+		return nil, err
+	}
+	
+	return selfDeclared.Email, nil
 }
