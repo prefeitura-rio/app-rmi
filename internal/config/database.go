@@ -173,8 +173,8 @@ func InitRedis() {
 			PoolTimeout: AppConfig.RedisPoolTimeout,
 
 			// Cluster specific settings
-			RouteByLatency:   true,  // Route commands to closest cluster node
-			RouteRandomly:    false, // Prefer latency-based routing
+			RouteByLatency:   false, // Disable latency routing to avoid address parsing issues
+			RouteRandomly:    true,  // Use random routing instead
 			ReadOnly:         false, // Allow writes (default)
 			MaxRedirects:     8,     // Follow cluster redirects
 		})
@@ -218,16 +218,29 @@ func InitRedis() {
 	defer cancel()
 
 	if err := Redis.Ping(ctx).Err(); err != nil {
-		logging.Logger.Error("failed to connect to Redis",
-			zap.String("uri", AppConfig.RedisURI),
-			zap.Error(err))
+		if AppConfig.RedisClusterEnabled {
+			logging.Logger.Error("failed to connect to Redis Cluster",
+				zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs),
+				zap.Error(err))
+		} else {
+			logging.Logger.Error("failed to connect to Redis",
+				zap.String("uri", AppConfig.RedisURI),
+				zap.Error(err))
+		}
 		return
 	}
 
-	logging.Logger.Info("connected to Redis",
-		zap.String("uri", AppConfig.RedisURI),
-		zap.Int("pool_size", AppConfig.RedisPoolSize),
-		zap.Int("min_idle_conns", AppConfig.RedisMinIdleConns))
+	if AppConfig.RedisClusterEnabled {
+		logging.Logger.Info("connected to Redis Cluster",
+			zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs),
+			zap.Int("pool_size", AppConfig.RedisPoolSize),
+			zap.Int("min_idle_conns", AppConfig.RedisMinIdleConns))
+	} else {
+		logging.Logger.Info("connected to Redis",
+			zap.String("uri", AppConfig.RedisURI),
+			zap.Int("pool_size", AppConfig.RedisPoolSize),
+			zap.Int("min_idle_conns", AppConfig.RedisMinIdleConns))
+	}
 
 	// Start Redis connection pool monitoring
 	go monitorRedisConnectionPool()
