@@ -146,32 +146,72 @@ func configureCollectionWriteConcerns() {
 
 // InitRedis initializes the Redis connection
 func InitRedis() {
-	// Initialize Redis client with production-optimized settings
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     AppConfig.RedisURI,
-		Password: AppConfig.RedisPassword,
-		DB:       AppConfig.RedisDB,
+	if AppConfig.RedisClusterEnabled {
+		// Use Redis Cluster for distributed setup (production)
+		logging.Logger.Info("initializing Redis with Cluster for distributed setup",
+			zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs))
 
-		// Connection timeouts - configurable via environment variables
-		DialTimeout:  AppConfig.RedisDialTimeout,
-		ReadTimeout:  AppConfig.RedisReadTimeout,
-		WriteTimeout: AppConfig.RedisWriteTimeout,
+		clusterClient := redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:    AppConfig.RedisClusterAddrs,
+			Password: AppConfig.RedisClusterPassword,
 
-		// Connection pool optimization - configurable via environment variables
-		PoolSize:     AppConfig.RedisPoolSize,
-		MinIdleConns: AppConfig.RedisMinIdleConns,
-		MaxRetries:   3, // Retry failed commands
+			// Connection timeouts - configurable via environment variables
+			DialTimeout:  AppConfig.RedisDialTimeout,
+			ReadTimeout:  AppConfig.RedisReadTimeout,
+			WriteTimeout: AppConfig.RedisWriteTimeout,
 
-		// Connection health checks
-		IdleTimeout: 5 * time.Minute,  // Close idle connections
-		MaxConnAge:  30 * time.Minute, // Rotate connections
+			// Connection pool optimization - configurable via environment variables
+			PoolSize:     AppConfig.RedisPoolSize,
+			MinIdleConns: AppConfig.RedisMinIdleConns,
+			MaxRetries:   3, // Retry failed commands
 
-		// Circuit breaker for high load - configurable via environment variables
-		PoolTimeout: AppConfig.RedisPoolTimeout,
-	})
+			// Connection health checks
+			IdleTimeout: 5 * time.Minute,  // Close idle connections
+			MaxConnAge:  30 * time.Minute, // Rotate connections
 
-	// Wrap with traced client
-	Redis = redisclient.NewClient(redisClient)
+			// Circuit breaker for high load - configurable via environment variables
+			PoolTimeout: AppConfig.RedisPoolTimeout,
+
+			// Cluster specific settings
+			RouteByLatency:   true,  // Route commands to closest cluster node
+			RouteRandomly:    false, // Prefer latency-based routing
+			ReadOnly:         false, // Allow writes (default)
+			MaxRedirects:     8,     // Follow cluster redirects
+		})
+
+		// Wrap with traced client using cluster client
+		Redis = redisclient.NewClusterClient(clusterClient)
+	} else {
+		// Use single Redis instance (development/testing)
+		logging.Logger.Info("initializing Redis with single instance",
+			zap.String("addr", AppConfig.RedisURI))
+
+		singleClient := redis.NewClient(&redis.Options{
+			Addr:     AppConfig.RedisURI,
+			Password: AppConfig.RedisPassword,
+			DB:       AppConfig.RedisDB,
+
+			// Connection timeouts - configurable via environment variables
+			DialTimeout:  AppConfig.RedisDialTimeout,
+			ReadTimeout:  AppConfig.RedisReadTimeout,
+			WriteTimeout: AppConfig.RedisWriteTimeout,
+
+			// Connection pool optimization - configurable via environment variables
+			PoolSize:     AppConfig.RedisPoolSize,
+			MinIdleConns: AppConfig.RedisMinIdleConns,
+			MaxRetries:   3, // Retry failed commands
+
+			// Connection health checks
+			IdleTimeout: 5 * time.Minute,  // Close idle connections
+			MaxConnAge:  30 * time.Minute, // Rotate connections
+
+			// Circuit breaker for high load - configurable via environment variables
+			PoolTimeout: AppConfig.RedisPoolTimeout,
+		})
+
+		// Wrap with traced client using single client
+		Redis = redisclient.NewClient(singleClient)
+	}
 
 	// Test Redis connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

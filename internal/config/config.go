@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -22,6 +23,11 @@ type Config struct {
 	RedisPassword string        `json:"redis_password"`
 	RedisDB       int           `json:"redis_db"`
 	RedisTTL      time.Duration `json:"redis_ttl"`
+
+	// Redis Cluster configuration (for production clustered setup)
+	RedisClusterEnabled bool     `json:"redis_cluster_enabled"`
+	RedisClusterAddrs   []string `json:"redis_cluster_addrs"`
+	RedisClusterPassword string  `json:"redis_cluster_password"`
 
 	// Redis connection pool configuration
 	RedisPoolSize     int           `json:"redis_pool_size"`
@@ -175,6 +181,18 @@ func LoadConfig() error {
 		return fmt.Errorf("invalid INDEX_MAINTENANCE_INTERVAL: %w", err)
 	}
 
+	// Redis Cluster configuration
+	redisClusterEnabled := getEnvOrDefault("REDIS_CLUSTER_ENABLED", "false") == "true"
+	var redisClusterAddrs []string
+	if redisClusterEnabled {
+		clusterAddrsStr := os.Getenv("REDIS_CLUSTER_ADDRS")
+		if clusterAddrsStr != "" {
+			redisClusterAddrs = parseCommaSeparatedList(clusterAddrsStr)
+		} else {
+			return fmt.Errorf("REDIS_CLUSTER_ADDRS is required when REDIS_CLUSTER_ENABLED=true")
+		}
+	}
+
 	AppConfig = &Config{
 		// Server configuration
 		Port:        port,
@@ -189,6 +207,11 @@ func LoadConfig() error {
 		RedisPassword: getEnvOrDefault("REDIS_PASSWORD", ""),
 		RedisDB:       redisDB,
 		RedisTTL:      redisTTL,
+
+		// Redis Cluster configuration
+		RedisClusterEnabled:  redisClusterEnabled,
+		RedisClusterAddrs:    redisClusterAddrs,
+		RedisClusterPassword: getEnvOrDefault("REDIS_CLUSTER_PASSWORD", ""),
 
 		// Redis connection pool configuration
 		RedisPoolSize:     getEnvAsIntOrDefault("REDIS_POOL_SIZE", 50),
@@ -278,4 +301,17 @@ func getEnvAsDurationOrDefault(key string, defaultValue time.Duration) time.Dura
 		}
 	}
 	return defaultValue
+}
+
+// parseCommaSeparatedList parses a comma-separated string into a slice of strings
+func parseCommaSeparatedList(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
