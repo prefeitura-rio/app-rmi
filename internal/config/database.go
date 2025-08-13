@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"go.mongodb.org/mongo-driver/bson"
@@ -166,15 +166,15 @@ func InitRedis() {
 			MaxRetries:   3, // Retry failed commands
 
 			// Connection health checks
-			IdleTimeout: 5 * time.Minute,  // Close idle connections
-			MaxConnAge:  30 * time.Minute, // Rotate connections
+			ConnMaxIdleTime: 5 * time.Minute,  // Close idle connections
+			ConnMaxLifetime: 30 * time.Minute, // Rotate connections
 
 			// Circuit breaker for high load - configurable via environment variables
 			PoolTimeout: AppConfig.RedisPoolTimeout,
 
 			// Cluster specific settings
-			RouteByLatency:   false, // Disable latency routing to avoid address parsing issues
-			RouteRandomly:    true,  // Use random routing instead
+			RouteByLatency:   true,  // Route commands to closest cluster node
+			RouteRandomly:    false, // Prefer latency-based routing
 			ReadOnly:         false, // Allow writes (default)
 			MaxRedirects:     8,     // Follow cluster redirects
 		})
@@ -202,8 +202,8 @@ func InitRedis() {
 			MaxRetries:   3, // Retry failed commands
 
 			// Connection health checks
-			IdleTimeout: 5 * time.Minute,  // Close idle connections
-			MaxConnAge:  30 * time.Minute, // Rotate connections
+			ConnMaxIdleTime: 5 * time.Minute,  // Close idle connections
+			ConnMaxLifetime: 30 * time.Minute, // Rotate connections
 
 			// Circuit breaker for high load - configurable via environment variables
 			PoolTimeout: AppConfig.RedisPoolTimeout,
