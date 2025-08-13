@@ -101,7 +101,8 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 		}
 		dm.logger.Debug("found data in write buffer",
 			zap.String("type", dataType),
-			zap.String("key", key))
+			zap.String("key", key),
+			zap.String("data_preview", dataStr))
 		
 		if err := json.Unmarshal([]byte(data), result); err == nil {
 			dm.logger.Debug("successfully read from write buffer",
