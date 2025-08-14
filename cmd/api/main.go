@@ -146,6 +146,12 @@ func main() {
 			public.GET("/ethnicity/options", handlers.GetEthnicityOptions)
 		}
 
+		// Public validation endpoints (no auth required)
+		validationGroup := v1.Group("/validate")
+		{
+			validationGroup.POST("/phone", handlers.ValidatePhoneNumber)
+		}
+
 		// Phone routes (public)
 		phoneGroup := v1.Group("/phone")
 		{

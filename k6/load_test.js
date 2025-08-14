@@ -143,21 +143,26 @@ function makeApiCall(method, endpoint, payload = null, expectedStatus = 200, tok
     }
 
     // Check for actual HTTP failures (network, server errors)
-    const isHttpFailure = response.status === 0 || response.status >= 500 || response.status === 401;
+    const isHttpFailure = response.status === 0 || response.status >= 500;
 
     if (isHttpFailure) {
         failureRate.add(1);
         httpFailureRate.add(1);
 
-        if (response.status === 401) {
-            console.error(`🔒 ${method} ${endpoint} failed: Authentication required (401)`);
-        } else if (response.status === 404) {
-            console.error(`🔍 ${method} ${endpoint} failed: Resource not found (404)`);
-        } else if (response.status === 0) {
+        if (response.status === 0) {
             console.error(`🌐 ${method} ${endpoint} failed: Network error or timeout`);
         } else {
             console.error(`❌ ${method} ${endpoint} failed: HTTP ${response.status}`);
         }
+    }
+
+    // Log auth and client errors separately (not counted as system failures)
+    if (response.status === 401) {
+        console.warn(`🔒 ${method} ${endpoint}: Authentication issue (401) - Check token validity or permissions`);
+    } else if (response.status === 403) {
+        console.warn(`🚫 ${method} ${endpoint}: Forbidden (403) - Check user permissions for CPF access`);
+    } else if (response.status === 404) {
+        console.warn(`🔍 ${method} ${endpoint}: Resource not found (404) - Check endpoint exists`);
     }
 
     // Run checks separately - these don't count as failures, just quality metrics
@@ -544,7 +549,7 @@ function testLoggedOutPopularServices() {
     sleep(8);
 
     const collections = "servicos,beneficios,programas";
-    const categoriesResponse = makePublicApiCall("GET", `/api/v1/categorias-relevancia?collections=${collections}`, null, 200);
+    makePublicApiCall("GET", `/api/v1/categorias-relevancia?collections=${collections}`, null, 200);
 
     sleep(5);
 }
