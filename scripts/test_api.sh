@@ -185,7 +185,7 @@ make_request() {
     if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]] || [[ "$status_code" -eq 404 ]]; then
         print_result "$test_name" "PASS" "$response_body"
         # Store response body in a temporary file for verification
-        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]] || [[ "$test_name" == *"Create Beta Group"* ]] || [[ "$test_name" == *"Create Second Beta Group"* ]]; then
+        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]] || [[ "$test_name" == *"Create Beta Group"* ]] || [[ "$test_name" == *"Create Second Beta Group"* ]] || [[ "$test_name" == *"Double Test"* ]]; then
             # Create a safe filename by replacing spaces and special chars with underscores
             local safe_filename=$(echo "$test_name" | sed 's/[^a-zA-Z0-9]/_/g')
             echo "$response_body" > "/tmp/api_response_${safe_filename}"
@@ -435,7 +435,7 @@ if [[ "$SKIP_PHONE" != "true" ]]; then
     echo -e "${BLUE}📋 Getting final citizen data to verify phone update...${NC}"
     make_request "GET" "/citizen/$CPF" "" "Get Citizen Data (After Phone Verification)"
 else
-    echo -e "${YELLOW}⚠️  Skipping phone update and verification (--skip-phone flag used)${NC}"
+    echo -e "${BLUE}📝 Phone update and verification skipped (--skip-phone flag used)${NC}"
     echo ""
 fi
 
@@ -669,7 +669,7 @@ fi
 
 # Verify Phone Update (if phone verification was completed)
 if [[ "$SKIP_PHONE" == "true" ]]; then
-    echo -e "${YELLOW}⚠️  Skipping phone verification (--skip-phone flag used)${NC}"
+    echo -e "${BLUE}📝 Skipping phone verification (--skip-phone flag used)${NC}"
 elif [[ -f "/tmp/api_response_Get_Citizen_Data__After_Phone_Verification_" ]]; then
     final_citizen_data=$(cat "/tmp/api_response_Get_Citizen_Data__After_Phone_Verification_")
     verify_update "Phone Update" "$original_citizen_data" "$final_citizen_data" ".telefone.principal.valor"
@@ -913,6 +913,71 @@ if [[ -n "$GROUP_ID2" && "$GROUP_ID2" != "null" ]]; then
     make_request "DELETE" "/admin/beta/groups/$GROUP_ID2" "" "Delete Beta Group 2"
 fi
 
+# TEST FOR DOUBLE PHONE UPDATE BUG (Issue: Second attempt with same number returns 409)
+echo -e "${BLUE}=== Testing Double Phone Update Bug ===${NC}"
+
+# Generate a new phone number for this specific test
+DOUBLE_UPDATE_PHONE_NUMBER=$(generate_random_phone)
+echo -e "${BLUE}📱 Generated phone number for double update test: $DOUBLE_UPDATE_PHONE_NUMBER${NC}"
+
+# Extract DDI, DDD, and valor from the generated phone number
+# Format: +5511999887766
+double_ddi="${DOUBLE_UPDATE_PHONE_NUMBER:1:2}"  # 55
+double_ddd="${DOUBLE_UPDATE_PHONE_NUMBER:3:2}"  # 11
+double_valor="${DOUBLE_UPDATE_PHONE_NUMBER:5}"  # 999887766
+
+double_phone_data="{
+    \"ddi\": \"$double_ddi\",
+    \"ddd\": \"$double_ddd\",
+    \"valor\": \"$double_valor\"
+}"
+
+# Test 82.1: First phone update (should succeed - 200)
+echo -e "${BLUE}Test 82.1: First Phone Update (should succeed with 200)${NC}"
+make_request "PUT" "/citizen/$CPF/phone" "$double_phone_data" "First Phone Update - Double Test"
+
+# Test 82.2: Second phone update with SAME data (should succeed, not return 409)
+echo -e "${BLUE}Test 82.2: Second Phone Update with Same Data (should succeed with 200)${NC}"
+make_request "PUT" "/citizen/$CPF/phone" "$double_phone_data" "Second Phone Update - Double Test"
+
+# Verify if both requests returned 200 (bug is when second returns 409)
+echo -e "${BLUE}🔍 Verifying Double Phone Update Behavior...${NC}"
+echo "=================================================="
+
+# For this test, we expect BOTH requests to return 200
+# The bug occurs when the second request returns 409 even though the phone was never verified
+if [[ -f "/tmp/api_response_First_Phone_Update___Double_Test" ]] && [[ -f "/tmp/api_response_Second_Phone_Update___Double_Test" ]]; then
+    first_response=$(cat "/tmp/api_response_First_Phone_Update___Double_Test")
+    second_response=$(cat "/tmp/api_response_Second_Phone_Update___Double_Test")
+    
+    echo -e "${BLUE}📋 Double Phone Update Test Results:${NC}"
+    echo "  First update response: $first_response"
+    echo "  Second update response: $second_response"
+    
+    # Check if the second response contains success or error
+    if echo "$second_response" | grep -qE '"message".*"success|verification code sent"'; then
+        echo -e "${GREEN}✅ Double phone update bug is FIXED - Second update succeeded${NC}"
+        ((TESTS_PASSED++))
+    elif echo "$second_response" | grep -q '"error".*"No change"'; then
+        echo -e "${RED}❌ Double phone update bug is PRESENT - Second update returned 409 Conflict${NC}"
+        ((TESTS_FAILED++))
+    else
+        echo -e "${GREEN}✅ Double phone update test - Both requests processed successfully${NC}"
+        ((TESTS_PASSED++))
+    fi
+else
+    echo -e "${RED}❌ Double phone update test responses not available for verification${NC}"
+    echo "  Looking for files:"
+    echo "    /tmp/api_response_First_Phone_Update___Double_Test"
+    echo "    /tmp/api_response_Second_Phone_Update___Double_Test"
+    echo "  Available files:"
+    ls -la /tmp/api_response_*Double* 2>/dev/null || echo "    No double test files found"
+    ((TESTS_FAILED++))
+fi
+
+echo -e "${GREEN}✅ Double phone update bug test completed${NC}"
+echo ""
+
 # NEW FUNCTIONALITY TESTS: Opt-out for Numbers That Never Opted-In
 echo -e "${BLUE}=== Testing New Opt-Out Functionality for Unknown Numbers ===${NC}"
 
@@ -920,28 +985,28 @@ echo -e "${BLUE}=== Testing New Opt-Out Functionality for Unknown Numbers ===${N
 UNKNOWN_PHONE_NUMBER=$(generate_random_phone)
 echo -e "${BLUE}📱 Generated unknown phone number for testing: $UNKNOWN_PHONE_NUMBER${NC}"
 
-# Test 83: Get Status of Unknown Phone Number (should not be found)
-echo -e "${BLUE}Test 83: Get Status of Unknown Phone Number (should not be found)${NC}"
+# Test 84: Get Status of Unknown Phone Number (should not be found)
+echo -e "${BLUE}Test 84: Get Status of Unknown Phone Number (should not be found)${NC}"
 make_request "GET" "/phone/$UNKNOWN_PHONE_NUMBER/status" "" "Get Status of Unknown Phone Number"
 
-# Test 84: Opt-out Unknown Phone Number (new functionality)
-echo -e "${BLUE}Test 84: Opt-out Unknown Phone Number (should create blocked mapping)${NC}"
+# Test 85: Opt-out Unknown Phone Number (new functionality)
+echo -e "${BLUE}Test 85: Opt-out Unknown Phone Number (should create blocked mapping)${NC}"
 unknown_optout_data='{
     "channel": "whatsapp",
     "reason": "irrelevant_content"
 }'
 make_request "POST" "/phone/$UNKNOWN_PHONE_NUMBER/opt-out" "$unknown_optout_data" "Opt-out Unknown Phone Number"
 
-# Test 85: Get Status After Opt-out (should show opted_out: true)
-echo -e "${BLUE}Test 85: Get Status After Opt-out (should show opted_out: true)${NC}"
+# Test 86: Get Status After Opt-out (should show opted_out: true)
+echo -e "${BLUE}Test 86: Get Status After Opt-out (should show opted_out: true)${NC}"
 make_request "GET" "/phone/$UNKNOWN_PHONE_NUMBER/status" "" "Get Status After Opt-out (Unknown Number)"
 
-# Test 86: Try to Get Citizen by Opted-Out Unknown Number (should fail)
-echo -e "${BLUE}Test 86: Try to Get Citizen by Opted-Out Unknown Number (should fail appropriately)${NC}"
+# Test 87: Try to Get Citizen by Opted-Out Unknown Number (should fail)
+echo -e "${BLUE}Test 87: Try to Get Citizen by Opted-Out Unknown Number (should fail appropriately)${NC}"
 make_request "GET" "/phone/$UNKNOWN_PHONE_NUMBER/citizen" "" "Get Citizen by Opted-Out Unknown Number"
 
-# Test 87: Try to Opt-in Previously Unknown Number (should work)
-echo -e "${BLUE}Test 87: Try to Opt-in Previously Unknown Number (should work)${NC}"
+# Test 88: Try to Opt-in Previously Unknown Number (should work)
+echo -e "${BLUE}Test 88: Try to Opt-in Previously Unknown Number (should work)${NC}"
 unknown_optin_data='{
     "cpf": "'$CPF'",
     "channel": "whatsapp",
@@ -951,12 +1016,12 @@ unknown_optin_data='{
 }'
 make_request "POST" "/phone/$UNKNOWN_PHONE_NUMBER/opt-in" "$unknown_optin_data" "Opt-in Previously Unknown Number"
 
-# Test 88: Get Status After Opt-in (should show active mapping)
-echo -e "${BLUE}Test 88: Get Status After Opt-in (should show active mapping)${NC}"
+# Test 89: Get Status After Opt-in (should show active mapping)
+echo -e "${BLUE}Test 89: Get Status After Opt-in (should show active mapping)${NC}"
 make_request "GET" "/phone/$UNKNOWN_PHONE_NUMBER/status" "" "Get Status After Opt-in (Previously Unknown)"
 
-# Test 89: Get Citizen by Phone After Opt-in (should work now)
-echo -e "${BLUE}Test 89: Get Citizen by Phone After Opt-in (should work now)${NC}"
+# Test 90: Get Citizen by Phone After Opt-in (should work now)
+echo -e "${BLUE}Test 90: Get Citizen by Phone After Opt-in (should work now)${NC}"
 make_request "GET" "/phone/$UNKNOWN_PHONE_NUMBER/citizen" "" "Get Citizen by Phone After Opt-in"
 
 # Verification Section for New Functionality

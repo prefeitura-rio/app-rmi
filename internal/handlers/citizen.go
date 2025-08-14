@@ -555,7 +555,9 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 
 	// Compare data with tracing
 	ctx, compareSpan := utils.TraceDataComparison(ctx, "phone_comparison")
-	if current != nil && current.Principal != nil &&
+	// Only return 409 if phone numbers match AND the current phone is verified (Indicador == true)
+	// This allows users to re-enter the same phone number if they never verified it
+	if current != nil && current.Principal != nil && current.Indicador != nil && *current.Indicador &&
 		current.Principal.DDI != nil && *current.Principal.DDI == input.DDI &&
 		current.Principal.DDD != nil && *current.Principal.DDD == input.DDD &&
 		current.Principal.Valor != nil && *current.Principal.Valor == input.Valor {
