@@ -260,23 +260,27 @@ make_request "GET" "/citizen/ethnicity/options" "" "Get Ethnicity Options"
 phone_data="{\"phone\":\"$PHONE_NUMBER\"}"
 make_request "POST" "/validate/phone" "$phone_data" "Validate Phone Number"
 
-# Test 4: Get Citizen Data (Original)
+# Test 4: Validate Email Address (no auth required)
+email_data="{\"email\":\"test.validation@exemplo.com\"}"
+make_request "POST" "/validate/email" "$email_data" "Validate Email Address"
+
+# Test 5: Get Citizen Data (Original)
 echo -e "${BLUE}📋 Getting original citizen data for verification...${NC}"
 make_request "GET" "/citizen/$CPF" "" "Get Citizen Data (Original)"
 
-# Test 5: Get Citizen Wallet
+# Test 6: Get Citizen Wallet
 make_request "GET" "/citizen/$CPF/wallet" "" "Get Citizen Wallet"
 
-# Test 6: Get Maintenance Requests
+# Test 7: Get Maintenance Requests
 make_request "GET" "/citizen/$CPF/maintenance-request" "" "Get Maintenance Requests"
 
-# Test 7: Get First Login Status (Original)
+# Test 8: Get First Login Status (Original)
 make_request "GET" "/citizen/$CPF/firstlogin" "" "Get First Login Status (Original)"
 
-# Test 8: Get Opt-In Status (will be captured before update)
+# Test 9: Get Opt-In Status (will be captured before update)
 # Note: Actual "Original" status will be captured just before opt-in update
 
-# Test 9: Update Address
+# Test 10: Update Address
 # Generate random data to avoid 409 conflicts
 random_number=$((RANDOM % 1000))
 address_data="{
