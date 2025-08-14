@@ -56,14 +56,17 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 func (w *SyncWorker) Start() {
 	w.logger.Info("sync worker started", zap.Int("worker_id", w.id))
 
+	// Use a ticker for more efficient timing instead of sleep
+	ticker := time.NewTicker(50 * time.Millisecond) // Reduced delay for better responsiveness
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-w.stopChan:
 			w.logger.Info("sync worker stopped", zap.Int("worker_id", w.id))
 			return
-		default:
-			w.processQueues()
-			time.Sleep(100 * time.Millisecond) // Small delay to prevent busy waiting
+		case <-ticker.C:
+			w.processQueuesParallel()
 		}
 	}
 }
@@ -73,46 +76,57 @@ func (w *SyncWorker) Stop() {
 	close(w.stopChan)
 }
 
-// processQueues processes all queues for available jobs
-func (w *SyncWorker) processQueues() {
+// processQueuesParallel processes all queues for available jobs in parallel
+func (w *SyncWorker) processQueuesParallel() {
+	// Skip if in degraded mode
+	if w.degradedMode.IsActive() {
+		w.logger.Debug("skipping all queue processing due to degraded mode",
+			zap.String("reason", w.degradedMode.GetReason()))
+		return
+	}
+
+	// Process a limited number of jobs per cycle to prevent overwhelming
+	const maxJobsPerCycle = 3
+	jobsProcessed := 0
+
+	// Use round-robin approach to fairly distribute processing across queues
 	for _, queue := range w.queues {
-		// Skip if in degraded mode
-		if w.degradedMode.IsActive() {
-			w.logger.Debug("skipping queue processing due to degraded mode",
-				zap.String("queue", queue),
-				zap.String("reason", w.degradedMode.GetReason()))
-			continue
+		if jobsProcessed >= maxJobsPerCycle {
+			break
 		}
 
-		// Log which queue we're checking
-		w.logger.Info("checking queue for jobs", zap.String("queue", queue))
-
-		// Try to get a job from the queue
-		job, err := w.getJob(queue)
+		// Non-blocking job retrieval
+		job, err := w.getJobNonBlocking(queue)
 		if err != nil {
-			w.logger.Info("error getting job from queue",
+			w.logger.Debug("error getting job from queue",
 				zap.String("queue", queue),
 				zap.Error(err))
 			continue
 		}
 
 		if job != nil {
-			w.logger.Info("found job to process",
+			w.logger.Debug("found job to process",
 				zap.String("queue", queue),
 				zap.String("job_id", job.ID))
+			
+			// Process job in current goroutine to maintain order and avoid overwhelming the system
 			w.processJob(job)
-		} else {
-			w.logger.Info("no jobs available in queue", zap.String("queue", queue))
+			jobsProcessed++
 		}
+	}
+
+	if jobsProcessed > 0 {
+		w.logger.Debug("processed jobs in cycle", zap.Int("jobs_processed", jobsProcessed))
 	}
 }
 
-// getJob gets a job from a specific queue
-func (w *SyncWorker) getJob(queue string) (*SyncJob, error) {
+
+// getJobNonBlocking gets a job from a specific queue without blocking
+func (w *SyncWorker) getJobNonBlocking(queue string) (*SyncJob, error) {
 	queueKey := fmt.Sprintf("sync:queue:%s", queue)
 
-	// Use BRPop with 1 second timeout to avoid blocking indefinitely
-	result, err := w.redis.BRPop(context.Background(), 1*time.Second, queueKey).Result()
+	// Use RPOP (non-blocking) instead of BRPop
+	result, err := w.redis.RPop(context.Background(), queueKey).Result()
 	if err != nil {
 		if err.Error() == "redis: nil" {
 			return nil, nil // No jobs available
@@ -120,13 +134,9 @@ func (w *SyncWorker) getJob(queue string) (*SyncJob, error) {
 		return nil, err
 	}
 
-	if len(result) < 2 {
-		return nil, nil
-	}
-
 	// Parse the job
 	var job SyncJob
-	if err := json.Unmarshal([]byte(result[1]), &job); err != nil {
+	if err := json.Unmarshal([]byte(result), &job); err != nil {
 		w.logger.Error("failed to unmarshal sync job",
 			zap.String("queue", queue),
 			zap.Error(err))

@@ -127,88 +127,19 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 		}
 	}
 	
-	var selfDeclared models.SelfDeclaredData
+	// Use batched Redis operations for self-declared data
+	selfDeclared := getBatchedSelfDeclaredData(ctx, cpf)
 	
-	// Try to read from cache first for address data
-	var addressData struct {
-		CPF       string              `json:"cpf"`
-		Endereco  *models.Endereco    `json:"endereco"`
-		UpdatedAt string              `json:"updated_at"`  // Use string to avoid time parsing issues
-	}
-	observability.Logger().Info("DEBUG: About to call DataManager.Read for address", 
-		zap.String("cpf", cpf),
-		zap.String("collection", config.AppConfig.SelfDeclaredCollection),
-		zap.String("dataType", "self_declared_address"))
-	
-	err = dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_address", &addressData)
-	if err == nil && addressData.Endereco != nil {
-		// Use cached address data
-		selfDeclared.Endereco = addressData.Endereco
-		observability.Logger().Info("Using cached address data", 
-			zap.String("cpf", cpf),
-			zap.String("logradouro", *addressData.Endereco.Principal.Logradouro))
-	} else {
-		observability.Logger().Info("Failed to read address from cache", 
-			zap.String("cpf", cpf),
-			zap.Error(err),
-			zap.Bool("endereco_nil", addressData.Endereco == nil))
-	}
-	
-	// Try to read from cache for email data
-	var emailData struct {
-		CPF       string          `json:"cpf"`
-		Email     *models.Email   `json:"email"`
-		UpdatedAt string          `json:"updated_at"`
-	}
-	err = dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_email", &emailData)
-	if err == nil && emailData.Email != nil {
-		// Use cached email data
-		selfDeclared.Email = emailData.Email
-	}
-	
-	// Try to read from cache for phone data
-	var phoneData struct {
-		CPF       string             `json:"cpf"`
-		Telefone  *models.Telefone   `json:"telefone"`
-		UpdatedAt string             `json:"updated_at"`
-	}
-	err = dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_phone", &phoneData)
-	if err == nil && phoneData.Telefone != nil {
-		// Use cached phone data
-		selfDeclared.Telefone = phoneData.Telefone
-	}
-	
-	// Try to read from cache for ethnicity data
-	var racaData struct {
-		CPF       string      `json:"cpf"`
-		Raca      *string     `json:"raca"`
-		UpdatedAt string      `json:"updated_at"`
-	}
-	err = dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_raca", &racaData)
-	if err == nil && racaData.Raca != nil {
-		// Use cached raca data
-		selfDeclared.Raca = racaData.Raca
-	}
-	
-	// Fallback to MongoDB for complete self-declared data (for any missing data)
-	var mongoSelfDeclared models.SelfDeclaredData
-	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&mongoSelfDeclared)
-	if err != nil && err != mongo.ErrNoDocuments {
-		return nil, err
-	}
-	
-	// Merge MongoDB data with cached data (cache takes precedence)
-	if selfDeclared.Endereco == nil && mongoSelfDeclared.Endereco != nil {
-		selfDeclared.Endereco = mongoSelfDeclared.Endereco
-	}
-	if selfDeclared.Email == nil && mongoSelfDeclared.Email != nil {
-		selfDeclared.Email = mongoSelfDeclared.Email
-	}
-	if selfDeclared.Telefone == nil && mongoSelfDeclared.Telefone != nil {
-		selfDeclared.Telefone = mongoSelfDeclared.Telefone
-	}
-	if selfDeclared.Raca == nil && mongoSelfDeclared.Raca != nil {
-		selfDeclared.Raca = mongoSelfDeclared.Raca
+	// Only fallback to MongoDB if we have no cached data
+	if selfDeclared.Endereco == nil && selfDeclared.Email == nil && 
+	   selfDeclared.Telefone == nil && selfDeclared.Raca == nil {
+		// Fallback to MongoDB for complete self-declared data
+		var mongoSelfDeclared models.SelfDeclaredData
+		err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&mongoSelfDeclared)
+		if err != nil && err != mongo.ErrNoDocuments {
+			return nil, err
+		}
+		selfDeclared = mongoSelfDeclared
 	}
 	// Merge logic (same as in GetCitizenData)
 	if selfDeclared.Endereco != nil && selfDeclared.Endereco.Principal != nil {
@@ -241,6 +172,115 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 	}
 
 	return &citizen, nil
+}
+
+// getBatchedSelfDeclaredData efficiently retrieves self-declared data using Redis batch operations
+func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDeclaredData {
+	var selfDeclared models.SelfDeclaredData
+	
+	// Use batched Redis operations to fetch all self-declared data
+	keys := []string{
+		fmt.Sprintf("self_declared_address:write:%s", cpf),
+		fmt.Sprintf("self_declared_email:write:%s", cpf),
+		fmt.Sprintf("self_declared_phone:write:%s", cpf),
+		fmt.Sprintf("self_declared_raca:write:%s", cpf),
+	}
+	
+	// Try write buffer first (most recent data)
+	results, err := services.BatchReadMultiple(ctx, keys, observability.Logger().Unwrap())
+	if err != nil {
+		observability.Logger().Warn("batch read from write buffer failed", 
+			zap.String("cpf", cpf), zap.Error(err))
+	}
+	
+	// Parse results from write buffer
+	parseResult := func(key, dataType string, target interface{}) bool {
+		if data, exists := results[key]; exists && data != "" {
+			if err := json.Unmarshal([]byte(data), target); err == nil {
+				return true
+			}
+		}
+		return false
+	}
+	
+	var addressData struct {
+		CPF       string              `json:"cpf"`
+		Endereco  *models.Endereco    `json:"endereco"`
+		UpdatedAt string              `json:"updated_at"`
+	}
+	if parseResult(keys[0], "address", &addressData) && addressData.Endereco != nil {
+		selfDeclared.Endereco = addressData.Endereco
+	}
+	
+	var emailData struct {
+		CPF       string          `json:"cpf"`
+		Email     *models.Email   `json:"email"`
+		UpdatedAt string          `json:"updated_at"`
+	}
+	if parseResult(keys[1], "email", &emailData) && emailData.Email != nil {
+		selfDeclared.Email = emailData.Email
+	}
+	
+	var phoneData struct {
+		CPF       string             `json:"cpf"`
+		Telefone  *models.Telefone   `json:"telefone"`
+		UpdatedAt string             `json:"updated_at"`
+	}
+	if parseResult(keys[2], "phone", &phoneData) && phoneData.Telefone != nil {
+		selfDeclared.Telefone = phoneData.Telefone
+	}
+	
+	var racaData struct {
+		CPF       string      `json:"cpf"`
+		Raca      *string     `json:"raca"`
+		UpdatedAt string      `json:"updated_at"`
+	}
+	if parseResult(keys[3], "raca", &racaData) && racaData.Raca != nil {
+		selfDeclared.Raca = racaData.Raca
+	}
+	
+	// If write buffer didn't have everything, try read cache in batch
+	if selfDeclared.Endereco == nil || selfDeclared.Email == nil || 
+	   selfDeclared.Telefone == nil || selfDeclared.Raca == nil {
+		   
+		cacheKeys := []string{
+			fmt.Sprintf("self_declared_address:cache:%s", cpf),
+			fmt.Sprintf("self_declared_email:cache:%s", cpf),
+			fmt.Sprintf("self_declared_phone:cache:%s", cpf),
+			fmt.Sprintf("self_declared_raca:cache:%s", cpf),
+		}
+		
+		cacheResults, err := services.BatchReadMultiple(ctx, cacheKeys, observability.Logger().Unwrap())
+		if err != nil {
+			observability.Logger().Warn("batch read from cache failed", 
+				zap.String("cpf", cpf), zap.Error(err))
+		}
+		
+		// Parse missing data from cache
+		parseCacheResult := func(key, dataType string, target interface{}) bool {
+			if data, exists := cacheResults[key]; exists && data != "" {
+				if err := json.Unmarshal([]byte(data), target); err == nil {
+					return true
+				}
+			}
+			return false
+		}
+		
+		if selfDeclared.Endereco == nil && parseCacheResult(cacheKeys[0], "address", &addressData) && addressData.Endereco != nil {
+			selfDeclared.Endereco = addressData.Endereco
+		}
+		if selfDeclared.Email == nil && parseCacheResult(cacheKeys[1], "email", &emailData) && emailData.Email != nil {
+			selfDeclared.Email = emailData.Email
+		}
+		if selfDeclared.Telefone == nil && parseCacheResult(cacheKeys[2], "phone", &phoneData) && phoneData.Telefone != nil {
+			selfDeclared.Telefone = phoneData.Telefone
+		}
+		if selfDeclared.Raca == nil && parseCacheResult(cacheKeys[3], "raca", &racaData) && racaData.Raca != nil {
+			selfDeclared.Raca = racaData.Raca
+		}
+	}
+	
+	return selfDeclared
 }
 
 // UpdateSelfDeclaredAddress godoc

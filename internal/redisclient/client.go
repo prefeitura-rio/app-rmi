@@ -415,3 +415,34 @@ func (c *Client) BRPop(ctx context.Context, timeout time.Duration, keys ...strin
 	}
 	return cmd
 }
+
+// RPop wraps Redis RPop with comprehensive tracing
+func (c *Client) RPop(ctx context.Context, key string) *redis.StringCmd {
+	start := time.Now()
+	ctx, span := otel.Tracer("redis").Start(ctx, "redis.rpop",
+		trace.WithAttributes(
+			attribute.String("redis.key", key),
+			attribute.String("redis.operation", "rpop"),
+			attribute.String("redis.client", "app-rmi"),
+			attribute.String("redis.type", "list"),
+		),
+	)
+	defer func() {
+		duration := time.Since(start)
+		span.SetAttributes(
+			attribute.Int64("redis.duration_ms", duration.Milliseconds()),
+			attribute.String("redis.duration", duration.String()),
+		)
+		span.End()
+	}()
+
+	cmd := c.cmdable.RPop(ctx, key)
+	if err := cmd.Err(); err != nil && err != redis.Nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("redis.error", err.Error()))
+	} else {
+		span.SetStatus(codes.Ok, "success")
+	}
+	return cmd
+}

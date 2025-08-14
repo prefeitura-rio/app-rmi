@@ -91,3 +91,11 @@ func (l *SafeLogger) With(fields ...zap.Field) *SafeLogger {
 	}
 	return l
 }
+
+// Unwrap returns the underlying zap.Logger
+func (l *SafeLogger) Unwrap() *zap.Logger {
+	if l != nil && l.logger != nil {
+		return l.logger
+	}
+	return zap.NewNop()
+}
