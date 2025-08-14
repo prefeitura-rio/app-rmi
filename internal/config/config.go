@@ -25,9 +25,9 @@ type Config struct {
 	RedisTTL      time.Duration `json:"redis_ttl"`
 
 	// Redis Cluster configuration (for production clustered setup)
-	RedisClusterEnabled bool     `json:"redis_cluster_enabled"`
-	RedisClusterAddrs   []string `json:"redis_cluster_addrs"`
-	RedisClusterPassword string  `json:"redis_cluster_password"`
+	RedisClusterEnabled  bool     `json:"redis_cluster_enabled"`
+	RedisClusterAddrs    []string `json:"redis_cluster_addrs"`
+	RedisClusterPassword string   `json:"redis_cluster_password"`
 
 	// Redis connection pool configuration
 	RedisPoolSize     int           `json:"redis_pool_size"`
@@ -214,8 +214,8 @@ func LoadConfig() error {
 		RedisClusterPassword: getEnvOrDefault("REDIS_CLUSTER_PASSWORD", ""),
 
 		// Redis connection pool configuration (optimized for cluster)
-		RedisPoolSize:     getEnvAsIntOrDefault("REDIS_POOL_SIZE", 200),   // Increased for cluster
-		RedisMinIdleConns: getEnvAsIntOrDefault("REDIS_MIN_IDLE_CONNS", 50), // Higher baseline
+		RedisPoolSize:     getEnvAsIntOrDefault("REDIS_POOL_SIZE", 200),                    // Increased for cluster
+		RedisMinIdleConns: getEnvAsIntOrDefault("REDIS_MIN_IDLE_CONNS", 50),                // Higher baseline
 		RedisDialTimeout:  getEnvAsDurationOrDefault("REDIS_DIAL_TIMEOUT", 5*time.Second),  // More time for cluster
 		RedisReadTimeout:  getEnvAsDurationOrDefault("REDIS_READ_TIMEOUT", 3*time.Second),  // Increased
 		RedisWriteTimeout: getEnvAsDurationOrDefault("REDIS_WRITE_TIMEOUT", 3*time.Second), // Increased

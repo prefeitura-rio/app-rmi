@@ -121,7 +121,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 	origem := "self-declared"
 	sistema := "rmi"
 	now := time.Now()
-	
+
 	// Build verified phone object
 	telefone := models.Telefone{
 		Indicador: utils.BoolPtr(true), // Set to true since it's now verified

@@ -828,7 +828,7 @@ func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber, reason, c
 		if err == mongo.ErrNoDocuments {
 			// Phone number not found - create a new mapping record to track the opt-out preference
 			s.logger.Info("creating opt-out record for unknown phone number", zap.String("phone_number", storagePhone))
-			
+
 			// Create new mapping with blocked status to record the opt-out preference
 			newMapping := models.PhoneCPFMapping{
 				PhoneNumber: storagePhone,
@@ -838,16 +838,16 @@ func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber, reason, c
 				CreatedAt: now,
 				UpdatedAt: now,
 			}
-			
+
 			_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
 			if err != nil {
 				s.logger.Error("failed to create opt-out record", zap.Error(err), zap.String("phone_number", storagePhone))
 				return nil, fmt.Errorf("failed to create opt-out record: %w", err)
 			}
-			
+
 			// Record opt-out history (with empty CPF since phone is not bound)
 			s.recordOptInHistory(ctx, phoneNumber, "", "opt_out", channel, reason)
-			
+
 			return &models.OptOutResponse{
 				Status: "opted_out",
 			}, nil

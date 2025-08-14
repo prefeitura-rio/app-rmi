@@ -58,33 +58,33 @@ func (rb *RedisBatch) Execute(ctx context.Context) ([]redis.Cmder, error) {
 
 	start := time.Now()
 	pipe := config.Redis.Pipeline()
-	
+
 	// Add all operations to pipeline
 	for _, op := range rb.operations {
 		op(pipe)
 	}
-	
+
 	// Execute pipeline
 	cmds, err := pipe.Exec(ctx)
 	duration := time.Since(start)
-	
+
 	rb.logger.Debug("executed Redis batch pipeline",
 		zap.Int("operations_count", len(rb.operations)),
 		zap.Int("keys_count", len(rb.keys)),
 		zap.Duration("duration", duration),
 		zap.Bool("success", err == nil))
-	
+
 	if err != nil {
 		rb.logger.Error("Redis batch pipeline failed",
 			zap.Error(err),
 			zap.Int("operations_count", len(rb.operations)))
 		return nil, fmt.Errorf("pipeline execution failed: %w", err)
 	}
-	
+
 	// Reset batch for reuse
 	rb.operations = rb.operations[:0]
 	rb.keys = rb.keys[:0]
-	
+
 	return cmds, nil
 }
 
@@ -107,26 +107,26 @@ func BatchReadMultiple(ctx context.Context, keys []string, logger *zap.Logger) (
 
 	start := time.Now()
 	pipe := config.Redis.Pipeline()
-	
+
 	// Add all GET commands to pipeline
 	for _, key := range keys {
 		pipe.Get(ctx, key)
 	}
-	
+
 	// Execute pipeline
 	cmds, err := pipe.Exec(ctx)
 	duration := time.Since(start)
-	
+
 	logger.Debug("batch read multiple keys",
 		zap.Int("keys_count", len(keys)),
 		zap.Duration("duration", duration),
 		zap.Bool("success", err == nil))
-	
+
 	if err != nil && err != redis.Nil {
 		logger.Error("batch read failed", zap.Error(err))
 		return nil, fmt.Errorf("batch read failed: %w", err)
 	}
-	
+
 	// Process results
 	results := make(map[string]string, len(keys))
 	for i, cmd := range cmds {
@@ -139,7 +139,7 @@ func BatchReadMultiple(ctx context.Context, keys []string, logger *zap.Logger) (
 			}
 		}
 	}
-	
+
 	return results, nil
 }
 
@@ -151,25 +151,25 @@ func BatchWriteMultiple(ctx context.Context, data map[string]interface{}, expira
 
 	start := time.Now()
 	pipe := config.Redis.Pipeline()
-	
+
 	// Add all SET commands to pipeline
 	for key, value := range data {
 		pipe.Set(ctx, key, value, expiration)
 	}
-	
+
 	// Execute pipeline
 	_, err := pipe.Exec(ctx)
 	duration := time.Since(start)
-	
+
 	logger.Debug("batch write multiple keys",
 		zap.Int("keys_count", len(data)),
 		zap.Duration("duration", duration),
 		zap.Bool("success", err == nil))
-	
+
 	if err != nil {
 		logger.Error("batch write failed", zap.Error(err))
 		return fmt.Errorf("batch write failed: %w", err)
 	}
-	
+
 	return nil
 }

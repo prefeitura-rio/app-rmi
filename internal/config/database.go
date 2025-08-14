@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/event"
@@ -173,11 +173,11 @@ func InitRedis() {
 			PoolTimeout: AppConfig.RedisPoolTimeout,
 
 			// Cluster specific optimizations
-			RouteByLatency:   false, // Disable latency routing (can cause issues)
-			RouteRandomly:    true,  // Use random routing for better distribution
-			ReadOnly:         false, // Allow writes (default)
-			MaxRedirects:     16,    // More redirects for cluster operations
-			
+			RouteByLatency: false, // Disable latency routing (can cause issues)
+			RouteRandomly:  true,  // Use random routing for better distribution
+			ReadOnly:       false, // Allow writes (default)
+			MaxRedirects:   16,    // More redirects for cluster operations
+
 			// Performance optimizations
 			PoolFIFO: false, // Use LIFO for better connection reuse
 		})
@@ -1102,7 +1102,7 @@ func monitorRedisConnectionPool() {
 
 		// Calculate usage percentages
 		totalUsagePercent := float64(poolStats.TotalConns) / float64(AppConfig.RedisPoolSize) * 100
-		
+
 		// Log Redis connection pool status with enhanced metrics
 		logging.Logger.Info("Redis connection pool status",
 			zap.String("redis_type", redisType),

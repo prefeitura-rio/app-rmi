@@ -36,9 +36,9 @@ func NewPhoneHandlers(logger *logging.SafeLogger, phoneMappingService *services.
 // isPhoneParsingError checks if an error is related to phone number parsing
 func isPhoneParsingError(err error) bool {
 	errMsg := strings.ToLower(err.Error())
-	return strings.Contains(errMsg, "invalid phone number") || 
-		   strings.Contains(errMsg, "failed to parse phone number") ||
-		   strings.Contains(errMsg, "invalid phone number format")
+	return strings.Contains(errMsg, "invalid phone number") ||
+		strings.Contains(errMsg, "failed to parse phone number") ||
+		strings.Contains(errMsg, "invalid phone number format")
 }
 
 // GetPhoneStatus godoc
@@ -88,14 +88,14 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 			"service.operation": "get_phone_status",
 		})
 		serviceSpan.End()
-		
+
 		// Check if it's a phone parsing error and return 400 instead of 500
 		if isPhoneParsingError(err) {
 			h.logger.Warn("invalid phone number format", zap.Error(err), zap.String("phone_number", phoneNumber))
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Formato de número de telefone inválido"})
 			return
 		}
-		
+
 		h.logger.Error("failed to get phone status", zap.Error(err), zap.String("phone_number", phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
@@ -193,14 +193,14 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 			"service.operation": "get_citizen_by_phone",
 		})
 		serviceSpan.End()
-		
+
 		// Check if it's a phone parsing error and return 400 instead of 500
 		if isPhoneParsingError(err) {
 			h.logger.Warn("invalid phone number format", zap.Error(err), zap.String("phone_number", phoneNumber))
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Formato de número de telefone inválido"})
 			return
 		}
-		
+
 		h.logger.Error("failed to get citizen by phone", zap.Error(err), zap.String("phone_number", phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return

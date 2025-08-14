@@ -16,7 +16,7 @@ const DefaultQueryTimeout = 10 * time.Second
 func FindOneWithTimeout(ctx context.Context, collection *mongo.Collection, filter bson.M, result interface{}, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	return collection.FindOne(ctx, filter).Decode(result)
 }
 
@@ -24,7 +24,7 @@ func FindOneWithTimeout(ctx context.Context, collection *mongo.Collection, filte
 func FindOneWithProjectionAndTimeout(ctx context.Context, collection *mongo.Collection, filter bson.M, projection bson.M, result interface{}, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	opts := options.FindOne().SetProjection(projection)
 	return collection.FindOne(ctx, filter, opts).Decode(result)
 }
@@ -33,7 +33,7 @@ func FindOneWithProjectionAndTimeout(ctx context.Context, collection *mongo.Coll
 func FindWithTimeout(ctx context.Context, collection *mongo.Collection, filter bson.M, timeout time.Duration) (*mongo.Cursor, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	return collection.Find(ctx, filter)
 }
 
@@ -41,7 +41,7 @@ func FindWithTimeout(ctx context.Context, collection *mongo.Collection, filter b
 func FindWithProjectionAndTimeout(ctx context.Context, collection *mongo.Collection, filter bson.M, projection bson.M, timeout time.Duration) (*mongo.Cursor, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	opts := options.Find().SetProjection(projection)
 	return collection.Find(ctx, filter, opts)
 }
@@ -50,7 +50,7 @@ func FindWithProjectionAndTimeout(ctx context.Context, collection *mongo.Collect
 func FindWithLimitAndTimeout(ctx context.Context, collection *mongo.Collection, filter bson.M, limit int64, timeout time.Duration) (*mongo.Cursor, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	opts := options.Find().SetLimit(limit)
 	return collection.Find(ctx, filter, opts)
 }
@@ -59,7 +59,7 @@ func FindWithLimitAndTimeout(ctx context.Context, collection *mongo.Collection, 
 func UpdateOneWithTimeout(ctx context.Context, collection *mongo.Collection, filter bson.M, update bson.M, timeout time.Duration) (*mongo.UpdateResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	return collection.UpdateOne(ctx, filter, update)
 }
 
@@ -67,7 +67,7 @@ func UpdateOneWithTimeout(ctx context.Context, collection *mongo.Collection, fil
 func UpsertOneWithTimeout(ctx context.Context, collection *mongo.Collection, filter bson.M, update bson.M, timeout time.Duration) (*mongo.UpdateResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	opts := options.Update().SetUpsert(true)
 	return collection.UpdateOne(ctx, filter, update, opts)
 }
@@ -76,7 +76,7 @@ func UpsertOneWithTimeout(ctx context.Context, collection *mongo.Collection, fil
 func InsertOneWithTimeout(ctx context.Context, collection *mongo.Collection, document interface{}, timeout time.Duration) (*mongo.InsertOneResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	return collection.InsertOne(ctx, document)
 }
 
@@ -84,7 +84,7 @@ func InsertOneWithTimeout(ctx context.Context, collection *mongo.Collection, doc
 func DeleteOneWithTimeout(ctx context.Context, collection *mongo.Collection, filter bson.M, timeout time.Duration) (*mongo.DeleteResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	return collection.DeleteOne(ctx, filter)
 }
 
@@ -92,6 +92,6 @@ func DeleteOneWithTimeout(ctx context.Context, collection *mongo.Collection, fil
 func CountDocumentsWithTimeout(ctx context.Context, collection *mongo.Collection, filter bson.M, timeout time.Duration) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	return collection.CountDocuments(ctx, filter)
 }

@@ -116,7 +116,7 @@ func GetCitizenData(c *gin.Context) {
 func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, error) {
 	// Create data manager for cache-aware reads
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
-	
+
 	var citizen models.Citizen
 	err := dataManager.Read(ctx, cpf, config.AppConfig.CitizenCollection, "citizen", &citizen)
 	if err != nil && err != mongo.ErrNoDocuments {
@@ -126,13 +126,13 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 			return nil, err
 		}
 	}
-	
+
 	// Use batched Redis operations for self-declared data
 	selfDeclared := getBatchedSelfDeclaredData(ctx, cpf)
-	
+
 	// Only fallback to MongoDB if we have no cached data
-	if selfDeclared.Endereco == nil && selfDeclared.Email == nil && 
-	   selfDeclared.Telefone == nil && selfDeclared.Raca == nil {
+	if selfDeclared.Endereco == nil && selfDeclared.Email == nil &&
+		selfDeclared.Telefone == nil && selfDeclared.Raca == nil {
 		// Fallback to MongoDB for complete self-declared data
 		var mongoSelfDeclared models.SelfDeclaredData
 		err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&mongoSelfDeclared)
@@ -177,7 +177,7 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 // getBatchedSelfDeclaredData efficiently retrieves self-declared data using Redis batch operations
 func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDeclaredData {
 	var selfDeclared models.SelfDeclaredData
-	
+
 	// Use batched Redis operations to fetch all self-declared data
 	keys := []string{
 		fmt.Sprintf("self_declared_address:write:%s", cpf),
@@ -185,14 +185,14 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		fmt.Sprintf("self_declared_phone:write:%s", cpf),
 		fmt.Sprintf("self_declared_raca:write:%s", cpf),
 	}
-	
+
 	// Try write buffer first (most recent data)
 	results, err := services.BatchReadMultiple(ctx, keys, observability.Logger().Unwrap())
 	if err != nil {
-		observability.Logger().Warn("batch read from write buffer failed", 
+		observability.Logger().Warn("batch read from write buffer failed",
 			zap.String("cpf", cpf), zap.Error(err))
 	}
-	
+
 	// Parse results from write buffer
 	parseResult := func(key, dataType string, target interface{}) bool {
 		if data, exists := results[key]; exists && data != "" {
@@ -202,60 +202,60 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		}
 		return false
 	}
-	
+
 	var addressData struct {
-		CPF       string              `json:"cpf"`
-		Endereco  *models.Endereco    `json:"endereco"`
-		UpdatedAt string              `json:"updated_at"`
+		CPF       string           `json:"cpf"`
+		Endereco  *models.Endereco `json:"endereco"`
+		UpdatedAt string           `json:"updated_at"`
 	}
 	if parseResult(keys[0], "address", &addressData) && addressData.Endereco != nil {
 		selfDeclared.Endereco = addressData.Endereco
 	}
-	
+
 	var emailData struct {
-		CPF       string          `json:"cpf"`
-		Email     *models.Email   `json:"email"`
-		UpdatedAt string          `json:"updated_at"`
+		CPF       string        `json:"cpf"`
+		Email     *models.Email `json:"email"`
+		UpdatedAt string        `json:"updated_at"`
 	}
 	if parseResult(keys[1], "email", &emailData) && emailData.Email != nil {
 		selfDeclared.Email = emailData.Email
 	}
-	
+
 	var phoneData struct {
-		CPF       string             `json:"cpf"`
-		Telefone  *models.Telefone   `json:"telefone"`
-		UpdatedAt string             `json:"updated_at"`
+		CPF       string           `json:"cpf"`
+		Telefone  *models.Telefone `json:"telefone"`
+		UpdatedAt string           `json:"updated_at"`
 	}
 	if parseResult(keys[2], "phone", &phoneData) && phoneData.Telefone != nil {
 		selfDeclared.Telefone = phoneData.Telefone
 	}
-	
+
 	var racaData struct {
-		CPF       string      `json:"cpf"`
-		Raca      *string     `json:"raca"`
-		UpdatedAt string      `json:"updated_at"`
+		CPF       string  `json:"cpf"`
+		Raca      *string `json:"raca"`
+		UpdatedAt string  `json:"updated_at"`
 	}
 	if parseResult(keys[3], "raca", &racaData) && racaData.Raca != nil {
 		selfDeclared.Raca = racaData.Raca
 	}
-	
+
 	// If write buffer didn't have everything, try read cache in batch
-	if selfDeclared.Endereco == nil || selfDeclared.Email == nil || 
-	   selfDeclared.Telefone == nil || selfDeclared.Raca == nil {
-		   
+	if selfDeclared.Endereco == nil || selfDeclared.Email == nil ||
+		selfDeclared.Telefone == nil || selfDeclared.Raca == nil {
+
 		cacheKeys := []string{
 			fmt.Sprintf("self_declared_address:cache:%s", cpf),
 			fmt.Sprintf("self_declared_email:cache:%s", cpf),
 			fmt.Sprintf("self_declared_phone:cache:%s", cpf),
 			fmt.Sprintf("self_declared_raca:cache:%s", cpf),
 		}
-		
+
 		cacheResults, err := services.BatchReadMultiple(ctx, cacheKeys, observability.Logger().Unwrap())
 		if err != nil {
-			observability.Logger().Warn("batch read from cache failed", 
+			observability.Logger().Warn("batch read from cache failed",
 				zap.String("cpf", cpf), zap.Error(err))
 		}
-		
+
 		// Parse missing data from cache
 		parseCacheResult := func(key, dataType string, target interface{}) bool {
 			if data, exists := cacheResults[key]; exists && data != "" {
@@ -265,7 +265,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			}
 			return false
 		}
-		
+
 		if selfDeclared.Endereco == nil && parseCacheResult(cacheKeys[0], "address", &addressData) && addressData.Endereco != nil {
 			selfDeclared.Endereco = addressData.Endereco
 		}
@@ -279,7 +279,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			selfDeclared.Raca = racaData.Raca
 		}
 	}
-	
+
 	return selfDeclared
 }
 
@@ -1191,7 +1191,7 @@ func GetFirstLogin(c *gin.Context) {
 	// Use DataManager for cache-aware reading with tracing
 	ctx, dbSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.UserConfigCollection, "cpf")
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
-	
+
 	var userConfig models.UserConfig
 	err := dataManager.Read(ctx, cpf, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
 
@@ -1393,7 +1393,7 @@ func GetOptIn(c *gin.Context) {
 	// Use DataManager for cache-aware reading with tracing
 	ctx, dbSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.UserConfigCollection, "cpf")
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
-	
+
 	var userConfig models.UserConfig
 	err := dataManager.Read(ctx, cpf, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
 	if err != nil {
@@ -1668,7 +1668,7 @@ func GetCitizenWallet(c *gin.Context) {
 	// Use DataManager for cache-aware reading with tracing
 	ctx, dataSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.CitizenCollection, "cpf")
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
-	
+
 	var citizen models.Citizen
 	err := dataManager.Read(ctx, cpf, config.AppConfig.CitizenCollection, "citizen", &citizen)
 	if err != nil {
@@ -1982,35 +1982,35 @@ type UserConfigOptInResponse struct {
 func getCurrentAddressData(ctx context.Context, cpf string) (*models.Endereco, error) {
 	// Try to get from cache first using DataManager
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
-	
+
 	var addressData struct {
-		CPF       string              `json:"cpf"`
-		Endereco  *models.Endereco    `json:"endereco"`
-		UpdatedAt string              `json:"updated_at"`
+		CPF       string           `json:"cpf"`
+		Endereco  *models.Endereco `json:"endereco"`
+		UpdatedAt string           `json:"updated_at"`
 	}
-	
+
 	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_address", &addressData)
 	if err == nil && addressData.Endereco != nil {
 		return addressData.Endereco, nil
 	}
-	
+
 	// Fallback to MongoDB with field projection (only get endereco field)
 	var selfDeclared struct {
 		Endereco *models.Endereco `bson:"endereco"`
 	}
 	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(
-		ctx, 
+		ctx,
 		bson.M{"cpf": cpf},
 		options.FindOne().SetProjection(bson.M{"endereco": 1}),
 	).Decode(&selfDeclared)
-	
+
 	if err == mongo.ErrNoDocuments {
 		return nil, nil // No data found, this is okay
 	}
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return selfDeclared.Endereco, nil
 }
 
@@ -2018,35 +2018,35 @@ func getCurrentAddressData(ctx context.Context, cpf string) (*models.Endereco, e
 func getCurrentPhoneData(ctx context.Context, cpf string) (*models.Telefone, error) {
 	// Try to get from cache first using DataManager
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
-	
+
 	var phoneData struct {
-		CPF       string             `json:"cpf"`
-		Telefone  *models.Telefone   `json:"telefone"`
-		UpdatedAt string             `json:"updated_at"`
+		CPF       string           `json:"cpf"`
+		Telefone  *models.Telefone `json:"telefone"`
+		UpdatedAt string           `json:"updated_at"`
 	}
-	
+
 	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_phone", &phoneData)
 	if err == nil && phoneData.Telefone != nil {
 		return phoneData.Telefone, nil
 	}
-	
+
 	// Fallback to MongoDB with field projection (only get telefone field)
 	var selfDeclared struct {
 		Telefone *models.Telefone `bson:"telefone"`
 	}
 	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(
-		ctx, 
+		ctx,
 		bson.M{"cpf": cpf},
 		options.FindOne().SetProjection(bson.M{"telefone": 1}),
 	).Decode(&selfDeclared)
-	
+
 	if err == mongo.ErrNoDocuments {
 		return nil, nil // No data found, this is okay
 	}
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return selfDeclared.Telefone, nil
 }
 
@@ -2054,34 +2054,34 @@ func getCurrentPhoneData(ctx context.Context, cpf string) (*models.Telefone, err
 func getCurrentEmailData(ctx context.Context, cpf string) (*models.Email, error) {
 	// Try to get from cache first using DataManager
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
-	
+
 	var emailData struct {
-		CPF       string          `json:"cpf"`
-		Email     *models.Email   `json:"email"`
-		UpdatedAt string          `json:"updated_at"`
+		CPF       string        `json:"cpf"`
+		Email     *models.Email `json:"email"`
+		UpdatedAt string        `json:"updated_at"`
 	}
-	
+
 	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_email", &emailData)
 	if err == nil && emailData.Email != nil {
 		return emailData.Email, nil
 	}
-	
+
 	// Fallback to MongoDB with field projection (only get email field)
 	var selfDeclared struct {
 		Email *models.Email `bson:"email"`
 	}
 	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(
-		ctx, 
+		ctx,
 		bson.M{"cpf": cpf},
 		options.FindOne().SetProjection(bson.M{"email": 1}),
 	).Decode(&selfDeclared)
-	
+
 	if err == mongo.ErrNoDocuments {
 		return nil, nil // No data found, this is okay
 	}
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return selfDeclared.Email, nil
 }

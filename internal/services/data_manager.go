@@ -93,7 +93,7 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 	dm.logger.Debug("attempting to read from write buffer",
 		zap.String("type", dataType),
 		zap.String("key", key))
-	
+
 	if data, err := dm.redis.Get(ctx, writeKey).Result(); err == nil {
 		dataStr := string(data)
 		if len(dataStr) > 100 {
@@ -103,7 +103,7 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 			zap.String("type", dataType),
 			zap.String("key", key),
 			zap.String("data_preview", dataStr))
-		
+
 		if err := json.Unmarshal([]byte(data), result); err == nil {
 			dm.logger.Debug("successfully read from write buffer",
 				zap.String("type", dataType),

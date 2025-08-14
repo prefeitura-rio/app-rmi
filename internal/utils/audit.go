@@ -112,7 +112,7 @@ func (aw *AuditWorker) start() {
 // processAuditLogs processes audit logs in batches for better performance
 func (aw *AuditWorker) processAuditLogs() {
 	batchTicker := time.NewTicker(100 * time.Millisecond) // Process batches every 100ms
-	monitorTicker := time.NewTicker(30 * time.Second)      // Monitor buffer every 30 seconds
+	monitorTicker := time.NewTicker(30 * time.Second)     // Monitor buffer every 30 seconds
 	defer batchTicker.Stop()
 	defer monitorTicker.Stop()
 

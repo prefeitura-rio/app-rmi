@@ -108,7 +108,7 @@ func (w *SyncWorker) processQueuesParallel() {
 			w.logger.Debug("found job to process",
 				zap.String("queue", queue),
 				zap.String("job_id", job.ID))
-			
+
 			// Process job in current goroutine to maintain order and avoid overwhelming the system
 			w.processJob(job)
 			jobsProcessed++
@@ -119,7 +119,6 @@ func (w *SyncWorker) processQueuesParallel() {
 		w.logger.Debug("processed jobs in cycle", zap.Int("jobs_processed", jobsProcessed))
 	}
 }
-
 
 // getJobNonBlocking gets a job from a specific queue without blocking
 func (w *SyncWorker) getJobNonBlocking(queue string) (*SyncJob, error) {

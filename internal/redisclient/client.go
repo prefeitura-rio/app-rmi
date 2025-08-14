@@ -305,12 +305,12 @@ func (c *Client) PoolStats() *redis.PoolStats {
 	if singleClient, ok := c.cmdable.(*redis.Client); ok {
 		return singleClient.PoolStats()
 	}
-	
+
 	// Try to get pool stats from cluster client
 	if clusterClient, ok := c.cmdable.(*redis.ClusterClient); ok {
 		return clusterClient.PoolStats()
 	}
-	
+
 	// Return empty stats if neither type matches (should not happen)
 	return &redis.PoolStats{}
 }
