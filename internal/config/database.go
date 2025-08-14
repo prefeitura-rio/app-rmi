@@ -163,20 +163,23 @@ func InitRedis() {
 			// Connection pool optimization - configurable via environment variables
 			PoolSize:     AppConfig.RedisPoolSize,
 			MinIdleConns: AppConfig.RedisMinIdleConns,
-			MaxRetries:   3, // Retry failed commands
+			MaxRetries:   5, // Increased retries for cluster instability
 
 			// Connection health checks
-			ConnMaxIdleTime: 5 * time.Minute,  // Close idle connections
-			ConnMaxLifetime: 30 * time.Minute, // Rotate connections
+			ConnMaxIdleTime: 10 * time.Minute, // Longer idle time for stability
+			ConnMaxLifetime: 60 * time.Minute, // Longer lifetime for cluster
 
 			// Circuit breaker for high load - configurable via environment variables
 			PoolTimeout: AppConfig.RedisPoolTimeout,
 
-			// Cluster specific settings
-			RouteByLatency:   true,  // Route commands to closest cluster node
-			RouteRandomly:    false, // Prefer latency-based routing
+			// Cluster specific optimizations
+			RouteByLatency:   false, // Disable latency routing (can cause issues)
+			RouteRandomly:    true,  // Use random routing for better distribution
 			ReadOnly:         false, // Allow writes (default)
-			MaxRedirects:     8,     // Follow cluster redirects
+			MaxRedirects:     16,    // More redirects for cluster operations
+			
+			// Performance optimizations
+			PoolFIFO: false, // Use LIFO for better connection reuse
 		})
 
 		// Wrap with traced client using cluster client
@@ -1076,53 +1079,73 @@ func _() {
 	optimizeConnectionPool()
 }
 
-// monitorRedisConnectionPool monitors Redis connection pool health
+// monitorRedisConnectionPool monitors Redis connection pool health with cluster support
 func monitorRedisConnectionPool() {
-	ticker := time.NewTicker(15 * time.Second) // Check every 15 seconds for Redis
+	ticker := time.NewTicker(10 * time.Second) // More frequent monitoring for cluster
 	defer ticker.Stop()
 
-	//nolint:gosimple // This is an infinite monitoring loop, for { select {} } is the correct pattern
-	for {
-		select {
-		case <-ticker.C:
-			if Redis == nil {
-				continue
-			}
+	for range ticker.C {
+		if Redis == nil {
+			continue
+		}
 
-			// Get Redis pool stats
-			poolStats := Redis.PoolStats()
+		// Get Redis pool stats
+		poolStats := Redis.PoolStats()
 
-			// Log Redis connection pool status
-			logging.Logger.Info("Redis connection pool status",
+		// Determine Redis type for logging
+		redisType := "single"
+		redisAddr := AppConfig.RedisURI
+		if AppConfig.RedisClusterEnabled {
+			redisType = "cluster"
+			redisAddr = fmt.Sprintf("%v", AppConfig.RedisClusterAddrs)
+		}
+
+		// Calculate usage percentages
+		totalUsagePercent := float64(poolStats.TotalConns) / float64(AppConfig.RedisPoolSize) * 100
+		
+		// Log Redis connection pool status with enhanced metrics
+		logging.Logger.Info("Redis connection pool status",
+			zap.String("redis_type", redisType),
+			zap.Int("total_connections", int(poolStats.TotalConns)),
+			zap.Int("idle_connections", int(poolStats.IdleConns)),
+			zap.Int("stale_connections", int(poolStats.StaleConns)),
+			zap.Int("max_pool_size", AppConfig.RedisPoolSize),
+			zap.Float64("usage_percent", totalUsagePercent),
+			zap.String("addr", redisAddr))
+
+		// Progressive alerting based on connection usage
+		if totalUsagePercent > 90 {
+			logging.Logger.Error("Critical Redis connection usage - immediate action required",
+				zap.Float64("usage_percent", totalUsagePercent),
 				zap.Int("total_connections", int(poolStats.TotalConns)),
-				zap.Int("idle_connections", int(poolStats.IdleConns)),
+				zap.Int("max_pool_size", AppConfig.RedisPoolSize),
+				zap.String("redis_type", redisType),
+				zap.String("action", "Increase REDIS_POOL_SIZE or investigate connection leaks"))
+		} else if totalUsagePercent > 80 {
+			logging.Logger.Warn("High Redis connection usage detected",
+				zap.Float64("usage_percent", totalUsagePercent),
+				zap.Int("total_connections", int(poolStats.TotalConns)),
+				zap.Int("max_pool_size", AppConfig.RedisPoolSize),
+				zap.String("redis_type", redisType),
+				zap.String("recommendation", "Monitor closely or consider increasing pool size"))
+		}
+
+		// Alert if no idle connections available (potential bottleneck)
+		if poolStats.IdleConns == 0 && poolStats.TotalConns > 0 {
+			logging.Logger.Warn("No idle Redis connections available - potential bottleneck",
+				zap.Int("total_connections", int(poolStats.TotalConns)),
+				zap.String("redis_type", redisType),
+				zap.String("impact", "New requests may be queued or timeout"))
+		}
+
+		// Alert on high stale connections (connection issues)
+		stalePercent := float64(poolStats.StaleConns) / float64(poolStats.TotalConns) * 100
+		if poolStats.StaleConns > 0 && stalePercent > 20 {
+			logging.Logger.Warn("High number of stale Redis connections",
 				zap.Int("stale_connections", int(poolStats.StaleConns)),
-				zap.String("uri", AppConfig.RedisURI))
-
-			// Alert if connection pool is getting full
-			if poolStats.TotalConns > uint32(float64(AppConfig.RedisPoolSize)*0.8) { // 80% of max pool size
-				logging.Logger.Warn("High Redis connection usage detected",
-					zap.Int("total_connections", int(poolStats.TotalConns)),
-					zap.Int("max_pool_size", AppConfig.RedisPoolSize),
-					zap.Int("idle_connections", int(poolStats.IdleConns)),
-					zap.String("uri", AppConfig.RedisURI))
-			}
-
-			// Alert if no idle connections available
-			if poolStats.IdleConns == 0 {
-				logging.Logger.Warn("No idle Redis connections available",
-					zap.Int("total_connections", int(poolStats.TotalConns)),
-					zap.String("uri", AppConfig.RedisURI))
-			}
-
-			// Critical alert if approaching connection limit
-			if poolStats.TotalConns > uint32(float64(AppConfig.RedisPoolSize)*0.9) { // 90% of max pool size
-				logging.Logger.Error("Critical Redis connection usage - approaching limit",
-					zap.Int("total_connections", int(poolStats.TotalConns)),
-					zap.Int("max_pool_size", AppConfig.RedisPoolSize),
-					zap.String("uri", AppConfig.RedisURI),
-					zap.String("recommendation", "Increase REDIS_POOL_SIZE or check for connection leaks"))
-			}
+				zap.Float64("stale_percent", stalePercent),
+				zap.String("redis_type", redisType),
+				zap.String("cause", "Network issues or Redis cluster instability"))
 		}
 	}
 }
