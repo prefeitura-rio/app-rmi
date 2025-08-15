@@ -7,7 +7,7 @@ type JWTClaims struct {
 	NBF            int64    `json:"nbf"`
 	IAT            int64    `json:"iat"`
 	ISS            string   `json:"iss"`
-	AUD            []string `json:"aud"`
+	AUD            interface{} `json:"aud"` // Can be string or []string
 	SUB            string   `json:"sub"`
 	TYP            string   `json:"typ"`
 	AZP            string   `json:"azp"`
@@ -35,4 +35,25 @@ type JWTClaims struct {
 	GivenName         string   `json:"given_name"`
 	FamilyName        string   `json:"family_name"`
 	Email             string   `json:"email"`
+}
+
+// GetAudiences returns the audience(s) as a slice of strings
+func (c *JWTClaims) GetAudiences() []string {
+	switch aud := c.AUD.(type) {
+	case string:
+		return []string{aud}
+	case []string:
+		return aud
+	case []interface{}:
+		// Handle case where JSON unmarshaling creates []interface{}
+		result := make([]string, len(aud))
+		for i, v := range aud {
+			if str, ok := v.(string); ok {
+				result[i] = str
+			}
+		}
+		return result
+	default:
+		return []string{}
+	}
 }
