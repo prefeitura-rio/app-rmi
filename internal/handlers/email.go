@@ -85,7 +85,7 @@ func ValidateEmailAddress(c *gin.Context) {
 
 	// Basic format validation with tracing
 	ctx, formatSpan := utils.TraceBusinessLogic(ctx, "validate_email_format")
-	
+
 	// Trim whitespace and normalize
 	email := strings.TrimSpace(req.Email)
 	if email == "" {
@@ -134,7 +134,7 @@ func ValidateEmailAddress(c *gin.Context) {
 
 	// Additional validation with tracing
 	ctx, validationSpan := utils.TraceBusinessLogic(ctx, "detailed_email_validation")
-	
+
 	// Split email into local and domain parts
 	parts := strings.Split(addr.Address, "@")
 	if len(parts) != 2 {
@@ -215,7 +215,7 @@ func ValidateEmailAddress(c *gin.Context) {
 	// Build response with tracing
 	ctx, responseSpan := utils.TraceBusinessLogic(ctx, "build_validation_response")
 	normalized := strings.ToLower(addr.Address)
-	
+
 	response := EmailValidationResponse{
 		Valid:          true,
 		Message:        "email válido",

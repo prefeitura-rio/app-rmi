@@ -187,9 +187,9 @@ type Citizen struct {
 	AssistenciaSocial *AssistenciaSocial `json:"assistencia_social,omitempty" bson:"assistencia_social,omitempty"`
 	Educacao          *Educacao          `json:"educacao,omitempty" bson:"educacao,omitempty"`
 	// Internal fields excluded from all API responses
-	Datalake          *Datalake          `json:"-" bson:"datalake,omitempty"`
-	CPFParticao       int64              `json:"-" bson:"cpf_particao"`
-	RowNumber         *int32             `json:"-" bson:"row_number,omitempty"`
+	Datalake    *Datalake `json:"-" bson:"datalake,omitempty"`
+	CPFParticao int64     `json:"-" bson:"cpf_particao"`
+	RowNumber   *int32    `json:"-" bson:"row_number,omitempty"`
 }
 
 // CitizenResponse represents citizen data for the regular citizen endpoint (excluding wallet fields)

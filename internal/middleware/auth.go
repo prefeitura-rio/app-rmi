@@ -46,7 +46,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		observability.Logger().Debug("successfully extracted claims from JWT token", zap.String("user_sub", claims.SUB))
 
 		// Store claims in context for later use
@@ -59,7 +59,7 @@ func AuthMiddleware() gin.HandlerFunc {
 // Note: This is a simplified version since Istio handles validation
 func extractClaims(token string) (*models.JWTClaims, error) {
 	logger := observability.Logger()
-	
+
 	// Split the token into parts
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {

@@ -577,6 +577,22 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	fullPhone := input.DDI + input.DDD + input.Valor
 	buildSpan.End()
 
+	// Validate basic phone number format (length and digits only)
+	ctx, validationSpan := utils.TraceInputValidation(ctx, "phone_format", "phone")
+	if len(fullPhone) < 10 || len(fullPhone) > 15 {
+		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("invalid phone number length"), map[string]interface{}{
+			"phone":  fullPhone,
+			"length": len(fullPhone),
+		})
+		validationSpan.End()
+		logger.Warn("invalid phone number length", zap.String("phone", fullPhone), zap.Int("length", len(fullPhone)))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
+		return
+	}
+	utils.AddSpanAttribute(validationSpan, "validation.valid", true)
+	utils.AddSpanAttribute(validationSpan, "phone", fullPhone)
+	validationSpan.End()
+
 	// Build phone object with tracing
 	ctx, buildPhoneSpan := utils.TraceBusinessLogic(ctx, "build_phone_object")
 	origem := "self-declared"

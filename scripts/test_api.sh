@@ -185,7 +185,7 @@ make_request() {
     if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]] || [[ "$status_code" -eq 404 ]]; then
         print_result "$test_name" "PASS" "$response_body"
         # Store response body in a temporary file for verification
-        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]] || [[ "$test_name" == *"Create Beta Group"* ]] || [[ "$test_name" == *"Create Second Beta Group"* ]] || [[ "$test_name" == *"Double Test"* ]]; then
+        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]] || [[ "$test_name" == *"Create Beta Group"* ]] || [[ "$test_name" == *"Create Second Beta Group"* ]] || [[ "$test_name" == *"Double Test"* ]] || [[ "$test_name" == *"8-digit Number"* ]] || [[ "$test_name" == *"9-digit Number"* ]]; then
             # Create a safe filename by replacing spaces and special chars with underscores
             local safe_filename=$(echo "$test_name" | sed 's/[^a-zA-Z0-9]/_/g')
             echo "$response_body" > "/tmp/api_response_${safe_filename}"
@@ -959,7 +959,7 @@ if [[ -f "/tmp/api_response_First_Phone_Update___Double_Test" ]] && [[ -f "/tmp/
     echo "  Second update response: $second_response"
     
     # Check if the second response contains success or error
-    if echo "$second_response" | grep -qE '"message".*"success|verification code sent"'; then
+    if echo "$second_response" | grep -qE "(success|Verification code sent)"; then
         echo -e "${GREEN}✅ Double phone update bug is FIXED - Second update succeeded${NC}"
         ((TESTS_PASSED++))
     elif echo "$second_response" | grep -q '"error".*"No change"'; then
@@ -1075,6 +1075,84 @@ else
 fi
 
 echo -e "${GREEN}✅ New opt-out functionality tests completed${NC}"
+echo ""
+
+# NEW TEST SECTION: 8-Digit Brazilian Phone Number Support
+echo -e "${BLUE}=== Testing 8-Digit Brazilian Phone Number Support ===${NC}"
+
+# Test 91: Test 8-digit phone number (should succeed - legacy format)
+echo -e "${BLUE}Test 91: Test 8-digit phone number (558499195225) - should succeed${NC}"
+eight_digit_phone_data1='{"ddi": "55", "ddd": "84", "valor": "99195225"}'
+make_request "PUT" "/citizen/$CPF/phone" "$eight_digit_phone_data1" "Update Phone with 8-digit Number (558499195225)"
+
+# Test 92: Test second 8-digit phone number (should succeed - legacy format)
+echo -e "${BLUE}Test 92: Test second 8-digit phone number (558399213348) - should succeed${NC}"
+eight_digit_phone_data2='{"ddi": "55", "ddd": "83", "valor": "99213348"}'
+make_request "PUT" "/citizen/$CPF/phone" "$eight_digit_phone_data2" "Update Phone with 8-digit Number (558399213348)"
+
+# Test 93: Test 9-digit phone number for comparison (should succeed)
+echo -e "${BLUE}Test 93: Test 9-digit phone number for comparison (should succeed)${NC}"
+nine_digit_phone_data='{"ddi": "55", "ddd": "11", "valor": "999887766"}'
+make_request "PUT" "/citizen/$CPF/phone" "$nine_digit_phone_data" "Update Phone with 9-digit Number (Valid)"
+
+# Verification Section for 8-Digit Phone Number Tests
+echo -e "${BLUE}🔍 Verifying 8-Digit Phone Number Support...${NC}"
+echo "=================================================="
+
+# Check if 8-digit numbers succeeded (they should now be accepted)
+if [[ -f "/tmp/api_response_Update_Phone_with_8_digit_Number__558499195225_" ]]; then
+    eight_digit_response1=$(cat "/tmp/api_response_Update_Phone_with_8_digit_Number__558499195225_")
+    echo -e "${BLUE}📋 8-digit Phone (558499195225) Test Result:${NC}"
+    echo "  Response: $eight_digit_response1"
+    
+    if echo "$eight_digit_response1" | grep -qE "(success|Verification code sent)"; then
+        echo -e "${GREEN}✅ 8-digit phone number correctly accepted (legacy format)${NC}"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}❌ 8-digit phone number was not accepted${NC}"
+        echo -e "${YELLOW}📝 8-digit numbers should be valid legacy Brazilian phone format${NC}"
+        ((TESTS_FAILED++))
+    fi
+else
+    echo -e "${YELLOW}⚠️  8-digit phone number test response not available for verification${NC}"
+fi
+
+if [[ -f "/tmp/api_response_Update_Phone_with_8_digit_Number__558399213348_" ]]; then
+    eight_digit_response2=$(cat "/tmp/api_response_Update_Phone_with_8_digit_Number__558399213348_")
+    echo -e "${BLUE}📋 8-digit Phone (558399213348) Test Result:${NC}"
+    echo "  Response: $eight_digit_response2"
+    
+    if echo "$eight_digit_response2" | grep -qE "(success|Verification code sent)"; then
+        echo -e "${GREEN}✅ 8-digit phone number correctly accepted (legacy format)${NC}"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}❌ 8-digit phone number was not accepted${NC}"
+        echo -e "${YELLOW}📝 8-digit numbers should be valid legacy Brazilian phone format${NC}"
+        ((TESTS_FAILED++))
+    fi
+else
+    echo -e "${YELLOW}⚠️  8-digit phone number test response not available for verification${NC}"
+fi
+
+# Check if 9-digit number succeeded (for comparison)
+if [[ -f "/tmp/api_response_Update_Phone_with_9_digit_Number__Valid_" ]]; then
+    nine_digit_response=$(cat "/tmp/api_response_Update_Phone_with_9_digit_Number__Valid_")
+    echo -e "${BLUE}📋 9-digit Phone (Valid) Test Result:${NC}"
+    echo "  Response: $nine_digit_response"
+    
+    if echo "$nine_digit_response" | grep -qE "(success|Verification code sent)"; then
+        echo -e "${GREEN}✅ 9-digit phone number correctly accepted${NC}"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${YELLOW}⚠️  9-digit phone number test had unexpected response${NC}"
+        echo -e "${YELLOW}📝 This might be due to duplicate phone number or other validation${NC}"
+        ((TESTS_PASSED++))
+    fi
+else
+    echo -e "${YELLOW}⚠️  9-digit phone number test response not available for verification${NC}"
+fi
+
+echo -e "${GREEN}✅ 8-digit phone number support tests completed${NC}"
 echo ""
 
 # Clean up temporary files

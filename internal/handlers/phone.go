@@ -99,11 +99,15 @@ func ValidatePhoneNumber(c *gin.Context) {
 	utils.AddSpanAttribute(parseSpan, "parse.success", true)
 	parseSpan.End()
 
-	// Validate phone number with tracing
+	// Validate phone number with basic checks (accept both 8-digit and 9-digit Brazilian numbers)
 	ctx, validationSpan := utils.TraceBusinessLogic(ctx, "validate_phone_number")
-	if !phonenumbers.IsValidNumber(num) {
+	nationalNumber := phonenumbers.GetNationalSignificantNumber(num)
+
+	// Basic validation: check reasonable length for phone numbers
+	if len(nationalNumber) < 8 || len(nationalNumber) > 15 {
 		utils.AddSpanAttribute(validationSpan, "validation.valid", false)
-		utils.AddSpanAttribute(validationSpan, "validation.reason", "invalid_number")
+		utils.AddSpanAttribute(validationSpan, "validation.reason", "invalid_length")
+		utils.AddSpanAttribute(validationSpan, "national_number_length", len(nationalNumber))
 		validationSpan.End()
 		c.JSON(http.StatusOK, PhoneValidationResponse{
 			Valid:   false,
@@ -112,12 +116,13 @@ func ValidatePhoneNumber(c *gin.Context) {
 		return
 	}
 	utils.AddSpanAttribute(validationSpan, "validation.valid", true)
+	utils.AddSpanAttribute(validationSpan, "national_number_length", len(nationalNumber))
 	validationSpan.End()
 
 	// Extract phone components with tracing
 	ctx, extractSpan := utils.TraceBusinessLogic(ctx, "extract_phone_components")
 	countryCode := num.GetCountryCode()
-	nationalNumber := phonenumbers.GetNationalSignificantNumber(num)
+	// nationalNumber already declared above
 	region := phonenumbers.GetRegionCodeForNumber(num)
 
 	// Deriva DDD apenas para Brasil (código 55). Para outros países, pode variar.
