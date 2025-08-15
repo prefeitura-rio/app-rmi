@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
@@ -133,24 +134,24 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 	}
 
 	// 3. Fall back to MongoDB
-	// Use appropriate filter based on collection type
+	// Use appropriate filter based on collection type using config values
 	var filter bson.M
 	switch collection {
-	case "citizens":
+	case config.AppConfig.CitizenCollection:
 		filter = bson.M{"cpf": key}
-	case "self_declared":
+	case config.AppConfig.SelfDeclaredCollection:
 		filter = bson.M{"cpf": key}
-	case "user_configs":
+	case config.AppConfig.UserConfigCollection:
 		filter = bson.M{"cpf": key}
-	case "phone_cpf_mappings":
+	case config.AppConfig.PhoneMappingCollection:
 		filter = bson.M{"phone": key}
-	case "opt_in_histories":
+	case config.AppConfig.OptInHistoryCollection:
 		filter = bson.M{"cpf": key}
-	case "beta_groups":
+	case config.AppConfig.BetaGroupCollection:
 		filter = bson.M{"cpf": key}
-	case "phone_verifications":
+	case config.AppConfig.PhoneVerificationCollection:
 		filter = bson.M{"phone": key}
-	case "maintenance_requests":
+	case config.AppConfig.MaintenanceRequestCollection:
 		filter = bson.M{"cpf": key}
 	default:
 		// Default to _id for other collections

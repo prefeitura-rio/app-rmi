@@ -38,13 +38,16 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		// Extract claims from the token
 		// Note: The token is already validated by Istio, we just need to extract the claims
+		observability.Logger().Debug("attempting to extract claims from JWT token", zap.String("token_prefix", token[:min(20, len(token))]+"..."))
 		claims, err := extractClaims(token)
 		if err != nil {
-			observability.Logger().Error("failed to extract claims from token", zap.Error(err))
+			observability.Logger().Error("failed to extract claims from token", zap.Error(err), zap.String("token_length", fmt.Sprintf("%d", len(token))))
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
 		}
+		
+		observability.Logger().Debug("successfully extracted claims from JWT token", zap.String("user_sub", claims.SUB))
 
 		// Store claims in context for later use
 		c.Set("claims", claims)
@@ -55,14 +58,18 @@ func AuthMiddleware() gin.HandlerFunc {
 // extractClaims extracts the claims from the JWT token
 // Note: This is a simplified version since Istio handles validation
 func extractClaims(token string) (*models.JWTClaims, error) {
+	logger := observability.Logger()
+	
 	// Split the token into parts
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
+		logger.Debug("invalid JWT token format", zap.Int("parts_count", len(parts)))
 		return nil, fmt.Errorf("invalid token format")
 	}
 
 	// Decode the claims part (second part) with proper padding handling
 	claimsPart := parts[1]
+	logger.Debug("extracting JWT claims", zap.String("claims_part_length", fmt.Sprintf("%d", len(claimsPart))))
 
 	// Add padding if needed
 	switch len(claimsPart) % 4 {
@@ -78,20 +85,34 @@ func extractClaims(token string) (*models.JWTClaims, error) {
 
 	claimsBytes, err = base64.RawURLEncoding.DecodeString(claimsPart)
 	if err != nil {
+		logger.Debug("RawURLEncoding failed, trying StdEncoding", zap.Error(err))
 		// Fallback to standard base64 decoding
 		claimsBytes, err = base64.StdEncoding.DecodeString(claimsPart)
 		if err != nil {
+			logger.Error("failed to decode JWT claims with both encodings", zap.Error(err), zap.String("claims_part", claimsPart[:min(50, len(claimsPart))]))
 			return nil, fmt.Errorf("failed to decode claims: %w", err)
 		}
 	}
 
+	logger.Debug("successfully decoded JWT claims", zap.Int("claims_bytes_length", len(claimsBytes)))
+
 	// Parse the claims
 	var claims models.JWTClaims
 	if err := json.Unmarshal(claimsBytes, &claims); err != nil {
+		logger.Error("failed to parse JWT claims JSON", zap.Error(err), zap.String("claims_json", string(claimsBytes[:min(200, len(claimsBytes))])))
 		return nil, fmt.Errorf("failed to parse claims: %w", err)
 	}
 
+	logger.Debug("successfully parsed JWT claims", zap.String("sub", claims.SUB), zap.String("iss", claims.ISS))
 	return &claims, nil
+}
+
+// Helper function for min
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // RequireAdmin checks if the user has admin privileges

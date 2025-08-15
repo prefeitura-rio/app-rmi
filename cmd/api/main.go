@@ -150,6 +150,7 @@ func main() {
 		validationGroup := v1.Group("/validate")
 		{
 			validationGroup.POST("/phone", handlers.ValidatePhoneNumber)
+			validationGroup.POST("/email", handlers.ValidateEmailAddress)
 		}
 
 		// Phone routes (public)

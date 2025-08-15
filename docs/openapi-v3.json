@@ -2762,6 +2762,53 @@
         }
       }
     },
+    "/validate/email": {
+      "post": {
+        "description": "Valida formato e estrutura de endereços de email, retornando informações detalhadas sobre o endereço quando válido.",
+        "tags": [
+          "validation"
+        ],
+        "summary": "Valida endereço de email",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/handlers.EmailValidationRequest"
+              }
+            }
+          },
+          "description": "Email a ser validado",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.EmailValidationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/validate/phone": {
       "post": {
         "description": "Valida DDI, DDD e número para qualquer telefone internacional.",
@@ -2847,6 +2894,49 @@
       }
     },
     "schemas": {
+      "handlers.EmailValidationRequest": {
+        "description": "Estrutura de entrada contendo o endereço de email a ser validado.",
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "description": "Endereço de email a ser validado.\nexample: \"usuario@exemplo.com\"",
+            "type": "string"
+          }
+        }
+      },
+      "handlers.EmailValidationResponse": {
+        "description": "Resultado da validação, contendo informações sobre o endereço de email quando válido.",
+        "type": "object",
+        "properties": {
+          "domain": {
+            "description": "Domínio do email (após o @)",
+            "type": "string"
+          },
+          "local_part": {
+            "description": "Parte local do email (antes do @)",
+            "type": "string"
+          },
+          "message": {
+            "description": "Mensagem de retorno.",
+            "type": "string"
+          },
+          "normalized": {
+            "description": "Email normalizado (lowercase)",
+            "type": "string"
+          },
+          "valid": {
+            "description": "Indica se o email é válido.",
+            "type": "boolean"
+          },
+          "validation_type": {
+            "description": "Tipo de validação aplicada",
+            "type": "string"
+          }
+        }
+      },
       "handlers.ErrorResponse": {
         "type": "object",
         "properties": {
@@ -3202,8 +3292,22 @@
           "_id": {
             "type": "string"
           },
+          "assistencia_social": {
+            "$ref": "#/components/schemas/models.AssistenciaSocial"
+          },
           "cpf": {
             "type": "string"
+          },
+          "documentos": {
+            "description": "Wallet and internal fields",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/models.Documentos"
+              }
+            ]
+          },
+          "educacao": {
+            "$ref": "#/components/schemas/models.Educacao"
           },
           "email": {
             "$ref": "#/components/schemas/models.Email"
@@ -3231,6 +3335,9 @@
           },
           "raca": {
             "type": "string"
+          },
+          "saude": {
+            "$ref": "#/components/schemas/models.Saude"
           },
           "sexo": {
             "type": "string"

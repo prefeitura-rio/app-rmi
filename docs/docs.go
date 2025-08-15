@@ -2163,6 +2163,46 @@ const docTemplate = `{
                 }
             }
         },
+        "/validate/email": {
+            "post": {
+                "description": "Valida formato e estrutura de endereços de email, retornando informações detalhadas sobre o endereço quando válido.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validation"
+                ],
+                "summary": "Valida endereço de email",
+                "parameters": [
+                    {
+                        "description": "Email a ser validado",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.EmailValidationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.EmailValidationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/validate/phone": {
             "post": {
                 "description": "Valida DDI, DDD e número para qualquer telefone internacional.",
@@ -2205,6 +2245,49 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handlers.EmailValidationRequest": {
+            "description": "Estrutura de entrada contendo o endereço de email a ser validado.",
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "description": "Endereço de email a ser validado.\nexample: \"usuario@exemplo.com\"",
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.EmailValidationResponse": {
+            "description": "Resultado da validação, contendo informações sobre o endereço de email quando válido.",
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "description": "Domínio do email (após o @)",
+                    "type": "string"
+                },
+                "local_part": {
+                    "description": "Parte local do email (antes do @)",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Mensagem de retorno.",
+                    "type": "string"
+                },
+                "normalized": {
+                    "description": "Email normalizado (lowercase)",
+                    "type": "string"
+                },
+                "valid": {
+                    "description": "Indica se o email é válido.",
+                    "type": "boolean"
+                },
+                "validation_type": {
+                    "description": "Tipo de validação aplicada",
+                    "type": "string"
+                }
+            }
+        },
         "handlers.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -2560,8 +2643,22 @@ const docTemplate = `{
                 "_id": {
                     "type": "string"
                 },
+                "assistencia_social": {
+                    "$ref": "#/definitions/models.AssistenciaSocial"
+                },
                 "cpf": {
                     "type": "string"
+                },
+                "documentos": {
+                    "description": "Wallet and internal fields",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.Documentos"
+                        }
+                    ]
+                },
+                "educacao": {
+                    "$ref": "#/definitions/models.Educacao"
                 },
                 "email": {
                     "$ref": "#/definitions/models.Email"
@@ -2589,6 +2686,9 @@ const docTemplate = `{
                 },
                 "raca": {
                     "type": "string"
+                },
+                "saude": {
+                    "$ref": "#/definitions/models.Saude"
                 },
                 "sexo": {
                     "type": "string"
