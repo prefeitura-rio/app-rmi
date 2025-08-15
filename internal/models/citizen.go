@@ -181,14 +181,51 @@ type Citizen struct {
 	Endereco   *Endereco   `json:"endereco" bson:"endereco,omitempty"`
 	Email      *Email      `json:"email" bson:"email,omitempty"`
 	Telefone   *Telefone   `json:"telefone" bson:"telefone,omitempty"`
-	// Internal fields excluded from API response
-	Documentos        *Documentos        `json:"-" bson:"documentos,omitempty"`
-	Saude             *Saude             `json:"-" bson:"saude,omitempty"`
-	AssistenciaSocial *AssistenciaSocial `json:"-" bson:"assistencia_social,omitempty"`
-	Educacao          *Educacao          `json:"-" bson:"educacao,omitempty"`
+	// Wallet and internal fields
+	Documentos        *Documentos        `json:"documentos,omitempty" bson:"documentos,omitempty"`
+	Saude             *Saude             `json:"saude,omitempty" bson:"saude,omitempty"`
+	AssistenciaSocial *AssistenciaSocial `json:"assistencia_social,omitempty" bson:"assistencia_social,omitempty"`
+	Educacao          *Educacao          `json:"educacao,omitempty" bson:"educacao,omitempty"`
+	// Internal fields excluded from all API responses
 	Datalake          *Datalake          `json:"-" bson:"datalake,omitempty"`
 	CPFParticao       int64              `json:"-" bson:"cpf_particao"`
 	RowNumber         *int32             `json:"-" bson:"row_number,omitempty"`
+}
+
+// CitizenResponse represents citizen data for the regular citizen endpoint (excluding wallet fields)
+type CitizenResponse struct {
+	ID         string      `json:"_id" bson:"_id,omitempty"`
+	CPF        string      `json:"cpf" bson:"cpf"`
+	Nome       *string     `json:"nome" bson:"nome,omitempty"`
+	NomeSocial *string     `json:"nome_social" bson:"nome_social,omitempty"`
+	Sexo       *string     `json:"sexo" bson:"sexo,omitempty"`
+	Nascimento *Nascimento `json:"nascimento" bson:"nascimento,omitempty"`
+	Mae        *Mae        `json:"mae" bson:"mae,omitempty"`
+	MenorIdade *bool       `json:"menor_idade" bson:"menor_idade,omitempty"`
+	Raca       *string     `json:"raca" bson:"raca,omitempty"`
+	Obito      *Obito      `json:"obito" bson:"obito,omitempty"`
+	Endereco   *Endereco   `json:"endereco" bson:"endereco,omitempty"`
+	Email      *Email      `json:"email" bson:"email,omitempty"`
+	Telefone   *Telefone   `json:"telefone" bson:"telefone,omitempty"`
+}
+
+// ToCitizenResponse converts a Citizen to CitizenResponse (excluding wallet fields)
+func (c *Citizen) ToCitizenResponse() *CitizenResponse {
+	return &CitizenResponse{
+		ID:         c.ID,
+		CPF:        c.CPF,
+		Nome:       c.Nome,
+		NomeSocial: c.NomeSocial,
+		Sexo:       c.Sexo,
+		Nascimento: c.Nascimento,
+		Mae:        c.Mae,
+		MenorIdade: c.MenorIdade,
+		Raca:       c.Raca,
+		Obito:      c.Obito,
+		Endereco:   c.Endereco,
+		Email:      c.Email,
+		Telefone:   c.Telefone,
+	}
 }
 
 // CitizenWallet represents citizen wallet information

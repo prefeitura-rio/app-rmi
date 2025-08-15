@@ -99,9 +99,14 @@ func GetCitizenData(c *gin.Context) {
 	}
 	cacheSetSpan.End()
 
+	// Convert to response model (excluding wallet fields) with tracing
+	ctx, convertSpan := utils.TraceBusinessLogic(ctx, "convert_to_citizen_response")
+	citizenResponse := citizen.ToCitizenResponse()
+	convertSpan.End()
+
 	// Serialize response with tracing
 	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
-	c.JSON(http.StatusOK, citizen)
+	c.JSON(http.StatusOK, citizenResponse)
 	responseSpan.End()
 
 	// Log total operation time
