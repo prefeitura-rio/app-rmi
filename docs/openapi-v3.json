@@ -3292,8 +3292,22 @@
           "_id": {
             "type": "string"
           },
+          "assistencia_social": {
+            "$ref": "#/components/schemas/models.AssistenciaSocial"
+          },
           "cpf": {
             "type": "string"
+          },
+          "documentos": {
+            "description": "Wallet and internal fields",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/models.Documentos"
+              }
+            ]
+          },
+          "educacao": {
+            "$ref": "#/components/schemas/models.Educacao"
           },
           "email": {
             "$ref": "#/components/schemas/models.Email"
@@ -3321,6 +3335,9 @@
           },
           "raca": {
             "type": "string"
+          },
+          "saude": {
+            "$ref": "#/components/schemas/models.Saude"
           },
           "sexo": {
             "type": "string"
