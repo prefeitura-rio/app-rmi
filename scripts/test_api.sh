@@ -1155,6 +1155,33 @@ fi
 echo -e "${GREEN}✅ 8-digit phone number support tests completed${NC}"
 echo ""
 
+# Test 94: Test 8-digit phone opt-out functionality
+echo -e "${BLUE}Test 94: Test 8-digit phone opt-out (558499195225) - should succeed${NC}"
+echo -e "${BLUE}🔍 Testing 8-Digit Phone Opt-Out Functionality...${NC}"
+opt_out_data='{"reason": "No longer interested", "channel": "whatsapp"}'
+make_request "POST" "/phone/558499195225/opt-out" "$opt_out_data" "Opt-out 8-digit Number (558499195225)"
+
+# Verify opt-out response
+if [[ -f "/tmp/api_response_Opt_out_8_digit_Number__558499195225_" ]]; then
+    opt_out_response=$(cat "/tmp/api_response_Opt_out_8_digit_Number__558499195225_")
+    echo -e "${BLUE}📋 8-digit Phone Opt-out Test Result:${NC}"
+    echo "  Response: $opt_out_response"
+    
+    if echo "$opt_out_response" | grep -qE "(status.*opted_out|success)"; then
+        echo -e "${GREEN}✅ 8-digit phone opt-out correctly processed${NC}"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}❌ 8-digit phone opt-out failed${NC}"
+        echo -e "${YELLOW}📝 8-digit numbers should be supported in opt-out operations${NC}"
+        ((TESTS_FAILED++))
+    fi
+else
+    echo -e "${YELLOW}⚠️  8-digit phone opt-out test response not available for verification${NC}"
+fi
+
+echo -e "${GREEN}✅ 8-digit phone opt-out test completed${NC}"
+echo ""
+
 # Clean up temporary files
 rm -f /tmp/api_response_*
 

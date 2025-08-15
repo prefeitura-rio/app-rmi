@@ -38,13 +38,15 @@ func ParsePhoneNumber(phoneString string) (*PhoneComponents, error) {
 		return nil, fmt.Errorf("failed to parse phone number: %w", err)
 	}
 
-	if !phonenumbers.IsValidNumber(num) {
+	// Use basic validation instead of strict IsValidNumber to support 8-digit Brazilian numbers
+	nationalNumber := phonenumbers.GetNationalSignificantNumber(num)
+	if len(nationalNumber) < 8 || len(nationalNumber) > 15 {
 		return nil, fmt.Errorf("invalid phone number: %s", phoneString)
 	}
 
 	// Extract components
 	countryCode := num.GetCountryCode()
-	nationalNumber := phonenumbers.GetNationalSignificantNumber(num)
+	// nationalNumber already declared above
 
 	// Initialize components
 	components := &PhoneComponents{
