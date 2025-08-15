@@ -1,6 +1,8 @@
 package models
 
-import "time"
+import (
+	"time"
+)
 
 // Nascimento represents birth information
 type Nascimento struct {
@@ -239,9 +241,43 @@ type CitizenWallet struct {
 
 // MaintenanceRequestDocument represents the new document structure for 1746 calls
 type MaintenanceRequestDocument struct {
-	ID           string                     `json:"_id" bson:"_id"`
-	CPF          string                     `json:"cpf" bson:"cpf"`
-	Chamados1746 MaintenanceRequestChamados `json:"chamados_1746" bson:"chamados_1746"`
+	ID                             string      `json:"_id" bson:"_id"`
+	CPF                            string      `json:"cpf" bson:"cpf"`
+	CPFParticao                    int64       `json:"cpf_particao" bson:"cpf_particao"`
+	OrigemOcorrencia               string      `json:"origem_ocorrencia" bson:"origem_ocorrencia"`
+	IDChamado                      string      `json:"id_chamado" bson:"id_chamado"`
+	IDOrigemOcorrencia             string      `json:"id_origem_ocorrencia" bson:"id_origem_ocorrencia"`
+	DataInicio                     string      `json:"data_inicio" bson:"data_inicio"`
+	DataFim                        string      `json:"data_fim" bson:"data_fim"`
+	IDBairro                       string      `json:"id_bairro" bson:"id_bairro"`
+	IDTerritorialidade             string      `json:"id_territorialidade" bson:"id_territorialidade"`
+	IDLogradouro                   string      `json:"id_logradouro" bson:"id_logradouro"`
+	NumeroLogradouro               int         `json:"numero_logradouro" bson:"numero_logradouro"`
+	IDUnidadeOrganizacional        string      `json:"id_unidade_organizacional" bson:"id_unidade_organizacional"`
+	NomeUnidadeOrganizacional      string      `json:"nome_unidade_organizacional" bson:"nome_unidade_organizacional"`
+	IDUnidadeOrganizacionalMae     string      `json:"id_unidade_organizacional_mae" bson:"id_unidade_organizacional_mae"`
+	UnidadeOrganizacionalOuvidoria string      `json:"unidade_organizacional_ouvidoria" bson:"unidade_organizacional_ouvidoria"`
+	Categoria                      string      `json:"categoria" bson:"categoria"`
+	IDTipo                         string      `json:"id_tipo" bson:"id_tipo"`
+	Tipo                           string      `json:"tipo" bson:"tipo"`
+	IDSubtipo                      string      `json:"id_subtipo" bson:"id_subtipo"`
+	Subtipo                        string      `json:"subtipo" bson:"subtipo"`
+	Status                         string      `json:"status" bson:"status"`
+	Longitude                      *float64    `json:"longitude" bson:"longitude"`
+	Latitude                       *float64    `json:"latitude" bson:"latitude"`
+	DataAlvoFinalizacao            string      `json:"data_alvo_finalizacao" bson:"data_alvo_finalizacao"`
+	DataAlvoDiagnostico            string      `json:"data_alvo_diagnostico" bson:"data_alvo_diagnostico"`
+	DataRealDiagnostico            string      `json:"data_real_diagnostico" bson:"data_real_diagnostico"`
+	TempoPrazo                     interface{} `json:"tempo_prazo" bson:"tempo_prazo"`
+	PrazoUnidade                   string      `json:"prazo_unidade" bson:"prazo_unidade"`
+	PrazoTipo                      string      `json:"prazo_tipo" bson:"prazo_tipo"`
+	DentroPrazo                    string      `json:"dentro_prazo" bson:"dentro_prazo"`
+	Situacao                       string      `json:"situacao" bson:"situacao"`
+	TipoSituacao                   string      `json:"tipo_situacao" bson:"tipo_situacao"`
+	JustificativaStatus            interface{} `json:"justificativa_status" bson:"justificativa_status"`
+	Reclamacoes                    int         `json:"reclamacoes" bson:"reclamacoes"`
+	Descricao                      string      `json:"descricao" bson:"descricao"`
+	DataParticao                   string      `json:"data_particao" bson:"data_particao"`
 }
 
 // MaintenanceRequestChamados represents maintenance request calls
@@ -379,47 +415,62 @@ func (doc *MaintenanceRequestDocument) ConvertToMaintenanceRequest() *Maintenanc
 		return nil
 	}
 
-	chamado := doc.Chamados1746
+	// Helper function to safely handle string to pointer
+	stringPtr := func(s string) *string {
+		if s == "" {
+			return nil
+		}
+		return &s
+	}
 
+	// Helper function to safely handle int to pointer
+	intPtr := func(i int) *int {
+		if i == 0 {
+			return nil
+		}
+		return &i
+	}
+
+	// Use flat structure mapping (new format)
 	return &MaintenanceRequest{
 		ID:                             doc.ID,
 		CPF:                            doc.CPF,
-		OrigemOcorrencia:               chamado.Chamado.OrigemOcorrencia,
-		IDChamado:                      chamado.Chamado.IDChamado,
-		IDOrigemOcorrencia:             chamado.Chamado.IDOrigemOcorrencia,
-		DataInicio:                     parseTime(&chamado.Data.DataInicio),
-		DataFim:                        parseTime(chamado.Data.DataFim),
-		IDBairro:                       chamado.Localidade.IDBairro,
-		IDTerritorialidade:             chamado.Localidade.IDTerritorialidade,
-		IDLogradouro:                   chamado.Localidade.IDLogradouro,
-		NumeroLogradouro:               chamado.Localidade.NumeroLogradouro,
-		IDUnidadeOrganizacional:        chamado.Chamado.IDUnidadeOrganizacional,
-		NomeUnidadeOrganizacional:      chamado.Chamado.NomeUnidadeOrganizacional,
-		IDUnidadeOrganizacionalMae:     chamado.Chamado.IDUnidadeOrganizacionalMae,
-		UnidadeOrganizacionalOuvidoria: chamado.Chamado.UnidadeOrganizacionalOuvidoria,
-		Categoria:                      chamado.Chamado.Categoria,
-		IDTipo:                         chamado.Chamado.IDTipo,
-		Tipo:                           chamado.Chamado.Tipo,
-		IDSubtipo:                      chamado.Chamado.IDSubtipo,
-		Subtipo:                        chamado.Chamado.Subtipo,
-		Status:                         chamado.Status.Status,
-		Longitude:                      chamado.Localidade.Longitude,
-		Latitude:                       chamado.Localidade.Latitude,
-		DataAlvoFinalizacao:            parseTime(chamado.Data.DataAlvoFinalizacao),
-		DataAlvoDiagnostico:            parseTime(chamado.Data.DataAlvoDiagnostico),
-		DataRealDiagnostico:            parseTime(chamado.Data.DataRealDiagnostico),
-		TempoPrazo:                     chamado.Prazo.TempoPrazo,
-		PrazoUnidade:                   chamado.Prazo.PrazoUnidade,
-		PrazoTipo:                      chamado.Prazo.PrazoTipo,
-		DentroPrazo:                    chamado.Prazo.DentroPrazo,
-		Situacao:                       chamado.Status.Situacao,
-		TipoSituacao:                   chamado.Status.TipoSituacao,
-		JustificativaStatus:            chamado.Status.JustificativaStatus,
-		Reclamacoes:                    chamado.Chamado.Reclamacoes,
-		Descricao:                      chamado.Chamado.Descricao,
-		Indicador:                      chamado.Chamado.Indicador,
-		TotalChamados:                  chamado.Estatisticas.TotalChamados,
-		TotalFechados:                  chamado.Estatisticas.TotalFechados,
+		OrigemOcorrencia:               doc.OrigemOcorrencia,
+		IDChamado:                      doc.IDChamado,
+		IDOrigemOcorrencia:             doc.IDOrigemOcorrencia,
+		DataInicio:                     parseTime(&doc.DataInicio),
+		DataFim:                        parseTime(&doc.DataFim),
+		IDBairro:                       stringPtr(doc.IDBairro),
+		IDTerritorialidade:             stringPtr(doc.IDTerritorialidade),
+		IDLogradouro:                   stringPtr(doc.IDLogradouro),
+		NumeroLogradouro:               intPtr(doc.NumeroLogradouro),
+		IDUnidadeOrganizacional:        doc.IDUnidadeOrganizacional,
+		NomeUnidadeOrganizacional:      doc.NomeUnidadeOrganizacional,
+		IDUnidadeOrganizacionalMae:     doc.IDUnidadeOrganizacionalMae,
+		UnidadeOrganizacionalOuvidoria: doc.UnidadeOrganizacionalOuvidoria,
+		Categoria:                      doc.Categoria,
+		IDTipo:                         doc.IDTipo,
+		Tipo:                           doc.Tipo,
+		IDSubtipo:                      doc.IDSubtipo,
+		Subtipo:                        doc.Subtipo,
+		Status:                         doc.Status,
+		Longitude:                      doc.Longitude,
+		Latitude:                       doc.Latitude,
+		DataAlvoFinalizacao:            parseTime(&doc.DataAlvoFinalizacao),
+		DataAlvoDiagnostico:            parseTime(&doc.DataAlvoDiagnostico),
+		DataRealDiagnostico:            parseTime(&doc.DataRealDiagnostico),
+		TempoPrazo:                     doc.TempoPrazo,
+		PrazoUnidade:                   doc.PrazoUnidade,
+		PrazoTipo:                      doc.PrazoTipo,
+		DentroPrazo:                    doc.DentroPrazo,
+		Situacao:                       doc.Situacao,
+		TipoSituacao:                   doc.TipoSituacao,
+		JustificativaStatus:            doc.JustificativaStatus,
+		Reclamacoes:                    doc.Reclamacoes,
+		Descricao:                      stringPtr(doc.Descricao),
+		Indicador:                      false, // Default value since not in flat structure
+		TotalChamados:                  0,     // Default value since not in flat structure
+		TotalFechados:                  0,     // Default value since not in flat structure
 	}
 }
 

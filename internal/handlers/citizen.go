@@ -1867,7 +1867,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 	opts := options.Find().
 		SetSkip(int64(skip)).
 		SetLimit(int64(perPage)).
-		SetSort(bson.D{{Key: "chamados_1746.data.data_inicio", Value: -1}}) // Sort by data_inicio descending (newest first)
+		SetSort(bson.D{{Key: "data_inicio", Value: -1}}) // Sort by data_inicio descending (newest first)
 
 	cursor, err := config.MongoDB.Collection(config.AppConfig.MaintenanceRequestCollection).Find(ctx, bson.M{"cpf": cpf}, opts)
 	if err != nil {
