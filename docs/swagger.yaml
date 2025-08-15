@@ -1,5 +1,39 @@
 basePath: /v1
 definitions:
+  handlers.EmailValidationRequest:
+    description: Estrutura de entrada contendo o endereço de email a ser validado.
+    properties:
+      email:
+        description: |-
+          Endereço de email a ser validado.
+          example: "usuario@exemplo.com"
+        type: string
+    required:
+    - email
+    type: object
+  handlers.EmailValidationResponse:
+    description: Resultado da validação, contendo informações sobre o endereço de
+      email quando válido.
+    properties:
+      domain:
+        description: Domínio do email (após o @)
+        type: string
+      local_part:
+        description: Parte local do email (antes do @)
+        type: string
+      message:
+        description: Mensagem de retorno.
+        type: string
+      normalized:
+        description: Email normalizado (lowercase)
+        type: string
+      valid:
+        description: Indica se o email é válido.
+        type: boolean
+      validation_type:
+        description: Tipo de validação aplicada
+        type: string
+    type: object
   handlers.ErrorResponse:
     properties:
       error:
@@ -2233,6 +2267,33 @@ paths:
       summary: Validar registro
       tags:
       - phone
+  /validate/email:
+    post:
+      consumes:
+      - application/json
+      description: Valida formato e estrutura de endereços de email, retornando informações
+        detalhadas sobre o endereço quando válido.
+      parameters:
+      - description: Email a ser validado
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.EmailValidationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.EmailValidationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Valida endereço de email
+      tags:
+      - validation
   /validate/phone:
     post:
       consumes:
