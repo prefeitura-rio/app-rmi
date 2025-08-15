@@ -2643,8 +2643,22 @@ const docTemplate = `{
                 "_id": {
                     "type": "string"
                 },
+                "assistencia_social": {
+                    "$ref": "#/definitions/models.AssistenciaSocial"
+                },
                 "cpf": {
                     "type": "string"
+                },
+                "documentos": {
+                    "description": "Wallet and internal fields",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.Documentos"
+                        }
+                    ]
+                },
+                "educacao": {
+                    "$ref": "#/definitions/models.Educacao"
                 },
                 "email": {
                     "$ref": "#/definitions/models.Email"
@@ -2672,6 +2686,9 @@ const docTemplate = `{
                 },
                 "raca": {
                     "type": "string"
+                },
+                "saude": {
+                    "$ref": "#/definitions/models.Saude"
                 },
                 "sexo": {
                     "type": "string"

@@ -271,8 +271,16 @@ definitions:
     properties:
       _id:
         type: string
+      assistencia_social:
+        $ref: '#/definitions/models.AssistenciaSocial'
       cpf:
         type: string
+      documentos:
+        allOf:
+        - $ref: '#/definitions/models.Documentos'
+        description: Wallet and internal fields
+      educacao:
+        $ref: '#/definitions/models.Educacao'
       email:
         $ref: '#/definitions/models.Email'
       endereco:
@@ -291,6 +299,8 @@ definitions:
         $ref: '#/definitions/models.Obito'
       raca:
         type: string
+      saude:
+        $ref: '#/definitions/models.Saude'
       sexo:
         type: string
       telefone:
