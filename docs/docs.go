@@ -61,6 +61,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -101,6 +107,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -148,6 +160,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -209,6 +227,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -253,6 +277,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -315,6 +345,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -360,6 +396,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -416,6 +458,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -464,6 +512,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -521,6 +575,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -572,6 +632,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -602,6 +668,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.QuarantineStats"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
                     "403": {
@@ -646,6 +718,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -893,6 +971,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Email não alterado (email corresponde aos dados atuais)",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -1376,6 +1460,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
+                    "409": {
+                        "description": "Telefone não alterado (telefone corresponde aos dados atuais verificados)",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -1641,6 +1731,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -1746,6 +1842,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -1810,6 +1912,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -1870,6 +1978,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -2772,7 +2886,7 @@ const docTemplate = `{
                 "alternativo": {
                     "type": "array",
                     "items": {
-                        "type": "integer"
+                        "$ref": "#/definitions/models.EmailAlternativo"
                     }
                 },
                 "indicador": {
@@ -2780,6 +2894,20 @@ const docTemplate = `{
                 },
                 "principal": {
                     "$ref": "#/definitions/models.EmailPrincipal"
+                }
+            }
+        },
+        "models.EmailAlternativo": {
+            "type": "object",
+            "properties": {
+                "origem": {
+                    "type": "string"
+                },
+                "sistema": {
+                    "type": "string"
+                },
+                "valor": {
+                    "type": "string"
                 }
             }
         },
@@ -2806,7 +2934,7 @@ const docTemplate = `{
                 "alternativo": {
                     "type": "array",
                     "items": {
-                        "type": "integer"
+                        "$ref": "#/definitions/models.EnderecoAlternativo"
                     }
                 },
                 "indicador": {
@@ -2814,6 +2942,50 @@ const docTemplate = `{
                 },
                 "principal": {
                     "$ref": "#/definitions/models.EnderecoPrincipal"
+                }
+            }
+        },
+        "models.EnderecoAlternativo": {
+            "type": "object",
+            "properties": {
+                "bairro": {
+                    "type": "string"
+                },
+                "cep": {
+                    "type": "string"
+                },
+                "complemento": {
+                    "type": "string"
+                },
+                "estado": {
+                    "type": "string"
+                },
+                "latitude": {
+                    "type": "string"
+                },
+                "logradouro": {
+                    "type": "string"
+                },
+                "longitude": {
+                    "type": "string"
+                },
+                "municipio": {
+                    "type": "string"
+                },
+                "numero": {
+                    "type": "string"
+                },
+                "origem": {
+                    "type": "string"
+                },
+                "pluscode": {
+                    "type": "string"
+                },
+                "sistema": {
+                    "type": "string"
+                },
+                "tipo_logradouro": {
+                    "type": "string"
                 }
             }
         },
@@ -3443,7 +3615,7 @@ const docTemplate = `{
                 "alternativo": {
                     "type": "array",
                     "items": {
-                        "type": "integer"
+                        "$ref": "#/definitions/models.TelefoneAlternativo"
                     }
                 },
                 "indicador": {
@@ -3451,6 +3623,26 @@ const docTemplate = `{
                 },
                 "principal": {
                     "$ref": "#/definitions/models.TelefonePrincipal"
+                }
+            }
+        },
+        "models.TelefoneAlternativo": {
+            "type": "object",
+            "properties": {
+                "ddd": {
+                    "type": "string"
+                },
+                "ddi": {
+                    "type": "string"
+                },
+                "origem": {
+                    "type": "string"
+                },
+                "sistema": {
+                    "type": "string"
+                },
+                "valor": {
+                    "type": "string"
                 }
             }
         },

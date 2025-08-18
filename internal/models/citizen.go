@@ -46,11 +46,28 @@ type EnderecoPrincipal struct {
 	UpdatedAt      *time.Time `json:"updated_at" bson:"updated_at,omitempty"`
 }
 
+// EnderecoAlternativo represents alternative address information
+type EnderecoAlternativo struct {
+	Origem         *string `json:"origem" bson:"origem,omitempty"`
+	Sistema        *string `json:"sistema" bson:"sistema,omitempty"`
+	CEP            *string `json:"cep" bson:"cep,omitempty"`
+	Estado         *string `json:"estado" bson:"estado,omitempty"`
+	Municipio      *string `json:"municipio" bson:"municipio,omitempty"`
+	TipoLogradouro *string `json:"tipo_logradouro" bson:"tipo_logradouro,omitempty"`
+	Logradouro     *string `json:"logradouro" bson:"logradouro,omitempty"`
+	Numero         *string `json:"numero" bson:"numero,omitempty"`
+	Complemento    *string `json:"complemento" bson:"complemento,omitempty"`
+	Bairro         *string `json:"bairro" bson:"bairro,omitempty"`
+	Latitude       *string `json:"latitude" bson:"latitude,omitempty"`
+	Longitude      *string `json:"longitude" bson:"longitude,omitempty"`
+	Pluscode       *string `json:"pluscode" bson:"pluscode,omitempty"`
+}
+
 // Endereco represents address information
 type Endereco struct {
-	Indicador   *bool              `json:"indicador" bson:"indicador,omitempty"`
-	Principal   *EnderecoPrincipal `json:"principal" bson:"principal,omitempty"`
-	Alternativo []int32            `json:"alternativo" bson:"alternativo,omitempty"`
+	Indicador   *bool                  `json:"indicador" bson:"indicador,omitempty"`
+	Principal   *EnderecoPrincipal     `json:"principal" bson:"principal,omitempty"`
+	Alternativo []EnderecoAlternativo  `json:"alternativo" bson:"alternativo,omitempty"`
 }
 
 // EmailPrincipal represents the main email
@@ -61,11 +78,18 @@ type EmailPrincipal struct {
 	UpdatedAt *time.Time `json:"updated_at" bson:"updated_at,omitempty"`
 }
 
+// EmailAlternativo represents alternative email information
+type EmailAlternativo struct {
+	Origem  *string `json:"origem" bson:"origem,omitempty"`
+	Sistema *string `json:"sistema" bson:"sistema,omitempty"`
+	Valor   *string `json:"valor" bson:"valor,omitempty"`
+}
+
 // Email represents email information
 type Email struct {
-	Indicador   *bool           `json:"indicador" bson:"indicador,omitempty"`
-	Principal   *EmailPrincipal `json:"principal" bson:"principal,omitempty"`
-	Alternativo []int32         `json:"alternativo" bson:"alternativo,omitempty"`
+	Indicador   *bool              `json:"indicador" bson:"indicador,omitempty"`
+	Principal   *EmailPrincipal    `json:"principal" bson:"principal,omitempty"`
+	Alternativo []EmailAlternativo `json:"alternativo" bson:"alternativo,omitempty"`
 }
 
 // TelefonePrincipal represents the main phone
@@ -78,11 +102,20 @@ type TelefonePrincipal struct {
 	UpdatedAt *time.Time `json:"updated_at" bson:"updated_at,omitempty"`
 }
 
+// TelefoneAlternativo represents alternative phone information
+type TelefoneAlternativo struct {
+	Origem  *string `json:"origem" bson:"origem,omitempty"`
+	Sistema *string `json:"sistema" bson:"sistema,omitempty"`
+	DDI     *string `json:"ddi" bson:"ddi,omitempty"`
+	DDD     *string `json:"ddd" bson:"ddd,omitempty"`
+	Valor   *string `json:"valor" bson:"valor,omitempty"`
+}
+
 // Telefone represents phone information
 type Telefone struct {
-	Indicador   *bool              `json:"indicador" bson:"indicador,omitempty"`
-	Principal   *TelefonePrincipal `json:"principal" bson:"principal,omitempty"`
-	Alternativo []int32            `json:"alternativo" bson:"alternativo,omitempty"`
+	Indicador   *bool                  `json:"indicador" bson:"indicador,omitempty"`
+	Principal   *TelefonePrincipal     `json:"principal" bson:"principal,omitempty"`
+	Alternativo []TelefoneAlternativo  `json:"alternativo" bson:"alternativo,omitempty"`
 }
 
 // ClinicaFamilia represents family clinic information

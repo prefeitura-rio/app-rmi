@@ -141,6 +141,7 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 // @Security BearerAuth
 // @Success 200 {object} models.PhoneCitizenResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /phone/{phone_number}/citizen [get]
@@ -344,6 +345,7 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 // @Security BearerAuth
 // @Success 200 {object} models.OptInResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /phone/{phone_number}/opt-in [post]
@@ -443,6 +445,7 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 // @Security BearerAuth
 // @Success 200 {object} models.OptOutResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /phone/{phone_number}/opt-out [post]
@@ -919,6 +922,7 @@ func (h *PhoneHandlers) ReleaseQuarantine(c *gin.Context) {
 // @Param per_page query int false "Itens por página (padrão: 10)"
 // @Success 200 {object} models.QuarantinedListResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Router /admin/phone/quarantined [get]
 func (h *PhoneHandlers) GetQuarantinedPhones(c *gin.Context) {
@@ -1001,6 +1005,7 @@ func (h *PhoneHandlers) GetQuarantinedPhones(c *gin.Context) {
 // @Tags phone
 // @Produce json
 // @Success 200 {object} models.QuarantineStats
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Router /admin/phone/quarantine/stats [get]
 func (h *PhoneHandlers) GetQuarantineStats(c *gin.Context) {
