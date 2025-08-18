@@ -354,12 +354,21 @@ definitions:
     properties:
       alternativo:
         items:
-          type: integer
+          $ref: '#/definitions/models.EmailAlternativo'
         type: array
       indicador:
         type: boolean
       principal:
         $ref: '#/definitions/models.EmailPrincipal'
+    type: object
+  models.EmailAlternativo:
+    properties:
+      origem:
+        type: string
+      sistema:
+        type: string
+      valor:
+        type: string
     type: object
   models.EmailPrincipal:
     properties:
@@ -376,12 +385,41 @@ definitions:
     properties:
       alternativo:
         items:
-          type: integer
+          $ref: '#/definitions/models.EnderecoAlternativo'
         type: array
       indicador:
         type: boolean
       principal:
         $ref: '#/definitions/models.EnderecoPrincipal'
+    type: object
+  models.EnderecoAlternativo:
+    properties:
+      bairro:
+        type: string
+      cep:
+        type: string
+      complemento:
+        type: string
+      estado:
+        type: string
+      latitude:
+        type: string
+      logradouro:
+        type: string
+      longitude:
+        type: string
+      municipio:
+        type: string
+      numero:
+        type: string
+      origem:
+        type: string
+      pluscode:
+        type: string
+      sistema:
+        type: string
+      tipo_logradouro:
+        type: string
     type: object
   models.EnderecoPrincipal:
     properties:
@@ -796,12 +834,25 @@ definitions:
     properties:
       alternativo:
         items:
-          type: integer
+          $ref: '#/definitions/models.TelefoneAlternativo'
         type: array
       indicador:
         type: boolean
       principal:
         $ref: '#/definitions/models.TelefonePrincipal'
+    type: object
+  models.TelefoneAlternativo:
+    properties:
+      ddd:
+        type: string
+      ddi:
+        type: string
+      origem:
+        type: string
+      sistema:
+        type: string
+      valor:
+        type: string
     type: object
   models.TelefonePrincipal:
     properties:
@@ -896,6 +947,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -923,6 +978,10 @@ paths:
             $ref: '#/definitions/models.BetaGroupResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
@@ -955,6 +1014,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -983,6 +1046,10 @@ paths:
             $ref: '#/definitions/models.BetaGroupResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
@@ -1021,6 +1088,10 @@ paths:
             $ref: '#/definitions/models.BetaGroupResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
@@ -1065,6 +1136,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -1090,6 +1165,10 @@ paths:
             $ref: '#/definitions/models.BetaWhitelistResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
@@ -1128,6 +1207,10 @@ paths:
             $ref: '#/definitions/models.BetaWhitelistResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
@@ -1171,6 +1254,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -1204,6 +1291,10 @@ paths:
             $ref: '#/definitions/handlers.SuccessResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
@@ -1241,6 +1332,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -1258,6 +1353,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/models.QuarantineStats'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -1286,6 +1385,10 @@ paths:
             $ref: '#/definitions/models.QuarantinedListResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
@@ -1426,6 +1529,10 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Email não alterado (email corresponde aos dados atuais)
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
@@ -1742,6 +1849,11 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Telefone não alterado (telefone corresponde aos dados atuais
+            verificados)
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
@@ -1941,6 +2053,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
       summary: Verificar status beta
       tags:
       - Beta Whitelist
@@ -2005,6 +2121,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -2046,6 +2166,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "403":
           description: Forbidden
           schema:
@@ -2085,6 +2209,10 @@ paths:
             $ref: '#/definitions/models.OptOutResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":

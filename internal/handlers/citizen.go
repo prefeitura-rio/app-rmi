@@ -494,6 +494,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado"
 // @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse "Telefone não alterado (telefone corresponde aos dados atuais verificados)"
 // @Failure 500 {object} ErrorResponse
 // @Router /citizen/{cpf}/phone [put]
 func UpdateSelfDeclaredPhone(c *gin.Context) {
@@ -743,6 +744,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado"
 // @Failure 404 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse "Email não alterado (email corresponde aos dados atuais)"
 // @Failure 500 {object} ErrorResponse
 // @Router /citizen/{cpf}/email [put]
 func UpdateSelfDeclaredEmail(c *gin.Context) {

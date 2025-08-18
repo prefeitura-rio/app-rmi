@@ -40,6 +40,7 @@ func NewBetaGroupHandlers(logger *logging.SafeLogger, betaGroupService *services
 // @Param group body models.BetaGroupRequest true "Dados do grupo"
 // @Success 201 {object} models.BetaGroupResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
 // @Router /admin/beta/groups [post]
@@ -132,6 +133,7 @@ func (h *BetaGroupHandlers) CreateGroup(c *gin.Context) {
 // @Param group_id path string true "ID do grupo"
 // @Success 200 {object} models.BetaGroupResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/beta/groups/{group_id} [get]
@@ -224,6 +226,7 @@ func (h *BetaGroupHandlers) GetGroup(c *gin.Context) {
 // @Param per_page query int false "Itens por página (padrão: 10)"
 // @Success 200 {object} models.BetaGroupListResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Router /admin/beta/groups [get]
 func (h *BetaGroupHandlers) ListGroups(c *gin.Context) {
@@ -310,6 +313,7 @@ func (h *BetaGroupHandlers) ListGroups(c *gin.Context) {
 // @Param group body models.BetaGroupRequest true "Dados do grupo"
 // @Success 200 {object} models.BetaGroupResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
@@ -420,6 +424,7 @@ func (h *BetaGroupHandlers) UpdateGroup(c *gin.Context) {
 // @Param group_id path string true "ID do grupo"
 // @Success 204 "Grupo excluído com sucesso"
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/beta/groups/{group_id} [delete]
@@ -509,6 +514,7 @@ func (h *BetaGroupHandlers) DeleteGroup(c *gin.Context) {
 // @Param phone_number path string true "Número de telefone"
 // @Success 200 {object} models.BetaStatusResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /phone/{phone_number}/beta-status [get]
 func (h *BetaGroupHandlers) GetBetaStatus(c *gin.Context) {
 	startTime := time.Now()
@@ -582,6 +588,7 @@ func (h *BetaGroupHandlers) GetBetaStatus(c *gin.Context) {
 // @Param data body models.BetaWhitelistRequest true "Dados da whitelist"
 // @Success 200 {object} models.BetaWhitelistResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
@@ -693,6 +700,7 @@ func (h *BetaGroupHandlers) AddToWhitelist(c *gin.Context) {
 // @Param phone_number path string true "Número de telefone"
 // @Success 200 {object} models.BetaWhitelistResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/beta/whitelist/{phone_number} [delete]
@@ -783,6 +791,7 @@ func (h *BetaGroupHandlers) RemoveFromWhitelist(c *gin.Context) {
 // @Param group_id query string false "Filtrar por ID do grupo"
 // @Success 200 {object} models.BetaWhitelistListResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Router /admin/beta/whitelist [get]
 func (h *BetaGroupHandlers) ListWhitelistedPhones(c *gin.Context) {
@@ -873,6 +882,7 @@ func (h *BetaGroupHandlers) ListWhitelistedPhones(c *gin.Context) {
 // @Param data body models.BetaWhitelistBulkRequest true "Dados da operação em lote"
 // @Success 200 {array} models.BetaWhitelistResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/beta/whitelist/bulk-add [post]
@@ -968,6 +978,7 @@ func (h *BetaGroupHandlers) BulkAddToWhitelist(c *gin.Context) {
 // @Param data body models.BetaWhitelistBulkRemoveRequest true "Dados da operação em lote"
 // @Success 200 {object} SuccessResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Router /admin/beta/whitelist/bulk-remove [post]
 func (h *BetaGroupHandlers) BulkRemoveFromWhitelist(c *gin.Context) {
@@ -1051,6 +1062,7 @@ func (h *BetaGroupHandlers) BulkRemoveFromWhitelist(c *gin.Context) {
 // @Param data body models.BetaWhitelistMoveRequest true "Dados da operação de movimentação"
 // @Success 200 {object} SuccessResponse
 // @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/beta/whitelist/bulk-move [post]
