@@ -62,6 +62,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -101,6 +111,16 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -168,6 +188,16 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -244,6 +274,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -304,6 +344,16 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -394,6 +444,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -446,6 +506,16 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -521,6 +591,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -580,6 +660,16 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -648,6 +738,16 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -731,6 +831,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -773,6 +883,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/models.QuarantineStats"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
                 }
               }
             }
@@ -833,6 +953,16 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1152,6 +1282,16 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Email não alterado (email corresponde aos dados atuais)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1769,6 +1909,16 @@
               }
             }
           },
+          "409": {
+            "description": "Telefone não alterado (telefone corresponde aos dados atuais verificados)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal Server Error",
             "content": {
@@ -2107,6 +2257,16 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2238,6 +2398,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -2316,6 +2486,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -2386,6 +2566,16 @@
           },
           "400": {
             "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3421,7 +3611,7 @@
           "alternativo": {
             "type": "array",
             "items": {
-              "type": "integer"
+              "$ref": "#/components/schemas/models.EmailAlternativo"
             }
           },
           "indicador": {
@@ -3429,6 +3619,20 @@
           },
           "principal": {
             "$ref": "#/components/schemas/models.EmailPrincipal"
+          }
+        }
+      },
+      "models.EmailAlternativo": {
+        "type": "object",
+        "properties": {
+          "origem": {
+            "type": "string"
+          },
+          "sistema": {
+            "type": "string"
+          },
+          "valor": {
+            "type": "string"
           }
         }
       },
@@ -3455,7 +3659,7 @@
           "alternativo": {
             "type": "array",
             "items": {
-              "type": "integer"
+              "$ref": "#/components/schemas/models.EnderecoAlternativo"
             }
           },
           "indicador": {
@@ -3463,6 +3667,50 @@
           },
           "principal": {
             "$ref": "#/components/schemas/models.EnderecoPrincipal"
+          }
+        }
+      },
+      "models.EnderecoAlternativo": {
+        "type": "object",
+        "properties": {
+          "bairro": {
+            "type": "string"
+          },
+          "cep": {
+            "type": "string"
+          },
+          "complemento": {
+            "type": "string"
+          },
+          "estado": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "string"
+          },
+          "logradouro": {
+            "type": "string"
+          },
+          "longitude": {
+            "type": "string"
+          },
+          "municipio": {
+            "type": "string"
+          },
+          "numero": {
+            "type": "string"
+          },
+          "origem": {
+            "type": "string"
+          },
+          "pluscode": {
+            "type": "string"
+          },
+          "sistema": {
+            "type": "string"
+          },
+          "tipo_logradouro": {
+            "type": "string"
           }
         }
       },
@@ -4092,7 +4340,7 @@
           "alternativo": {
             "type": "array",
             "items": {
-              "type": "integer"
+              "$ref": "#/components/schemas/models.TelefoneAlternativo"
             }
           },
           "indicador": {
@@ -4100,6 +4348,26 @@
           },
           "principal": {
             "$ref": "#/components/schemas/models.TelefonePrincipal"
+          }
+        }
+      },
+      "models.TelefoneAlternativo": {
+        "type": "object",
+        "properties": {
+          "ddd": {
+            "type": "string"
+          },
+          "ddi": {
+            "type": "string"
+          },
+          "origem": {
+            "type": "string"
+          },
+          "sistema": {
+            "type": "string"
+          },
+          "valor": {
+            "type": "string"
           }
         }
       },
