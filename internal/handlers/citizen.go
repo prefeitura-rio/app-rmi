@@ -1317,6 +1317,7 @@ func UpdateFirstLogin(c *gin.Context) {
 	userConfig := &models.UserConfig{
 		CPF:        cpf,
 		FirstLogin: false,
+		OptIn:      true, // Default to opted in
 		UpdatedAt:  time.Now(),
 	}
 	buildSpan.End()
