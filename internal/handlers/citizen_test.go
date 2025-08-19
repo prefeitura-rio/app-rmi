@@ -140,7 +140,7 @@ func TestUpdateSelfDeclaredRaca(t *testing.T) {
 	r := setupRouter()
 	w := httptest.NewRecorder()
 	body := map[string]interface{}{
-		"Valor": "Branca",
+		"Valor": "branca",
 	}
 	jsonBody, _ := json.Marshal(body)
 	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/ethnicity", bytes.NewBuffer(jsonBody))

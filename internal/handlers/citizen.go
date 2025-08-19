@@ -132,20 +132,8 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 		}
 	}
 
-	// Use batched Redis operations for self-declared data
+	// Use batched Redis operations for self-declared data with MongoDB fallback
 	selfDeclared := getBatchedSelfDeclaredData(ctx, cpf)
-
-	// Only fallback to MongoDB if we have no cached data
-	if selfDeclared.Endereco == nil && selfDeclared.Email == nil &&
-		selfDeclared.Telefone == nil && selfDeclared.Raca == nil {
-		// Fallback to MongoDB for complete self-declared data
-		var mongoSelfDeclared models.SelfDeclaredData
-		err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&mongoSelfDeclared)
-		if err != nil && err != mongo.ErrNoDocuments {
-			return nil, err
-		}
-		selfDeclared = mongoSelfDeclared
-	}
 	// Merge logic (same as in GetCitizenData)
 	if selfDeclared.Endereco != nil && selfDeclared.Endereco.Principal != nil {
 		if citizen.Endereco == nil {
@@ -282,6 +270,42 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		}
 		if selfDeclared.Raca == nil && parseCacheResult(cacheKeys[3], "raca", &racaData) && racaData.Raca != nil {
 			selfDeclared.Raca = racaData.Raca
+		}
+	}
+
+	// Final fallback to MongoDB for any missing individual fields
+	if selfDeclared.Endereco == nil || selfDeclared.Email == nil || 
+		selfDeclared.Telefone == nil || selfDeclared.Raca == nil {
+		
+		observability.Logger().Debug("fallback to MongoDB for missing self-declared fields",
+			zap.String("cpf", cpf),
+			zap.Bool("missing_endereco", selfDeclared.Endereco == nil),
+			zap.Bool("missing_email", selfDeclared.Email == nil),
+			zap.Bool("missing_telefone", selfDeclared.Telefone == nil),
+			zap.Bool("missing_raca", selfDeclared.Raca == nil))
+
+		var mongoSelfDeclared models.SelfDeclaredData
+		err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&mongoSelfDeclared)
+		if err != nil && err != mongo.ErrNoDocuments {
+			observability.Logger().Warn("failed to fetch self-declared data from MongoDB",
+				zap.String("cpf", cpf), zap.Error(err))
+		} else if err == nil {
+			// Fill in missing fields from MongoDB
+			if selfDeclared.Endereco == nil && mongoSelfDeclared.Endereco != nil {
+				selfDeclared.Endereco = mongoSelfDeclared.Endereco
+			}
+			if selfDeclared.Email == nil && mongoSelfDeclared.Email != nil {
+				selfDeclared.Email = mongoSelfDeclared.Email
+			}
+			if selfDeclared.Telefone == nil && mongoSelfDeclared.Telefone != nil {
+				selfDeclared.Telefone = mongoSelfDeclared.Telefone
+			}
+			if selfDeclared.Raca == nil && mongoSelfDeclared.Raca != nil {
+				selfDeclared.Raca = mongoSelfDeclared.Raca
+			}
+			
+			observability.Logger().Debug("filled missing self-declared fields from MongoDB",
+				zap.String("cpf", cpf))
 		}
 	}
 
@@ -1339,6 +1363,17 @@ func UpdateFirstLogin(c *gin.Context) {
 	updateSpan.End()
 
 	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+
+	// Invalidate cache with tracing
+	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("user_config:%s", cpf))
+	cacheKey := fmt.Sprintf("user_config:%s", cpf)
+	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
+		utils.RecordErrorInSpan(cacheSpan, err, map[string]interface{}{
+			"cache.key": cacheKey,
+		})
+		logger.Warn("failed to invalidate cache", zap.Error(err))
+	}
+	cacheSpan.End()
 
 	// Log audit event with tracing
 	ctx, auditSpan := utils.TraceAuditLogging(ctx, "update", "first_login")
