@@ -1245,11 +1245,17 @@ func GetFirstLogin(c *gin.Context) {
 	err := dataManager.Read(ctx, cpf, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
 
 	if err != nil {
-		if err.Error() == fmt.Sprintf("document not found: %s", cpf) {
+		// Use the new ErrDocumentNotFound error type for better error handling
+		if err == services.ErrDocumentNotFound {
 			// If no config exists, it's first login
 			utils.AddSpanAttribute(dbSpan, "user_config.found", false)
 			utils.AddSpanAttribute(dbSpan, "user_config.first_login", true)
+			utils.AddSpanAttribute(dbSpan, "user_config.default_response", true)
 			dbSpan.End()
+
+			logger.Debug("no user config found - returning first login true",
+				zap.String("cpf", cpf),
+				zap.String("reason", "document_not_found"))
 
 			// Serialize response with tracing
 			_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
@@ -1258,26 +1264,38 @@ func GetFirstLogin(c *gin.Context) {
 
 			// Log total operation time
 			totalDuration := time.Since(startTime)
-			logger.Debug("GetFirstLogin completed (first login)",
+			logger.Debug("GetFirstLogin completed (first login - no config)",
 				zap.String("cpf", cpf),
 				zap.Bool("first_login", true),
 				zap.Duration("total_duration", totalDuration),
 				zap.String("status", "success"))
 			return
 		}
+		// Handle other database errors
 		utils.RecordErrorInSpan(dbSpan, err, map[string]interface{}{
 			"operation": "dataManager.Read",
 			"cpf":       cpf,
 			"type":      "user_config",
+			"error_type": "database_error",
 		})
 		dbSpan.End()
-		logger.Error("failed to get user config via DataManager", zap.Error(err))
+		logger.Error("failed to get user config via DataManager", 
+			zap.String("cpf", cpf),
+			zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get user config"})
 		return
 	}
 	utils.AddSpanAttribute(dbSpan, "user_config.found", true)
 	utils.AddSpanAttribute(dbSpan, "user_config.first_login", userConfig.FirstLogin)
+	utils.AddSpanAttribute(dbSpan, "user_config.opt_in", userConfig.OptIn)
+	utils.AddSpanAttribute(dbSpan, "user_config.updated_at", userConfig.UpdatedAt.String())
 	dbSpan.End()
+
+	logger.Debug("user config found and returned",
+		zap.String("cpf", cpf),
+		zap.Bool("first_login", userConfig.FirstLogin),
+		zap.Bool("opt_in", userConfig.OptIn),
+		zap.Time("updated_at", userConfig.UpdatedAt))
 
 	// Serialize response with tracing
 	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
@@ -1458,12 +1476,17 @@ func GetOptIn(c *gin.Context) {
 	var userConfig models.UserConfig
 	err := dataManager.Read(ctx, cpf, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
 	if err != nil {
-		if err.Error() == fmt.Sprintf("document not found: %s", cpf) {
+		// Use the new ErrDocumentNotFound error type for better error handling
+		if err == services.ErrDocumentNotFound {
 			// If no config exists, default to opted in
 			utils.AddSpanAttribute(dbSpan, "user_config.found", false)
 			utils.AddSpanAttribute(dbSpan, "user_config.opt_in", true)
 			utils.AddSpanAttribute(dbSpan, "user_config.default_value", true)
 			dbSpan.End()
+
+			logger.Debug("no user config found - returning default opt_in true",
+				zap.String("cpf", cpf),
+				zap.String("reason", "document_not_found"))
 
 			// Serialize response with tracing
 			_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
@@ -1472,7 +1495,7 @@ func GetOptIn(c *gin.Context) {
 
 			// Log total operation time
 			totalDuration := time.Since(startTime)
-			logger.Debug("GetOptIn completed (default value)",
+			logger.Debug("GetOptIn completed (default value - no config)",
 				zap.String("cpf", cpf),
 				zap.Bool("opt_in", true),
 				zap.Bool("default_value", true),

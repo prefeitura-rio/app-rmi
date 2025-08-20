@@ -239,16 +239,54 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) error {
 
 // handleSyncSuccess handles a successful sync
 func (w *SyncWorker) handleSyncSuccess(job *SyncJob) {
-	// Clean up the write buffer
-	writeKey := fmt.Sprintf("%s:write:%s", job.Type, job.Key)
-	w.redis.Del(context.Background(), writeKey)
-
-	// Update the read cache with the synced data
+	ctx := context.Background()
+	
+	// First, update the read cache with synced data (increased TTL to match DataManager)
 	cacheKey := fmt.Sprintf("%s:cache:%s", job.Type, job.Key)
-	dataBytes, _ := json.Marshal(job.Data)
-	w.redis.Set(context.Background(), cacheKey, string(dataBytes), 1*time.Hour)
+	dataBytes, err := json.Marshal(job.Data)
+	if err != nil {
+		w.logger.Error("failed to marshal data for cache update",
+			zap.String("job_id", job.ID),
+			zap.String("type", job.Type),
+			zap.String("key", job.Key),
+			zap.Error(err))
+	} else {
+		// Use 3 hours TTL to match DataManager read cache
+		err = w.redis.Set(ctx, cacheKey, string(dataBytes), 3*time.Hour).Err()
+		if err != nil {
+			w.logger.Error("failed to update read cache after sync",
+				zap.String("job_id", job.ID),
+				zap.String("type", job.Type),
+				zap.String("key", job.Key),
+				zap.Error(err))
+		} else {
+			w.logger.Debug("updated read cache after successful sync",
+				zap.String("job_id", job.ID),
+				zap.String("type", job.Type),
+				zap.String("key", job.Key),
+				zap.String("cache_key", cacheKey))
+		}
+	}
 
-	w.logger.Debug("sync job succeeded",
+	// Now clean up the write buffer (only after cache is updated)
+	writeKey := fmt.Sprintf("%s:write:%s", job.Type, job.Key)
+	err = w.redis.Del(ctx, writeKey).Err()
+	if err != nil {
+		w.logger.Warn("failed to cleanup write buffer after sync",
+			zap.String("job_id", job.ID),
+			zap.String("type", job.Type),
+			zap.String("key", job.Key),
+			zap.String("write_key", writeKey),
+			zap.Error(err))
+	} else {
+		w.logger.Debug("cleaned up write buffer after successful sync",
+			zap.String("job_id", job.ID),
+			zap.String("type", job.Type),
+			zap.String("key", job.Key),
+			zap.String("write_key", writeKey))
+	}
+
+	w.logger.Info("sync job succeeded - cache updated and write buffer cleaned",
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
 		zap.String("key", job.Key))
