@@ -73,12 +73,10 @@ jobs:
       - name: Post-process OpenAPI v3 JSON
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
         run: |
-          if [ "${GITHUB_REF##*/}" == "main" ]; then
-            SERVER_URL="https://services.app.dados.rio/rmi/v1"
-          elif [ "${GITHUB_REF##*/}" == "staging" ]; then
-            SERVER_URL="https://services.staging.app.dados.rio/rmi/v1"
-          fi
-          jq --arg url "$SERVER_URL" '.servers = [{"url": $url}] |
+          jq '.servers = [
+              {"url": "https://services.app.dados.rio/rmi/v1", "description": "Production"},
+              {"url": "https://services.staging.app.dados.rio/rmi/v1", "description": "Staging"}
+            ] |
               .components.securitySchemes = {
                 "bearerAuth": {
                   "type": "http",
