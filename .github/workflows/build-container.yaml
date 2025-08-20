@@ -74,7 +74,7 @@ jobs:
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
         run: |
           jq '.servers = [
-              {"url": "https://services.app.dados.rio/rmi/v1", "description": "Production"},
+              {"url": "https://services.pref.rio/rmi/v1", "description": "Production"},
               {"url": "https://services.staging.app.dados.rio/rmi/v1", "description": "Staging"}
             ] |
               .components.securitySchemes = {
