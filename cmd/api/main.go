@@ -91,6 +91,9 @@ func main() {
 	configService := services.NewConfigService()
 	betaGroupService := services.NewBetaGroupService(observability.Logger())
 
+	// Initialize address service for maintenance request addresses
+	services.InitAddressService()
+
 	// Initialize handlers
 	phoneHandlers := handlers.NewPhoneHandlers(observability.Logger(), phoneMappingService, configService)
 	betaGroupHandlers := handlers.NewBetaGroupHandlers(observability.Logger(), betaGroupService)

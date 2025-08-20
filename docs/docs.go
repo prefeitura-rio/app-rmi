@@ -3120,6 +3120,10 @@ const docTemplate = `{
                 "descricao": {
                     "type": "string"
                 },
+                "endereco": {
+                    "description": "Human-readable address, built on demand",
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },

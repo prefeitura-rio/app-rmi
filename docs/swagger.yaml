@@ -507,6 +507,9 @@ definitions:
         type: string
       descricao:
         type: string
+      endereco:
+        description: Human-readable address, built on demand
+        type: string
       id:
         type: string
       id_bairro:

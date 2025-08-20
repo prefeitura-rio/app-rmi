@@ -185,7 +185,7 @@ make_request() {
     if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]] || [[ "$status_code" -eq 404 ]]; then
         print_result "$test_name" "PASS" "$response_body"
         # Store response body in a temporary file for verification
-        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]] || [[ "$test_name" == *"Create Beta Group"* ]] || [[ "$test_name" == *"Create Second Beta Group"* ]] || [[ "$test_name" == *"Double Test"* ]] || [[ "$test_name" == *"8-digit Number"* ]] || [[ "$test_name" == *"9-digit Number"* ]]; then
+        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]] || [[ "$test_name" == *"Create Beta Group"* ]] || [[ "$test_name" == *"Create Second Beta Group"* ]] || [[ "$test_name" == *"Double Test"* ]] || [[ "$test_name" == *"8-digit Number"* ]] || [[ "$test_name" == *"9-digit Number"* ]] || [[ "$test_name" == *"Address Verification"* ]]; then
             # Create a safe filename by replacing spaces and special chars with underscores
             local safe_filename=$(echo "$test_name" | sed 's/[^a-zA-Z0-9]/_/g')
             echo "$response_body" > "/tmp/api_response_${safe_filename}"
@@ -271,8 +271,8 @@ make_request "GET" "/citizen/$CPF" "" "Get Citizen Data (Original)"
 # Test 6: Get Citizen Wallet
 make_request "GET" "/citizen/$CPF/wallet" "" "Get Citizen Wallet"
 
-# Test 7: Get Maintenance Requests
-make_request "GET" "/citizen/$CPF/maintenance-request" "" "Get Maintenance Requests"
+# Test 7: Get Maintenance Requests (with address verification)
+make_request "GET" "/citizen/$CPF/maintenance-request" "" "Get Maintenance Requests (with Address Verification)"
 
 # Test 8: Get First Login Status (Original)
 make_request "GET" "/citizen/$CPF/firstlogin" "" "Get First Login Status (Original)"
@@ -715,6 +715,67 @@ else
     echo -e "${YELLOW}⚠️  Skipping phone verification (data not available)${NC}"
     echo "  Looking for file: /tmp/api_response_Get_Citizen_Data__After_Phone_Verification_"
 fi
+
+# Verify Address Building for Maintenance Requests
+echo -e "${BLUE}🏠 Verifying Maintenance Request Address Building...${NC}"
+echo "=================================================="
+
+# Check if we have maintenance request data
+if [[ -f "/tmp/api_response_Get_Maintenance_Requests__with_Address_Verification_" ]]; then
+    maintenance_data=$(cat "/tmp/api_response_Get_Maintenance_Requests__with_Address_Verification_")
+    echo -e "${BLUE}📋 Maintenance Request Address Analysis:${NC}"
+    
+    # Extract addresses from the response using simple parsing
+    if command -v jq >/dev/null 2>&1; then
+        # Count total maintenance requests
+        total_requests=$(echo "$maintenance_data" | jq '.data | length' 2>/dev/null || echo "0")
+        echo "  Total maintenance requests: $total_requests"
+        
+        # Count requests with addresses
+        addresses_count=$(echo "$maintenance_data" | jq '[.data[] | select(.endereco != null)] | length' 2>/dev/null || echo "0")
+        echo "  Requests with addresses: $addresses_count"
+        
+        # Show sample addresses
+        if [[ "$addresses_count" -gt 0 ]]; then
+            echo -e "${GREEN}✅ Address building feature is working${NC}"
+            echo "  Sample addresses:"
+            echo "$maintenance_data" | jq -r '.data[] | select(.endereco != null) | "    - " + .endereco' 2>/dev/null | head -3
+            ((TESTS_PASSED++))
+        else
+            echo -e "${YELLOW}⚠️  No addresses found in maintenance requests${NC}"
+            echo -e "${YELLOW}📝 This may be normal if maintenance requests don't have address data${NC}"
+        fi
+        
+        # Verify address format
+        address_format_valid=$(echo "$maintenance_data" | jq -r '.data[] | select(.endereco != null) | .endereco' 2>/dev/null | head -1)
+        if [[ -n "$address_format_valid" ]]; then
+            if echo "$address_format_valid" | grep -qE '.+,.+-.+'; then
+                echo -e "${GREEN}✅ Address format is correct (logradouro, numero - bairro)${NC}"
+                ((TESTS_PASSED++))
+            else
+                echo -e "${YELLOW}⚠️  Address format may not match expected pattern${NC}"
+                echo "  Sample address: $address_format_valid"
+            fi
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Address verification skipped (jq not available)${NC}"
+        echo "  Install jq for detailed address verification: brew install jq"
+        
+        # Basic check without jq
+        if echo "$maintenance_data" | grep -q '"endereco"'; then
+            echo -e "${GREEN}✅ Address field found in response${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${YELLOW}⚠️  No address field found in maintenance requests${NC}"
+        fi
+    fi
+else
+    echo -e "${YELLOW}⚠️  Skipping address verification (maintenance request data not available)${NC}"
+    echo "  Looking for file: /tmp/api_response_Get_Maintenance_Requests__with_Address_Verification_"
+fi
+
+echo -e "${GREEN}✅ Maintenance request address verification completed${NC}"
+echo ""
 
 # Verify CPF-Phone Mapping Blocking Logic
 echo -e "${BLUE}🔒 Verifying CPF-Phone Mapping Blocking Logic...${NC}"
