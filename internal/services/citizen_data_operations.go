@@ -3,6 +3,7 @@ package services
 import (
 	"time"
 
+	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 )
 
@@ -81,7 +82,7 @@ func (op *UserConfigDataOperation) GetKey() string {
 
 // GetCollection returns the user config collection name
 func (op *UserConfigDataOperation) GetCollection() string {
-	return "user_configs"
+	return config.AppConfig.UserConfigCollection
 }
 
 // GetData returns the user config data

@@ -274,9 +274,9 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 	}
 
 	// Final fallback to MongoDB for any missing individual fields
-	if selfDeclared.Endereco == nil || selfDeclared.Email == nil || 
+	if selfDeclared.Endereco == nil || selfDeclared.Email == nil ||
 		selfDeclared.Telefone == nil || selfDeclared.Raca == nil {
-		
+
 		observability.Logger().Debug("fallback to MongoDB for missing self-declared fields",
 			zap.String("cpf", cpf),
 			zap.Bool("missing_endereco", selfDeclared.Endereco == nil),
@@ -303,7 +303,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			if selfDeclared.Raca == nil && mongoSelfDeclared.Raca != nil {
 				selfDeclared.Raca = mongoSelfDeclared.Raca
 			}
-			
+
 			observability.Logger().Debug("filled missing self-declared fields from MongoDB",
 				zap.String("cpf", cpf))
 		}
@@ -1273,13 +1273,13 @@ func GetFirstLogin(c *gin.Context) {
 		}
 		// Handle other database errors
 		utils.RecordErrorInSpan(dbSpan, err, map[string]interface{}{
-			"operation": "dataManager.Read",
-			"cpf":       cpf,
-			"type":      "user_config",
+			"operation":  "dataManager.Read",
+			"cpf":        cpf,
+			"type":       "user_config",
 			"error_type": "database_error",
 		})
 		dbSpan.End()
-		logger.Error("failed to get user config via DataManager", 
+		logger.Error("failed to get user config via DataManager",
 			zap.String("cpf", cpf),
 			zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get user config"})
@@ -1762,7 +1762,10 @@ func GetCitizenWallet(c *gin.Context) {
 			"type":      "citizen",
 		})
 		dataSpan.End()
-		if err.Error() == fmt.Sprintf("document not found: %s", cpf) {
+		if err == services.ErrDocumentNotFound {
+			logger.Debug("citizen wallet not found",
+				zap.String("cpf", cpf),
+				zap.String("collection", config.AppConfig.CitizenCollection))
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "citizen not found"})
 			return
 		}
