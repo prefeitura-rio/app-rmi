@@ -47,11 +47,16 @@ type Config struct {
 	OptInHistoryCollection       string `json:"mongo_opt_in_history_collection"`
 	BetaGroupCollection          string `json:"mongo_beta_group_collection"`
 	AuditLogsCollection          string `json:"mongo_audit_logs_collection"`
+	BairroCollection             string `json:"mongo_bairro_collection"`
+	LogradouroCollection         string `json:"mongo_logradouro_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
 	PhoneQuarantineTTL   time.Duration `json:"phone_quarantine_ttl"` // 6 months
 	BetaStatusCacheTTL   time.Duration `json:"beta_status_cache_ttl"`
+
+	// Address building configuration
+	AddressCacheTTL time.Duration `json:"address_cache_ttl"`
 
 	// WhatsApp configuration
 	WhatsAppEnabled      bool   `json:"whatsapp_enabled"`
@@ -134,6 +139,11 @@ func LoadConfig() error {
 	betaStatusCacheTTL, err := time.ParseDuration(getEnvOrDefault("BETA_STATUS_CACHE_TTL", "24h")) // 24 hours
 	if err != nil {
 		return fmt.Errorf("invalid BETA_STATUS_CACHE_TTL: %w", err)
+	}
+
+	addressCacheTTL, err := time.ParseDuration(getEnvOrDefault("ADDRESS_CACHE_TTL", "6h")) // 6 hours
+	if err != nil {
+		return fmt.Errorf("invalid ADDRESS_CACHE_TTL: %w", err)
 	}
 
 	// WhatsApp configuration
@@ -231,11 +241,16 @@ func LoadConfig() error {
 		OptInHistoryCollection:       getEnvOrDefault("MONGODB_OPT_IN_HISTORY_COLLECTION", "opt_in_history"),
 		BetaGroupCollection:          getEnvOrDefault("MONGODB_BETA_GROUP_COLLECTION", "beta_groups"),
 		AuditLogsCollection:          getEnvOrDefault("MONGODB_AUDIT_LOGS_COLLECTION", "audit_logs"),
+		BairroCollection:             getEnvOrDefault("MONGODB_BAIRRO_COLLECTION", "bairro"),
+		LogradouroCollection:         getEnvOrDefault("MONGODB_LOGRADOURO_COLLECTION", "logradouro"),
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,
 		PhoneQuarantineTTL:   phoneQuarantineTTL,
 		BetaStatusCacheTTL:   betaStatusCacheTTL,
+
+		// Address building configuration
+		AddressCacheTTL: addressCacheTTL,
 
 		// WhatsApp configuration
 		WhatsAppEnabled:      whatsappEnabledBool,

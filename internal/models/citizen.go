@@ -423,6 +423,7 @@ type MaintenanceRequest struct {
 	Indicador                      bool        `json:"indicador" bson:"indicador"`
 	TotalChamados                  int         `json:"total_chamados" bson:"total_chamados"`
 	TotalFechados                  int         `json:"total_fechados" bson:"total_fechados"`
+	Endereco                       *string     `json:"endereco,omitempty" bson:"-"` // Human-readable address, built on demand
 }
 
 // ConvertToMaintenanceRequest converts a MaintenanceRequestDocument to a MaintenanceRequest for backward compatibility
