@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"go.mongodb.org/mongo-driver/bson"
@@ -199,7 +200,7 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) error {
 		filter = bson.M{"cpf": job.Key}
 	case "self_declared":
 		filter = bson.M{"cpf": job.Key}
-	case "user_configs":
+	case config.AppConfig.UserConfigCollection:
 		filter = bson.M{"cpf": job.Key}
 	case "phone_cpf_mappings":
 		filter = bson.M{"phone_number": job.Key}
@@ -240,7 +241,7 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) error {
 // handleSyncSuccess handles a successful sync
 func (w *SyncWorker) handleSyncSuccess(job *SyncJob) {
 	ctx := context.Background()
-	
+
 	// First, update the read cache with synced data (increased TTL to match DataManager)
 	cacheKey := fmt.Sprintf("%s:cache:%s", job.Type, job.Key)
 	dataBytes, err := json.Marshal(job.Data)

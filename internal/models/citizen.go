@@ -65,9 +65,9 @@ type EnderecoAlternativo struct {
 
 // Endereco represents address information
 type Endereco struct {
-	Indicador   *bool                  `json:"indicador" bson:"indicador,omitempty"`
-	Principal   *EnderecoPrincipal     `json:"principal" bson:"principal,omitempty"`
-	Alternativo []EnderecoAlternativo  `json:"alternativo" bson:"alternativo,omitempty"`
+	Indicador   *bool                 `json:"indicador" bson:"indicador,omitempty"`
+	Principal   *EnderecoPrincipal    `json:"principal" bson:"principal,omitempty"`
+	Alternativo []EnderecoAlternativo `json:"alternativo" bson:"alternativo,omitempty"`
 }
 
 // EmailPrincipal represents the main email
@@ -113,9 +113,9 @@ type TelefoneAlternativo struct {
 
 // Telefone represents phone information
 type Telefone struct {
-	Indicador   *bool                  `json:"indicador" bson:"indicador,omitempty"`
-	Principal   *TelefonePrincipal     `json:"principal" bson:"principal,omitempty"`
-	Alternativo []TelefoneAlternativo  `json:"alternativo" bson:"alternativo,omitempty"`
+	Indicador   *bool                 `json:"indicador" bson:"indicador,omitempty"`
+	Principal   *TelefonePrincipal    `json:"principal" bson:"principal,omitempty"`
+	Alternativo []TelefoneAlternativo `json:"alternativo" bson:"alternativo,omitempty"`
 }
 
 // ClinicaFamilia represents family clinic information
