@@ -618,39 +618,13 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	utils.AddSpanAttribute(validationSpan, "phone", fullPhone)
 	validationSpan.End()
 
-	// Build phone object with tracing
-	ctx, buildPhoneSpan := utils.TraceBusinessLogic(ctx, "build_phone_object")
-	origem := "self-declared"
-	sistema := "rmi"
-	now := time.Now()
-	telefone := models.Telefone{
-		Indicador: utils.BoolPtr(false), // Set to false initially (pending verification)
-		Principal: &models.TelefonePrincipal{
-			DDI:       &input.DDI,
-			DDD:       &input.DDD,
-			Valor:     &input.Valor,
-			Origem:    &origem,
-			Sistema:   &sistema,
-			UpdatedAt: &now,
-		},
-	}
-	buildPhoneSpan.End()
-
-	// Use cache service for update with tracing
-	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_phone_via_cache")
-	cacheService := services.NewCacheService()
-	err = cacheService.UpdateSelfDeclaredPhone(ctx, cpf, &telefone)
-	if err != nil {
-		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
-			"cache.operation": "update_self_declared_phone",
-			"cache.service":   "unified_cache_service",
-		})
-		updateSpan.End()
-		logger.Error("failed to update self-declared phone via cache service", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to update phone: " + err.Error()})
-		return
-	}
-	updateSpan.End()
+	// DON'T update self-declared phone data yet - only store verification data
+	// This preserves any existing verified phone until the new one is verified
+	ctx, skipUpdateSpan := utils.TraceBusinessLogic(ctx, "skip_phone_update_until_verified")
+	logger.Debug("skipping phone update until verification - preserving existing verified phone",
+		zap.String("cpf", cpf),
+		zap.String("new_phone", fullPhone))
+	skipUpdateSpan.End()
 
 	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
 
@@ -668,6 +642,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	// Generate verification code for phone verification process with tracing
 	ctx, codeSpan := utils.TraceBusinessLogic(ctx, "generate_verification_code")
 	code := utils.GenerateVerificationCode()
+	now := time.Now()
 	expiresAt := now.Add(config.AppConfig.PhoneVerificationTTL)
 	codeSpan.End()
 

@@ -363,8 +363,17 @@ get_verification_code() {
     local cpf="$1"
     local phone_number="$2"
     
-    # Get MongoDB connection details from environment
-    local mongo_uri="${MONGODB_TEST_URI:-mongodb://localhost:27017/rmi}"
+    # Get MongoDB connection details from environment  
+    local mongo_uri="${MONGODB_TEST_URI}"
+    if [[ -z "$mongo_uri" ]]; then
+        # Use MONGODB_URI directly if MONGODB_TEST_URI is not set
+        mongo_uri="${MONGODB_URI}"
+        # If MONGODB_URI doesn't specify a database, append the database name
+        if [[ "$mongo_uri" != */rmi* ]]; then
+            # Remove trailing slash if present and append /rmi
+            mongo_uri="${mongo_uri%/}/rmi"
+        fi
+    fi
     local collection="${MONGODB_PHONE_VERIFICATION_COLLECTION:-phone_verifications}"
         
     # Format phone number for storage (remove + and format as stored in DB)
@@ -377,7 +386,14 @@ get_verification_code() {
     
     # Try to connect to MongoDB with authentication
     local result=""
-    result=$(mongosh "$mongo_uri" --quiet --eval "db.$collection.find({\"phone_number\": \"$storage_phone\"}).sort({\"created_at\": -1}).limit(1).toArray()" 2>/dev/null | tr -d '\n')
+    # Use JSON output for easier parsing
+    result=$(mongosh "$mongo_uri" --quiet --eval "JSON.stringify(db.$collection.find({\"cpf\": \"$cpf\", \"phone_number\": \"$storage_phone\"}).sort({\"created_at\": -1}).limit(1).toArray())" 2>/dev/null)
+    
+    # If no result with both CPF and phone, try just CPF (more recent verification)
+    if [[ -z "$result" || "$result" == "[]" ]]; then
+        echo -e "${BLUE}🔍 Trying fallback query with CPF only...${NC}" >&2
+        result=$(mongosh "$mongo_uri" --quiet --eval "JSON.stringify(db.$collection.find({\"cpf\": \"$cpf\"}).sort({\"created_at\": -1}).limit(1).toArray())" 2>/dev/null)
+    fi
     
     # Debug: print the result for troubleshooting
     echo -e "${BLUE}🔍 MongoDB query result: $result${NC}" >&2
