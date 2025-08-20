@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,6 +15,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
 )
+
+// ErrDocumentNotFound is returned when a document is not found in the database
+var ErrDocumentNotFound = errors.New("document not found")
 
 // DataOperation represents a generic data operation
 type DataOperation interface {
@@ -49,8 +53,8 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 		return fmt.Errorf("failed to marshal data: %w", err)
 	}
 
-	// Write to Redis with TTL (24 hours for write buffer)
-	err = dm.redis.Set(ctx, writeKey, string(dataBytes), 24*time.Hour).Err()
+	// Write to Redis with TTL (6 hours for write buffer - reduced to prevent long gaps)
+	err = dm.redis.Set(ctx, writeKey, string(dataBytes), 6*time.Hour).Err()
 	if err != nil {
 		return fmt.Errorf("failed to write to Redis buffer: %w", err)
 	}
@@ -130,7 +134,16 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 				zap.String("type", dataType),
 				zap.String("key", key))
 			return nil
+		} else {
+			dm.logger.Warn("failed to unmarshal data from read cache",
+				zap.String("type", dataType),
+				zap.String("key", key),
+				zap.Error(err))
 		}
+	} else {
+		dm.logger.Debug("read cache miss, falling back to MongoDB",
+			zap.String("type", dataType),
+			zap.String("key", key))
 	}
 
 	// 3. Fall back to MongoDB
@@ -158,20 +171,44 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 		filter = bson.M{"_id": key}
 	}
 
+	dm.logger.Debug("querying MongoDB",
+		zap.String("type", dataType),
+		zap.String("key", key),
+		zap.String("collection", collection),
+		zap.Any("filter", filter))
+
 	err := dm.mongo.Collection(collection).FindOne(ctx, filter).Decode(result)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return fmt.Errorf("document not found: %s", key)
+			dm.logger.Debug("document not found in MongoDB",
+				zap.String("type", dataType),
+				zap.String("key", key),
+				zap.String("collection", collection))
+			return ErrDocumentNotFound
 		}
+		dm.logger.Error("failed to read from MongoDB",
+			zap.String("type", dataType),
+			zap.String("key", key),
+			zap.String("collection", collection),
+			zap.Error(err))
 		return fmt.Errorf("failed to read from MongoDB: %w", err)
 	}
 
 	// 4. Cache in Redis for future reads
 	dataBytes, err := json.Marshal(result)
 	if err == nil {
-		// Cache with TTL (1 hour for read cache)
+		// Cache with TTL (3 hours for read cache - increased to reduce gaps)
 		cacheKey := fmt.Sprintf("%s:cache:%s", dataType, key)
-		dm.redis.Set(ctx, cacheKey, string(dataBytes), 1*time.Hour)
+		dm.redis.Set(ctx, cacheKey, string(dataBytes), 3*time.Hour)
+		dm.logger.Debug("cached data from MongoDB",
+			zap.String("type", dataType),
+			zap.String("key", key),
+			zap.String("cache_key", cacheKey))
+	} else {
+		dm.logger.Warn("failed to marshal data for caching",
+			zap.String("type", dataType),
+			zap.String("key", key),
+			zap.Error(err))
 	}
 
 	dm.logger.Debug("data read from MongoDB and cached",
