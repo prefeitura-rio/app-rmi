@@ -49,6 +49,7 @@ type Config struct {
 	AuditLogsCollection          string `json:"mongo_audit_logs_collection"`
 	BairroCollection             string `json:"mongo_bairro_collection"`
 	LogradouroCollection         string `json:"mongo_logradouro_collection"`
+	AvatarsCollection            string `json:"mongo_avatars_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -57,6 +58,9 @@ type Config struct {
 
 	// Address building configuration
 	AddressCacheTTL time.Duration `json:"address_cache_ttl"`
+
+	// Avatar configuration
+	AvatarCacheTTL time.Duration `json:"avatar_cache_ttl"`
 
 	// WhatsApp configuration
 	WhatsAppEnabled      bool   `json:"whatsapp_enabled"`
@@ -144,6 +148,11 @@ func LoadConfig() error {
 	addressCacheTTL, err := time.ParseDuration(getEnvOrDefault("ADDRESS_CACHE_TTL", "6h")) // 6 hours
 	if err != nil {
 		return fmt.Errorf("invalid ADDRESS_CACHE_TTL: %w", err)
+	}
+
+	avatarCacheTTL, err := time.ParseDuration(getEnvOrDefault("AVATAR_CACHE_TTL", "1h")) // 1 hour
+	if err != nil {
+		return fmt.Errorf("invalid AVATAR_CACHE_TTL: %w", err)
 	}
 
 	// WhatsApp configuration
@@ -243,6 +252,7 @@ func LoadConfig() error {
 		AuditLogsCollection:          getEnvOrDefault("MONGODB_AUDIT_LOGS_COLLECTION", "audit_logs"),
 		BairroCollection:             getEnvOrDefault("MONGODB_BAIRRO_COLLECTION", "bairro"),
 		LogradouroCollection:         getEnvOrDefault("MONGODB_LOGRADOURO_COLLECTION", "logradouro"),
+		AvatarsCollection:            getEnvOrDefault("MONGODB_AVATARS_COLLECTION", "avatars"),
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,
@@ -251,6 +261,9 @@ func LoadConfig() error {
 
 		// Address building configuration
 		AddressCacheTTL: addressCacheTTL,
+
+		// Avatar configuration
+		AvatarCacheTTL: avatarCacheTTL,
 
 		// WhatsApp configuration
 		WhatsAppEnabled:      whatsappEnabledBool,

@@ -117,6 +117,46 @@ definitions:
       cras:
         $ref: '#/definitions/models.CRAS'
     type: object
+  models.AvatarRequest:
+    properties:
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+      url:
+        type: string
+    required:
+    - name
+    - url
+    type: object
+  models.AvatarResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      url:
+        type: string
+    type: object
+  models.AvatarsListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.AvatarResponse'
+        type: array
+      page:
+        type: integer
+      per_page:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
   models.BetaGroupListResponse:
     properties:
       groups:
@@ -870,6 +910,18 @@ definitions:
       updated_at:
         type: string
       valor:
+        type: string
+    type: object
+  models.UserAvatarRequest:
+    properties:
+      avatar_id:
+        type: string
+    type: object
+  models.UserAvatarResponse:
+    properties:
+      avatar:
+        $ref: '#/definitions/models.AvatarResponse'
+      avatar_id:
         type: string
     type: object
   models.UserConfigOptInResponse:
@@ -2408,6 +2460,211 @@ paths:
       summary: Validar registro
       tags:
       - phone
+  /v1/avatars:
+    get:
+      consumes:
+      - application/json
+      description: Get paginated list of available profile picture avatars
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page (default: 20, max: 100)'
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AvatarsListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List available avatars
+      tags:
+      - avatars
+    post:
+      consumes:
+      - application/json
+      description: Create a new profile picture avatar (admin only)
+      parameters:
+      - description: Avatar data
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.AvatarRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.AvatarResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new avatar
+      tags:
+      - avatars
+  /v1/avatars/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Soft delete a profile picture avatar (admin only)
+      parameters:
+      - description: Avatar ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete an avatar
+      tags:
+      - avatars
+  /v1/citizen/{cpf}/avatar:
+    get:
+      consumes:
+      - application/json
+      description: Get the current profile picture avatar for a user
+      parameters:
+      - description: User CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserAvatarResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user's current avatar
+      tags:
+      - avatars
+      - citizen
+    put:
+      consumes:
+      - application/json
+      description: Set or change the profile picture avatar for a user
+      parameters:
+      - description: User CPF
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Avatar selection
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.UserAvatarRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserAvatarResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user's avatar
+      tags:
+      - avatars
+      - citizen
   /validate/email:
     post:
       consumes:
