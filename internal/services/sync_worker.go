@@ -182,6 +182,18 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Handle special job types
+	if err := w.handleSpecialJobTypes(ctx, job); err != nil {
+		if err.Error() == "not_special_job" {
+			// Continue with normal processing
+		} else {
+			return err
+		}
+	} else {
+		// Special job was handled successfully
+		return nil
+	}
+
 	// Convert the job data to BSON
 	dataBytes, err := json.Marshal(job.Data)
 	if err != nil {
@@ -348,4 +360,54 @@ func (w *SyncWorker) requeueJob(job *SyncJob) {
 		zap.String("key", job.Key),
 		zap.Int("retry_count", job.RetryCount),
 		zap.Duration("backoff_delay", backoffDelay))
+}
+
+// handleSpecialJobTypes handles special job types that don't follow normal MongoDB sync pattern
+func (w *SyncWorker) handleSpecialJobTypes(ctx context.Context, job *SyncJob) error {
+	// Check if this is an avatar cleanup job
+	if data, ok := job.Data.(map[string]interface{}); ok {
+		if jobType, exists := data["type"]; exists && jobType == "avatar_cleanup" {
+			return w.handleAvatarCleanup(ctx, data)
+		}
+	}
+	
+	// Not a special job type
+	return fmt.Errorf("not_special_job")
+}
+
+// handleAvatarCleanup handles orphaned avatar cleanup jobs
+func (w *SyncWorker) handleAvatarCleanup(ctx context.Context, data map[string]interface{}) error {
+	avatarID, ok := data["avatar_id"].(string)
+	if !ok {
+		return fmt.Errorf("invalid avatar_id in cleanup job")
+	}
+
+	w.logger.Info("processing avatar cleanup job", zap.String("avatar_id", avatarID))
+
+	// Reset all user configs that reference this deleted avatar
+	userConfigCollection := w.mongo.Collection(config.AppConfig.UserConfigCollection)
+	
+	filter := bson.M{"avatar_id": avatarID}
+	update := bson.M{
+		"$unset": bson.M{"avatar_id": ""},
+		"$set":   bson.M{"updated_at": time.Now()},
+	}
+	
+	result, err := userConfigCollection.UpdateMany(ctx, filter, update)
+	if err != nil {
+		w.logger.Error("failed to cleanup avatar references", 
+			zap.Error(err), 
+			zap.String("avatar_id", avatarID))
+		return fmt.Errorf("failed to cleanup avatar references: %w", err)
+	}
+
+	w.logger.Info("avatar cleanup completed",
+		zap.String("avatar_id", avatarID),
+		zap.Int64("affected_users", result.ModifiedCount))
+
+	// Clear any cached user configs that might reference this avatar
+	// Since we don't know which users were affected, we'll let cache entries expire naturally
+	// or clear them individually when accessed
+	
+	return nil
 }

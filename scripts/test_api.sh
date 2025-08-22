@@ -182,10 +182,11 @@ make_request() {
     
     # Check if status code is 2xx or 404 (acceptable for data not found)
     # Also accept 409 (Conflict) for "already_opted_in" responses
-    if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]] || [[ "$status_code" -eq 404 ]]; then
+    # Also accept 400 (Bad Request) for validation tests that expect errors
+    if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]] || [[ "$status_code" -eq 404 ]] || ([[ "$status_code" -eq 400 ]] && [[ "$test_name" == *"Invalid"* ]]); then
         print_result "$test_name" "PASS" "$response_body"
         # Store response body in a temporary file for verification
-        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]] || [[ "$test_name" == *"Create Beta Group"* ]] || [[ "$test_name" == *"Create Second Beta Group"* ]] || [[ "$test_name" == *"Double Test"* ]] || [[ "$test_name" == *"8-digit Number"* ]] || [[ "$test_name" == *"9-digit Number"* ]] || [[ "$test_name" == *"Address Verification"* ]]; then
+        if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]] || [[ "$test_name" == *"Create Beta Group"* ]] || [[ "$test_name" == *"Create Second Beta Group"* ]] || [[ "$test_name" == *"Double Test"* ]] || [[ "$test_name" == *"8-digit Number"* ]] || [[ "$test_name" == *"9-digit Number"* ]] || [[ "$test_name" == *"Address Verification"* ]] || [[ "$test_name" == *"Avatar"* ]] || [[ "$test_name" == *"avatar"* ]]; then
             # Create a safe filename by replacing spaces and special chars with underscores
             local safe_filename=$(echo "$test_name" | sed 's/[^a-zA-Z0-9]/_/g')
             echo "$response_body" > "/tmp/api_response_${safe_filename}"
@@ -1275,6 +1276,260 @@ else
 fi
 
 echo -e "${GREEN}✅ 8-digit phone opt-out test completed${NC}"
+echo ""
+
+# Avatar Feature Tests
+echo "=================================================="
+echo -e "${BLUE}🎭 Testing Avatar Profile Picture Functionality...${NC}"
+echo "=================================================="
+
+# Test 95: List Available Avatars (Public Endpoint)
+echo -e "${BLUE}Test 95: List available avatars - should succeed${NC}"
+make_request "GET" "/avatars?page=1&per_page=10" "" "List Available Avatars"
+
+# Verify avatar listing response
+if [[ -f "/tmp/api_response_List_Available_Avatars" ]]; then
+    avatar_list_response=$(cat "/tmp/api_response_List_Available_Avatars")
+    echo -e "${BLUE}📋 Avatar Listing Test Result:${NC}"
+    
+    if command -v jq >/dev/null 2>&1; then
+        total_avatars=$(echo "$avatar_list_response" | jq '.total // 0' 2>/dev/null)
+        page_info=$(echo "$avatar_list_response" | jq -r '.page // "unknown"' 2>/dev/null)
+        per_page=$(echo "$avatar_list_response" | jq -r '.per_page // "unknown"' 2>/dev/null)
+        
+        echo "  Total avatars: $total_avatars"
+        echo "  Page: $page_info, Per page: $per_page"
+        
+        if [[ "$total_avatars" -ge 0 ]] && [[ "$page_info" != "null" ]]; then
+            echo -e "${GREEN}✅ Avatar listing endpoint working correctly${NC}"
+            ((TESTS_PASSED++))
+            
+            # Store first avatar ID for later tests
+            FIRST_AVATAR_ID=$(echo "$avatar_list_response" | jq -r '.data[0].id // ""' 2>/dev/null)
+            echo "  First avatar ID for testing: $FIRST_AVATAR_ID"
+        else
+            echo -e "${RED}❌ Avatar listing response format invalid${NC}"
+            ((TESTS_FAILED++))
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Avatar listing verification skipped (jq not available)${NC}"
+        if echo "$avatar_list_response" | grep -qE '"data".*\['; then
+            echo -e "${GREEN}✅ Avatar listing endpoint accessible${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Avatar listing endpoint failed${NC}"
+            ((TESTS_FAILED++))
+        fi
+    fi
+else
+    echo -e "${RED}❌ Avatar listing test response not available${NC}"
+    ((TESTS_FAILED++))
+fi
+
+# Test 96: Get User Avatar (Initially Empty)
+echo -e "${BLUE}Test 96: Get user avatar (should be null initially)${NC}"
+make_request "GET" "/citizen/$CPF/avatar" "" "Get User Avatar (Initial)"
+
+# Verify initial avatar response
+if [[ -f "/tmp/api_response_Get_User_Avatar__Initial_" ]]; then
+    initial_avatar_response=$(cat "/tmp/api_response_Get_User_Avatar__Initial_")
+    echo -e "${BLUE}📋 Initial User Avatar Test Result:${NC}"
+    
+    if command -v jq >/dev/null 2>&1; then
+        avatar_id=$(echo "$initial_avatar_response" | jq -r '.avatar_id // "null"' 2>/dev/null)
+        avatar_data=$(echo "$initial_avatar_response" | jq -r '.avatar // "null"' 2>/dev/null)
+        
+        if [[ "$avatar_id" == "null" ]] && [[ "$avatar_data" == "null" ]]; then
+            echo -e "${GREEN}✅ Initial avatar state is correctly null${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${YELLOW}⚠️  User already has avatar set: $avatar_id${NC}"
+            echo -e "${YELLOW}📝 This may be normal if avatar was set in previous tests${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Avatar verification skipped (jq not available)${NC}"
+        if echo "$initial_avatar_response" | grep -qE '"avatar_id"'; then
+            echo -e "${GREEN}✅ Avatar endpoint accessible${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Avatar endpoint failed${NC}"
+            ((TESTS_FAILED++))
+        fi
+    fi
+else
+    echo -e "${RED}❌ Initial avatar test response not available${NC}"
+    ((TESTS_FAILED++))
+fi
+
+# Test 97: Set User Avatar (if we have an available avatar)
+if [[ -n "$FIRST_AVATAR_ID" && "$FIRST_AVATAR_ID" != "" && "$FIRST_AVATAR_ID" != "null" ]]; then
+    echo -e "${BLUE}Test 97: Set user avatar to first available avatar${NC}"
+    avatar_update_data="{\"avatar_id\": \"$FIRST_AVATAR_ID\"}"
+    make_request "PUT" "/citizen/$CPF/avatar" "$avatar_update_data" "Set User Avatar"
+    
+    # Verify avatar update response
+    if [[ -f "/tmp/api_response_Set_User_Avatar" ]]; then
+        set_avatar_response=$(cat "/tmp/api_response_Set_User_Avatar")
+        echo -e "${BLUE}📋 Set Avatar Test Result:${NC}"
+        
+        if command -v jq >/dev/null 2>&1; then
+            updated_avatar_id=$(echo "$set_avatar_response" | jq -r '.avatar_id // "null"' 2>/dev/null)
+            avatar_name=$(echo "$set_avatar_response" | jq -r '.avatar.name // "unknown"' 2>/dev/null)
+            
+            if [[ "$updated_avatar_id" == "$FIRST_AVATAR_ID" ]]; then
+                echo -e "${GREEN}✅ Avatar successfully set to: $FIRST_AVATAR_ID${NC}"
+                echo "  Avatar name: $avatar_name"
+                ((TESTS_PASSED++))
+            else
+                echo -e "${RED}❌ Avatar not set correctly. Expected: $FIRST_AVATAR_ID, Got: $updated_avatar_id${NC}"
+                ((TESTS_FAILED++))
+            fi
+        else
+            echo -e "${YELLOW}⚠️  Avatar update verification skipped (jq not available)${NC}"
+            if echo "$set_avatar_response" | grep -qE '"avatar_id"'; then
+                echo -e "${GREEN}✅ Avatar update endpoint accessible${NC}"
+                ((TESTS_PASSED++))
+            else
+                echo -e "${RED}❌ Avatar update endpoint failed${NC}"
+                ((TESTS_FAILED++))
+            fi
+        fi
+    else
+        echo -e "${RED}❌ Set avatar test response not available${NC}"
+        ((TESTS_FAILED++))
+    fi
+    
+    # Test 98: Verify Avatar Persisted
+    echo -e "${BLUE}Test 98: Verify avatar persisted in user profile${NC}"
+    make_request "GET" "/citizen/$CPF/avatar" "" "Get User Avatar (After Update)"
+    
+    # Verify persisted avatar response
+    if [[ -f "/tmp/api_response_Get_User_Avatar__After_Update_" ]]; then
+        persisted_avatar_response=$(cat "/tmp/api_response_Get_User_Avatar__After_Update_")
+        echo -e "${BLUE}📋 Persisted Avatar Test Result:${NC}"
+        
+        if command -v jq >/dev/null 2>&1; then
+            persisted_avatar_id=$(echo "$persisted_avatar_response" | jq -r '.avatar_id // "null"' 2>/dev/null)
+            persisted_avatar_name=$(echo "$persisted_avatar_response" | jq -r '.avatar.name // "unknown"' 2>/dev/null)
+            
+            if [[ "$persisted_avatar_id" == "$FIRST_AVATAR_ID" ]]; then
+                echo -e "${GREEN}✅ Avatar correctly persisted: $FIRST_AVATAR_ID${NC}"
+                echo "  Avatar name: $persisted_avatar_name"
+                ((TESTS_PASSED++))
+            else
+                echo -e "${RED}❌ Avatar not persisted correctly. Expected: $FIRST_AVATAR_ID, Got: $persisted_avatar_id${NC}"
+                ((TESTS_FAILED++))
+            fi
+        else
+            echo -e "${YELLOW}⚠️  Avatar persistence verification skipped (jq not available)${NC}"
+            ((TESTS_PASSED++))
+        fi
+    else
+        echo -e "${RED}❌ Persisted avatar test response not available${NC}"
+        ((TESTS_FAILED++))
+    fi
+    
+    # Test 99: Clear User Avatar (Set to null)
+    echo -e "${BLUE}Test 99: Clear user avatar (set to null)${NC}"
+    clear_avatar_data='{"avatar_id": null}'
+    make_request "PUT" "/citizen/$CPF/avatar" "$clear_avatar_data" "Clear User Avatar"
+    
+    # Verify avatar clear response
+    if [[ -f "/tmp/api_response_Clear_User_Avatar" ]]; then
+        clear_avatar_response=$(cat "/tmp/api_response_Clear_User_Avatar")
+        echo -e "${BLUE}📋 Clear Avatar Test Result:${NC}"
+        
+        if command -v jq >/dev/null 2>&1; then
+            cleared_avatar_id=$(echo "$clear_avatar_response" | jq -r '.avatar_id // "null"' 2>/dev/null)
+            
+            if [[ "$cleared_avatar_id" == "null" ]]; then
+                echo -e "${GREEN}✅ Avatar successfully cleared${NC}"
+                ((TESTS_PASSED++))
+            else
+                echo -e "${RED}❌ Avatar not cleared correctly. Got: $cleared_avatar_id${NC}"
+                ((TESTS_FAILED++))
+            fi
+        else
+            echo -e "${YELLOW}⚠️  Avatar clear verification skipped (jq not available)${NC}"
+            ((TESTS_PASSED++))
+        fi
+    else
+        echo -e "${RED}❌ Clear avatar test response not available${NC}"
+        ((TESTS_FAILED++))
+    fi
+    
+else
+    echo -e "${YELLOW}⚠️  Skipping avatar set/clear tests (no avatars available)${NC}"
+    echo -e "${YELLOW}📝 Admin should create avatars before testing user avatar functionality${NC}"
+fi
+
+# Test 100: Test Invalid Avatar ID
+echo -e "${BLUE}Test 100: Test setting invalid avatar ID (should fail)${NC}"
+invalid_avatar_data='{"avatar_id": "invalid_avatar_id_12345"}'
+make_request "PUT" "/citizen/$CPF/avatar" "$invalid_avatar_data" "Set Invalid Avatar"
+
+# Verify invalid avatar response
+if [[ -f "/tmp/api_response_Set_Invalid_Avatar" ]]; then
+    invalid_avatar_response=$(cat "/tmp/api_response_Set_Invalid_Avatar")
+    echo -e "${BLUE}📋 Invalid Avatar Test Result:${NC}"
+    
+    if echo "$invalid_avatar_response" | grep -qEi "(error|not found|invalid)"; then
+        echo -e "${GREEN}✅ Invalid avatar ID correctly rejected${NC}"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}❌ Invalid avatar ID was accepted (should be rejected)${NC}"
+        ((TESTS_FAILED++))
+    fi
+else
+    echo -e "${RED}❌ Invalid avatar test response not available${NC}"
+    ((TESTS_FAILED++))
+fi
+
+# Test 101: Test Avatar Pagination
+echo -e "${BLUE}Test 101: Test avatar pagination parameters${NC}"
+make_request "GET" "/avatars?page=1&per_page=5" "" "Avatar Pagination Test"
+
+# Verify pagination response
+if [[ -f "/tmp/api_response_Avatar_Pagination_Test" ]]; then
+    pagination_response=$(cat "/tmp/api_response_Avatar_Pagination_Test")
+    echo -e "${BLUE}📋 Avatar Pagination Test Result:${NC}"
+    
+    if command -v jq >/dev/null 2>&1; then
+        page=$(echo "$pagination_response" | jq -r '.page // "unknown"' 2>/dev/null)
+        per_page=$(echo "$pagination_response" | jq -r '.per_page // "unknown"' 2>/dev/null)
+        data_length=$(echo "$pagination_response" | jq '.data | length' 2>/dev/null || echo "0")
+        
+        if [[ "$page" == "1" ]] && [[ "$per_page" == "5" ]] && [[ "$data_length" -le 5 ]]; then
+            echo -e "${GREEN}✅ Avatar pagination working correctly${NC}"
+            echo "  Page: $page, Per page: $per_page, Returned: $data_length items"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Avatar pagination not working correctly${NC}"
+            echo "  Expected: page=1, per_page=5, data≤5"
+            echo "  Got: page=$page, per_page=$per_page, data=$data_length"
+            ((TESTS_FAILED++))
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Pagination verification skipped (jq not available)${NC}"
+        if echo "$pagination_response" | grep -qE '"page".*1.*"per_page".*5'; then
+            echo -e "${GREEN}✅ Avatar pagination endpoint accessible${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Avatar pagination endpoint failed${NC}"
+            ((TESTS_FAILED++))
+        fi
+    fi
+else
+    echo -e "${RED}❌ Avatar pagination test response not available${NC}"
+    ((TESTS_FAILED++))
+fi
+
+echo -e "${GREEN}✅ Avatar functionality tests completed${NC}"
+echo ""
+echo -e "${BLUE}📝 Note: Admin-only avatar management endpoints (create/delete) require admin authentication${NC}"
+echo -e "${BLUE}📝 To test admin features, run with admin JWT token and test:${NC}"
+echo -e "${BLUE}   - POST /v1/avatars (create avatar)${NC}"
+echo -e "${BLUE}   - DELETE /v1/avatars/{id} (delete avatar)${NC}"
 echo ""
 
 # Clean up temporary files

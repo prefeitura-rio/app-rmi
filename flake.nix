@@ -20,6 +20,8 @@
           pandas
           matplotlib
           seaborn
+          requests
+          pyyaml
         ]);
       in {
         devShells.default = pkgs.mkShell {
@@ -32,7 +34,7 @@
             k6
             docker
             docker-compose
-            pythonEnv      # Python with plotting libs
+            pythonEnv      # Python with plotting libs and OAuth dependencies
             mongosh        # MongoDB Shell (standalone)
             redis
           ];

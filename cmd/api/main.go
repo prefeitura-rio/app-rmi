@@ -94,6 +94,9 @@ func main() {
 	// Initialize address service for maintenance request addresses
 	services.InitAddressService()
 
+	// Initialize avatar service for profile pictures
+	services.InitAvatarService()
+
 	// Initialize handlers
 	phoneHandlers := handlers.NewPhoneHandlers(observability.Logger(), phoneMappingService, configService)
 	betaGroupHandlers := handlers.NewBetaGroupHandlers(observability.Logger(), betaGroupService)
@@ -141,12 +144,30 @@ func main() {
 			citizen.GET("/:cpf/optin", middleware.RequireOwnCPF(), handlers.GetOptIn)
 			citizen.PUT("/:cpf/optin", middleware.RequireOwnCPF(), handlers.UpdateOptIn)
 			citizen.POST("/:cpf/phone/validate", middleware.RequireOwnCPF(), handlers.ValidatePhoneVerification)
+			
+			// Avatar endpoints
+			citizen.GET("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.GetUserAvatar)
+			citizen.PUT("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.UpdateUserAvatar)
 		}
 
 		// Public citizen endpoints (no auth required)
 		public := v1.Group("/citizen")
 		{
 			public.GET("/ethnicity/options", handlers.GetEthnicityOptions)
+		}
+
+		// Public avatar endpoints (no auth required)
+		avatars := v1.Group("/avatars")
+		{
+			avatars.GET("", handlers.ListAvatars) // Public avatar listing with pagination
+		}
+
+		// Admin-only avatar management endpoints
+		avatarAdmin := v1.Group("/avatars")
+		avatarAdmin.Use(middleware.AuthMiddleware(), middleware.RequireAdmin())
+		{
+			avatarAdmin.POST("", handlers.CreateAvatar)        // Create new avatar
+			avatarAdmin.DELETE("/:id", handlers.DeleteAvatar) // Delete avatar
 		}
 
 		// Public validation endpoints (no auth required)
