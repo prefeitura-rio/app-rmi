@@ -214,7 +214,7 @@ func (h *AvatarHandlers) GetUserAvatar(c *gin.Context) {
 
 	if err != nil {
 		// If user config doesn't exist, return default (no avatar)
-		if err.Error() == "document not found" {
+		if err == services.ErrDocumentNotFound {
 			response := &models.UserAvatarResponse{
 				AvatarID: nil,
 				Avatar:   nil,
@@ -314,14 +314,14 @@ func (h *AvatarHandlers) UpdateUserAvatar(c *gin.Context) {
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
 	err := dataManager.Read(ctx, cpf, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
 
-	if err != nil && err.Error() != "document not found" {
+	if err != nil && err != services.ErrDocumentNotFound {
 		h.logger.Error("failed to get user config", zap.Error(err), zap.String("cpf", cpf))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user configuration"})
 		return
 	}
 
 	// Create new config if doesn't exist
-	if err != nil && err.Error() == "document not found" {
+	if err == services.ErrDocumentNotFound {
 		userConfig = models.UserConfig{
 			CPF:        cpf,
 			FirstLogin: true,
@@ -493,7 +493,7 @@ func GetUserAvatar(c *gin.Context) {
 	err := dataManager.Read(ctx, cpf, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
 
 	if err != nil {
-		if err.Error() == "document not found" {
+		if err == services.ErrDocumentNotFound {
 			response := &models.UserAvatarResponse{
 				AvatarID: nil,
 				Avatar:   nil,
@@ -565,13 +565,13 @@ func UpdateUserAvatar(c *gin.Context) {
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
 	err := dataManager.Read(ctx, cpf, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
 
-	if err != nil && err.Error() != "document not found" {
+	if err != nil && err != services.ErrDocumentNotFound {
 		observability.Logger().Error("failed to get user config", zap.Error(err), zap.String("cpf", cpf))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user configuration"})
 		return
 	}
 
-	if err != nil && err.Error() == "document not found" {
+	if err == services.ErrDocumentNotFound {
 		userConfig = models.UserConfig{
 			CPF:        cpf,
 			FirstLogin: true,
