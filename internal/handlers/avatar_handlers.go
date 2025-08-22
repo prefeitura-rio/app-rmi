@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -299,6 +300,12 @@ func (h *AvatarHandlers) UpdateUserAvatar(c *gin.Context) {
 	if request.AvatarID != nil && *request.AvatarID != "" {
 		exists, err := services.AvatarServiceInstance.ValidateAvatarExists(ctx, *request.AvatarID)
 		if err != nil {
+			// Check if it's a validation error (invalid ObjectID format)
+			if strings.Contains(err.Error(), "invalid avatar ID") {
+				h.logger.Debug("invalid avatar ID format", zap.Error(err), zap.String("avatar_id", *request.AvatarID))
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid avatar ID format"})
+				return
+			}
 			h.logger.Error("failed to validate avatar", zap.Error(err), zap.String("avatar_id", *request.AvatarID))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate avatar"})
 			return
@@ -551,6 +558,12 @@ func UpdateUserAvatar(c *gin.Context) {
 	if request.AvatarID != nil && *request.AvatarID != "" {
 		exists, err := services.AvatarServiceInstance.ValidateAvatarExists(ctx, *request.AvatarID)
 		if err != nil {
+			// Check if it's a validation error (invalid ObjectID format)
+			if strings.Contains(err.Error(), "invalid avatar ID") {
+				observability.Logger().Debug("invalid avatar ID format", zap.Error(err), zap.String("avatar_id", *request.AvatarID))
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid avatar ID format"})
+				return
+			}
 			observability.Logger().Error("failed to validate avatar", zap.Error(err), zap.String("avatar_id", *request.AvatarID))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate avatar"})
 			return
