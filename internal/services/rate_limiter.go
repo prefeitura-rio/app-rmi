@@ -38,7 +38,7 @@ func (rl *RateLimiter) Allow(ctx context.Context, operation string) bool {
 	// Refill tokens based on time elapsed
 	now := time.Now()
 	elapsed := now.Sub(rl.lastRefill)
-	
+
 	// Calculate how many tokens to add
 	tokensToAdd := int(elapsed / rl.refillRate)
 	if tokensToAdd > 0 {
@@ -47,7 +47,7 @@ func (rl *RateLimiter) Allow(ctx context.Context, operation string) bool {
 			rl.tokens = rl.maxTokens
 		}
 		rl.lastRefill = now
-		
+
 		rl.logger.Debug("rate limiter tokens refilled",
 			zap.String("operation", operation),
 			zap.Int("tokens_added", tokensToAdd),
@@ -90,7 +90,7 @@ func NewCFRateLimiterManager(maxRequestsPerMinute int, logger *logging.SafeLogge
 	// Calculate refill rate: if we want maxRequestsPerMinute requests per minute,
 	// we need to add one token every (60 seconds / maxRequestsPerMinute)
 	refillRate := time.Minute / time.Duration(maxRequestsPerMinute)
-	
+
 	return &CFRateLimiterManager{
 		globalLimiter: NewRateLimiter(maxRequestsPerMinute, refillRate, logger),
 		logger:        logger,
@@ -99,39 +99,21 @@ func NewCFRateLimiterManager(maxRequestsPerMinute int, logger *logging.SafeLogge
 
 // ShouldAllowCFLookup checks if a CF lookup should be allowed for a given CPF
 func (m *CFRateLimiterManager) ShouldAllowCFLookup(ctx context.Context, cpf string, perCPFCooldown time.Duration) (bool, string) {
-	// Check global rate limit first
+	// Check global rate limit only
 	if !m.globalLimiter.Allow(ctx, "cf_lookup") {
 		return false, "global rate limit exceeded"
 	}
 
-	// Check per-CPF rate limit
-	now := time.Now()
-	
-	if lastLookupInterface, exists := m.perCPFCache.Load(cpf); exists {
-		if lastLookup, ok := lastLookupInterface.(*time.Time); ok {
-			if time.Since(*lastLookup) < perCPFCooldown {
-				m.logger.Debug("per-CPF rate limit hit",
-					zap.String("cpf", cpf),
-					zap.Duration("time_since_last", time.Since(*lastLookup)),
-					zap.Duration("cooldown", perCPFCooldown))
-				return false, "per-CPF rate limit exceeded"
-			}
-		}
-	}
-
-	// Update the last lookup time for this CPF
-	m.perCPFCache.Store(cpf, &now)
-	
 	m.logger.Debug("CF lookup allowed",
 		zap.String("cpf", cpf))
-	
+
 	return true, ""
 }
 
 // CleanupOldEntries removes old entries from the per-CPF cache
 func (m *CFRateLimiterManager) CleanupOldEntries(olderThan time.Duration) {
 	cutoff := time.Now().Add(-olderThan)
-	
+
 	m.perCPFCache.Range(func(key, value interface{}) bool {
 		if lastLookup, ok := value.(*time.Time); ok {
 			if lastLookup.Before(cutoff) {
@@ -168,12 +150,12 @@ func InitCFRateLimiter(maxRequestsPerMinute int, logger *logging.SafeLogger) {
 	CFRateLimiterInstance = NewCFRateLimiterManager(maxRequestsPerMinute, logger)
 	logger.Info("CF rate limiter initialized",
 		zap.Int("max_requests_per_minute", maxRequestsPerMinute))
-	
+
 	// Start cleanup goroutine to remove old entries every hour
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
-		
+
 		for range ticker.C {
 			CFRateLimiterInstance.CleanupOldEntries(24 * time.Hour)
 		}

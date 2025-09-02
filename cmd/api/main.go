@@ -150,7 +150,7 @@ func main() {
 			citizen.GET("/:cpf/optin", middleware.RequireOwnCPF(), handlers.GetOptIn)
 			citizen.PUT("/:cpf/optin", middleware.RequireOwnCPF(), handlers.UpdateOptIn)
 			citizen.POST("/:cpf/phone/validate", middleware.RequireOwnCPF(), handlers.ValidatePhoneVerification)
-			
+
 			// Avatar endpoints
 			citizen.GET("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.GetUserAvatar)
 			citizen.PUT("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.UpdateUserAvatar)
@@ -172,7 +172,7 @@ func main() {
 		avatarAdmin := v1.Group("/avatars")
 		avatarAdmin.Use(middleware.AuthMiddleware(), middleware.RequireAdmin())
 		{
-			avatarAdmin.POST("", handlers.CreateAvatar)        // Create new avatar
+			avatarAdmin.POST("", handlers.CreateAvatar)       // Create new avatar
 			avatarAdmin.DELETE("/:id", handlers.DeleteAvatar) // Delete avatar
 		}
 
