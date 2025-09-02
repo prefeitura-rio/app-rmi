@@ -206,7 +206,7 @@ func main() {
 
 		// Admin routes
 		adminGroup := v1.Group("/admin")
-		adminGroup.Use(middleware.AuthMiddleware())
+		adminGroup.Use(middleware.AuthMiddleware(), middleware.RequireAdmin())
 		{
 			adminGroup.GET("/phone/quarantined", phoneHandlers.GetQuarantinedPhones)
 			adminGroup.GET("/phone/quarantine/stats", phoneHandlers.GetQuarantineStats)
@@ -225,6 +225,9 @@ func main() {
 			adminGroup.POST("/beta/whitelist/bulk-add", betaGroupHandlers.BulkAddToWhitelist)
 			adminGroup.POST("/beta/whitelist/bulk-remove", betaGroupHandlers.BulkRemoveFromWhitelist)
 			adminGroup.POST("/beta/whitelist/bulk-move", betaGroupHandlers.BulkMoveWhitelist)
+
+			// Cache management
+			adminGroup.POST("/cache/read", handlers.ReadCacheKey)
 		}
 
 		// Config routes (public)
