@@ -480,7 +480,20 @@ func (c *MCPClient) parseCFResponse(result map[string]interface{}) (*models.CFIn
 
 	// Check for error flag
 	if isError, exists := resultData["isError"]; exists && isError == true {
-		return nil, fmt.Errorf("MCP server returned error flag")
+		// Try to extract error message from response
+		errorMsg := "no CF found for this address"
+		if textContent, exists := resultData["textContent"]; exists {
+			if textStr, ok := textContent.(string); ok && textStr != "" {
+				errorMsg = textStr
+			}
+		}
+		
+		c.logger.Debug("MCP server reported no CF available", 
+			zap.String("reason", errorMsg),
+			zap.String("operation", "cf_lookup_no_results"))
+		
+		// Return nil (no CF found) instead of error - this is expected behavior
+		return nil, nil
 	}
 
 	structuredContent, ok := resultData["structuredContent"].(map[string]interface{})

@@ -574,6 +574,14 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 		return nil, err
 	}
 
+	// Check if CF was found
+	if cfData == nil {
+		s.logger.Debug("no CF found for address in synchronous lookup", 
+			zap.String("cpf", cpf),
+			zap.String("address", address))
+		return nil, nil
+	}
+
 	// Success! Store the result immediately
 	cfLookup := &models.CFLookup{
 		ID:           primitive.NewObjectID(),
