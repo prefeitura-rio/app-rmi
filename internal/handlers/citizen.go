@@ -23,6 +23,42 @@ import (
 	"go.uber.org/zap"
 )
 
+// queueCFLookupJob queues a background job to perform CF lookup for a citizen
+func queueCFLookupJob(ctx context.Context, cpf, address string) {
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+
+	// Create CF lookup job
+	job := services.SyncJob{
+		ID:         fmt.Sprintf("cf_lookup_%s_%d", cpf, time.Now().UnixNano()),
+		Type:       "cf_lookup",
+		Key:        cpf,
+		Collection: "cf_lookup",
+		Data: map[string]interface{}{
+			"cpf":     cpf,
+			"address": address,
+		},
+		Timestamp:  time.Now(),
+		RetryCount: 0,
+		MaxRetries: 3,
+	}
+
+	jobBytes, err := json.Marshal(job)
+	if err != nil {
+		logger.Error("failed to marshal CF lookup job", zap.Error(err))
+		return
+	}
+
+	// Queue job using Redis
+	queueKey := "sync:queue:cf_lookup"
+	err = config.Redis.LPush(ctx, queueKey, string(jobBytes)).Err()
+	if err != nil {
+		logger.Error("failed to queue CF lookup job", zap.Error(err))
+		return
+	}
+
+	logger.Debug("CF lookup job queued successfully", zap.String("job_id", job.ID))
+}
+
 // GetCitizenData godoc
 // @Summary Obter dados do cidadão
 // @Description Recupera os dados do cidadão por CPF, incluindo informações básicas e dados autodeclarados.
@@ -98,6 +134,18 @@ func GetCitizenData(c *gin.Context) {
 		})
 	}
 	cacheSetSpan.End()
+
+	// Check for CF lookup and queue background job if needed
+	ctx, cfSpan := utils.TraceBusinessLogic(ctx, "cf_lookup_check")
+	shouldLookup, address, err := services.CFLookupServiceInstance.ShouldLookupCF(ctx, cpf, citizen)
+	if err != nil {
+		logger.Warn("failed to check CF lookup status", zap.Error(err))
+	} else if shouldLookup && address != "" {
+		// Queue background CF lookup job
+		logger.Debug("queuing CF lookup job", zap.String("cpf", cpf), zap.String("address", address))
+		queueCFLookupJob(ctx, cpf, address)
+	}
+	cfSpan.End()
 
 	// Convert to response model (excluding wallet fields) with tracing
 	ctx, convertSpan := utils.TraceBusinessLogic(ctx, "convert_to_citizen_response")
@@ -489,6 +537,24 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		logger.Warn("failed to log audit event", zap.Error(err))
 	}
 	auditSpan.End()
+
+	// Handle CF data invalidation when address changes
+	ctx, cfInvalidateSpan := utils.TraceBusinessLogic(ctx, "cf_invalidate_on_address_change")
+	newAddress := fmt.Sprintf("%s, %s, %s, %s, %s, %s", 
+		input.Logradouro, input.Numero, 
+		func() string { if input.Complemento != nil { return *input.Complemento } else { return "" } }(),
+		input.Bairro, input.Municipio, input.Estado)
+	newAddressHash := services.CFLookupServiceInstance.GenerateAddressHash(newAddress)
+	
+	err = services.CFLookupServiceInstance.InvalidateCFDataForAddress(ctx, cpf, newAddressHash)
+	if err != nil {
+		logger.Warn("failed to invalidate CF data for address change", zap.Error(err))
+	} else {
+		// Queue new CF lookup for the updated address
+		logger.Debug("queuing CF lookup for updated address", zap.String("cpf", cpf))
+		queueCFLookupJob(ctx, cpf, newAddress)
+	}
+	cfInvalidateSpan.End()
 
 	// Serialize response with tracing
 	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
@@ -1766,6 +1832,80 @@ func GetCitizenWallet(c *gin.Context) {
 		AssistenciaSocial: citizen.AssistenciaSocial,
 		Educacao:          citizen.Educacao,
 	}
+	
+	// Check if we need to populate CF data in saude.clinica_familia
+	ctx, cfDataSpan := utils.TraceBusinessLogic(ctx, "cf_data_integration_wallet")
+	needsCFData := false
+	if wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil || 
+	   wallet.Saude.ClinicaFamilia.Indicador == nil || !*wallet.Saude.ClinicaFamilia.Indicador {
+		needsCFData = true
+	}
+	
+	// Debug the specific condition checks
+	saudeIsNil := wallet.Saude == nil
+	clinicaFamiliaIsNil := wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil
+	indicadorIsNil := wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil || wallet.Saude.ClinicaFamilia.Indicador == nil
+	indicadorIsFalse := false
+	if wallet.Saude != nil && wallet.Saude.ClinicaFamilia != nil && wallet.Saude.ClinicaFamilia.Indicador != nil {
+		indicadorIsFalse = !*wallet.Saude.ClinicaFamilia.Indicador
+	}
+	
+	logger.Info("CF data integration detailed check", 
+		zap.String("cpf", cpf),
+		zap.Bool("needs_cf_data", needsCFData),
+		zap.Bool("saude_is_nil", saudeIsNil),
+		zap.Bool("clinica_familia_is_nil", clinicaFamiliaIsNil),
+		zap.Bool("indicador_is_nil", indicadorIsNil),
+		zap.Bool("indicador_is_false", indicadorIsFalse),
+		zap.String("operation", "cf_integration_debug"))
+	
+	if needsCFData {
+		logger.Debug("attempting to get CF data for citizen", zap.String("cpf", cpf))
+		
+		// First try to get existing cached CF data
+		cfData, err := services.CFLookupServiceInstance.GetCFDataForCitizen(ctx, cpf)
+		if err != nil || cfData == nil || !cfData.IsActive {
+			// No cached data, try synchronous CF lookup
+			logger.Debug("no cached CF data, attempting synchronous lookup", zap.String("cpf", cpf))
+			
+			// Get citizen address for CF lookup using the existing extraction method
+			address := services.CFLookupServiceInstance.ExtractAddress(&citizen)
+			
+			if address != "" {
+				cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
+				if err != nil {
+					logger.Debug("synchronous CF lookup failed, will fallback to async", zap.Error(err), zap.String("cpf", cpf))
+				}
+			}
+		}
+		
+		if cfData != nil && cfData.IsActive {
+			logger.Info("integrating CF data into wallet saude.clinica_familia", 
+				zap.String("cpf", cpf),
+				zap.String("cf_name", cfData.CFData.NomePopular),
+				zap.String("cf_address", cfData.AddressUsed),
+				zap.String("cf_source", cfData.LookupSource),
+				zap.String("operation", "cf_integration_success"))
+			
+			// Initialize saude if needed
+			if wallet.Saude == nil {
+				wallet.Saude = &models.Saude{}
+			}
+			
+			// Replace/populate clinica_familia with CF data
+			wallet.Saude.ClinicaFamilia = cfData.ToClinicaFamilia()
+		} else {
+			logger.Debug("no CF data available for citizen", 
+				zap.String("cpf", cpf),
+				zap.Bool("cf_data_is_nil", cfData == nil),
+				zap.Bool("cf_data_is_active", cfData != nil && cfData.IsActive))
+		}
+	} else if wallet.Saude != nil && wallet.Saude.ClinicaFamilia != nil {
+		// Mark existing CF data as coming from bigquery
+		fonte := "bigquery"
+		wallet.Saude.ClinicaFamilia.Fonte = &fonte
+	}
+	cfDataSpan.End()
 	buildSpan.End()
 
 	// Serialize response with tracing

@@ -97,6 +97,12 @@ func main() {
 	// Initialize avatar service for profile pictures
 	services.InitAvatarService()
 
+	// Initialize CF rate limiter for CF lookup requests
+	services.InitCFRateLimiter(config.AppConfig.CFLookupGlobalRateLimit, observability.Logger())
+
+	// Initialize CF lookup service for automatic Clínica da Família lookup
+	services.InitCFLookupService()
+
 	// Initialize handlers
 	phoneHandlers := handlers.NewPhoneHandlers(observability.Logger(), phoneMappingService, configService)
 	betaGroupHandlers := handlers.NewBetaGroupHandlers(observability.Logger(), betaGroupService)

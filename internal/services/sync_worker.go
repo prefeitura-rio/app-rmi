@@ -49,6 +49,7 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 			"self_declared_email",
 			"self_declared_phone",
 			"self_declared_raca",
+			"cf_lookup",
 		},
 	}
 }
@@ -371,6 +372,11 @@ func (w *SyncWorker) handleSpecialJobTypes(ctx context.Context, job *SyncJob) er
 		}
 	}
 	
+	// Check if this is a CF lookup job (identified by job type or collection)
+	if job.Type == "cf_lookup" || job.Collection == "cf_lookup" {
+		return w.handleCFLookupJob(ctx, job)
+	}
+	
 	// Not a special job type
 	return fmt.Errorf("not_special_job")
 }
@@ -409,5 +415,64 @@ func (w *SyncWorker) handleAvatarCleanup(ctx context.Context, data map[string]in
 	// Since we don't know which users were affected, we'll let cache entries expire naturally
 	// or clear them individually when accessed
 	
+	return nil
+}
+
+// handleCFLookupJob handles CF lookup jobs
+func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error {
+	w.logger.Info("processing CF lookup job", zap.String("job_id", job.ID))
+
+	// Extract CPF and address from job data
+	data, ok := job.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("invalid job data format for CF lookup")
+	}
+
+	cpf, ok := data["cpf"].(string)
+	if !ok || cpf == "" {
+		return fmt.Errorf("missing or invalid CPF in CF lookup job")
+	}
+
+	address, ok := data["address"].(string)
+	if !ok || address == "" {
+		return fmt.Errorf("missing or invalid address in CF lookup job")
+	}
+
+	w.logger.Debug("extracted CF lookup job data", 
+		zap.String("cpf", cpf),
+		zap.String("address", address))
+
+	// Perform CF lookup using the CF lookup service
+	if CFLookupServiceInstance == nil {
+		return fmt.Errorf("CF lookup service not initialized")
+	}
+
+	err := CFLookupServiceInstance.PerformCFLookup(ctx, cpf, address)
+	if err != nil {
+		w.logger.Error("CF lookup failed", 
+			zap.Error(err),
+			zap.String("cpf", cpf),
+			zap.String("address", address))
+		return fmt.Errorf("CF lookup failed: %w", err)
+	}
+
+	w.logger.Info("CF lookup completed successfully", 
+		zap.String("cpf", cpf),
+		zap.String("address", address))
+
+	// Invalidate wallet cache so fresh wallet requests get the new CF data
+	// Note: We don't invalidate citizen cache since CF data only appears in wallet endpoint
+	walletCacheKey := fmt.Sprintf("citizen_wallet:%s", cpf)
+	
+	err = config.Redis.Del(ctx, walletCacheKey).Err()
+	if err != nil {
+		w.logger.Warn("failed to invalidate wallet cache after CF lookup", 
+			zap.Error(err),
+			zap.String("cpf", cpf))
+		// Don't fail the job for cache invalidation errors
+	} else {
+		w.logger.Debug("invalidated wallet cache after CF lookup", zap.String("cpf", cpf))
+	}
+
 	return nil
 }

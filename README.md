@@ -23,6 +23,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 - 🎯 Mapeamento phone-CPF com controle de status
 - 🚫 Sistema de quarentena de telefones com TTL configurável
 - 🧪 Sistema de whitelist beta para chatbot com grupos
+- 🏥 **CF Lookup Automático**: Busca automática de Clínica da Família via integração MCP
 - 🔍 **Tracing e Monitoramento de Performance**: Sistema abrangente de observabilidade com OpenTelemetry e SignOz
 
 ## Variáveis de Ambiente
@@ -53,6 +54,12 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | WHATSAPP_HSM_ID | ID do template HSM do WhatsApp | - | Sim |
 | WHATSAPP_COST_CENTER_ID | ID do centro de custo do WhatsApp | - | Sim |
 | WHATSAPP_CAMPAIGN_NAME | Nome da campanha do WhatsApp | - | Sim |
+| MCP_SERVER_URL | URL do servidor MCP para lookup de CF | https://services.pref.rio/mcp/mcp/ | Não |
+| MCP_AUTH_TOKEN | Token de autenticação do servidor MCP | - | Não* |
+| CF_LOOKUP_COLLECTION | Nome da coleção de lookups de CF | cf_lookups | Não |
+| CF_LOOKUP_CACHE_TTL | TTL do cache de CF lookups (ex: "24h") | 24h | Não |
+| CF_LOOKUP_RATE_LIMIT | Rate limit por CPF para CF lookups (ex: "1h") | 1h | Não |
+| CF_LOOKUP_GLOBAL_RATE_LIMIT | Rate limit global de CF lookups por minuto | 60 | Não |
 | LOG_LEVEL | Nível de log (debug, info, warn, error) | info | Não |
 | METRICS_PORT | Porta para métricas Prometheus | 9090 | Não |
 | TRACING_ENABLED | Habilitar rastreamento OpenTelemetry | false | Não |
@@ -66,6 +73,54 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | DB_BATCH_SIZE | Tamanho do lote para operações em lote | 100 | Não |
 | INDEX_MAINTENANCE_INTERVAL | Intervalo para verificação de índices (ex: "1h", "24h") | 1h | Não |
 | WHATSAPP_COD_PARAMETER | Parâmetro do código no template HSM do WhatsApp | COD | Não |
+
+**Notas:**
+- `*` MCP_AUTH_TOKEN é obrigatório apenas se a funcionalidade de CF lookup estiver habilitada
+
+## 🏥 **CF (Clínica da Família) Lookup - Nova Funcionalidade**
+
+### **Visão Geral**
+Sistema automático de busca de Clínica da Família integrado ao MCP (Model Context Protocol) do Rio de Janeiro. Funciona de forma Netflix-style, buscando automaticamente a CF mais próxima para cidadãos que não possuem dados de CF nos registros base.
+
+### **Funcionalidades**
+- ⚡ **Lookup Automático**: Triggers automáticos quando `saude.clinica_familia.indicador = false`
+- 🏠 **Baseado em Endereço**: Usa endereços self-declared ou base data para busca
+- 🔄 **Background Processing**: Operações via sync worker (não bloqueia API)
+- 💾 **Multi-Level Caching**: Redis + MongoDB com TTL configurável
+- 🔍 **Address Fingerprinting**: SHA256 hashing para detecção de mudanças
+- 🔄 **Retry Logic**: Exponential backoff com error categorization
+- 🛡️ **Rate Limiting**: Token bucket global + per-CPF cooldown
+- 📊 **Observabilidade**: Integração completa com logging e tracing
+
+### **Fluxo de Operação**
+1. **Trigger**: Usuário sem CF acessa `/citizen/{cpf}` 
+2. **Verificação**: Sistema verifica endereço disponível
+3. **Background Job**: Queue job para lookup via MCP
+4. **MCP Integration**: Busca CF via protocolo JSON-RPC 2.0
+5. **Storage**: Armazena resultado linkado ao endereço
+6. **Cache**: Redis cache para futuras consultas
+7. **Invalidation**: Mudança de endereço invalida CF anterior
+
+### **Configuração**
+```bash
+# MCP Server (Rio de Janeiro)
+MCP_SERVER_URL=https://services.pref.rio/mcp/mcp/
+MCP_AUTH_TOKEN=your_token_here
+
+# Performance Settings  
+CF_LOOKUP_CACHE_TTL=24h
+CF_LOOKUP_RATE_LIMIT=1h
+CF_LOOKUP_GLOBAL_RATE_LIMIT=60
+
+# Database
+CF_LOOKUP_COLLECTION=cf_lookups
+```
+
+### **Monitoramento**
+- **Logs Estruturados**: Performance tracking com duração de operações
+- **Error Categorization**: Network, timeout, authorization, validation
+- **Rate Limiting Stats**: Token bucket status e per-CPF cooldowns
+- **Observability**: Integração com OpenTelemetry existente
 
 ## 🚀 **Otimização de Performance MongoDB - IMPLEMENTADA**
 
@@ -263,6 +318,13 @@ REDIS_MIN_IDLE_CONNS=10
 # Configuração MongoDB
 MONGODB_URI=mongodb://localhost:27017
 MONGODB_DATABASE=rmi
+
+# Configuração CF Lookup (Clínica da Família)
+MCP_SERVER_URL=https://services.pref.rio/mcp/mcp/
+MCP_AUTH_TOKEN=your_mcp_auth_token_here
+CF_LOOKUP_CACHE_TTL=24h
+CF_LOOKUP_RATE_LIMIT=1h
+CF_LOOKUP_GLOBAL_RATE_LIMIT=60
 ```
 
 #### **Configuração das Coleções**
