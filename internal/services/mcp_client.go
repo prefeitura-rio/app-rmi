@@ -40,30 +40,30 @@ type MCPResponse struct {
 	JSONRPC string                 `json:"jsonrpc"`
 	ID      *int                   `json:"id,omitempty"`
 	Result  map[string]interface{} `json:"result,omitempty"`
-	Error   *MCPError             `json:"error,omitempty"`
+	Error   *MCPError              `json:"error,omitempty"`
 }
 
 // MCPError represents an error in the MCP response
 type MCPError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
 }
 
 // RetryConfig defines retry behavior for MCP requests
 type RetryConfig struct {
-	MaxRetries   int
-	BaseDelay    time.Duration
-	MaxDelay     time.Duration
+	MaxRetries    int
+	BaseDelay     time.Duration
+	MaxDelay      time.Duration
 	BackoffFactor float64
 }
 
 // DefaultRetryConfig returns sensible defaults for MCP retries
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
-		MaxRetries:   3,
-		BaseDelay:    500 * time.Millisecond,
-		MaxDelay:     10 * time.Second,
+		MaxRetries:    3,
+		BaseDelay:     500 * time.Millisecond,
+		MaxDelay:      10 * time.Second,
 		BackoffFactor: 2.0,
 	}
 }
@@ -71,8 +71,8 @@ func DefaultRetryConfig() RetryConfig {
 // NewMCPClient creates a new MCP client instance
 func NewMCPClient(cfg *config.Config, logger *logging.SafeLogger) *MCPClient {
 	return &MCPClient{
-		baseURL:     cfg.MCPServerURL,
-		authToken:   cfg.MCPAuthToken,
+		baseURL:   cfg.MCPServerURL,
+		authToken: cfg.MCPAuthToken,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -84,7 +84,7 @@ func NewMCPClient(cfg *config.Config, logger *logging.SafeLogger) *MCPClient {
 // withRetry executes a function with exponential backoff retry logic
 func (c *MCPClient) withRetry(ctx context.Context, operation string, fn func() error) error {
 	var lastErr error
-	
+
 	for attempt := 0; attempt <= c.retryConfig.MaxRetries; attempt++ {
 		if attempt > 0 {
 			// Calculate delay with exponential backoff
@@ -92,12 +92,12 @@ func (c *MCPClient) withRetry(ctx context.Context, operation string, fn func() e
 			if delay > c.retryConfig.MaxDelay {
 				delay = c.retryConfig.MaxDelay
 			}
-			
-			c.logger.Debug("retrying MCP operation", 
+
+			c.logger.Debug("retrying MCP operation",
 				zap.String("operation", operation),
 				zap.Int("attempt", attempt),
 				zap.Duration("delay", delay))
-			
+
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -105,37 +105,37 @@ func (c *MCPClient) withRetry(ctx context.Context, operation string, fn func() e
 				// Continue with retry
 			}
 		}
-		
+
 		lastErr = fn()
 		if lastErr == nil {
 			if attempt > 0 {
-				c.logger.Info("MCP operation succeeded after retry", 
+				c.logger.Info("MCP operation succeeded after retry",
 					zap.String("operation", operation),
 					zap.Int("attempts", attempt+1))
 			}
 			return nil
 		}
-		
+
 		// Check if error is retryable
 		if !c.isRetryableError(lastErr) {
-			c.logger.Debug("non-retryable error, aborting", 
+			c.logger.Debug("non-retryable error, aborting",
 				zap.String("operation", operation),
 				zap.Error(lastErr))
 			return lastErr
 		}
-		
-		c.logger.Warn("MCP operation failed, will retry", 
+
+		c.logger.Warn("MCP operation failed, will retry",
 			zap.String("operation", operation),
 			zap.Int("attempt", attempt+1),
 			zap.Int("max_retries", c.retryConfig.MaxRetries),
 			zap.Error(lastErr))
 	}
-	
-	c.logger.Error("MCP operation failed after all retries", 
+
+	c.logger.Error("MCP operation failed after all retries",
 		zap.String("operation", operation),
 		zap.Int("total_attempts", c.retryConfig.MaxRetries+1),
 		zap.Error(lastErr))
-	
+
 	return fmt.Errorf("operation %s failed after %d attempts: %w", operation, c.retryConfig.MaxRetries+1, lastErr)
 }
 
@@ -143,25 +143,25 @@ func (c *MCPClient) withRetry(ctx context.Context, operation string, fn func() e
 func (c *MCPClient) isRetryableError(err error) bool {
 	// Network errors are generally retryable
 	if strings.Contains(err.Error(), "timeout") ||
-	   strings.Contains(err.Error(), "connection") ||
-	   strings.Contains(err.Error(), "network") ||
-	   strings.Contains(err.Error(), "dial") {
+		strings.Contains(err.Error(), "connection") ||
+		strings.Contains(err.Error(), "network") ||
+		strings.Contains(err.Error(), "dial") {
 		return true
 	}
-	
+
 	// HTTP status codes that indicate temporary issues
 	if strings.Contains(err.Error(), "500") || // Internal Server Error
-	   strings.Contains(err.Error(), "502") || // Bad Gateway
-	   strings.Contains(err.Error(), "503") || // Service Unavailable
-	   strings.Contains(err.Error(), "504") {  // Gateway Timeout
+		strings.Contains(err.Error(), "502") || // Bad Gateway
+		strings.Contains(err.Error(), "503") || // Service Unavailable
+		strings.Contains(err.Error(), "504") { // Gateway Timeout
 		return true
 	}
-	
+
 	// MCP-specific errors that might be temporary
 	if strings.Contains(err.Error(), "session") {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -171,7 +171,7 @@ func (c *MCPClient) getSessionID(ctx context.Context) (string, error) {
 	defer span.End()
 
 	var sessionID string
-	
+
 	err := c.withRetry(ctx, "get_session_id", func() error {
 		// Try HEAD first as per specification, then fallback to GET if 405 error
 		req, err := http.NewRequestWithContext(ctx, "HEAD", c.baseURL, nil)
@@ -205,7 +205,7 @@ func (c *MCPClient) getSessionID(ctx context.Context) (string, error) {
 
 		sessionID = strings.TrimSpace(sessionID)
 		c.logger.Debug("received MCP session ID", zap.String("session_id", sessionID))
-		
+
 		return nil
 	})
 
@@ -224,7 +224,7 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 	}
 
 	var result map[string]interface{}
-	
+
 	err = c.withRetry(ctx, "make_mcp_request", func() error {
 		req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL, bytes.NewBuffer(jsonData))
 		if err != nil {
@@ -236,7 +236,7 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 		req.Header.Set("Accept", "application/json, text/event-stream")
 		req.Header.Set("mcp-session-id", sessionID)
 
-		c.logger.Debug("sending MCP request", 
+		c.logger.Debug("sending MCP request",
 			zap.String("session_id", sessionID),
 			zap.String("payload", string(jsonData)))
 
@@ -257,8 +257,9 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 
 		// Handle Server-Sent Events format
 		bodyStr := string(body)
+		c.logger.Info("RAW MCP RESPONSE", zap.String("body", bodyStr))
 		c.logger.Debug("raw MCP response", zap.String("body", bodyStr))
-		
+
 		if strings.Contains(bodyStr, "event: message") {
 			// Parse SSE format more robustly
 			lines := strings.Split(bodyStr, "\n")
@@ -277,7 +278,7 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 		}
 
 		c.logger.Debug("received MCP response", zap.Any("response", result))
-		
+
 		return nil
 	})
 
@@ -306,7 +307,7 @@ func (c *MCPClient) sendNotification(ctx context.Context, sessionID string, payl
 		req.Header.Set("Accept", "application/json, text/event-stream")
 		req.Header.Set("mcp-session-id", sessionID)
 
-		c.logger.Debug("sending MCP notification", 
+		c.logger.Debug("sending MCP notification",
 			zap.String("session_id", sessionID),
 			zap.String("payload", string(jsonData)))
 
@@ -322,7 +323,7 @@ func (c *MCPClient) sendNotification(ctx context.Context, sessionID string, payl
 		}
 
 		c.logger.Debug("notification sent successfully", zap.Int("status", resp.StatusCode))
-		
+
 		return nil
 	})
 
@@ -405,7 +406,7 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 	c.logger.Info("starting CF lookup via MCP",
 		zap.String("address", address),
 		zap.String("operation", "mcp_cf_lookup_start"))
-	
+
 	defer func() {
 		c.logger.Info("CF lookup via MCP completed",
 			zap.String("address", address),
@@ -449,6 +450,7 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 	}
 
 	// Step 4: Find nearest CF
+	c.logger.Info("MCP CF LOOKUP REQUEST", zap.String("address", address))
 	cfPayload := MCPRequest{
 		JSONRPC: "2.0",
 		ID:      intPtr(3),
@@ -480,7 +482,20 @@ func (c *MCPClient) parseCFResponse(result map[string]interface{}) (*models.CFIn
 
 	// Check for error flag
 	if isError, exists := resultData["isError"]; exists && isError == true {
-		return nil, fmt.Errorf("MCP server returned error flag")
+		// Try to extract error message from response
+		errorMsg := "no CF found for this address"
+		if textContent, exists := resultData["textContent"]; exists {
+			if textStr, ok := textContent.(string); ok && textStr != "" {
+				errorMsg = textStr
+			}
+		}
+
+		c.logger.Debug("MCP server reported no CF available",
+			zap.String("reason", errorMsg),
+			zap.String("operation", "cf_lookup_no_results"))
+
+		// Return nil (no CF found) instead of error - this is expected behavior
+		return nil, nil
 	}
 
 	structuredContent, ok := resultData["structuredContent"].(map[string]interface{})
@@ -500,7 +515,12 @@ func (c *MCPClient) parseCFResponse(result map[string]interface{}) (*models.CFIn
 
 	// Check for error in equipment data
 	if errorMsg, exists := equipamento["error"]; exists {
-		return nil, fmt.Errorf("equipment lookup error: %v", errorMsg)
+		c.logger.Debug("MCP server reported no equipment found",
+			zap.String("reason", fmt.Sprintf("%v", errorMsg)),
+			zap.String("operation", "cf_lookup_no_equipment"))
+
+		// Return nil (no CF found) instead of error - this is expected behavior
+		return nil, nil
 	}
 
 	// Convert to CFInfo struct
@@ -515,7 +535,7 @@ func (c *MCPClient) parseCFResponse(result map[string]interface{}) (*models.CFIn
 		return nil, fmt.Errorf("failed to unmarshal CF data: %w", err)
 	}
 
-	c.logger.Info("CF lookup successful", 
+	c.logger.Info("CF lookup successful",
 		zap.String("cf_name", cfInfo.NomePopular),
 		zap.String("cf_bairro", cfInfo.Bairro))
 

@@ -167,12 +167,12 @@ func LoadConfig() error {
 	// MCP Server configuration
 	mcpServerURL := getEnvOrDefault("MCP_SERVER_URL", "https://services.pref.rio/mcp/mcp/")
 	mcpAuthToken := getEnvOrDefault("MCP_AUTH_TOKEN", "")
-	
+
 	cfLookupCacheTTL, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_CACHE_TTL", "24h")) // 24 hours
 	if err != nil {
 		return fmt.Errorf("invalid CF_LOOKUP_CACHE_TTL: %w", err)
 	}
-	
+
 	cfLookupRateLimit, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_RATE_LIMIT", "1h")) // 1 hour
 	if err != nil {
 		return fmt.Errorf("invalid CF_LOOKUP_RATE_LIMIT: %w", err)
