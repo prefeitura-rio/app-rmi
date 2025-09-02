@@ -127,6 +127,7 @@ type ClinicaFamilia struct {
 	Email              *string `json:"email" bson:"email,omitempty"`
 	Endereco           *string `json:"endereco" bson:"endereco,omitempty"`
 	HorarioAtendimento *string `json:"horario_atendimento" bson:"horario_atendimento,omitempty"`
+	Fonte              *string `json:"fonte,omitempty" bson:"-"` // "bigquery" or "mcp" - not stored in DB, populated at response time
 }
 
 // EquipeSaudeFamilia represents family health team information

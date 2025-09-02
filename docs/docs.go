@@ -3218,6 +3218,10 @@ const docTemplate = `{
                 "endereco": {
                     "type": "string"
                 },
+                "fonte": {
+                    "description": "\"bigquery\" or \"mcp\" - not stored in DB, populated at response time",
+                    "type": "string"
+                },
                 "horario_atendimento": {
                     "type": "string"
                 },
