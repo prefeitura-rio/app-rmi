@@ -41,28 +41,35 @@ func NewCFLookupService(database *mongo.Database, mcpClient *MCPClient, logger *
 
 // InitCFLookupService initializes the global CF lookup service instance
 func InitCFLookupService() {
+	fmt.Printf("CLAUDE DEBUG: InitCFLookupService called\n")
 	logger := zap.L().Named("cf_lookup_service")
 	
 	// Log configuration for debugging
+	fmt.Printf("CLAUDE DEBUG: MCP_SERVER_URL=%s\n", config.AppConfig.MCPServerURL)
 	logger.Info("initializing CF lookup service",
 		zap.String("mcp_server_url", config.AppConfig.MCPServerURL),
 		zap.Duration("sync_timeout", config.AppConfig.CFLookupSyncTimeout),
 		zap.Duration("cache_ttl", config.AppConfig.CFLookupCacheTTL))
 	
 	// Initialize MCP client with error handling
+	fmt.Printf("CLAUDE DEBUG: Creating MCP client\n")
 	mcpClient := NewMCPClient(config.AppConfig, &logging.SafeLogger{})
 	if mcpClient == nil {
+		fmt.Printf("CLAUDE DEBUG: MCP client is nil - CF lookup service disabled\n")
 		logger.Error("failed to initialize MCP client - CF lookup service disabled")
 		return
 	}
+	fmt.Printf("CLAUDE DEBUG: MCP client created successfully\n")
 	
 	// Test MCP client connectivity
 	if config.AppConfig.MCPServerURL == "" {
+		fmt.Printf("CLAUDE DEBUG: MCP_SERVER_URL is empty - CF lookup service disabled\n")
 		logger.Error("MCP_SERVER_URL not configured - CF lookup service disabled")
 		return
 	}
 	
 	CFLookupServiceInstance = NewCFLookupService(config.MongoDB, mcpClient, &logging.SafeLogger{})
+	fmt.Printf("CLAUDE DEBUG: CF lookup service initialized successfully\n")
 	logger.Info("CF lookup service initialized successfully")
 }
 
@@ -551,13 +558,24 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	ctx, span := utils.TraceBusinessLogic(ctx, "cf_lookup_synchronous")
 	defer span.End()
 
+	// CRITICAL DEBUG: Force visible logging
+	fmt.Printf("CLAUDE DEBUG: TrySynchronousCFLookup called for CPF=%s, address=%s\n", cpf, address)
+	
 	// Check if CF lookup service is properly initialized
-	if s == nil || s.mcpClient == nil {
-		if s != nil && s.logger != nil {
-			s.logger.Error("CF lookup service not properly initialized", zap.String("cpf", cpf))
-		}
+	if s == nil {
+		fmt.Printf("CLAUDE DEBUG: CF lookup service is nil!\n")
 		return nil, fmt.Errorf("CF lookup service not available")
 	}
+	
+	if s.mcpClient == nil {
+		fmt.Printf("CLAUDE DEBUG: MCP client is nil!\n")
+		if s.logger != nil {
+			s.logger.Error("MCP client is nil - CF lookup service not properly initialized", zap.String("cpf", cpf))
+		}
+		return nil, fmt.Errorf("MCP client not available")
+	}
+	
+	fmt.Printf("CLAUDE DEBUG: CF service and MCP client are available\n")
 
 	// Check if we already have cached CF data
 	cachedData, err := s.GetCFDataForCitizen(ctx, cpf)
