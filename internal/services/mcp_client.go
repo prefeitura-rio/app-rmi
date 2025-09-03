@@ -459,7 +459,7 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 			"name": "equipments_by_address",
 			"arguments": map[string]interface{}{
 				"address":    address,
-				"categories": []string{"CF"},
+				"categories": []string{"CF", "CMS"},
 			},
 		},
 	}
