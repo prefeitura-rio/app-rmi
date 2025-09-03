@@ -42,9 +42,28 @@ func NewCFLookupService(database *mongo.Database, mcpClient *MCPClient, logger *
 // InitCFLookupService initializes the global CF lookup service instance
 func InitCFLookupService() {
 	logger := zap.L().Named("cf_lookup_service")
+	
+	// Log configuration for debugging
+	logger.Info("initializing CF lookup service",
+		zap.String("mcp_server_url", config.AppConfig.MCPServerURL),
+		zap.Duration("sync_timeout", config.AppConfig.CFLookupSyncTimeout),
+		zap.Duration("cache_ttl", config.AppConfig.CFLookupCacheTTL))
+	
+	// Initialize MCP client with error handling
 	mcpClient := NewMCPClient(config.AppConfig, &logging.SafeLogger{})
+	if mcpClient == nil {
+		logger.Error("failed to initialize MCP client - CF lookup service disabled")
+		return
+	}
+	
+	// Test MCP client connectivity
+	if config.AppConfig.MCPServerURL == "" {
+		logger.Error("MCP_SERVER_URL not configured - CF lookup service disabled")
+		return
+	}
+	
 	CFLookupServiceInstance = NewCFLookupService(config.MongoDB, mcpClient, &logging.SafeLogger{})
-	logger.Info("CF lookup service initialized")
+	logger.Info("CF lookup service initialized successfully")
 }
 
 // ShouldLookupCF determines if a CF lookup should be performed for a citizen
@@ -531,6 +550,14 @@ func (s *CFLookupService) invalidateCFCache(ctx context.Context, cpf string) err
 func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, address string) (*models.CFLookup, error) {
 	ctx, span := utils.TraceBusinessLogic(ctx, "cf_lookup_synchronous")
 	defer span.End()
+
+	// Check if CF lookup service is properly initialized
+	if s == nil || s.mcpClient == nil {
+		if s != nil && s.logger != nil {
+			s.logger.Error("CF lookup service not properly initialized", zap.String("cpf", cpf))
+		}
+		return nil, fmt.Errorf("CF lookup service not available")
+	}
 
 	// Check if we already have cached CF data
 	cachedData, err := s.GetCFDataForCitizen(ctx, cpf)

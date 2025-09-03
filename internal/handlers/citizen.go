@@ -1871,56 +1871,61 @@ func GetCitizenWallet(c *gin.Context) {
 	if needsCFData {
 		logger.Debug("attempting to get CF data for citizen", zap.String("cpf", cpf))
 
-		// First try to get existing cached CF data
-		logger.Info("CHECKING FOR CACHED CF DATA", zap.String("cpf", cpf))
-		cfData, err := services.CFLookupServiceInstance.GetCFDataForCitizen(ctx, cpf)
-		if err != nil || cfData == nil || !cfData.IsActive {
-			// No cached data, try synchronous CF lookup
-			logger.Info("NO CACHED CF DATA - ATTEMPTING SYNCHRONOUS LOOKUP", zap.String("cpf", cpf))
+		// Check if CF lookup service is available
+		if services.CFLookupServiceInstance == nil {
+			logger.Error("CF lookup service not initialized - skipping CF data integration", zap.String("cpf", cpf))
+		} else {
+			// First try to get existing cached CF data
+			logger.Info("CHECKING FOR CACHED CF DATA", zap.String("cpf", cpf))
+			cfData, err := services.CFLookupServiceInstance.GetCFDataForCitizen(ctx, cpf)
+			if err != nil || cfData == nil || !cfData.IsActive {
+				// No cached data, try synchronous CF lookup
+				logger.Info("NO CACHED CF DATA - ATTEMPTING SYNCHRONOUS LOOKUP", zap.String("cpf", cpf))
 
-			// Get citizen address for CF lookup - prioritize self-declared address directly
-			address := getSelfDeclaredAddressForCFLookup(ctx, cpf)
-			if address == "" {
-				// Fallback to extraction from citizen data
-				address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
-			}
-			logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
+				// Get citizen address for CF lookup - prioritize self-declared address directly
+				address := getSelfDeclaredAddressForCFLookup(ctx, cpf)
+				if address == "" {
+					// Fallback to extraction from citizen data
+					address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
+				}
+				logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
 
-			if address != "" {
-				logger.Info("CALLING TrySynchronousCFLookup", zap.String("cpf", cpf), zap.String("address", address))
-				cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
-				if err != nil {
-					logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), zap.String("cpf", cpf))
+				if address != "" {
+					logger.Info("CALLING TrySynchronousCFLookup", zap.String("cpf", cpf), zap.String("address", address))
+					cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
+					if err != nil {
+						logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), zap.String("cpf", cpf))
+					} else {
+						logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
+					}
 				} else {
-					logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
+					logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", zap.String("cpf", cpf))
 				}
 			} else {
-				logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", zap.String("cpf", cpf))
-			}
-		} else {
-			logger.Info("FOUND CACHED CF DATA", zap.String("cpf", cpf), zap.Bool("is_active", cfData.IsActive))
-		}
-
-		if cfData != nil && cfData.IsActive {
-			logger.Info("integrating CF data into wallet saude.clinica_familia",
-				zap.String("cpf", cpf),
-				zap.String("cf_name", cfData.CFData.NomePopular),
-				zap.String("cf_address", cfData.AddressUsed),
-				zap.String("cf_source", cfData.LookupSource),
-				zap.String("operation", "cf_integration_success"))
-
-			// Initialize saude if needed
-			if wallet.Saude == nil {
-				wallet.Saude = &models.Saude{}
+				logger.Info("FOUND CACHED CF DATA", zap.String("cpf", cpf), zap.Bool("is_active", cfData.IsActive))
 			}
 
-			// Replace/populate clinica_familia with CF data
-			wallet.Saude.ClinicaFamilia = cfData.ToClinicaFamilia()
-		} else {
-			logger.Debug("no CF data available for citizen",
-				zap.String("cpf", cpf),
-				zap.Bool("cf_data_is_nil", cfData == nil),
-				zap.Bool("cf_data_is_active", cfData != nil && cfData.IsActive))
+			if cfData != nil && cfData.IsActive {
+				logger.Info("integrating CF data into wallet saude.clinica_familia",
+					zap.String("cpf", cpf),
+					zap.String("cf_name", cfData.CFData.NomePopular),
+					zap.String("cf_address", cfData.AddressUsed),
+					zap.String("cf_source", cfData.LookupSource),
+					zap.String("operation", "cf_integration_success"))
+
+				// Initialize saude if needed
+				if wallet.Saude == nil {
+					wallet.Saude = &models.Saude{}
+				}
+
+				// Replace/populate clinica_familia with CF data
+				wallet.Saude.ClinicaFamilia = cfData.ToClinicaFamilia()
+			} else {
+				logger.Debug("no CF data available for citizen",
+					zap.String("cpf", cpf),
+					zap.Bool("cf_data_is_nil", cfData == nil),
+					zap.Bool("cf_data_is_active", cfData != nil && cfData.IsActive))
+			}
 		}
 	} else if wallet.Saude != nil && wallet.Saude.ClinicaFamilia != nil {
 		// Mark existing CF data as coming from bigquery
