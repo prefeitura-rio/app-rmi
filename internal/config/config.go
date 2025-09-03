@@ -164,9 +164,16 @@ func LoadConfig() error {
 		return fmt.Errorf("invalid AVATAR_CACHE_TTL: %w", err)
 	}
 
-	// MCP Server configuration
-	mcpServerURL := getEnvOrDefault("MCP_SERVER_URL", "https://services.pref.rio/mcp/mcp/")
-	mcpAuthToken := getEnvOrDefault("MCP_AUTH_TOKEN", "")
+	// MCP Server configuration (required for CF lookup functionality)
+	mcpServerURL := os.Getenv("MCP_SERVER_URL")
+	if mcpServerURL == "" {
+		return fmt.Errorf("MCP_SERVER_URL is required for CF lookup functionality")
+	}
+
+	mcpAuthToken := os.Getenv("MCP_AUTH_TOKEN")
+	if mcpAuthToken == "" {
+		return fmt.Errorf("MCP_AUTH_TOKEN is required for CF lookup functionality")
+	}
 
 	cfLookupCacheTTL, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_CACHE_TTL", "24h")) // 24 hours
 	if err != nil {
