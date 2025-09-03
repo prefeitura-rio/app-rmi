@@ -7,7 +7,6 @@ import (
 	"math"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -23,42 +22,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
-
-// queueCFLookupJob queues a background job to perform CF lookup for a citizen
-func queueCFLookupJob(ctx context.Context, cpf, address string) {
-	logger := observability.Logger().With(zap.String("cpf", cpf))
-
-	// Create CF lookup job
-	job := services.SyncJob{
-		ID:         fmt.Sprintf("cf_lookup_%s_%d", cpf, time.Now().UnixNano()),
-		Type:       "cf_lookup",
-		Key:        cpf,
-		Collection: "cf_lookup",
-		Data: map[string]interface{}{
-			"cpf":     cpf,
-			"address": address,
-		},
-		Timestamp:  time.Now(),
-		RetryCount: 0,
-		MaxRetries: 3,
-	}
-
-	jobBytes, err := json.Marshal(job)
-	if err != nil {
-		logger.Error("failed to marshal CF lookup job", zap.Error(err))
-		return
-	}
-
-	// Queue job using Redis
-	queueKey := "sync:queue:cf_lookup"
-	err = config.Redis.LPush(ctx, queueKey, string(jobBytes)).Err()
-	if err != nil {
-		logger.Error("failed to queue CF lookup job", zap.Error(err))
-		return
-	}
-
-	logger.Debug("CF lookup job queued successfully", zap.String("job_id", job.ID))
-}
 
 // GetCitizenData godoc
 // @Summary Obter dados do cidadão
@@ -135,18 +98,6 @@ func GetCitizenData(c *gin.Context) {
 		})
 	}
 	cacheSetSpan.End()
-
-	// Check for CF lookup and queue background job if needed
-	ctx, cfSpan := utils.TraceBusinessLogic(ctx, "cf_lookup_check")
-	shouldLookup, address, err := services.CFLookupServiceInstance.ShouldLookupCF(ctx, cpf, citizen)
-	if err != nil {
-		logger.Warn("failed to check CF lookup status", zap.Error(err))
-	} else if shouldLookup && address != "" {
-		// Queue background CF lookup job
-		logger.Debug("queuing CF lookup job", zap.String("cpf", cpf), zap.String("address", address))
-		queueCFLookupJob(ctx, cpf, address)
-	}
-	cfSpan.End()
 
 	// Convert to response model (excluding wallet fields) with tracing
 	ctx, convertSpan := utils.TraceBusinessLogic(ctx, "convert_to_citizen_response")
@@ -538,30 +489,6 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		logger.Warn("failed to log audit event", zap.Error(err))
 	}
 	auditSpan.End()
-
-	// Handle CF data invalidation when address changes
-	ctx, cfInvalidateSpan := utils.TraceBusinessLogic(ctx, "cf_invalidate_on_address_change")
-	newAddress := fmt.Sprintf("%s, %s, %s, %s, %s, %s",
-		input.Logradouro, input.Numero,
-		func() string {
-			if input.Complemento != nil {
-				return *input.Complemento
-			} else {
-				return ""
-			}
-		}(),
-		input.Bairro, input.Municipio, input.Estado)
-	newAddressHash := services.CFLookupServiceInstance.GenerateAddressHash(newAddress)
-
-	err = services.CFLookupServiceInstance.InvalidateCFDataForAddress(ctx, cpf, newAddressHash)
-	if err != nil {
-		logger.Warn("failed to invalidate CF data for address change", zap.Error(err))
-	} else {
-		// Queue new CF lookup for the updated address
-		logger.Debug("queuing CF lookup for updated address", zap.String("cpf", cpf))
-		queueCFLookupJob(ctx, cpf, newAddress)
-	}
-	cfInvalidateSpan.End()
 
 	// Serialize response with tracing
 	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
@@ -1839,100 +1766,6 @@ func GetCitizenWallet(c *gin.Context) {
 		AssistenciaSocial: citizen.AssistenciaSocial,
 		Educacao:          citizen.Educacao,
 	}
-
-	// Check if we need to populate CF data in saude.clinica_familia
-	ctx, cfDataSpan := utils.TraceBusinessLogic(ctx, "cf_data_integration_wallet")
-	needsCFData := false
-	if wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil ||
-		wallet.Saude.ClinicaFamilia.Indicador == nil || !*wallet.Saude.ClinicaFamilia.Indicador {
-		needsCFData = true
-	}
-
-	logger.Info("WALLET CF CHECK", zap.Bool("needs_cf_data", needsCFData))
-
-	// Debug the specific condition checks
-	saudeIsNil := wallet.Saude == nil
-	clinicaFamiliaIsNil := wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil
-	indicadorIsNil := wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil || wallet.Saude.ClinicaFamilia.Indicador == nil
-	indicadorIsFalse := false
-	if wallet.Saude != nil && wallet.Saude.ClinicaFamilia != nil && wallet.Saude.ClinicaFamilia.Indicador != nil {
-		indicadorIsFalse = !*wallet.Saude.ClinicaFamilia.Indicador
-	}
-
-	logger.Info("CF data integration detailed check",
-		zap.String("cpf", cpf),
-		zap.Bool("needs_cf_data", needsCFData),
-		zap.Bool("saude_is_nil", saudeIsNil),
-		zap.Bool("clinica_familia_is_nil", clinicaFamiliaIsNil),
-		zap.Bool("indicador_is_nil", indicadorIsNil),
-		zap.Bool("indicador_is_false", indicadorIsFalse),
-		zap.String("operation", "cf_integration_debug"))
-
-	if needsCFData {
-		logger.Debug("attempting to get CF data for citizen", zap.String("cpf", cpf))
-
-		// Check if CF lookup service is available
-		if services.CFLookupServiceInstance == nil {
-			logger.Error("CF lookup service not initialized - skipping CF data integration", zap.String("cpf", cpf))
-		} else {
-			// First try to get existing cached CF data
-			logger.Info("CHECKING FOR CACHED CF DATA", zap.String("cpf", cpf))
-			cfData, err := services.CFLookupServiceInstance.GetCFDataForCitizen(ctx, cpf)
-			if err != nil || cfData == nil || !cfData.IsActive {
-				// No cached data, try synchronous CF lookup
-				logger.Info("NO CACHED CF DATA - ATTEMPTING SYNCHRONOUS LOOKUP", zap.String("cpf", cpf))
-
-				// Get citizen address for CF lookup - prioritize self-declared address directly
-				address := getSelfDeclaredAddressForCFLookup(ctx, cpf)
-				if address == "" {
-					// Fallback to extraction from citizen data
-					address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
-				}
-				logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
-
-				if address != "" {
-					logger.Info("CALLING TrySynchronousCFLookup", zap.String("cpf", cpf), zap.String("address", address))
-					cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
-					if err != nil {
-						logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), zap.String("cpf", cpf))
-					} else {
-						logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
-					}
-				} else {
-					logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", zap.String("cpf", cpf))
-				}
-			} else {
-				logger.Info("FOUND CACHED CF DATA", zap.String("cpf", cpf), zap.Bool("is_active", cfData.IsActive))
-			}
-
-			if cfData != nil && cfData.IsActive {
-				logger.Info("integrating CF data into wallet saude.clinica_familia",
-					zap.String("cpf", cpf),
-					zap.String("cf_name", cfData.CFData.NomePopular),
-					zap.String("cf_address", cfData.AddressUsed),
-					zap.String("cf_source", cfData.LookupSource),
-					zap.String("operation", "cf_integration_success"))
-
-				// Initialize saude if needed
-				if wallet.Saude == nil {
-					wallet.Saude = &models.Saude{}
-				}
-
-				// Replace/populate clinica_familia with CF data
-				wallet.Saude.ClinicaFamilia = cfData.ToClinicaFamilia()
-			} else {
-				logger.Debug("no CF data available for citizen",
-					zap.String("cpf", cpf),
-					zap.Bool("cf_data_is_nil", cfData == nil),
-					zap.Bool("cf_data_is_active", cfData != nil && cfData.IsActive))
-			}
-		}
-	} else if wallet.Saude != nil && wallet.Saude.ClinicaFamilia != nil {
-		// Mark existing CF data as coming from bigquery
-		fonte := "bigquery"
-		wallet.Saude.ClinicaFamilia.Fonte = &fonte
-	}
-	cfDataSpan.End()
 	buildSpan.End()
 
 	// Serialize response with tracing
@@ -2349,72 +2182,4 @@ func getCurrentEmailData(ctx context.Context, cpf string) (*models.Email, error)
 	}
 
 	return selfDeclared.Email, nil
-}
-
-// getSelfDeclaredAddressForCFLookup gets the current self-declared address for CF lookup
-func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
-	// Try to get from cache first using DataManager
-	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
-
-	var addressData struct {
-		CPF       string           `json:"cpf"`
-		Endereco  *models.Endereco `json:"endereco"`
-		UpdatedAt string           `json:"updated_at"`
-	}
-
-	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_address", &addressData)
-	if err == nil && addressData.Endereco != nil && addressData.Endereco.Principal != nil {
-		return buildAddressString(addressData.Endereco.Principal)
-	}
-
-	// Fallback to MongoDB with field projection (only get endereco field)
-	var selfDeclared struct {
-		Endereco *models.Endereco `bson:"endereco"`
-	}
-	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(
-		ctx,
-		bson.M{"cpf": cpf},
-		options.FindOne().SetProjection(bson.M{"endereco": 1}),
-	).Decode(&selfDeclared)
-
-	if err == nil && selfDeclared.Endereco != nil && selfDeclared.Endereco.Principal != nil {
-		return buildAddressString(selfDeclared.Endereco.Principal)
-	}
-
-	return ""
-}
-
-// buildAddressString builds a complete address string from address components
-func buildAddressString(endereco *models.EnderecoPrincipal) string {
-	if endereco.Logradouro == nil || *endereco.Logradouro == "" {
-		return ""
-	}
-
-	parts := []string{*endereco.Logradouro}
-
-	if endereco.Numero != nil && *endereco.Numero != "" {
-		parts = append(parts, *endereco.Numero)
-	}
-
-	if endereco.Complemento != nil && *endereco.Complemento != "" {
-		parts = append(parts, *endereco.Complemento)
-	}
-
-	if endereco.Bairro != nil && *endereco.Bairro != "" {
-		parts = append(parts, *endereco.Bairro)
-	}
-
-	if endereco.Municipio != nil && *endereco.Municipio != "" {
-		parts = append(parts, *endereco.Municipio)
-	} else {
-		parts = append(parts, "Rio de Janeiro") // Default city
-	}
-
-	if endereco.Estado != nil && *endereco.Estado != "" {
-		parts = append(parts, *endereco.Estado)
-	} else {
-		parts = append(parts, "RJ") // Default state
-	}
-
-	return strings.Join(parts, ", ")
 }

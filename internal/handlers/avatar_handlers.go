@@ -237,7 +237,7 @@ func (h *AvatarHandlers) GetUserAvatar(c *gin.Context) {
 	if userConfig.AvatarID != nil && *userConfig.AvatarID != "" {
 		avatar, err := services.AvatarServiceInstance.GetAvatarByID(ctx, *userConfig.AvatarID)
 		if err != nil {
-			h.logger.Warn("failed to get avatar details", zap.Error(err),
+			h.logger.Warn("failed to get avatar details", zap.Error(err), 
 				zap.String("cpf", cpf), zap.String("avatar_id", *userConfig.AvatarID))
 		} else if avatar != nil {
 			avatarResponse := avatar.ToResponse()
@@ -359,7 +359,7 @@ func (h *AvatarHandlers) UpdateUserAvatar(c *gin.Context) {
 	if userConfig.AvatarID != nil && *userConfig.AvatarID != "" {
 		avatar, err := services.AvatarServiceInstance.GetAvatarByID(ctx, *userConfig.AvatarID)
 		if err != nil {
-			h.logger.Warn("failed to get updated avatar details", zap.Error(err),
+			h.logger.Warn("failed to get updated avatar details", zap.Error(err), 
 				zap.String("cpf", cpf), zap.String("avatar_id", *userConfig.AvatarID))
 		} else if avatar != nil {
 			avatarResponse := avatar.ToResponse()
@@ -376,7 +376,7 @@ func (h *AvatarHandlers) UpdateUserAvatar(c *gin.Context) {
 		UserAgent: c.Request.UserAgent(),
 		RequestID: c.GetString("RequestID"),
 	}
-	err = utils.LogUserConfigUpdate(ctx, auditCtx, "avatar_id",
+	err = utils.LogUserConfigUpdate(ctx, auditCtx, "avatar_id", 
 		userConfig.AvatarID, request.AvatarID)
 	auditSpan.End()
 	if err != nil {
@@ -521,7 +521,7 @@ func GetUserAvatar(c *gin.Context) {
 	if userConfig.AvatarID != nil && *userConfig.AvatarID != "" {
 		avatar, err := services.AvatarServiceInstance.GetAvatarByID(ctx, *userConfig.AvatarID)
 		if err != nil {
-			observability.Logger().Warn("failed to get avatar details", zap.Error(err),
+			observability.Logger().Warn("failed to get avatar details", zap.Error(err), 
 				zap.String("cpf", cpf), zap.String("avatar_id", *userConfig.AvatarID))
 		} else if avatar != nil {
 			avatarResponse := avatar.ToResponse()
@@ -612,7 +612,7 @@ func UpdateUserAvatar(c *gin.Context) {
 	if userConfig.AvatarID != nil && *userConfig.AvatarID != "" {
 		avatar, err := services.AvatarServiceInstance.GetAvatarByID(ctx, *userConfig.AvatarID)
 		if err != nil {
-			observability.Logger().Warn("failed to get updated avatar details", zap.Error(err),
+			observability.Logger().Warn("failed to get updated avatar details", zap.Error(err), 
 				zap.String("cpf", cpf), zap.String("avatar_id", *userConfig.AvatarID))
 		} else if avatar != nil {
 			avatarResponse := avatar.ToResponse()
@@ -628,7 +628,7 @@ func UpdateUserAvatar(c *gin.Context) {
 		UserAgent: c.Request.UserAgent(),
 		RequestID: c.GetString("RequestID"),
 	}
-	err = utils.LogUserConfigUpdate(ctx, auditCtx, "avatar_id",
+	err = utils.LogUserConfigUpdate(ctx, auditCtx, "avatar_id", 
 		userConfig.AvatarID, request.AvatarID)
 	auditSpan.End()
 	if err != nil {

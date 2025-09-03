@@ -62,15 +62,6 @@ type Config struct {
 	// Avatar configuration
 	AvatarCacheTTL time.Duration `json:"avatar_cache_ttl"`
 
-	// MCP Server configuration
-	MCPServerURL            string        `json:"mcp_server_url"`
-	MCPAuthToken            string        `json:"mcp_auth_token"`
-	CFLookupCollection      string        `json:"mongo_cf_lookup_collection"`
-	CFLookupCacheTTL        time.Duration `json:"cf_lookup_cache_ttl"`
-	CFLookupRateLimit       time.Duration `json:"cf_lookup_rate_limit"`
-	CFLookupGlobalRateLimit int           `json:"cf_lookup_global_rate_limit"`
-	CFLookupSyncTimeout     time.Duration `json:"cf_lookup_sync_timeout"`
-
 	// WhatsApp configuration
 	WhatsAppEnabled      bool   `json:"whatsapp_enabled"`
 	WhatsAppBaseURL      string `json:"whatsapp_base_url"`
@@ -162,37 +153,6 @@ func LoadConfig() error {
 	avatarCacheTTL, err := time.ParseDuration(getEnvOrDefault("AVATAR_CACHE_TTL", "1h")) // 1 hour
 	if err != nil {
 		return fmt.Errorf("invalid AVATAR_CACHE_TTL: %w", err)
-	}
-
-	// MCP Server configuration (required for CF lookup functionality)
-	mcpServerURL := os.Getenv("MCP_SERVER_URL")
-	if mcpServerURL == "" {
-		return fmt.Errorf("MCP_SERVER_URL is required for CF lookup functionality")
-	}
-
-	mcpAuthToken := os.Getenv("MCP_AUTH_TOKEN")
-	if mcpAuthToken == "" {
-		return fmt.Errorf("MCP_AUTH_TOKEN is required for CF lookup functionality")
-	}
-
-	cfLookupCacheTTL, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_CACHE_TTL", "24h")) // 24 hours
-	if err != nil {
-		return fmt.Errorf("invalid CF_LOOKUP_CACHE_TTL: %w", err)
-	}
-
-	cfLookupRateLimit, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_RATE_LIMIT", "1h")) // 1 hour
-	if err != nil {
-		return fmt.Errorf("invalid CF_LOOKUP_RATE_LIMIT: %w", err)
-	}
-
-	cfLookupGlobalRateLimit, err := strconv.Atoi(getEnvOrDefault("CF_LOOKUP_GLOBAL_RATE_LIMIT", "100")) // 100 requests per minute
-	if err != nil {
-		return fmt.Errorf("invalid CF_LOOKUP_GLOBAL_RATE_LIMIT: %w", err)
-	}
-
-	cfLookupSyncTimeout, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_SYNC_TIMEOUT", "8s")) // 8 seconds for synchronous lookups
-	if err != nil {
-		return fmt.Errorf("invalid CF_LOOKUP_SYNC_TIMEOUT: %w", err)
 	}
 
 	// WhatsApp configuration
@@ -304,15 +264,6 @@ func LoadConfig() error {
 
 		// Avatar configuration
 		AvatarCacheTTL: avatarCacheTTL,
-
-		// MCP Server configuration
-		MCPServerURL:            mcpServerURL,
-		MCPAuthToken:            mcpAuthToken,
-		CFLookupCollection:      getEnvOrDefault("MONGODB_CF_LOOKUP_COLLECTION", "cf_lookups"),
-		CFLookupCacheTTL:        cfLookupCacheTTL,
-		CFLookupRateLimit:       cfLookupRateLimit,
-		CFLookupGlobalRateLimit: cfLookupGlobalRateLimit,
-		CFLookupSyncTimeout:     cfLookupSyncTimeout,
 
 		// WhatsApp configuration
 		WhatsAppEnabled:      whatsappEnabledBool,
