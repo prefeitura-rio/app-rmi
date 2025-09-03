@@ -11,7 +11,7 @@ ENVIRONMENTS = {
     "local": {
         "yaml_file": Path.home() / "idcarioca_staging.yaml",  # Use staging config for local
         "api_base_url": "http://localhost:8080",
-        "requires_auth": True
+        "requires_auth": False
     },
     "staging": {
         "yaml_file": Path.home() / "idcarioca_staging.yaml",
@@ -330,25 +330,95 @@ def main():
         except Exception as e:
             print(f"⚠️ Health check failed: {e}")
 
-        # Test CF lookup functionality with CPFs that exist in different environments
-        print("Testing CF lookup with CPFs from staging vs local...")
-        
-        if environment == "staging":
-            # Use staging CPFs
-            cpf_with_cf = "47562396507"  # Has CF data in staging
-            cpf_without_cf = "45049725810"  # Should get CF via MCP lookup
+        # TODO: Implement what you want
+        # List avatars
+        avatars = api_client.get("/v1/avatars")
+        print(avatars.json())
+        # Create an avatar
+        create_response = api_client.post("/v1/avatars", json_data={"name": "John Doe", "url": "https://example.com/avatar.png"})
+        print(f"Created avatar with status: {create_response.status_code}")
+        if create_response.status_code == 201:
+            print("✅ Avatar created successfully")
+            # Extract the avatar ID from the creation response
+            try:
+                created_avatar = create_response.json()
+                avatar_id = created_avatar.get("id")
+                if avatar_id:
+                    print(f"✅ New avatar ID: {avatar_id}")
+                else:
+                    print("⚠️ No ID in creation response, falling back to list search")
+                    # Fallback: search in the list
+                    avatars = api_client.get("/v1/avatars")
+                    avatars_data = avatars.json()["data"]
+                    john_doe_avatars = [avatar for avatar in avatars_data if avatar["name"] == "John Doe"]
+                    if john_doe_avatars:
+                        avatar_id = john_doe_avatars[0]["id"]
+                        print(f"Found John Doe avatar with ID: {avatar_id}")
+                    else:
+                        print("❌ John Doe avatar not found in the list")
+                        if avatars_data:
+                            avatar_id = avatars_data[0]["id"]
+                            print(f"Using first available avatar with ID: {avatar_id}")
+                        else:
+                            print("❌ No avatars available")
+                            return 0
+            except Exception as e:
+                print(f"⚠️ Error parsing creation response: {e}")
+                # Fallback: search in the list
+                avatars = api_client.get("/v1/avatars")
+                avatars_data = avatars.json()["data"]
+                john_doe_avatars = [avatar for avatar in avatars_data if avatar["name"] == "John Doe"]
+                if john_doe_avatars:
+                    avatar_id = john_doe_avatars[0]["id"]
+                    print(f"Found John Doe avatar with ID: {avatar_id}")
+                else:
+                    print("❌ John Doe avatar not found in the list")
+                    if avatars_data:
+                        avatar_id = avatars_data[0]["id"]
+                        print(f"Using first available avatar with ID: {avatar_id}")
+                    else:
+                        print("❌ No avatars available")
+                        return 0
         else:
-            # Use CPFs that actually exist in local mock database
-            cpf_with_cf = "47562396507"  # Has CF data (indicador: true)
-            cpf_without_cf = "45049725810"  # Should get CF via MCP lookup (indicador: false)
+            print(f"⚠️ Avatar creation failed: {create_response.text}")
+            # Use existing avatar if creation failed
+            avatars = api_client.get("/v1/avatars")
+            avatars_data = avatars.json()["data"]
+            if avatars_data:
+                avatar_id = avatars_data[0]["id"]
+                print(f"Using first available avatar with ID: {avatar_id}")
+            else:
+                print("❌ No avatars available")
+                return 0
         
-        print(f"Testing CPF with CF data: {cpf_with_cf}")
-        response1 = api_client.get(f"/v1/citizen/{cpf_with_cf}/wallet")
-        print(response1.json())
+        # First, set the user's avatar (before deleting the test avatar)
+        print(f"👤 Setting avatar for user 45049725810...")
+        set_response = api_client.put(f"/v1/users/45049725810/avatar", json_data={"avatar_id": avatar_id})
+        print(f"Set avatar response status: {set_response.status_code}")
         
-        print(f"\nTesting CPF without CF data: {cpf_without_cf}")
-        response2 = api_client.get(f"/v1/citizen/{cpf_without_cf}/wallet")
-        print(response2.json())
+        # Get user's avatar to confirm it was set
+        user_avatar = api_client.get(f"/v1/users/45049725810/avatar")
+        print(f"User avatar after setting: {user_avatar.status_code}")
+        try:
+            print(user_avatar.json())
+        except Exception as e:
+            print(f"Error parsing user avatar response: {e}")
+            print(f"Response text: {user_avatar.text}")
+        
+        # Now delete the test avatar (after we've used it)
+        if avatar_id:
+            print(f"🗑️ Deleting test avatar with ID: {avatar_id}")
+            delete_response = api_client.delete(f"/v1/avatars/{avatar_id}")
+            print(f"Delete response status: {delete_response.status_code}")
+        
+        # Get user's avatar one more time to see if it's still set
+        user_avatar = api_client.get(f"/v1/users/45049725810/avatar")
+        print(f"User avatar after deleting test avatar: {user_avatar.status_code}")
+        try:
+            print(user_avatar.json())
+        except Exception as e:
+            print(f"Error parsing user avatar response: {e}")
+            print(f"Response text: {user_avatar.text}")
 
     except Exception as e:
         print(f"\n💥 Failed to setup environment: {e}")

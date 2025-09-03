@@ -1,23 +1,5 @@
 basePath: /v1
 definitions:
-  handlers.CacheReadRequest:
-    properties:
-      key:
-        example: citizen:12345678901
-        type: string
-    required:
-    - key
-    type: object
-  handlers.CacheReadResponse:
-    properties:
-      exists:
-        type: boolean
-      key:
-        type: string
-      ttl_seconds:
-        type: integer
-      value: {}
-    type: object
   handlers.EmailValidationRequest:
     description: Estrutura de entrada contendo o endereço de email a ser validado.
     properties:
@@ -382,10 +364,6 @@ definitions:
       email:
         type: string
       endereco:
-        type: string
-      fonte:
-        description: '"bigquery" or "mcp" - not stored in DB, populated at response
-          time'
         type: string
       horario_atendimento:
         type: string
@@ -1420,47 +1398,6 @@ paths:
       summary: Remover múltiplos telefones da whitelist
       tags:
       - Beta Whitelist
-  /admin/cache/read:
-    post:
-      consumes:
-      - application/json
-      description: Permite aos administradores ler qualquer chave do cache Redis para
-        debug e monitoramento
-      parameters:
-      - description: Chave do cache para ler
-        in: body
-        name: data
-        required: true
-        schema:
-          $ref: '#/definitions/handlers.CacheReadRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Dados da chave do cache
-          schema:
-            $ref: '#/definitions/handlers.CacheReadResponse'
-        "400":
-          description: Parâmetros inválidos
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Token de autenticação não fornecido ou inválido
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Acesso negado - somente administradores
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Erro interno do servidor
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Ler chave arbitrária do cache Redis
-      tags:
-      - admin
   /admin/phone/quarantine/stats:
     get:
       description: Obtém estatísticas sobre telefones em quarentena (apenas administradores)

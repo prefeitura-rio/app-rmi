@@ -54,7 +54,7 @@ func (s *AvatarService) ListAvatars(ctx context.Context, page, perPage int) (*mo
 	if err == nil {
 		observability.CacheHits.WithLabelValues("list_avatars").Inc()
 		s.logger.Debug("avatars list cache hit", zap.Int("page", page), zap.Int("per_page", perPage))
-
+		
 		var response models.AvatarsListResponse
 		if err := json.Unmarshal([]byte(cached), &response); err == nil {
 			return &response, nil
@@ -150,7 +150,7 @@ func (s *AvatarService) GetAvatarByID(ctx context.Context, avatarID string) (*mo
 	if err == nil {
 		observability.CacheHits.WithLabelValues("get_avatar").Inc()
 		s.logger.Debug("avatar cache hit", zap.String("id", avatarID))
-
+		
 		var avatar models.Avatar
 		if err := json.Unmarshal([]byte(cached), &avatar); err == nil {
 			return &avatar, nil

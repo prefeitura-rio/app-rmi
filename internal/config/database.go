@@ -314,11 +314,6 @@ func ensureIndexes() error {
 		return err
 	}
 
-	// Ensure cf_lookups collection index
-	if err := ensureCFLookupIndex(ctx, logger); err != nil {
-		return err
-	}
-
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -1028,101 +1023,6 @@ func ensureBetaGroupIndex(ctx context.Context, logger *zap.Logger) error {
 	} else {
 		logger.Debug("beta_group collection indexes already exist",
 			zap.String("collection", AppConfig.BetaGroupCollection))
-	}
-
-	return nil
-}
-
-// ensureCFLookupIndex creates the indexes for cf_lookups collection
-func ensureCFLookupIndex(ctx context.Context, logger *zap.Logger) error {
-	collection := MongoDB.Collection(AppConfig.CFLookupCollection)
-
-	// Check if indexes already exist
-	cursor, err := collection.Indexes().List(ctx)
-	if err != nil {
-		logger.Error("failed to list indexes", zap.Error(err))
-		return err
-	}
-	defer cursor.Close(ctx)
-
-	existingIndexes := make(map[string]bool)
-	for cursor.Next(ctx) {
-		var index bson.M
-		if err := cursor.Decode(&index); err != nil {
-			continue
-		}
-		if name, ok := index["name"].(string); ok {
-			existingIndexes[name] = true
-		}
-	}
-
-	// Create indexes that don't exist
-	indexesToCreate := []mongo.IndexModel{}
-
-	// 1. Unique index on cpf (one document per CPF)
-	if !existingIndexes["cpf_1"] {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "cpf", Value: 1}},
-			Options: options.Index().
-				SetName("cpf_1").
-				SetUnique(true),
-		})
-	}
-
-	// 2. Index on is_active for active lookups
-	if !existingIndexes["is_active_1"] {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "is_active", Value: 1}},
-			Options: options.Index().
-				SetName("is_active_1"),
-		})
-	}
-
-	// 3. Compound index on cpf + is_active for fast active lookups
-	if !existingIndexes["cpf_1_is_active_1"] {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{
-				{Key: "cpf", Value: 1},
-				{Key: "is_active", Value: 1},
-			},
-			Options: options.Index().
-				SetName("cpf_1_is_active_1"),
-		})
-	}
-
-	// 4. Index on created_at for time-based queries
-	if !existingIndexes["created_at_1"] {
-		indexesToCreate = append(indexesToCreate, mongo.IndexModel{
-			Keys: bson.D{{Key: "created_at", Value: -1}},
-			Options: options.Index().
-				SetName("created_at_1"),
-		})
-	}
-
-	// Create all missing indexes
-	for _, indexModel := range indexesToCreate {
-		_, err = collection.Indexes().CreateOne(ctx, indexModel)
-		if err != nil {
-			// Check if it's a duplicate key error (another instance created it)
-			if mongo.IsDuplicateKeyError(err) {
-				logger.Info("cf_lookups index already exists (created by another instance)",
-					zap.String("collection", AppConfig.CFLookupCollection))
-				continue
-			}
-			logger.Error("failed to create cf_lookups index",
-				zap.String("collection", AppConfig.CFLookupCollection),
-				zap.Error(err))
-			return err
-		}
-	}
-
-	if len(indexesToCreate) > 0 {
-		logger.Info("created cf_lookups collection indexes",
-			zap.String("collection", AppConfig.CFLookupCollection),
-			zap.Int("count", len(indexesToCreate)))
-	} else {
-		logger.Debug("cf_lookups collection indexes already exist",
-			zap.String("collection", AppConfig.CFLookupCollection))
 	}
 
 	return nil

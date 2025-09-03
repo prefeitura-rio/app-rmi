@@ -36,12 +36,6 @@ func main() {
 		log.Fatal("Failed to initialize MongoDB")
 	}
 
-	// Initialize CF rate limiter for CF lookup requests
-	services.InitCFRateLimiter(config.AppConfig.CFLookupGlobalRateLimit, logging.Logger)
-
-	// Initialize CF lookup service for automatic Clínica da Família lookup
-	services.InitCFLookupService()
-
 	// Create sync service
 	workerCount := config.AppConfig.DBWorkerCount
 	if workerCount == 0 {
