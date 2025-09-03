@@ -653,6 +653,69 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/cache/read": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Permite aos administradores ler qualquer chave do cache Redis para debug e monitoramento",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Ler chave arbitrária do cache Redis",
+                "parameters": [
+                    {
+                        "description": "Chave do cache para ler",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CacheReadRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Dados da chave do cache",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CacheReadResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Parâmetros inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - somente administradores",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/phone/quarantine/stats": {
             "get": {
                 "description": "Obtém estatísticas sobre telefones em quarentena (apenas administradores)",
@@ -2676,6 +2739,33 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handlers.CacheReadRequest": {
+            "type": "object",
+            "required": [
+                "key"
+            ],
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "example": "citizen:12345678901"
+                }
+            }
+        },
+        "handlers.CacheReadResponse": {
+            "type": "object",
+            "properties": {
+                "exists": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "ttl_seconds": {
+                    "type": "integer"
+                },
+                "value": {}
+            }
+        },
         "handlers.EmailValidationRequest": {
             "description": "Estrutura de entrada contendo o endereço de email a ser validado.",
             "type": "object",
@@ -3216,6 +3306,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "endereco": {
+                    "type": "string"
+                },
+                "fonte": {
+                    "description": "\"bigquery\" or \"mcp\" - not stored in DB, populated at response time",
                     "type": "string"
                 },
                 "horario_atendimento": {

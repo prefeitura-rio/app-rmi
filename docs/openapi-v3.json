@@ -869,6 +869,83 @@
         ]
       }
     },
+    "/admin/cache/read": {
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Permite aos administradores ler qualquer chave do cache Redis para debug e monitoramento",
+        "tags": [
+          "admin"
+        ],
+        "summary": "Ler chave arbitrária do cache Redis",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/handlers.CacheReadRequest"
+              }
+            }
+          },
+          "description": "Chave do cache para ler",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Dados da chave do cache",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.CacheReadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parâmetros inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - somente administradores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/phone/quarantine/stats": {
       "get": {
         "description": "Obtém estatísticas sobre telefones em quarentena (apenas administradores)",
@@ -3493,6 +3570,33 @@
       }
     },
     "schemas": {
+      "handlers.CacheReadRequest": {
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "citizen:12345678901"
+          }
+        }
+      },
+      "handlers.CacheReadResponse": {
+        "type": "object",
+        "properties": {
+          "exists": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "ttl_seconds": {
+            "type": "integer"
+          },
+          "value": {}
+        }
+      },
       "handlers.EmailValidationRequest": {
         "description": "Estrutura de entrada contendo o endereço de email a ser validado.",
         "type": "object",
@@ -4033,6 +4137,10 @@
             "type": "string"
           },
           "endereco": {
+            "type": "string"
+          },
+          "fonte": {
+            "description": "\"bigquery\" or \"mcp\" - not stored in DB, populated at response time",
             "type": "string"
           },
           "horario_atendimento": {
