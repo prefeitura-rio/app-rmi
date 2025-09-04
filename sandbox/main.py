@@ -4,6 +4,7 @@ import requests
 import json
 import yaml
 import sys
+from random import choice
 from urllib.parse import urlencode
 
 # Configuration for different environments
@@ -342,9 +343,53 @@ def main():
             cpf_with_cf = "47562396507"  # Has CF data (indicador: true)
             cpf_without_cf = "45049725810"  # Should get CF via MCP lookup (indicador: false)
         
-        print(f"Testing CPF with CF data: {cpf_with_cf}")
-        response1 = api_client.get(f"/v1/citizen/{cpf_with_cf}/wallet")
-        print(response1.json())
+        test_cases = [
+            {
+                'name': 'Copacabana (Known CF Address)',
+                'address': {
+                    'logradouro': 'Avenida Atlântica',
+                    'numero': '1702',
+                    'complemento': None,
+                    'bairro': 'Copacabana',
+                    'municipio': 'Rio de Janeiro',
+                    'estado': 'RJ',
+                    'cep': '22021001'
+                },
+                'expect_cf': True  # This address has been confirmed to have a CF
+            },
+            {
+                'name': 'Ipanema (Tourist Area)',
+                'address': {
+                    'logradouro': 'Rua Visconde de Pirajá',
+                    'numero': '500',
+                    'complemento': None,
+                    'bairro': 'Ipanema',
+                    'municipio': 'Rio de Janeiro',
+                    'estado': 'RJ',
+                    'cep': '22410002'
+                },
+                'expect_cf': None  # Unknown if CF exists
+            },
+            {
+                'name': 'Cidade Nova (Original Test Address)',
+                'address': {
+                    'logradouro': 'Rua Afonso Cavalcanti',
+                    'numero': '455',
+                    'complemento': None,
+                    'bairro': 'Cidade Nova',
+                    'municipio': 'Rio de Janeiro',
+                    'estado': 'RJ',
+                    'cep': '20211110'
+                },
+                'expect_cf': False  # Previously confirmed no CF
+            }
+        ]
+
+        address = choice(test_cases)
+        print(f"Testing address: {address['name']}")
+        response = api_client.put(f"/v1/citizen/{cpf_without_cf}/address", json_data=address['address'])
+        print(response.json())
+        response.raise_for_status()
         
         print(f"\nTesting CPF without CF data: {cpf_without_cf}")
         response2 = api_client.get(f"/v1/citizen/{cpf_without_cf}/wallet")

@@ -1920,6 +1920,18 @@ func GetCitizenWallet(c *gin.Context) {
 
 				// Replace/populate clinica_familia with CF data
 				wallet.Saude.ClinicaFamilia = cfData.ToClinicaFamilia()
+
+				// Replace/populate equipe_saude_familia with Family Health Team data if available
+				if cfData.EquipeSaudeData != nil {
+					logger.Info("integrating Family Health Team data into wallet saude.equipe_saude_familia",
+						zap.String("cpf", cpf),
+						zap.String("team_name", cfData.EquipeSaudeData.NomeOficial),
+						zap.Int("doctors_count", len(cfData.EquipeSaudeData.Medicos)),
+						zap.Int("nurses_count", len(cfData.EquipeSaudeData.Enfermeiros)),
+						zap.String("operation", "family_health_team_integration_success"))
+
+					wallet.Saude.EquipeSaudeFamilia = cfData.ToEquipeSaudeFamilia()
+				}
 			} else {
 				logger.Debug("no CF data available for citizen",
 					zap.String("cpf", cpf),
