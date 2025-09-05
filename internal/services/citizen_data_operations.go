@@ -367,3 +367,39 @@ func (op *SelfDeclaredRacaDataOperation) GetTTL() time.Duration {
 func (op *SelfDeclaredRacaDataOperation) GetType() string {
 	return "self_declared_raca"
 }
+
+// SelfDeclaredNomeExibicaoDataOperation implements DataOperation for self-declared exhibition name data
+type SelfDeclaredNomeExibicaoDataOperation struct {
+	CPF          string
+	NomeExibicao string
+	UpdatedAt    time.Time
+}
+
+// GetKey returns the CPF as the key
+func (op *SelfDeclaredNomeExibicaoDataOperation) GetKey() string {
+	return op.CPF
+}
+
+// GetCollection returns the self-declared collection name
+func (op *SelfDeclaredNomeExibicaoDataOperation) GetCollection() string {
+	return "self_declared"
+}
+
+// GetData returns the self-declared exhibition name data
+func (op *SelfDeclaredNomeExibicaoDataOperation) GetData() interface{} {
+	return map[string]interface{}{
+		"cpf":           op.CPF,
+		"nome_exibicao": op.NomeExibicao,
+		"updated_at":    op.UpdatedAt,
+	}
+}
+
+// GetTTL returns the TTL for self-declared exhibition name data (24 hours)
+func (op *SelfDeclaredNomeExibicaoDataOperation) GetTTL() time.Duration {
+	return 24 * time.Hour
+}
+
+// GetType returns the operation type
+func (op *SelfDeclaredNomeExibicaoDataOperation) GetType() string {
+	return "self_declared_nome_exibicao"
+}

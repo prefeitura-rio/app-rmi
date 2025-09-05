@@ -25,3 +25,7 @@ type SelfDeclaredPhoneInput struct {
 type SelfDeclaredRacaInput struct {
 	Valor string `json:"valor" binding:"required"`
 }
+
+type SelfDeclaredNomeExibicaoInput struct {
+	Valor string `json:"valor" binding:"required"`
+}

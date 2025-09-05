@@ -212,6 +212,8 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 	if selfDeclared.Raca != nil {
 		citizen.Raca = selfDeclared.Raca
 	}
+	// Always set exhibition name field (even if nil) to ensure it appears in JSON response
+	citizen.NomeExibicao = selfDeclared.NomeExibicao
 
 	return &citizen, nil
 }
@@ -226,6 +228,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		fmt.Sprintf("self_declared_email:write:%s", cpf),
 		fmt.Sprintf("self_declared_phone:write:%s", cpf),
 		fmt.Sprintf("self_declared_raca:write:%s", cpf),
+		fmt.Sprintf("self_declared_nome_exibicao:write:%s", cpf),
 	}
 
 	// Try write buffer first (most recent data)
@@ -281,15 +284,25 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		selfDeclared.Raca = racaData.Raca
 	}
 
+	var nomeExibicaoData struct {
+		CPF          string  `json:"cpf"`
+		NomeExibicao *string `json:"nome_exibicao"`
+		UpdatedAt    string  `json:"updated_at"`
+	}
+	if parseResult(keys[4], "nome_exibicao", &nomeExibicaoData) && nomeExibicaoData.NomeExibicao != nil {
+		selfDeclared.NomeExibicao = nomeExibicaoData.NomeExibicao
+	}
+
 	// If write buffer didn't have everything, try read cache in batch
 	if selfDeclared.Endereco == nil || selfDeclared.Email == nil ||
-		selfDeclared.Telefone == nil || selfDeclared.Raca == nil {
+		selfDeclared.Telefone == nil || selfDeclared.Raca == nil || selfDeclared.NomeExibicao == nil {
 
 		cacheKeys := []string{
 			fmt.Sprintf("self_declared_address:cache:%s", cpf),
 			fmt.Sprintf("self_declared_email:cache:%s", cpf),
 			fmt.Sprintf("self_declared_phone:cache:%s", cpf),
 			fmt.Sprintf("self_declared_raca:cache:%s", cpf),
+			fmt.Sprintf("self_declared_nome_exibicao:cache:%s", cpf),
 		}
 
 		cacheResults, err := services.BatchReadMultiple(ctx, cacheKeys, observability.Logger().Unwrap())
@@ -320,18 +333,22 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		if selfDeclared.Raca == nil && parseCacheResult(cacheKeys[3], "raca", &racaData) && racaData.Raca != nil {
 			selfDeclared.Raca = racaData.Raca
 		}
+		if selfDeclared.NomeExibicao == nil && parseCacheResult(cacheKeys[4], "nome_exibicao", &nomeExibicaoData) && nomeExibicaoData.NomeExibicao != nil {
+			selfDeclared.NomeExibicao = nomeExibicaoData.NomeExibicao
+		}
 	}
 
 	// Final fallback to MongoDB for any missing individual fields
 	if selfDeclared.Endereco == nil || selfDeclared.Email == nil ||
-		selfDeclared.Telefone == nil || selfDeclared.Raca == nil {
+		selfDeclared.Telefone == nil || selfDeclared.Raca == nil || selfDeclared.NomeExibicao == nil {
 
 		observability.Logger().Debug("fallback to MongoDB for missing self-declared fields",
 			zap.String("cpf", cpf),
 			zap.Bool("missing_endereco", selfDeclared.Endereco == nil),
 			zap.Bool("missing_email", selfDeclared.Email == nil),
 			zap.Bool("missing_telefone", selfDeclared.Telefone == nil),
-			zap.Bool("missing_raca", selfDeclared.Raca == nil))
+			zap.Bool("missing_raca", selfDeclared.Raca == nil),
+			zap.Bool("missing_nome_exibicao", selfDeclared.NomeExibicao == nil))
 
 		var mongoSelfDeclared models.SelfDeclaredData
 		err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&mongoSelfDeclared)
@@ -351,6 +368,9 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			}
 			if selfDeclared.Raca == nil && mongoSelfDeclared.Raca != nil {
 				selfDeclared.Raca = mongoSelfDeclared.Raca
+			}
+			if selfDeclared.NomeExibicao == nil && mongoSelfDeclared.NomeExibicao != nil {
+				selfDeclared.NomeExibicao = mongoSelfDeclared.NomeExibicao
 			}
 
 			observability.Logger().Debug("filled missing self-declared fields from MongoDB",
@@ -1125,6 +1145,161 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredRaca completed",
+		zap.String("cpf", cpf),
+		zap.Duration("total_duration", totalDuration),
+		zap.Duration("cache_duration", cacheDuration),
+		zap.String("status", "success"))
+}
+
+// UpdateSelfDeclaredNomeExibicao godoc
+// @Summary Atualizar nome de exibição autodeclarado
+// @Description Atualiza ou cria o nome de exibição autodeclarado de um cidadão por CPF. Apenas o campo de nome de exibição é atualizado. O nome de exibição é o nome que aparece na interface do usuário, permitindo ao cidadão controlar como seu nome é exibido no aplicativo.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "Número do CPF"
+// @Param data body models.SelfDeclaredNomeExibicaoInput true "Nome de exibição autodeclarado"
+// @Security BearerAuth
+// @Success 200 {object} SuccessResponse "Nome de exibição atualizado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou valor de nome de exibição inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado"
+// @Failure 404 {object} ErrorResponse "Cidadão não encontrado"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/{cpf}/exhibition-name [put]
+func UpdateSelfDeclaredNomeExibicao(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "UpdateSelfDeclaredNomeExibicao")
+	defer span.End()
+
+	cpf := c.Param("cpf")
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+
+	// Add CPF to span attributes
+	span.SetAttributes(
+		attribute.String("cpf", cpf),
+		attribute.String("operation", "update_exhibition_name"),
+		attribute.String("service", "citizen"),
+	)
+
+	logger.Debug("UpdateSelfDeclaredNomeExibicao called", zap.String("cpf", cpf))
+
+	// Validate CPF with tracing
+	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
+	if !utils.ValidateCPF(cpf) {
+		utils.RecordErrorInSpan(cpfSpan, fmt.Errorf("invalid CPF format"), map[string]interface{}{
+			"cpf": cpf,
+		})
+		cpfSpan.End()
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
+		return
+	}
+	cpfSpan.End()
+
+	// Parse input with tracing
+	ctx, inputSpan := utils.TraceInputParsing(ctx, "exhibition_name")
+	var input models.SelfDeclaredNomeExibicaoInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.RecordErrorInSpan(inputSpan, err, map[string]interface{}{
+			"error.type": "input_parsing",
+			"input.type": "SelfDeclaredNomeExibicaoInput",
+		})
+		inputSpan.End()
+		logger.Error("failed to parse input", zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid input format"})
+		return
+	}
+	utils.AddSpanAttribute(inputSpan, "input.valor", input.Valor)
+	inputSpan.End()
+
+	// Basic validation - check if name is not empty and not too long
+	ctx, validationSpan := utils.TraceInputValidation(ctx, "exhibition_name_value", "exhibition_name")
+	if len(strings.TrimSpace(input.Valor)) == 0 {
+		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("exhibition name cannot be empty"), map[string]interface{}{
+			"invalid_value": input.Valor,
+		})
+		validationSpan.End()
+		logger.Error("exhibition name cannot be empty", zap.String("value", input.Valor))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "exhibition name cannot be empty"})
+		return
+	}
+	if len(input.Valor) > 255 {
+		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("exhibition name too long: %d characters", len(input.Valor)), map[string]interface{}{
+			"invalid_value": input.Valor,
+			"length":        len(input.Valor),
+		})
+		validationSpan.End()
+		logger.Error("exhibition name too long", zap.String("value", input.Valor), zap.Int("length", len(input.Valor)))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "exhibition name too long (maximum 255 characters)"})
+		return
+	}
+	utils.AddSpanAttribute(validationSpan, "validated_value", input.Valor)
+	validationSpan.End()
+
+	// Use cache service for update with tracing
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_exhibition_name_via_cache")
+	cacheService := services.NewCacheService()
+	err := cacheService.UpdateSelfDeclaredNomeExibicao(ctx, cpf, input.Valor)
+	if err != nil {
+		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
+			"cache.operation": "update_self_declared_nome_exibicao",
+			"cache.service":   "unified_cache_service",
+		})
+		updateSpan.End()
+		observability.DatabaseOperations.WithLabelValues("update", "error").Inc()
+		logger.Error("failed to update self-declared exhibition name via cache service", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	utils.AddSpanAttribute(updateSpan, "new_exhibition_name", input.Valor)
+	updateSpan.End()
+
+	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+	observability.SelfDeclaredUpdates.WithLabelValues("success").Inc()
+
+	// Invalidate cache with tracing
+	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
+	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	cacheStart := time.Now()
+	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_error", err.Error())
+		logger.Warn("failed to invalidate old cache", zap.Error(err))
+	} else {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_success", true)
+	}
+	cacheDuration := time.Since(cacheStart)
+	utils.AddSpanAttribute(cacheSpan, "cache.duration_ms", cacheDuration.Milliseconds())
+	cacheSpan.End()
+
+	// Log audit event with tracing
+	ctx, auditSpan := utils.TraceAuditLogging(ctx, "update", "exhibition_name")
+	auditCtx := utils.AuditContext{
+		CPF:       cpf,
+		UserID:    c.GetString("user_id"),
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+		RequestID: c.GetString("RequestID"),
+	}
+
+	// For audit, we log the new value as both old and new for now since we don't have historical data
+	err = utils.LogExhibitionNameUpdate(ctx, auditCtx, "", input.Valor)
+	if err != nil {
+		utils.RecordErrorInSpan(auditSpan, err, map[string]interface{}{
+			"audit.action":   "update",
+			"audit.resource": "exhibition_name",
+		})
+		logger.Warn("failed to log audit event", zap.Error(err))
+	}
+	auditSpan.End()
+
+	// Serialize response with tracing
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared exhibition name updated successfully"})
+	responseSpan.End()
+
+	// Log total operation time
+	totalDuration := time.Since(startTime)
+	logger.Debug("UpdateSelfDeclaredNomeExibicao completed",
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
