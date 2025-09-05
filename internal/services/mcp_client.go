@@ -397,8 +397,8 @@ func (c *MCPClient) loadEquipmentInstructions(ctx context.Context, sessionID str
 	return nil
 }
 
-// FindNearestCF finds the nearest Clínica da Família for a given address
-func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.CFInfo, error) {
+// FindNearestCF finds the nearest Clínica da Família and Family Health Team for a given address
+func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.HealthServicesResult, error) {
 	startTime := time.Now()
 	ctx, span := utils.TraceBusinessLogic(ctx, "mcp_find_nearest_cf")
 	defer span.End()
@@ -459,7 +459,7 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 			"name": "equipments_by_address",
 			"arguments": map[string]interface{}{
 				"address":    address,
-				"categories": []string{"CF"},
+				"categories": []string{"CF", "CMS"},
 			},
 		},
 	}
@@ -470,11 +470,11 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 	}
 
 	// Parse response
-	return c.parseCFResponse(result)
+	return c.parseHealthServicesResponse(result)
 }
 
-// parseCFResponse parses the MCP response and extracts CF information
-func (c *MCPClient) parseCFResponse(result map[string]interface{}) (*models.CFInfo, error) {
+// parseHealthServicesResponse parses the MCP response and extracts both CF and Family Health Team information
+func (c *MCPClient) parseHealthServicesResponse(result map[string]interface{}) (*models.HealthServicesResult, error) {
 	resultData, ok := result["result"].(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("invalid response format: missing result")
@@ -483,18 +483,18 @@ func (c *MCPClient) parseCFResponse(result map[string]interface{}) (*models.CFIn
 	// Check for error flag
 	if isError, exists := resultData["isError"]; exists && isError == true {
 		// Try to extract error message from response
-		errorMsg := "no CF found for this address"
+		errorMsg := "no health services found for this address"
 		if textContent, exists := resultData["textContent"]; exists {
 			if textStr, ok := textContent.(string); ok && textStr != "" {
 				errorMsg = textStr
 			}
 		}
 
-		c.logger.Debug("MCP server reported no CF available",
+		c.logger.Debug("MCP server reported no health services available",
 			zap.String("reason", errorMsg),
-			zap.String("operation", "cf_lookup_no_results"))
+			zap.String("operation", "health_services_lookup_no_results"))
 
-		// Return nil (no CF found) instead of error - this is expected behavior
+		// Return nil (no services found) instead of error - this is expected behavior
 		return nil, nil
 	}
 
@@ -508,38 +508,169 @@ func (c *MCPClient) parseCFResponse(result map[string]interface{}) (*models.CFIn
 		return nil, fmt.Errorf("no equipment found in response")
 	}
 
-	equipamento, ok := equipamentos[0].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid equipment data format")
+	var healthResult models.HealthServicesResult
+
+	// Process each equipment object
+	for _, eq := range equipamentos {
+		equipamento, ok := eq.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Check for error in equipment data
+		if errorMsg, exists := equipamento["error"]; exists {
+			c.logger.Debug("MCP server reported no equipment found",
+				zap.String("reason", fmt.Sprintf("%v", errorMsg)),
+				zap.String("operation", "equipment_lookup_no_equipment"))
+			continue
+		}
+
+		// Determine the type of equipment based on categoria
+		categoria, ok := equipamento["categoria"].(string)
+		if !ok {
+			continue
+		}
+
+		switch categoria {
+		case "CF", "CMS":
+			// Parse as health facility
+			cfBytes, err := json.Marshal(equipamento)
+			if err != nil {
+				c.logger.Error("failed to marshal CF data", zap.Error(err))
+				continue
+			}
+
+			var cfInfo models.CFInfo
+			err = json.Unmarshal(cfBytes, &cfInfo)
+			if err != nil {
+				c.logger.Error("failed to unmarshal CF data", zap.Error(err))
+				continue
+			}
+
+			healthResult.HealthFacility = &cfInfo
+
+		case "EQUIPE DA FAMILIA":
+			// Parse as family health team
+			equipeSaudeData, err := c.parseEquipeSaudeData(equipamento)
+			if err != nil {
+				c.logger.Error("failed to parse equipe saude data", zap.Error(err))
+				continue
+			}
+
+			healthResult.FamilyHealthTeam = equipeSaudeData
+		}
 	}
 
-	// Check for error in equipment data
-	if errorMsg, exists := equipamento["error"]; exists {
-		c.logger.Debug("MCP server reported no equipment found",
-			zap.String("reason", fmt.Sprintf("%v", errorMsg)),
-			zap.String("operation", "cf_lookup_no_equipment"))
-
-		// Return nil (no CF found) instead of error - this is expected behavior
-		return nil, nil
+	// Log what we found
+	if healthResult.HealthFacility != nil {
+		c.logger.Info("Health facility found",
+			zap.String("cf_name", healthResult.HealthFacility.NomePopular),
+			zap.String("cf_bairro", healthResult.HealthFacility.Bairro))
 	}
 
-	// Convert to CFInfo struct
-	cfBytes, err := json.Marshal(equipamento)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal CF data: %w", err)
+	if healthResult.FamilyHealthTeam != nil {
+		c.logger.Info("Family health team found",
+			zap.String("team_name", healthResult.FamilyHealthTeam.NomeOficial),
+			zap.Int("doctors_count", len(healthResult.FamilyHealthTeam.Medicos)),
+			zap.Int("nurses_count", len(healthResult.FamilyHealthTeam.Enfermeiros)))
 	}
 
-	var cfInfo models.CFInfo
-	err = json.Unmarshal(cfBytes, &cfInfo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal CF data: %w", err)
+	return &healthResult, nil
+}
+
+// parseEquipeSaudeData parses family health team data from MCP response
+func (c *MCPClient) parseEquipeSaudeData(equipamento map[string]interface{}) (*models.EquipeSaudeInfo, error) {
+	var equipeSaude models.EquipeSaudeInfo
+
+	// Extract basic information
+	if nomeOficial, ok := equipamento["nome_oficial"].(string); ok {
+		equipeSaude.NomeOficial = nomeOficial
 	}
 
-	c.logger.Info("CF lookup successful",
-		zap.String("cf_name", cfInfo.NomePopular),
-		zap.String("cf_bairro", cfInfo.Bairro))
+	if nomePopular, ok := equipamento["nome_popular"].(string); ok {
+		equipeSaude.NomePopular = nomePopular
 
-	return &cfInfo, nil
+		// Parse doctors and nurses from nome_popular field
+		// Format: "MEDICOS:\nName1\nName2\n\nENFERMEIROS:\nName3\nName4"
+		medicos, enfermeiros := c.parseProfessionalsFromText(nomePopular)
+		equipeSaude.Medicos = medicos
+		equipeSaude.Enfermeiros = enfermeiros
+	}
+
+	if regiaoPlaneamento, ok := equipamento["regiao_planejamento"].(string); ok {
+		equipeSaude.RegiaoPlaneamento = regiaoPlaneamento
+	}
+
+	if ativo, ok := equipamento["ativo"].(bool); ok {
+		equipeSaude.Ativo = ativo
+	}
+
+	if abertoAoPublico, ok := equipamento["aberto_ao_publico"].(bool); ok {
+		equipeSaude.AbertoAoPublico = abertoAoPublico
+	}
+
+	// Extract contact information
+	if contato, ok := equipamento["contato"].(map[string]interface{}); ok {
+		var contactInfo models.CFContactInfo
+
+		if telefones, ok := contato["telefones"].([]interface{}); ok {
+			for _, tel := range telefones {
+				if telStr, ok := tel.(string); ok {
+					contactInfo.Telefones = append(contactInfo.Telefones, telStr)
+				}
+			}
+		}
+
+		if email, ok := contato["email"].(string); ok {
+			contactInfo.Email = email
+		}
+
+		equipeSaude.Contato = contactInfo
+	}
+
+	// Extract updated_at
+	if updatedAtStr, ok := equipamento["updated_at"].(string); ok {
+		if updatedAt, err := time.Parse(time.RFC3339, updatedAtStr); err == nil {
+			equipeSaude.UpdatedAt = updatedAt
+		}
+	}
+
+	return &equipeSaude, nil
+}
+
+// parseProfessionalsFromText extracts doctors and nurses from the nome_popular field
+func (c *MCPClient) parseProfessionalsFromText(text string) ([]string, []string) {
+	var medicos []string
+	var enfermeiros []string
+
+	lines := strings.Split(text, "\n")
+	currentSection := ""
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		if strings.Contains(line, "MEDICOS:") {
+			currentSection = "medicos"
+			continue
+		}
+
+		if strings.Contains(line, "ENFERMEIROS:") {
+			currentSection = "enfermeiros"
+			continue
+		}
+
+		// Add names to appropriate section
+		if currentSection == "medicos" && line != "" {
+			medicos = append(medicos, line)
+		} else if currentSection == "enfermeiros" && line != "" {
+			enfermeiros = append(enfermeiros, line)
+		}
+	}
+
+	return medicos, enfermeiros
 }
 
 // intPtr returns a pointer to an integer

@@ -42,19 +42,27 @@ func NewCFLookupService(database *mongo.Database, mcpClient *MCPClient, logger *
 // InitCFLookupService initializes the global CF lookup service instance
 func InitCFLookupService() {
 	logger := zap.L().Named("cf_lookup_service")
-	
+
+	// Check if CF lookup is enabled
+	if !config.AppConfig.CFLookupEnabled {
+		logger.Info("CF lookup service disabled via CF_LOOKUP_ENABLED=false")
+		CFLookupServiceInstance = nil
+		return
+	}
+
 	logger.Info("initializing CF lookup service",
 		zap.String("mcp_server_url", config.AppConfig.MCPServerURL),
 		zap.Duration("sync_timeout", config.AppConfig.CFLookupSyncTimeout),
 		zap.Duration("cache_ttl", config.AppConfig.CFLookupCacheTTL))
-	
+
 	// Initialize MCP client with error handling
 	mcpClient := NewMCPClient(config.AppConfig, &logging.SafeLogger{})
 	if mcpClient == nil {
 		logger.Error("failed to initialize MCP client - CF lookup service disabled")
+		CFLookupServiceInstance = nil
 		return
 	}
-	
+
 	CFLookupServiceInstance = NewCFLookupService(config.MongoDB, mcpClient, &logging.SafeLogger{})
 	logger.Info("CF lookup service initialized successfully")
 }
@@ -138,11 +146,11 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 	defer cancel()
 
 	// Call MCP server to find CF with enhanced error handling
-	cfInfo, err := s.mcpClient.FindNearestCF(ctx, address)
+	healthData, err := s.mcpClient.FindNearestCF(ctx, address)
 	if err != nil {
 		// Categorize the error for better handling
 		errorType := s.categorizeError(err)
-		s.logger.Error("MCP CF lookup failed",
+		s.logger.Error("MCP health services lookup failed",
 			zap.Error(err),
 			zap.String("cpf", cpf),
 			zap.String("address", address),
@@ -151,20 +159,20 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 		// Return different error messages based on error type
 		switch errorType {
 		case "timeout":
-			return fmt.Errorf("CF lookup timed out for address: %s", address)
+			return fmt.Errorf("health services lookup timed out for address: %s", address)
 		case "network":
-			return fmt.Errorf("network error during CF lookup: %w", err)
+			return fmt.Errorf("network error during health services lookup: %w", err)
 		case "authorization":
-			return fmt.Errorf("authorization failed for CF lookup: %w", err)
+			return fmt.Errorf("authorization failed for health services lookup: %w", err)
 		case "validation":
 			return fmt.Errorf("address validation failed: %w", err)
 		default:
-			return fmt.Errorf("CF lookup failed: %w", err)
+			return fmt.Errorf("health services lookup failed: %w", err)
 		}
 	}
 
-	if cfInfo == nil {
-		s.logger.Info("no CF found for address",
+	if healthData == nil || healthData.HealthFacility == nil {
+		s.logger.Info("no health services found for address",
 			zap.String("cpf", cpf),
 			zap.String("address", address))
 		return nil
@@ -173,15 +181,16 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 	// Store CF lookup result
 	addressHash := s.GenerateAddressHash(address)
 	cfLookup := &models.CFLookup{
-		ID:           primitive.NewObjectID(),
-		CPF:          cpf,
-		AddressHash:  addressHash,
-		AddressUsed:  address,
-		CFData:       *cfInfo,
-		LookupSource: "mcp",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-		IsActive:     true,
+		ID:              primitive.NewObjectID(),
+		CPF:             cpf,
+		AddressHash:     addressHash,
+		AddressUsed:     address,
+		CFData:          *healthData.HealthFacility,
+		EquipeSaudeData: healthData.FamilyHealthTeam,
+		LookupSource:    "mcp",
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+		IsActive:        true,
 	}
 
 	// Extract distance if available (from MCP response)
@@ -207,15 +216,15 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 
 	s.logger.Info("CF lookup completed successfully",
 		zap.String("cpf", cpf),
-		zap.String("cf_name_popular", cfInfo.NomePopular),
-		zap.String("cf_name_oficial", cfInfo.NomeOficial),
-		zap.String("cf_bairro", cfInfo.Bairro),
-		zap.String("cf_logradouro", cfInfo.Logradouro),
+		zap.String("cf_name_popular", healthData.HealthFacility.NomePopular),
+		zap.String("cf_name_oficial", healthData.HealthFacility.NomeOficial),
+		zap.String("cf_bairro", healthData.HealthFacility.Bairro),
+		zap.String("cf_logradouro", healthData.HealthFacility.Logradouro),
 		zap.String("operation", "cf_lookup_success"),
 		zap.String("address_hash", addressHash),
 		zap.Int("distance_meters", cfLookup.DistanceMeters),
-		zap.Bool("cf_ativo", cfInfo.Ativo),
-		zap.Bool("cf_aberto_publico", cfInfo.AbertoAoPublico))
+		zap.Bool("cf_ativo", healthData.HealthFacility.Ativo),
+		zap.Bool("cf_aberto_publico", healthData.HealthFacility.AbertoAoPublico))
 
 	return nil
 }
@@ -548,7 +557,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	if s == nil {
 		return nil, fmt.Errorf("CF lookup service not available")
 	}
-	
+
 	if s.mcpClient == nil {
 		if s.logger != nil {
 			s.logger.Error("MCP client is nil - CF lookup service not properly initialized", zap.String("cpf", cpf))
@@ -573,8 +582,8 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	// No rate limiting needed for CF lookups
 
 	// Perform MCP lookup
-	cfData, err := s.mcpClient.FindNearestCF(syncCtx, address)
-	
+	healthData, err := s.mcpClient.FindNearestCF(syncCtx, address)
+
 	if err != nil {
 		s.logger.Debug("synchronous CF lookup failed", zap.Error(err), zap.String("cpf", cpf))
 		// Fall back to async lookup - queue a job manually
@@ -582,9 +591,9 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 		return nil, err
 	}
 
-	// Check if CF was found
-	if cfData == nil {
-		s.logger.Debug("no CF found for address in synchronous lookup",
+	// Check if any health services were found
+	if healthData == nil || healthData.HealthFacility == nil {
+		s.logger.Debug("no health services found for address in synchronous lookup",
 			zap.String("cpf", cpf),
 			zap.String("address", address))
 		return nil, nil
@@ -592,15 +601,16 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 
 	// Success! Store the result immediately
 	cfLookup := &models.CFLookup{
-		ID:           primitive.NewObjectID(),
-		CPF:          cpf,
-		AddressHash:  s.GenerateAddressHash(address),
-		AddressUsed:  address,
-		CFData:       *cfData,
-		LookupSource: "mcp",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-		IsActive:     true,
+		ID:              primitive.NewObjectID(),
+		CPF:             cpf,
+		AddressHash:     s.GenerateAddressHash(address),
+		AddressUsed:     address,
+		CFData:          *healthData.HealthFacility,
+		EquipeSaudeData: healthData.FamilyHealthTeam,
+		LookupSource:    "mcp",
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+		IsActive:        true,
 	}
 
 	// Store in database
@@ -619,7 +629,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 
 	s.logger.Info("synchronous CF lookup successful",
 		zap.String("cpf", cpf),
-		zap.String("cf_name", cfData.NomePopular))
+		zap.String("cf_name", healthData.HealthFacility.NomePopular))
 
 	return cfLookup, nil
 }

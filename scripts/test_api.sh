@@ -333,13 +333,21 @@ ethnicity_data="{
 }"
 make_request "PUT" "/citizen/$CPF/ethnicity" "$ethnicity_data" "Update Ethnicity"
 
-# Test 12: Update First Login (API always sets to false)
+# Test 12: Update Exhibition Name (allow user to control display name)
+# Generate a random exhibition name to test the feature
+random_name_number=$((RANDOM % 10000))
+exhibition_name_data="{
+    \"valor\": \"Nome de Teste $random_name_number\"
+}"
+make_request "PUT" "/citizen/$CPF/exhibition-name" "$exhibition_name_data" "Update Exhibition Name"
+
+# Test 13: Update First Login (API always sets to false)
 firstlogin_data='{
     "first_login": true
 }'
 make_request "PUT" "/citizen/$CPF/firstlogin" "$firstlogin_data" "Update First Login"
 
-# Test 13: Update Opt-In (change to opposite value to test update)
+# Test 14: Update Opt-In (change to opposite value to test update)
 # First get current opt-in status to ensure we make a change AND store as original
 make_request "GET" "/citizen/$CPF/optin" "" "Get Opt-In Status (Original)"
 current_optin_response=$(curl -s -H "Authorization: Bearer $BEARER_TOKEN" "$API_BASE_URL/citizen/$CPF/optin")
@@ -432,7 +440,7 @@ get_verification_code() {
     fi
 }
 
-# Test 14: Update Phone (requires verification)
+# Test 15: Update Phone (requires verification)
 if [[ "$SKIP_PHONE" != "true" ]]; then
     # Extract DDI, DDD, and number from the generated phone number
     # Format: +5511999887766
@@ -470,7 +478,7 @@ if [[ "$SKIP_PHONE" != "true" ]]; then
         echo -e "${YELLOW}💡 This is likely due to MongoDB connection issues or missing test data${NC}"
     fi
     
-    # Test 15: Verify Phone Update after verification
+    # Test 16: Verify Phone Update after verification
     echo -e "${BLUE}📋 Getting final citizen data to verify phone update...${NC}"
     make_request "GET" "/citizen/$CPF" "" "Get Citizen Data (After Phone Verification)"
 else
@@ -478,30 +486,30 @@ else
     echo ""
 fi
 
-# Test 16: Get Citizen Data Again (to verify updates)
+# Test 17: Get Citizen Data Again (to verify updates)
 echo -e "${BLUE}📋 Getting updated citizen data for verification...${NC}"
 make_request "GET" "/citizen/$CPF" "" "Get Citizen Data (After Updates)"
 
-# Test 17: Get First Login Status (Updated)
+# Test 18: Get First Login Status (Updated)
 make_request "GET" "/citizen/$CPF/firstlogin" "" "Get First Login Status (Updated)"
 
-# Test 18: Get Opt-In Status (Updated)
+# Test 19: Get Opt-In Status (Updated)
 make_request "GET" "/citizen/$CPF/optin" "" "Get Opt-In Status (Updated)"
 
 # WhatsApp Bot Endpoints Tests
 echo -e "${BLUE}📞 Testing WhatsApp Bot Endpoints...${NC}"
 echo "=================================================="
 
-# Test 19: Get Available Channels
+# Test 20: Get Available Channels
 make_request "GET" "/config/channels" "" "Get Available Channels"
 
-# Test 20: Get Opt-Out Reasons
+# Test 21: Get Opt-Out Reasons
 make_request "GET" "/config/opt-out-reasons" "" "Get Opt-Out Reasons"
 
-# Test 21: Get Citizen by Phone
+# Test 22: Get Citizen by Phone
 make_request "GET" "/phone/$PHONE_NUMBER/citizen" "" "Get Citizen by Phone"
 
-# Test 22: Validate Registration
+# Test 23: Validate Registration
     registration_data="{
         \"name\": \"João Silva Santos\",
         \"cpf\": \"$CPF\",
@@ -535,7 +543,7 @@ make_request "GET" "/phone/$PHONE_NUMBER/citizen" "" "Get Citizen by Phone"
     echo -e "${GREEN}✅ Phone-CPF mapping setup completed${NC}"
     echo ""
 
-# Test 23: Test Opt-out with non-blocking reason
+# Test 24: Test Opt-out with non-blocking reason
     echo -e "${BLUE}🔄 Testing Non-blocking Opt-out Behavior...${NC}"
     echo "=================================================="
     
@@ -582,7 +590,7 @@ make_request "GET" "/phone/$PHONE_NUMBER/citizen" "" "Get Citizen by Phone"
     echo -e "${GREEN}✅ Non-blocking opt-out tests completed${NC}"
     echo ""
 
-# Test 24: Test Opt-out with blocking reason
+# Test 25: Test Opt-out with blocking reason
     echo -e "${BLUE}🔒 Testing Blocking Opt-out Behavior...${NC}"
     echo "=================================================="
     
@@ -604,7 +612,7 @@ make_request "GET" "/phone/$PHONE_NUMBER/citizen" "" "Get Citizen by Phone"
     }"
     make_request "POST" "/phone/$PHONE_NUMBER/opt-out" "$optout_blocking_data" "Opt-out (Blocking)"
 
-# Test 25: Verify phone mapping is blocked after incorrect_person opt-out
+# Test 26: Verify phone mapping is blocked after incorrect_person opt-out
     echo -e "${BLUE}🔒 Testing CPF-Phone Mapping Blocking Logic...${NC}"
     echo "=================================================="
     

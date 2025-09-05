@@ -97,6 +97,9 @@ func main() {
 	// Initialize avatar service for profile pictures
 	services.InitAvatarService()
 
+	// Initialize legal entity service for Pessoa Jurídica queries
+	services.InitLegalEntityService()
+
 	// Initialize CF rate limiter for CF lookup requests
 	services.InitCFRateLimiter(config.AppConfig.CFLookupGlobalRateLimit, observability.Logger())
 
@@ -145,11 +148,13 @@ func main() {
 			citizen.PUT("/:cpf/phone", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredPhone)
 			citizen.PUT("/:cpf/email", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredEmail)
 			citizen.PUT("/:cpf/ethnicity", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredRaca)
+			citizen.PUT("/:cpf/exhibition-name", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredNomeExibicao)
 			citizen.GET("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.GetFirstLogin)
 			citizen.PUT("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.UpdateFirstLogin)
 			citizen.GET("/:cpf/optin", middleware.RequireOwnCPF(), handlers.GetOptIn)
 			citizen.PUT("/:cpf/optin", middleware.RequireOwnCPF(), handlers.UpdateOptIn)
 			citizen.POST("/:cpf/phone/validate", middleware.RequireOwnCPF(), handlers.ValidatePhoneVerification)
+			citizen.GET("/:cpf/legal-entities", middleware.RequireOwnCPF(), handlers.GetLegalEntities)
 
 			// Avatar endpoints
 			citizen.GET("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.GetUserAvatar)

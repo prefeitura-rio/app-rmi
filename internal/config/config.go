@@ -50,6 +50,7 @@ type Config struct {
 	BairroCollection             string `json:"mongo_bairro_collection"`
 	LogradouroCollection         string `json:"mongo_logradouro_collection"`
 	AvatarsCollection            string `json:"mongo_avatars_collection"`
+	LegalEntityCollection        string `json:"mongo_legal_entity_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -65,6 +66,7 @@ type Config struct {
 	// MCP Server configuration
 	MCPServerURL            string        `json:"mcp_server_url"`
 	MCPAuthToken            string        `json:"mcp_auth_token"`
+	CFLookupEnabled         bool          `json:"cf_lookup_enabled"`
 	CFLookupCollection      string        `json:"mongo_cf_lookup_collection"`
 	CFLookupCacheTTL        time.Duration `json:"cf_lookup_cache_ttl"`
 	CFLookupRateLimit       time.Duration `json:"cf_lookup_rate_limit"`
@@ -139,6 +141,12 @@ func LoadConfig() error {
 		return fmt.Errorf("MONGODB_MAINTENANCE_REQUEST_COLLECTION environment variable is required")
 	}
 
+	// Check if MONGODB_LEGAL_ENTITY_COLLECTION is set
+	legalEntityCollection := os.Getenv("MONGODB_LEGAL_ENTITY_COLLECTION")
+	if legalEntityCollection == "" {
+		return fmt.Errorf("MONGODB_LEGAL_ENTITY_COLLECTION environment variable is required")
+	}
+
 	phoneVerificationTTL, err := time.ParseDuration(getEnvOrDefault("PHONE_VERIFICATION_TTL", "5m"))
 	if err != nil {
 		return fmt.Errorf("invalid PHONE_VERIFICATION_TTL: %w", err)
@@ -164,15 +172,20 @@ func LoadConfig() error {
 		return fmt.Errorf("invalid AVATAR_CACHE_TTL: %w", err)
 	}
 
-	// MCP Server configuration (required for CF lookup functionality)
+	// CF Lookup configuration
+	cfLookupEnabled := getEnvOrDefault("CF_LOOKUP_ENABLED", "true") == "true"
+	
+	// MCP Server configuration (only required if CF lookup is enabled)
 	mcpServerURL := os.Getenv("MCP_SERVER_URL")
-	if mcpServerURL == "" {
-		return fmt.Errorf("MCP_SERVER_URL is required for CF lookup functionality")
-	}
-
 	mcpAuthToken := os.Getenv("MCP_AUTH_TOKEN")
-	if mcpAuthToken == "" {
-		return fmt.Errorf("MCP_AUTH_TOKEN is required for CF lookup functionality")
+	
+	if cfLookupEnabled {
+		if mcpServerURL == "" {
+			return fmt.Errorf("MCP_SERVER_URL is required when CF_LOOKUP_ENABLED=true")
+		}
+		if mcpAuthToken == "" {
+			return fmt.Errorf("MCP_AUTH_TOKEN is required when CF_LOOKUP_ENABLED=true")
+		}
 	}
 
 	cfLookupCacheTTL, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_CACHE_TTL", "24h")) // 24 hours
@@ -293,6 +306,7 @@ func LoadConfig() error {
 		BairroCollection:             getEnvOrDefault("MONGODB_BAIRRO_COLLECTION", "bairro"),
 		LogradouroCollection:         getEnvOrDefault("MONGODB_LOGRADOURO_COLLECTION", "logradouro"),
 		AvatarsCollection:            getEnvOrDefault("MONGODB_AVATARS_COLLECTION", "avatars"),
+		LegalEntityCollection:        legalEntityCollection,
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,
@@ -308,6 +322,7 @@ func LoadConfig() error {
 		// MCP Server configuration
 		MCPServerURL:            mcpServerURL,
 		MCPAuthToken:            mcpAuthToken,
+		CFLookupEnabled:         cfLookupEnabled,
 		CFLookupCollection:      getEnvOrDefault("MONGODB_CF_LOOKUP_COLLECTION", "cf_lookups"),
 		CFLookupCacheTTL:        cfLookupCacheTTL,
 		CFLookupRateLimit:       cfLookupRateLimit,

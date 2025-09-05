@@ -74,6 +74,18 @@ func (s *CacheService) UpdateSelfDeclaredRaca(ctx context.Context, cpf string, r
 	return dataManager.Write(ctx, op)
 }
 
+// UpdateSelfDeclaredNomeExibicao updates self-declared exhibition name via cache system
+func (s *CacheService) UpdateSelfDeclaredNomeExibicao(ctx context.Context, cpf string, nomeExibicao string) error {
+	op := &SelfDeclaredNomeExibicaoDataOperation{
+		CPF:          cpf,
+		NomeExibicao: nomeExibicao,
+		UpdatedAt:    time.Now(),
+	}
+
+	dataManager := NewDataManager(config.Redis, config.MongoDB, s.logger)
+	return dataManager.Write(ctx, op)
+}
+
 // UpdateUserConfig updates user configuration via cache system
 func (s *CacheService) UpdateUserConfig(ctx context.Context, userID string, userConfig *models.UserConfig) error {
 	op := &UserConfigDataOperation{

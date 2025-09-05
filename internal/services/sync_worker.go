@@ -444,7 +444,7 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 
 	// Perform CF lookup using the CF lookup service
 	if CFLookupServiceInstance == nil {
-		return fmt.Errorf("CF lookup service not initialized")
+		return fmt.Errorf("CF lookup service disabled")
 	}
 
 	err := CFLookupServiceInstance.PerformCFLookup(ctx, cpf, address)

@@ -4,6 +4,7 @@ import requests
 import json
 import yaml
 import sys
+from random import choice
 from urllib.parse import urlencode
 
 # Configuration for different environments
@@ -330,25 +331,82 @@ def main():
         except Exception as e:
             print(f"⚠️ Health check failed: {e}")
 
-        # Test CF lookup functionality with CPFs that exist in different environments
-        print("Testing CF lookup with CPFs from staging vs local...")
+        # # Test CF lookup functionality with CPFs that exist in different environments
+        # print("Testing CF lookup with CPFs from staging vs local...")
         
-        if environment == "staging":
-            # Use staging CPFs
-            cpf_with_cf = "47562396507"  # Has CF data in staging
-            cpf_without_cf = "45049725810"  # Should get CF via MCP lookup
-        else:
-            # Use CPFs that actually exist in local mock database
-            cpf_with_cf = "47562396507"  # Has CF data (indicador: true)
-            cpf_without_cf = "45049725810"  # Should get CF via MCP lookup (indicador: false)
+        # if environment == "staging":
+        #     # Use staging CPFs
+        #     cpf_with_cf = "47562396507"  # Has CF data in staging
+        #     cpf_without_cf = "45049725810"  # Should get CF via MCP lookup
+        # else:
+        #     # Use CPFs that actually exist in local mock database
+        #     cpf_with_cf = "47562396507"  # Has CF data (indicador: true)
+        #     cpf_without_cf = "45049725810"  # Should get CF via MCP lookup (indicador: false)
         
-        print(f"Testing CPF with CF data: {cpf_with_cf}")
-        response1 = api_client.get(f"/v1/citizen/{cpf_with_cf}/wallet")
-        print(response1.json())
+        # test_cases = [
+        #     {
+        #         'name': 'Copacabana (Known CF Address)',
+        #         'address': {
+        #             'logradouro': 'Avenida Atlântica',
+        #             'numero': '1702',
+        #             'complemento': None,
+        #             'bairro': 'Copacabana',
+        #             'municipio': 'Rio de Janeiro',
+        #             'estado': 'RJ',
+        #             'cep': '22021001'
+        #         },
+        #         'expect_cf': True  # This address has been confirmed to have a CF
+        #     },
+        #     {
+        #         'name': 'Ipanema (Tourist Area)',
+        #         'address': {
+        #             'logradouro': 'Rua Visconde de Pirajá',
+        #             'numero': '500',
+        #             'complemento': None,
+        #             'bairro': 'Ipanema',
+        #             'municipio': 'Rio de Janeiro',
+        #             'estado': 'RJ',
+        #             'cep': '22410002'
+        #         },
+        #         'expect_cf': None  # Unknown if CF exists
+        #     },
+        #     {
+        #         'name': 'Cidade Nova (Original Test Address)',
+        #         'address': {
+        #             'logradouro': 'Rua Afonso Cavalcanti',
+        #             'numero': '455',
+        #             'complemento': None,
+        #             'bairro': 'Cidade Nova',
+        #             'municipio': 'Rio de Janeiro',
+        #             'estado': 'RJ',
+        #             'cep': '20211110'
+        #         },
+        #         'expect_cf': False  # Previously confirmed no CF
+        #     }
+        # ]
+
+        # address = choice(test_cases)
+        # print(f"Testing address: {address['name']}")
+        # response = api_client.put(f"/v1/citizen/{cpf_without_cf}/address", json_data=address['address'])
+        # print(response.json())
+        # response.raise_for_status()
         
-        print(f"\nTesting CPF without CF data: {cpf_without_cf}")
-        response2 = api_client.get(f"/v1/citizen/{cpf_without_cf}/wallet")
-        print(response2.json())
+        # print(f"\nTesting CPF without CF data: {cpf_without_cf}")
+        # response2 = api_client.get(f"/v1/citizen/{cpf_without_cf}/wallet")
+        # print(response2.json())
+
+        r = api_client.get('/v1/citizen/45049725810')
+        data = r.json()
+        print(data)
+        print(f"Exhibition Name: {data.get('nome_exibicao')}")
+
+        r = api_client.put('/v1/citizen/45049725810/exhibition-name', json_data={'valor': 'John Doe'})
+        print(r.json())
+
+        r = api_client.get('/v1/citizen/45049725810')
+        data = r.json()
+        print(data)
+        print(f"Exhibition Name: {data.get('nome_exibicao')}")
 
     except Exception as e:
         print(f"\n💥 Failed to setup environment: {e}")

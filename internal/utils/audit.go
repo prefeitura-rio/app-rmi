@@ -47,6 +47,7 @@ const (
 	AuditResourcePhone             = "phone"
 	AuditResourceEmail             = "email"
 	AuditResourceEthnicity         = "ethnicity"
+	AuditResourceExhibitionName    = "exhibition_name"
 	AuditResourcePhoneVerification = "phone_verification"
 	AuditResourceUserConfig        = "user_config"
 	AuditResourceBetaGroup         = "beta_group"
@@ -339,6 +340,15 @@ func LogEthnicityUpdate(ctx context.Context, auditCtx AuditContext, oldEthnicity
 	}
 
 	return LogAuditEvent(ctx, auditCtx, AuditActionUpdate, AuditResourceEthnicity, auditCtx.CPF, oldEthnicity, newEthnicity, metadata)
+}
+
+// LogExhibitionNameUpdate logs an exhibition name update audit event
+func LogExhibitionNameUpdate(ctx context.Context, auditCtx AuditContext, oldExhibitionName, newExhibitionName interface{}) error {
+	metadata := map[string]string{
+		"operation": "self_declared_update",
+		"field":     "exhibition_name",
+	}
+	return LogAuditEvent(ctx, auditCtx, AuditActionUpdate, AuditResourceExhibitionName, auditCtx.CPF, oldExhibitionName, newExhibitionName, metadata)
 }
 
 // LogUserConfigUpdate logs a user config update audit event
