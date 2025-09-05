@@ -1738,6 +1738,112 @@
         }
       }
     },
+    "/citizen/{cpf}/legal-entities": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Recupera a lista paginada de entidades jurídicas (pessoas jurídicas) associadas ao CPF do cidadão. A busca é feita através do campo 'cpf_socio' no array 'socios' de cada entidade.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Obter entidades jurídicas associadas ao CPF",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          },
+          {
+            "description": "Número da página (padrão: 1)",
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "description": "Itens por página (padrão: 10, máximo: 100)",
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "description": "Filtro opcional por ID da natureza jurídica",
+            "name": "natureza_juridica_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista paginada de entidades jurídicas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.PaginatedLegalEntities"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF inválido ou parâmetros de paginação inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/citizen/{cpf}/maintenance-request": {
       "get": {
         "security": [
@@ -3832,6 +3938,51 @@
           }
         }
       },
+      "models.Accountant": {
+        "type": "object",
+        "properties": {
+          "pf": {
+            "$ref": "#/components/schemas/models.AccountantIndividual"
+          },
+          "pj": {
+            "$ref": "#/components/schemas/models.AccountantCorporate"
+          }
+        }
+      },
+      "models.AccountantCorporate": {
+        "type": "object",
+        "properties": {
+          "classificacao_crc": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "sequencial_crc": {
+            "type": "string"
+          },
+          "tipo_crc": {
+            "type": "string"
+          }
+        }
+      },
+      "models.AccountantIndividual": {
+        "type": "object",
+        "properties": {
+          "classificacao_crc": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "sequencial_crc": {
+            "type": "string"
+          },
+          "tipo_crc": {
+            "type": "string"
+          }
+        }
+      },
       "models.Aluno": {
         "type": "object",
         "properties": {
@@ -4262,6 +4413,17 @@
           }
         }
       },
+      "models.CompanySize": {
+        "type": "object",
+        "properties": {
+          "descricao": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
       "models.Documentos": {
         "type": "object",
         "properties": {
@@ -4483,6 +4645,198 @@
           }
         }
       },
+      "models.FederativeEntity": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tipo": {
+            "type": "string"
+          }
+        }
+      },
+      "models.HeadquartersBranch": {
+        "type": "object",
+        "properties": {
+          "descricao": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "models.LegalEntity": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "capital_social": {
+            "type": "number"
+          },
+          "cnae_fiscal": {
+            "type": "string"
+          },
+          "cnae_secundarias": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cnpj": {
+            "type": "string"
+          },
+          "contador": {
+            "$ref": "#/components/schemas/models.Accountant"
+          },
+          "contato": {
+            "$ref": "#/components/schemas/models.LegalEntityContact"
+          },
+          "endereco": {
+            "$ref": "#/components/schemas/models.LegalEntityAddress"
+          },
+          "ente_federativo": {
+            "$ref": "#/components/schemas/models.FederativeEntity"
+          },
+          "formas_atuacao": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "inicio_atividade_data": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "matriz_filial": {
+            "$ref": "#/components/schemas/models.HeadquartersBranch"
+          },
+          "natureza_juridica": {
+            "$ref": "#/components/schemas/models.LegalNature"
+          },
+          "nire": {
+            "type": "string"
+          },
+          "nome_fantasia": {
+            "type": "string"
+          },
+          "orgao_registro": {
+            "$ref": "#/components/schemas/models.RegistrationAuthority"
+          },
+          "porte": {
+            "$ref": "#/components/schemas/models.CompanySize"
+          },
+          "razao_social": {
+            "type": "string"
+          },
+          "responsavel": {
+            "$ref": "#/components/schemas/models.ResponsiblePerson"
+          },
+          "situacao_cadastral": {
+            "$ref": "#/components/schemas/models.RegistrationStatus"
+          },
+          "situacao_especial": {
+            "$ref": "#/components/schemas/models.SpecialStatus"
+          },
+          "socios": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.Partner"
+            }
+          },
+          "socios_quantidade": {
+            "type": "integer"
+          },
+          "sucessoes": {
+            "type": "array",
+            "items": {}
+          },
+          "tipos_unidade": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "models.LegalEntityAddress": {
+        "type": "object",
+        "properties": {
+          "bairro": {
+            "type": "string"
+          },
+          "cep": {
+            "type": "string"
+          },
+          "complemento": {
+            "type": "string"
+          },
+          "id_municipio": {
+            "type": "string"
+          },
+          "id_pais": {
+            "type": "string"
+          },
+          "logradouro": {
+            "type": "string"
+          },
+          "municipio_exterior_nome": {
+            "type": "string"
+          },
+          "municipio_nome": {
+            "type": "string"
+          },
+          "numero": {
+            "type": "string"
+          },
+          "tipo_logradouro": {
+            "type": "string"
+          },
+          "uf": {
+            "type": "string"
+          }
+        }
+      },
+      "models.LegalEntityContact": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "telefone": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.LegalEntityPhone"
+            }
+          }
+        }
+      },
+      "models.LegalEntityPhone": {
+        "type": "object",
+        "properties": {
+          "ddd": {
+            "type": "string"
+          },
+          "telefone": {
+            "type": "string"
+          }
+        }
+      },
+      "models.LegalNature": {
+        "type": "object",
+        "properties": {
+          "descricao": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
       "models.Mae": {
         "type": "object",
         "properties": {
@@ -4699,6 +5053,34 @@
           }
         }
       },
+      "models.PaginatedLegalEntities": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.LegalEntity"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer"
+              },
+              "per_page": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "total_pages": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
       "models.PaginatedMaintenanceRequests": {
         "type": "object",
         "properties": {
@@ -4741,6 +5123,38 @@
           },
           "total_pages": {
             "type": "integer"
+          }
+        }
+      },
+      "models.Partner": {
+        "type": "object",
+        "properties": {
+          "cnpj_socio": {
+            "type": "string"
+          },
+          "codigo_pais": {
+            "type": "string"
+          },
+          "cpf_representante_legal": {
+            "type": "string"
+          },
+          "cpf_socio": {
+            "type": "string"
+          },
+          "data_situacao_especial": {
+            "type": "string"
+          },
+          "nome_socio_estrangeiro": {
+            "type": "string"
+          },
+          "qualificacao_representante_legal": {
+            "type": "string"
+          },
+          "qualificacao_socio": {
+            "type": "string"
+          },
+          "tipo": {
+            "type": "string"
           }
         }
       },
@@ -4901,6 +5315,37 @@
           }
         }
       },
+      "models.RegistrationAuthority": {
+        "type": "object",
+        "properties": {
+          "descricao": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "models.RegistrationStatus": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "motivo_descricao": {
+            "type": "string"
+          },
+          "motivo_id": {
+            "type": "string"
+          }
+        }
+      },
       "models.RejectRegistrationRequest": {
         "type": "object",
         "required": [
@@ -4924,6 +5369,23 @@
         "type": "object",
         "properties": {
           "status": {
+            "type": "string"
+          }
+        }
+      },
+      "models.ResponsiblePerson": {
+        "type": "object",
+        "properties": {
+          "cpf": {
+            "type": "string"
+          },
+          "inclusao_data": {
+            "type": "string"
+          },
+          "qualificacao_descricao": {
+            "type": "string"
+          },
+          "qualificacao_id": {
             "type": "string"
           }
         }
@@ -5024,6 +5486,17 @@
         ],
         "properties": {
           "valor": {
+            "type": "string"
+          }
+        }
+      },
+      "models.SpecialStatus": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string"
+          },
+          "descricao": {
             "type": "string"
           }
         }
