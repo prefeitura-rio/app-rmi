@@ -1127,6 +1127,82 @@
                 }
             }
         },
+        "/citizen/{cpf}/exhibition-name": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza ou cria o nome de exibição autodeclarado de um cidadão por CPF. Apenas o campo de nome de exibição é atualizado. O nome de exibição é o nome que aparece na interface do usuário, permitindo ao cidadão controlar como seu nome é exibido no aplicativo.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Atualizar nome de exibição autodeclarado",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do CPF",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Nome de exibição autodeclarado",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SelfDeclaredNomeExibicaoInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Nome de exibição atualizado com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Formato de CPF inválido ou valor de nome de exibição inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Cidadão não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/{cpf}/firstlogin": {
             "get": {
                 "security": [
@@ -3257,6 +3333,10 @@
                 "nome": {
                     "type": "string"
                 },
+                "nome_exibicao": {
+                    "description": "Self-declared, not stored in base collection",
+                    "type": "string"
+                },
                 "nome_social": {
                     "type": "string"
                 },
@@ -4042,6 +4122,17 @@
             }
         },
         "models.SelfDeclaredEmailInput": {
+            "type": "object",
+            "required": [
+                "valor"
+            ],
+            "properties": {
+                "valor": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SelfDeclaredNomeExibicaoInput": {
             "type": "object",
             "required": [
                 "valor"
