@@ -8,17 +8,17 @@ import (
 
 // CFLookup represents a CF lookup result for a citizen
 type CFLookup struct {
-	ID                 primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
-	CPF                string              `bson:"cpf" json:"cpf"`
-	AddressHash        string              `bson:"address_hash" json:"address_hash"`
-	AddressUsed        string              `bson:"address_used" json:"address_used"`
-	CFData             CFInfo              `bson:"cf_data" json:"cf_data"`
-	EquipeSaudeData    *EquipeSaudeInfo    `bson:"equipe_saude_data,omitempty" json:"equipe_saude_data,omitempty"`
-	DistanceMeters     int                 `bson:"distance_meters" json:"distance_meters"`
-	LookupSource       string              `bson:"lookup_source" json:"lookup_source"` // "mcp"
-	CreatedAt          time.Time           `bson:"created_at" json:"created_at"`
-	UpdatedAt          time.Time           `bson:"updated_at" json:"updated_at"`
-	IsActive           bool                `bson:"is_active" json:"is_active"`
+	ID              primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	CPF             string             `bson:"cpf" json:"cpf"`
+	AddressHash     string             `bson:"address_hash" json:"address_hash"`
+	AddressUsed     string             `bson:"address_used" json:"address_used"`
+	CFData          CFInfo             `bson:"cf_data" json:"cf_data"`
+	EquipeSaudeData *EquipeSaudeInfo   `bson:"equipe_saude_data,omitempty" json:"equipe_saude_data,omitempty"`
+	DistanceMeters  int                `bson:"distance_meters" json:"distance_meters"`
+	LookupSource    string             `bson:"lookup_source" json:"lookup_source"` // "mcp"
+	CreatedAt       time.Time          `bson:"created_at" json:"created_at"`
+	UpdatedAt       time.Time          `bson:"updated_at" json:"updated_at"`
+	IsActive        bool               `bson:"is_active" json:"is_active"`
 }
 
 // CFInfo represents detailed information about a Clínica da Família
@@ -64,22 +64,22 @@ type CFHorario struct {
 
 // EquipeSaudeInfo represents detailed information about a Family Health Team
 type EquipeSaudeInfo struct {
-	IDEquipe           *string       `bson:"id_equipe" json:"id_equipe"`
-	NomeOficial        string        `bson:"nome_oficial" json:"nome_oficial"`
-	NomePopular        string        `bson:"nome_popular" json:"nome_popular"`
-	RegiaoPlaneamento  string        `bson:"regiao_planejamento" json:"regiao_planejamento"`
-	Contato            CFContactInfo `bson:"contato" json:"contato"`
-	Ativo              bool          `bson:"ativo" json:"ativo"`
-	AbertoAoPublico    bool          `bson:"aberto_ao_publico" json:"aberto_ao_publico"`
-	Medicos            []string      `bson:"medicos" json:"medicos"`
-	Enfermeiros        []string      `bson:"enfermeiros" json:"enfermeiros"`
-	UpdatedAt          time.Time     `bson:"updated_at" json:"updated_at"`
+	IDEquipe          *string       `bson:"id_equipe" json:"id_equipe"`
+	NomeOficial       string        `bson:"nome_oficial" json:"nome_oficial"`
+	NomePopular       string        `bson:"nome_popular" json:"nome_popular"`
+	RegiaoPlaneamento string        `bson:"regiao_planejamento" json:"regiao_planejamento"`
+	Contato           CFContactInfo `bson:"contato" json:"contato"`
+	Ativo             bool          `bson:"ativo" json:"ativo"`
+	AbertoAoPublico   bool          `bson:"aberto_ao_publico" json:"aberto_ao_publico"`
+	Medicos           []string      `bson:"medicos" json:"medicos"`
+	Enfermeiros       []string      `bson:"enfermeiros" json:"enfermeiros"`
+	UpdatedAt         time.Time     `bson:"updated_at" json:"updated_at"`
 }
 
 // HealthServicesResult represents the combined result from MCP lookup
 type HealthServicesResult struct {
-	HealthFacility     *CFInfo          `json:"health_facility,omitempty"`
-	FamilyHealthTeam   *EquipeSaudeInfo `json:"family_health_team,omitempty"`
+	HealthFacility   *CFInfo          `json:"health_facility,omitempty"`
+	FamilyHealthTeam *EquipeSaudeInfo `json:"family_health_team,omitempty"`
 }
 
 // CFLookupRequest represents a request to lookup CF for a citizen
