@@ -473,75 +473,6 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 	return c.parseHealthServicesResponse(result)
 }
 
-// parseCFResponse parses the MCP response and extracts CF information
-func (c *MCPClient) parseCFResponse(result map[string]interface{}) (*models.CFInfo, error) {
-	resultData, ok := result["result"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid response format: missing result")
-	}
-
-	// Check for error flag
-	if isError, exists := resultData["isError"]; exists && isError == true {
-		// Try to extract error message from response
-		errorMsg := "no CF found for this address"
-		if textContent, exists := resultData["textContent"]; exists {
-			if textStr, ok := textContent.(string); ok && textStr != "" {
-				errorMsg = textStr
-			}
-		}
-
-		c.logger.Debug("MCP server reported no CF available",
-			zap.String("reason", errorMsg),
-			zap.String("operation", "cf_lookup_no_results"))
-
-		// Return nil (no CF found) instead of error - this is expected behavior
-		return nil, nil
-	}
-
-	structuredContent, ok := resultData["structuredContent"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("no structured content in response")
-	}
-
-	equipamentos, ok := structuredContent["equipamentos"].([]interface{})
-	if !ok || len(equipamentos) == 0 {
-		return nil, fmt.Errorf("no equipment found in response")
-	}
-
-	equipamento, ok := equipamentos[0].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid equipment data format")
-	}
-
-	// Check for error in equipment data
-	if errorMsg, exists := equipamento["error"]; exists {
-		c.logger.Debug("MCP server reported no equipment found",
-			zap.String("reason", fmt.Sprintf("%v", errorMsg)),
-			zap.String("operation", "cf_lookup_no_equipment"))
-
-		// Return nil (no CF found) instead of error - this is expected behavior
-		return nil, nil
-	}
-
-	// Convert to CFInfo struct
-	cfBytes, err := json.Marshal(equipamento)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal CF data: %w", err)
-	}
-
-	var cfInfo models.CFInfo
-	err = json.Unmarshal(cfBytes, &cfInfo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal CF data: %w", err)
-	}
-
-	c.logger.Info("CF lookup successful",
-		zap.String("cf_name", cfInfo.NomePopular),
-		zap.String("cf_bairro", cfInfo.Bairro))
-
-	return &cfInfo, nil
-}
-
 // parseHealthServicesResponse parses the MCP response and extracts both CF and Family Health Team information
 func (c *MCPClient) parseHealthServicesResponse(result map[string]interface{}) (*models.HealthServicesResult, error) {
 	resultData, ok := result["result"].(map[string]interface{})
@@ -658,7 +589,7 @@ func (c *MCPClient) parseEquipeSaudeData(equipamento map[string]interface{}) (*m
 
 	if nomePopular, ok := equipamento["nome_popular"].(string); ok {
 		equipeSaude.NomePopular = nomePopular
-		
+
 		// Parse doctors and nurses from nome_popular field
 		// Format: "MEDICOS:\nName1\nName2\n\nENFERMEIROS:\nName3\nName4"
 		medicos, enfermeiros := c.parseProfessionalsFromText(nomePopular)
