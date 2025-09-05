@@ -136,15 +136,19 @@ func GetCitizenData(c *gin.Context) {
 	}
 	cacheSetSpan.End()
 
-	// Check for CF lookup and queue background job if needed
+	// Check for CF lookup and queue background job if needed (only if enabled)
 	ctx, cfSpan := utils.TraceBusinessLogic(ctx, "cf_lookup_check")
-	shouldLookup, address, err := services.CFLookupServiceInstance.ShouldLookupCF(ctx, cpf, citizen)
-	if err != nil {
-		logger.Warn("failed to check CF lookup status", zap.Error(err))
-	} else if shouldLookup && address != "" {
-		// Queue background CF lookup job
-		logger.Debug("queuing CF lookup job", zap.String("cpf", cpf), zap.String("address", address))
-		queueCFLookupJob(ctx, cpf, address)
+	if services.CFLookupServiceInstance != nil {
+		shouldLookup, address, err := services.CFLookupServiceInstance.ShouldLookupCF(ctx, cpf, citizen)
+		if err != nil {
+			logger.Warn("failed to check CF lookup status", zap.Error(err))
+		} else if shouldLookup && address != "" {
+			// Queue background CF lookup job
+			logger.Debug("queuing CF lookup job", zap.String("cpf", cpf), zap.String("address", address))
+			queueCFLookupJob(ctx, cpf, address)
+		}
+	} else {
+		logger.Debug("CF lookup service disabled - skipping CF lookup check", zap.String("cpf", cpf))
 	}
 	cfSpan.End()
 
@@ -559,27 +563,31 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	}
 	auditSpan.End()
 
-	// Handle CF data invalidation when address changes
+	// Handle CF data invalidation when address changes (only if enabled)
 	ctx, cfInvalidateSpan := utils.TraceBusinessLogic(ctx, "cf_invalidate_on_address_change")
-	newAddress := fmt.Sprintf("%s, %s, %s, %s, %s, %s",
-		input.Logradouro, input.Numero,
-		func() string {
-			if input.Complemento != nil {
-				return *input.Complemento
-			} else {
-				return ""
-			}
-		}(),
-		input.Bairro, input.Municipio, input.Estado)
-	newAddressHash := services.CFLookupServiceInstance.GenerateAddressHash(newAddress)
+	if services.CFLookupServiceInstance != nil {
+		newAddress := fmt.Sprintf("%s, %s, %s, %s, %s, %s",
+			input.Logradouro, input.Numero,
+			func() string {
+				if input.Complemento != nil {
+					return *input.Complemento
+				} else {
+					return ""
+				}
+			}(),
+			input.Bairro, input.Municipio, input.Estado)
+		newAddressHash := services.CFLookupServiceInstance.GenerateAddressHash(newAddress)
 
-	err = services.CFLookupServiceInstance.InvalidateCFDataForAddress(ctx, cpf, newAddressHash)
-	if err != nil {
-		logger.Warn("failed to invalidate CF data for address change", zap.Error(err))
+		err = services.CFLookupServiceInstance.InvalidateCFDataForAddress(ctx, cpf, newAddressHash)
+		if err != nil {
+			logger.Warn("failed to invalidate CF data for address change", zap.Error(err))
+		} else {
+			// Queue new CF lookup for the updated address
+			logger.Debug("queuing CF lookup for updated address", zap.String("cpf", cpf))
+			queueCFLookupJob(ctx, cpf, newAddress)
+		}
 	} else {
-		// Queue new CF lookup for the updated address
-		logger.Debug("queuing CF lookup for updated address", zap.String("cpf", cpf))
-		queueCFLookupJob(ctx, cpf, newAddress)
+		logger.Debug("CF lookup service disabled - skipping CF data invalidation", zap.String("cpf", cpf))
 	}
 	cfInvalidateSpan.End()
 
@@ -2048,7 +2056,7 @@ func GetCitizenWallet(c *gin.Context) {
 
 		// Check if CF lookup service is available
 		if services.CFLookupServiceInstance == nil {
-			logger.Error("CF lookup service not initialized - skipping CF data integration", zap.String("cpf", cpf))
+			logger.Info("CF lookup service disabled - skipping CF data integration", zap.String("cpf", cpf))
 		} else {
 			// First try to get existing cached CF data
 			logger.Info("CHECKING FOR CACHED CF DATA", zap.String("cpf", cpf))

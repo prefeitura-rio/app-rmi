@@ -42,19 +42,27 @@ func NewCFLookupService(database *mongo.Database, mcpClient *MCPClient, logger *
 // InitCFLookupService initializes the global CF lookup service instance
 func InitCFLookupService() {
 	logger := zap.L().Named("cf_lookup_service")
-	
+
+	// Check if CF lookup is enabled
+	if !config.AppConfig.CFLookupEnabled {
+		logger.Info("CF lookup service disabled via CF_LOOKUP_ENABLED=false")
+		CFLookupServiceInstance = nil
+		return
+	}
+
 	logger.Info("initializing CF lookup service",
 		zap.String("mcp_server_url", config.AppConfig.MCPServerURL),
 		zap.Duration("sync_timeout", config.AppConfig.CFLookupSyncTimeout),
 		zap.Duration("cache_ttl", config.AppConfig.CFLookupCacheTTL))
-	
+
 	// Initialize MCP client with error handling
 	mcpClient := NewMCPClient(config.AppConfig, &logging.SafeLogger{})
 	if mcpClient == nil {
 		logger.Error("failed to initialize MCP client - CF lookup service disabled")
+		CFLookupServiceInstance = nil
 		return
 	}
-	
+
 	CFLookupServiceInstance = NewCFLookupService(config.MongoDB, mcpClient, &logging.SafeLogger{})
 	logger.Info("CF lookup service initialized successfully")
 }
@@ -549,7 +557,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	if s == nil {
 		return nil, fmt.Errorf("CF lookup service not available")
 	}
-	
+
 	if s.mcpClient == nil {
 		if s.logger != nil {
 			s.logger.Error("MCP client is nil - CF lookup service not properly initialized", zap.String("cpf", cpf))
@@ -575,7 +583,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 
 	// Perform MCP lookup
 	healthData, err := s.mcpClient.FindNearestCF(syncCtx, address)
-	
+
 	if err != nil {
 		s.logger.Debug("synchronous CF lookup failed", zap.Error(err), zap.String("cpf", cpf))
 		// Fall back to async lookup - queue a job manually
