@@ -119,6 +119,35 @@ definitions:
       message:
         type: string
     type: object
+  models.Accountant:
+    properties:
+      pf:
+        $ref: '#/definitions/models.AccountantIndividual'
+      pj:
+        $ref: '#/definitions/models.AccountantCorporate'
+    type: object
+  models.AccountantCorporate:
+    properties:
+      classificacao_crc:
+        type: string
+      id:
+        type: string
+      sequencial_crc:
+        type: string
+      tipo_crc:
+        type: string
+    type: object
+  models.AccountantIndividual:
+    properties:
+      classificacao_crc:
+        type: string
+      id:
+        type: string
+      sequencial_crc:
+        type: string
+      tipo_crc:
+        type: string
+    type: object
   models.Aluno:
     properties:
       conceito:
@@ -401,6 +430,13 @@ definitions:
       telefone:
         type: string
     type: object
+  models.CompanySize:
+    properties:
+      descricao:
+        type: string
+      id:
+        type: string
+    type: object
   models.Documentos:
     properties:
       cns:
@@ -543,6 +579,132 @@ definitions:
       telefone:
         type: string
       whatsapp:
+        type: string
+    type: object
+  models.FederativeEntity:
+    properties:
+      id:
+        type: string
+      tipo:
+        type: string
+    type: object
+  models.HeadquartersBranch:
+    properties:
+      descricao:
+        type: string
+      id:
+        type: string
+    type: object
+  models.LegalEntity:
+    properties:
+      _id:
+        type: string
+      capital_social:
+        type: number
+      cnae_fiscal:
+        type: string
+      cnae_secundarias:
+        items:
+          type: string
+        type: array
+      cnpj:
+        type: string
+      contador:
+        $ref: '#/definitions/models.Accountant'
+      contato:
+        $ref: '#/definitions/models.LegalEntityContact'
+      endereco:
+        $ref: '#/definitions/models.LegalEntityAddress'
+      ente_federativo:
+        $ref: '#/definitions/models.FederativeEntity'
+      formas_atuacao:
+        items:
+          type: string
+        type: array
+      inicio_atividade_data:
+        type: string
+      language:
+        type: string
+      matriz_filial:
+        $ref: '#/definitions/models.HeadquartersBranch'
+      natureza_juridica:
+        $ref: '#/definitions/models.LegalNature'
+      nire:
+        type: string
+      nome_fantasia:
+        type: string
+      orgao_registro:
+        $ref: '#/definitions/models.RegistrationAuthority'
+      porte:
+        $ref: '#/definitions/models.CompanySize'
+      razao_social:
+        type: string
+      responsavel:
+        $ref: '#/definitions/models.ResponsiblePerson'
+      situacao_cadastral:
+        $ref: '#/definitions/models.RegistrationStatus'
+      situacao_especial:
+        $ref: '#/definitions/models.SpecialStatus'
+      socios:
+        items:
+          $ref: '#/definitions/models.Partner'
+        type: array
+      socios_quantidade:
+        type: integer
+      sucessoes:
+        items: {}
+        type: array
+      tipos_unidade:
+        items:
+          type: string
+        type: array
+    type: object
+  models.LegalEntityAddress:
+    properties:
+      bairro:
+        type: string
+      cep:
+        type: string
+      complemento:
+        type: string
+      id_municipio:
+        type: string
+      id_pais:
+        type: string
+      logradouro:
+        type: string
+      municipio_exterior_nome:
+        type: string
+      municipio_nome:
+        type: string
+      numero:
+        type: string
+      tipo_logradouro:
+        type: string
+      uf:
+        type: string
+    type: object
+  models.LegalEntityContact:
+    properties:
+      email:
+        type: string
+      telefone:
+        items:
+          $ref: '#/definitions/models.LegalEntityPhone'
+        type: array
+    type: object
+  models.LegalEntityPhone:
+    properties:
+      ddd:
+        type: string
+      telefone:
+        type: string
+    type: object
+  models.LegalNature:
+    properties:
+      descricao:
+        type: string
+      id:
         type: string
     type: object
   models.Mae:
@@ -688,6 +850,24 @@ definitions:
       status:
         type: string
     type: object
+  models.PaginatedLegalEntities:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.LegalEntity'
+        type: array
+      pagination:
+        properties:
+          page:
+            type: integer
+          per_page:
+            type: integer
+          total:
+            type: integer
+          total_pages:
+            type: integer
+        type: object
+    type: object
   models.PaginatedMaintenanceRequests:
     properties:
       data:
@@ -716,6 +896,27 @@ definitions:
         type: integer
       total_pages:
         type: integer
+    type: object
+  models.Partner:
+    properties:
+      cnpj_socio:
+        type: string
+      codigo_pais:
+        type: string
+      cpf_representante_legal:
+        type: string
+      cpf_socio:
+        type: string
+      data_situacao_especial:
+        type: string
+      nome_socio_estrangeiro:
+        type: string
+      qualificacao_representante_legal:
+        type: string
+      qualificacao_socio:
+        type: string
+      tipo:
+        type: string
     type: object
   models.PhoneCitizenResponse:
     properties:
@@ -820,6 +1021,26 @@ definitions:
       quarantine_until:
         type: string
     type: object
+  models.RegistrationAuthority:
+    properties:
+      descricao:
+        type: string
+      id:
+        type: string
+    type: object
+  models.RegistrationStatus:
+    properties:
+      data:
+        type: string
+      descricao:
+        type: string
+      id:
+        type: string
+      motivo_descricao:
+        type: string
+      motivo_id:
+        type: string
+    type: object
   models.RejectRegistrationRequest:
     properties:
       channel:
@@ -836,6 +1057,17 @@ definitions:
   models.RejectRegistrationResponse:
     properties:
       status:
+        type: string
+    type: object
+  models.ResponsiblePerson:
+    properties:
+      cpf:
+        type: string
+      inclusao_data:
+        type: string
+      qualificacao_descricao:
+        type: string
+      qualificacao_id:
         type: string
     type: object
   models.Saude:
@@ -904,6 +1136,13 @@ definitions:
         type: string
     required:
     - valor
+    type: object
+  models.SpecialStatus:
+    properties:
+      data:
+        type: string
+      descricao:
+        type: string
     type: object
   models.Telefone:
     properties:
@@ -1850,6 +2089,64 @@ paths:
       security:
       - BearerAuth: []
       summary: Atualizar status do primeiro login
+      tags:
+      - citizen
+  /citizen/{cpf}/legal-entities:
+    get:
+      consumes:
+      - application/json
+      description: Recupera a lista paginada de entidades jurídicas (pessoas jurídicas)
+        associadas ao CPF do cidadão. A busca é feita através do campo 'cpf_socio'
+        no array 'socios' de cada entidade.
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: 'Número da página (padrão: 1)'
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 10, máximo: 100)'
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      - description: Filtro opcional por ID da natureza jurídica
+        in: query
+        name: natureza_juridica_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista paginada de entidades jurídicas
+          schema:
+            $ref: '#/definitions/models.PaginatedLegalEntities'
+        "400":
+          description: Formato de CPF inválido ou parâmetros de paginação inválidos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter entidades jurídicas associadas ao CPF
       tags:
       - citizen
   /citizen/{cpf}/maintenance-request:

@@ -1325,6 +1325,90 @@ const docTemplate = `{
                 }
             }
         },
+        "/citizen/{cpf}/legal-entities": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Recupera a lista paginada de entidades jurídicas (pessoas jurídicas) associadas ao CPF do cidadão. A busca é feita através do campo 'cpf_socio' no array 'socios' de cada entidade.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Obter entidades jurídicas associadas ao CPF",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Número da página (padrão: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Itens por página (padrão: 10, máximo: 100)",
+                        "name": "per_page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtro opcional por ID da natureza jurídica",
+                        "name": "natureza_juridica_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista paginada de entidades jurídicas",
+                        "schema": {
+                            "$ref": "#/definitions/models.PaginatedLegalEntities"
+                        }
+                    },
+                    "400": {
+                        "description": "Formato de CPF inválido ou parâmetros de paginação inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/{cpf}/maintenance-request": {
             "get": {
                 "security": [
@@ -2979,6 +3063,51 @@ const docTemplate = `{
                 }
             }
         },
+        "models.Accountant": {
+            "type": "object",
+            "properties": {
+                "pf": {
+                    "$ref": "#/definitions/models.AccountantIndividual"
+                },
+                "pj": {
+                    "$ref": "#/definitions/models.AccountantCorporate"
+                }
+            }
+        },
+        "models.AccountantCorporate": {
+            "type": "object",
+            "properties": {
+                "classificacao_crc": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "sequencial_crc": {
+                    "type": "string"
+                },
+                "tipo_crc": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.AccountantIndividual": {
+            "type": "object",
+            "properties": {
+                "classificacao_crc": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "sequencial_crc": {
+                    "type": "string"
+                },
+                "tipo_crc": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Aluno": {
             "type": "object",
             "properties": {
@@ -3409,6 +3538,17 @@ const docTemplate = `{
                 }
             }
         },
+        "models.CompanySize": {
+            "type": "object",
+            "properties": {
+                "descricao": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Documentos": {
             "type": "object",
             "properties": {
@@ -3630,6 +3770,198 @@ const docTemplate = `{
                 }
             }
         },
+        "models.FederativeEntity": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "tipo": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.HeadquartersBranch": {
+            "type": "object",
+            "properties": {
+                "descricao": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.LegalEntity": {
+            "type": "object",
+            "properties": {
+                "_id": {
+                    "type": "string"
+                },
+                "capital_social": {
+                    "type": "number"
+                },
+                "cnae_fiscal": {
+                    "type": "string"
+                },
+                "cnae_secundarias": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cnpj": {
+                    "type": "string"
+                },
+                "contador": {
+                    "$ref": "#/definitions/models.Accountant"
+                },
+                "contato": {
+                    "$ref": "#/definitions/models.LegalEntityContact"
+                },
+                "endereco": {
+                    "$ref": "#/definitions/models.LegalEntityAddress"
+                },
+                "ente_federativo": {
+                    "$ref": "#/definitions/models.FederativeEntity"
+                },
+                "formas_atuacao": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "inicio_atividade_data": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "matriz_filial": {
+                    "$ref": "#/definitions/models.HeadquartersBranch"
+                },
+                "natureza_juridica": {
+                    "$ref": "#/definitions/models.LegalNature"
+                },
+                "nire": {
+                    "type": "string"
+                },
+                "nome_fantasia": {
+                    "type": "string"
+                },
+                "orgao_registro": {
+                    "$ref": "#/definitions/models.RegistrationAuthority"
+                },
+                "porte": {
+                    "$ref": "#/definitions/models.CompanySize"
+                },
+                "razao_social": {
+                    "type": "string"
+                },
+                "responsavel": {
+                    "$ref": "#/definitions/models.ResponsiblePerson"
+                },
+                "situacao_cadastral": {
+                    "$ref": "#/definitions/models.RegistrationStatus"
+                },
+                "situacao_especial": {
+                    "$ref": "#/definitions/models.SpecialStatus"
+                },
+                "socios": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Partner"
+                    }
+                },
+                "socios_quantidade": {
+                    "type": "integer"
+                },
+                "sucessoes": {
+                    "type": "array",
+                    "items": {}
+                },
+                "tipos_unidade": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "models.LegalEntityAddress": {
+            "type": "object",
+            "properties": {
+                "bairro": {
+                    "type": "string"
+                },
+                "cep": {
+                    "type": "string"
+                },
+                "complemento": {
+                    "type": "string"
+                },
+                "id_municipio": {
+                    "type": "string"
+                },
+                "id_pais": {
+                    "type": "string"
+                },
+                "logradouro": {
+                    "type": "string"
+                },
+                "municipio_exterior_nome": {
+                    "type": "string"
+                },
+                "municipio_nome": {
+                    "type": "string"
+                },
+                "numero": {
+                    "type": "string"
+                },
+                "tipo_logradouro": {
+                    "type": "string"
+                },
+                "uf": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.LegalEntityContact": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "telefone": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.LegalEntityPhone"
+                    }
+                }
+            }
+        },
+        "models.LegalEntityPhone": {
+            "type": "object",
+            "properties": {
+                "ddd": {
+                    "type": "string"
+                },
+                "telefone": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.LegalNature": {
+            "type": "object",
+            "properties": {
+                "descricao": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Mae": {
             "type": "object",
             "properties": {
@@ -3846,6 +4178,34 @@ const docTemplate = `{
                 }
             }
         },
+        "models.PaginatedLegalEntities": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.LegalEntity"
+                    }
+                },
+                "pagination": {
+                    "type": "object",
+                    "properties": {
+                        "page": {
+                            "type": "integer"
+                        },
+                        "per_page": {
+                            "type": "integer"
+                        },
+                        "total": {
+                            "type": "integer"
+                        },
+                        "total_pages": {
+                            "type": "integer"
+                        }
+                    }
+                }
+            }
+        },
         "models.PaginatedMaintenanceRequests": {
             "type": "object",
             "properties": {
@@ -3888,6 +4248,38 @@ const docTemplate = `{
                 },
                 "total_pages": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.Partner": {
+            "type": "object",
+            "properties": {
+                "cnpj_socio": {
+                    "type": "string"
+                },
+                "codigo_pais": {
+                    "type": "string"
+                },
+                "cpf_representante_legal": {
+                    "type": "string"
+                },
+                "cpf_socio": {
+                    "type": "string"
+                },
+                "data_situacao_especial": {
+                    "type": "string"
+                },
+                "nome_socio_estrangeiro": {
+                    "type": "string"
+                },
+                "qualificacao_representante_legal": {
+                    "type": "string"
+                },
+                "qualificacao_socio": {
+                    "type": "string"
+                },
+                "tipo": {
+                    "type": "string"
                 }
             }
         },
@@ -4048,6 +4440,37 @@ const docTemplate = `{
                 }
             }
         },
+        "models.RegistrationAuthority": {
+            "type": "object",
+            "properties": {
+                "descricao": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.RegistrationStatus": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "string"
+                },
+                "descricao": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "motivo_descricao": {
+                    "type": "string"
+                },
+                "motivo_id": {
+                    "type": "string"
+                }
+            }
+        },
         "models.RejectRegistrationRequest": {
             "type": "object",
             "required": [
@@ -4071,6 +4494,23 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ResponsiblePerson": {
+            "type": "object",
+            "properties": {
+                "cpf": {
+                    "type": "string"
+                },
+                "inclusao_data": {
+                    "type": "string"
+                },
+                "qualificacao_descricao": {
+                    "type": "string"
+                },
+                "qualificacao_id": {
                     "type": "string"
                 }
             }
@@ -4171,6 +4611,17 @@ const docTemplate = `{
             ],
             "properties": {
                 "valor": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SpecialStatus": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "string"
+                },
+                "descricao": {
                     "type": "string"
                 }
             }

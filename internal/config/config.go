@@ -50,6 +50,7 @@ type Config struct {
 	BairroCollection             string `json:"mongo_bairro_collection"`
 	LogradouroCollection         string `json:"mongo_logradouro_collection"`
 	AvatarsCollection            string `json:"mongo_avatars_collection"`
+	LegalEntityCollection        string `json:"mongo_legal_entity_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -138,6 +139,12 @@ func LoadConfig() error {
 	maintenanceRequestCollection := os.Getenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
 	if maintenanceRequestCollection == "" {
 		return fmt.Errorf("MONGODB_MAINTENANCE_REQUEST_COLLECTION environment variable is required")
+	}
+
+	// Check if MONGODB_LEGAL_ENTITY_COLLECTION is set
+	legalEntityCollection := os.Getenv("MONGODB_LEGAL_ENTITY_COLLECTION")
+	if legalEntityCollection == "" {
+		return fmt.Errorf("MONGODB_LEGAL_ENTITY_COLLECTION environment variable is required")
 	}
 
 	phoneVerificationTTL, err := time.ParseDuration(getEnvOrDefault("PHONE_VERIFICATION_TTL", "5m"))
@@ -299,6 +306,7 @@ func LoadConfig() error {
 		BairroCollection:             getEnvOrDefault("MONGODB_BAIRRO_COLLECTION", "bairro"),
 		LogradouroCollection:         getEnvOrDefault("MONGODB_LOGRADOURO_COLLECTION", "logradouro"),
 		AvatarsCollection:            getEnvOrDefault("MONGODB_AVATARS_COLLECTION", "avatars"),
+		LegalEntityCollection:        legalEntityCollection,
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,
