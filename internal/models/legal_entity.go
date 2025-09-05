@@ -2,13 +2,11 @@ package models
 
 import (
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // LegalEntity represents a legal entity (Pessoa Jurídica) document
 type LegalEntity struct {
-	ID                      primitive.ObjectID    `bson:"_id,omitempty" json:"_id"`
+	ID                      interface{}           `bson:"_id,omitempty" json:"_id"`
 	CNPJ                    string                `bson:"cnpj" json:"cnpj"`
 	CompanyName             string                `bson:"razao_social" json:"razao_social"`
 	TradeName               *string               `bson:"nome_fantasia" json:"nome_fantasia"`
