@@ -174,11 +174,11 @@ func LoadConfig() error {
 
 	// CF Lookup configuration
 	cfLookupEnabled := getEnvOrDefault("CF_LOOKUP_ENABLED", "true") == "true"
-	
+
 	// MCP Server configuration (only required if CF lookup is enabled)
 	mcpServerURL := os.Getenv("MCP_SERVER_URL")
 	mcpAuthToken := os.Getenv("MCP_AUTH_TOKEN")
-	
+
 	if cfLookupEnabled {
 		if mcpServerURL == "" {
 			return fmt.Errorf("MCP_SERVER_URL is required when CF_LOOKUP_ENABLED=true")

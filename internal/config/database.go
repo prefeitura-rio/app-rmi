@@ -319,6 +319,11 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure legal_entities collection indexes
+	if err := ensureLegalEntityIndex(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -1123,6 +1128,111 @@ func ensureCFLookupIndex(ctx context.Context, logger *zap.Logger) error {
 	} else {
 		logger.Debug("cf_lookups collection indexes already exist",
 			zap.String("collection", AppConfig.CFLookupCollection))
+	}
+
+	return nil
+}
+
+// ensureLegalEntityIndex creates the indexes for legal_entities collection
+func ensureLegalEntityIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.LegalEntityCollection)
+
+	// Check if indexes already exist
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		logger.Error("failed to list legal entity indexes", zap.Error(err))
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	existingIndexes := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existingIndexes[name] = true
+		}
+	}
+
+	// Define required indexes (matching legal entity service)
+	requiredIndexes := []mongo.IndexModel{
+		// Index 1: CPF partner lookup (most important)
+		{
+			Keys:    bson.D{{Key: "socios.cpf_socio", Value: 1}},
+			Options: options.Index().SetName("idx_partners_cpf"),
+		},
+		// Index 2: Legal nature filtering
+		{
+			Keys:    bson.D{{Key: "natureza_juridica.id", Value: 1}},
+			Options: options.Index().SetName("idx_legal_nature_id"),
+		},
+		// Index 3: Combined CPF + legal nature queries
+		{
+			Keys: bson.D{
+				{Key: "socios.cpf_socio", Value: 1},
+				{Key: "natureza_juridica.id", Value: 1},
+			},
+			Options: options.Index().SetName("idx_partners_cpf_legal_nature"),
+		},
+		// Index 4: CNPJ uniqueness (data quality constraint)
+		{
+			Keys:    bson.D{{Key: "cnpj", Value: 1}},
+			Options: options.Index().SetName("idx_cnpj").SetUnique(true),
+		},
+		// Index 5: Pagination performance
+		{
+			Keys: bson.D{
+				{Key: "socios.cpf_socio", Value: 1},
+				{Key: "razao_social", Value: 1},
+			},
+			Options: options.Index().SetName("idx_partners_cpf_company_name"),
+		},
+	}
+
+	// Create missing indexes
+	indexesToCreate := []mongo.IndexModel{}
+	requiredNames := []string{
+		"idx_partners_cpf",
+		"idx_legal_nature_id",
+		"idx_partners_cpf_legal_nature",
+		"idx_cnpj",
+		"idx_partners_cpf_company_name",
+	}
+
+	for i, indexModel := range requiredIndexes {
+		if !existingIndexes[requiredNames[i]] {
+			indexesToCreate = append(indexesToCreate, indexModel)
+		}
+	}
+
+	// Create all missing indexes
+	if len(indexesToCreate) > 0 {
+		logger.Info("creating missing legal entity indexes",
+			zap.String("collection", AppConfig.LegalEntityCollection),
+			zap.Int("count", len(indexesToCreate)))
+
+		_, err = collection.Indexes().CreateMany(ctx, indexesToCreate)
+		if err != nil {
+			// Check if it's a duplicate key error (another instance created it)
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("legal entity indexes already exist (created by another instance)",
+					zap.String("collection", AppConfig.LegalEntityCollection))
+				return nil
+			}
+			logger.Error("failed to create legal entity indexes",
+				zap.String("collection", AppConfig.LegalEntityCollection),
+				zap.Error(err))
+			return err
+		}
+
+		logger.Info("created legal entity indexes successfully",
+			zap.String("collection", AppConfig.LegalEntityCollection),
+			zap.Int("created_count", len(indexesToCreate)))
+	} else {
+		logger.Debug("legal entity indexes already exist",
+			zap.String("collection", AppConfig.LegalEntityCollection))
 	}
 
 	return nil

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
@@ -36,89 +35,11 @@ var LegalEntityServiceInstance *LegalEntityService
 // InitLegalEntityService initializes the global legal entity service instance
 func InitLegalEntityService() {
 	logger := zap.L().Named("legal_entity_service")
-	
+
 	LegalEntityServiceInstance = NewLegalEntityService(config.MongoDB, &logging.SafeLogger{})
-	
-	// Create MongoDB indexes for efficient queries
-	err := LegalEntityServiceInstance.ensureIndexes()
-	if err != nil {
-		logger.Error("failed to create legal entity indexes", zap.Error(err))
-	} else {
-		logger.Info("legal entity service initialized successfully with indexes")
-	}
-}
 
-// ensureIndexes creates the necessary MongoDB indexes for efficient CPF and legal nature queries
-func (s *LegalEntityService) ensureIndexes() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	collection := s.database.Collection(config.AppConfig.LegalEntityCollection)
-
-	// Index 1: Compound index on socios.cpf_socio for CPF matching (most important)
-	// This supports queries like: {"socios.cpf_socio": "12345678901"}
-	partnerCPFIndex := mongo.IndexModel{
-		Keys: bson.D{
-			{Key: "socios.cpf_socio", Value: 1},
-		},
-		Options: options.Index().SetName("idx_partners_cpf"),
-	}
-
-	// Index 2: Index on natureza_juridica.id for legal nature filtering
-	// This supports queries like: {"natureza_juridica.id": "2062"}
-	legalNatureIndex := mongo.IndexModel{
-		Keys: bson.D{
-			{Key: "natureza_juridica.id", Value: 1},
-		},
-		Options: options.Index().SetName("idx_legal_nature_id"),
-	}
-
-	// Index 3: Compound index for combined filtering (CPF + legal nature)
-	// This supports queries like: {"socios.cpf_socio": "12345678901", "natureza_juridica.id": "2062"}
-	combinedIndex := mongo.IndexModel{
-		Keys: bson.D{
-			{Key: "socios.cpf_socio", Value: 1},
-			{Key: "natureza_juridica.id", Value: 1},
-		},
-		Options: options.Index().SetName("idx_partners_cpf_legal_nature"),
-	}
-
-	// Index 4: Additional useful indexes for general queries
-	cnpjIndex := mongo.IndexModel{
-		Keys: bson.D{
-			{Key: "cnpj", Value: 1},
-		},
-		Options: options.Index().SetName("idx_cnpj").SetUnique(true),
-	}
-
-	// Index 5: Compound index for pagination performance (sorted by company name)
-	paginationIndex := mongo.IndexModel{
-		Keys: bson.D{
-			{Key: "socios.cpf_socio", Value: 1},
-			{Key: "razao_social", Value: 1},
-		},
-		Options: options.Index().SetName("idx_partners_cpf_company_name"),
-	}
-
-	// Create all indexes
-	indexes := []mongo.IndexModel{
-		partnerCPFIndex,
-		legalNatureIndex,
-		combinedIndex,
-		cnpjIndex,
-		paginationIndex,
-	}
-
-	indexNames, err := collection.Indexes().CreateMany(ctx, indexes)
-	if err != nil {
-		return fmt.Errorf("failed to create legal entity indexes: %w", err)
-	}
-
-	s.logger.Info("created legal entity indexes successfully",
-		zap.Strings("index_names", indexNames),
-		zap.String("collection", config.AppConfig.LegalEntityCollection))
-
-	return nil
+	logger.Info("legal entity service initialized successfully")
+	logger.Info("indexes will be managed by global database maintenance system")
 }
 
 // GetLegalEntitiesByCPF retrieves legal entities associated with a CPF with pagination
