@@ -49,6 +49,7 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 			"self_declared_email",
 			"self_declared_phone",
 			"self_declared_raca",
+			"self_declared_nome_exibicao",
 			"cf_lookup",
 		},
 	}

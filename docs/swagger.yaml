@@ -597,8 +597,7 @@ definitions:
     type: object
   models.LegalEntity:
     properties:
-      _id:
-        type: string
+      _id: {}
       capital_social:
         type: number
       cnae_fiscal:

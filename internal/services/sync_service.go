@@ -79,7 +79,7 @@ func (s *SyncService) monitorDLQ() {
 
 	for range ticker.C {
 		// Check all DLQ sizes
-		queues := []string{"citizen", "phone_mapping", "user_config", "opt_in_history", "beta_group", "phone_verification", "maintenance_request"}
+		queues := []string{"citizen", "phone_mapping", "user_config", "opt_in_history", "beta_group", "phone_verification", "maintenance_request", "self_declared_address", "self_declared_email", "self_declared_phone", "self_declared_raca", "self_declared_nome_exibicao", "cf_lookup"}
 
 		for _, queue := range queues {
 			dlqKey := fmt.Sprintf("sync:dlq:%s", queue)
