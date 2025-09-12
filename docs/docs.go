@@ -3795,9 +3795,7 @@ const docTemplate = `{
         "models.LegalEntity": {
             "type": "object",
             "properties": {
-                "_id": {
-                    "type": "string"
-                },
+                "_id": {},
                 "capital_social": {
                     "type": "number"
                 },

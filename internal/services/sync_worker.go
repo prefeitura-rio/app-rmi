@@ -49,6 +49,7 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 			"self_declared_email",
 			"self_declared_phone",
 			"self_declared_raca",
+			"self_declared_nome_exibicao",
 			"cf_lookup",
 		},
 	}
@@ -230,7 +231,37 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) error {
 		filter = bson.M{"_id": job.Key}
 	}
 
-	update := bson.M{"$set": bsonData}
+	// For self_declared collection, use field-specific updates to avoid overwriting other fields
+	var update bson.M
+	if job.Collection == "self_declared" {
+		fieldName := getFieldNameFromJobType(job.Type)
+		if fieldName != "" && bsonData[fieldName] != nil {
+			// Only update the specific field and timestamp, preserve other fields
+			update = bson.M{
+				"$set": bson.M{
+					fieldName:    bsonData[fieldName],
+					"updated_at": bsonData["updated_at"],
+				},
+			}
+			w.logger.Debug("using field-specific update for self_declared collection",
+				zap.String("job_id", job.ID),
+				zap.String("job_type", job.Type),
+				zap.String("field_name", fieldName),
+				zap.String("cpf", job.Key))
+		} else {
+			// Fallback to full document update if field mapping fails
+			update = bson.M{"$set": bsonData}
+			w.logger.Warn("falling back to full document update for self_declared",
+				zap.String("job_id", job.ID),
+				zap.String("job_type", job.Type),
+				zap.String("field_name", fieldName),
+				zap.String("cpf", job.Key))
+		}
+	} else {
+		// For other collections, update the entire document
+		update = bson.M{"$set": bsonData}
+	}
+	
 	opts := options.Update().SetUpsert(true)
 
 	_, err = w.mongo.Collection(job.Collection).UpdateOne(ctx, filter, update, opts)
@@ -475,4 +506,23 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 	}
 
 	return nil
+}
+
+// getFieldNameFromJobType maps job types to their corresponding database field names
+// This ensures that self_declared updates only modify specific fields instead of overwriting the entire document
+func getFieldNameFromJobType(jobType string) string {
+	switch jobType {
+	case "self_declared_address":
+		return "endereco"
+	case "self_declared_email":
+		return "email"
+	case "self_declared_phone":
+		return "telefone"
+	case "self_declared_raca":
+		return "raca"
+	case "self_declared_nome_exibicao":
+		return "nome_exibicao"
+	default:
+		return ""
+	}
 }
