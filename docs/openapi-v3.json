@@ -18,6 +18,11 @@
   "paths": {
     "/admin/beta/groups": {
       "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Lista todos os grupos beta com paginação (apenas administradores)",
         "tags": [
           "Beta Groups"
@@ -43,7 +48,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Lista de grupos beta obtida com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -53,7 +58,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Parâmetros de paginação inválidos",
             "content": {
               "application/json": {
                 "schema": {
@@ -73,7 +78,27 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -82,14 +107,14 @@
               }
             }
           }
-        },
+        }
+      },
+      "post": {
         "security": [
           {
             "bearerAuth": []
           }
-        ]
-      },
-      "post": {
+        ],
         "description": "Cria um novo grupo beta para o chatbot (apenas administradores)",
         "tags": [
           "Beta Groups"
@@ -100,7 +125,7 @@
         },
         "responses": {
           "201": {
-            "description": "Created",
+            "description": "Grupo beta criado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -110,7 +135,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Dados inválidos ou nome de grupo inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -130,7 +155,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
             "content": {
               "application/json": {
                 "schema": {
@@ -140,7 +165,27 @@
             }
           },
           "409": {
-            "description": "Conflict",
+            "description": "Conflito - nome de grupo já existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -149,16 +194,16 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/admin/beta/groups/{group_id}": {
       "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Obtém um grupo beta por ID (apenas administradores)",
         "tags": [
           "Beta Groups"
@@ -177,7 +222,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Grupo beta obtido com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -187,7 +232,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "ID do grupo é obrigatório ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -207,7 +252,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
             "content": {
               "application/json": {
                 "schema": {
@@ -217,7 +262,27 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Grupo beta não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -226,14 +291,14 @@
               }
             }
           }
-        },
+        }
+      },
+      "put": {
         "security": [
           {
             "bearerAuth": []
           }
-        ]
-      },
-      "put": {
+        ],
         "description": "Atualiza um grupo beta existente (apenas administradores)",
         "tags": [
           "Beta Groups"
@@ -255,7 +320,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Grupo beta atualizado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -265,7 +330,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "ID do grupo ou dados inválidos",
             "content": {
               "application/json": {
                 "schema": {
@@ -285,7 +350,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
             "content": {
               "application/json": {
                 "schema": {
@@ -295,7 +360,7 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Grupo beta não encontrado",
             "content": {
               "application/json": {
                 "schema": {
@@ -305,7 +370,27 @@
             }
           },
           "409": {
-            "description": "Conflict",
+            "description": "Conflito - nome de grupo já existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -314,14 +399,14 @@
               }
             }
           }
-        },
+        }
+      },
+      "delete": {
         "security": [
           {
             "bearerAuth": []
           }
-        ]
-      },
-      "delete": {
+        ],
         "description": "Exclui um grupo beta e remove todas as associações de telefones (apenas administradores)",
         "tags": [
           "Beta Groups"
@@ -343,7 +428,7 @@
             "description": "Grupo excluído com sucesso"
           },
           "400": {
-            "description": "Bad Request",
+            "description": "ID do grupo é obrigatório ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -363,7 +448,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
             "content": {
               "application/json": {
                 "schema": {
@@ -373,7 +458,27 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Grupo beta não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -382,16 +487,16 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/admin/beta/whitelist": {
       "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Lista telefones na whitelist beta com paginação (apenas administradores)",
         "tags": [
           "Beta Whitelist"
@@ -425,7 +530,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Lista de telefones na whitelist obtida com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -435,7 +540,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Parâmetros de paginação inválidos",
             "content": {
               "application/json": {
                 "schema": {
@@ -455,7 +560,27 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -464,16 +589,16 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/admin/beta/whitelist/bulk-add": {
       "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Adiciona múltiplos números de telefone a um grupo beta (apenas administradores)",
         "tags": [
           "Beta Whitelist"
@@ -492,7 +617,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Telefones adicionados à whitelist em lote com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -505,7 +630,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Dados inválidos ou lista de telefones vazia",
             "content": {
               "application/json": {
                 "schema": {
@@ -525,7 +650,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
             "content": {
               "application/json": {
                 "schema": {
@@ -535,7 +660,27 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Grupo beta não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -544,16 +689,16 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/admin/beta/whitelist/bulk-move": {
       "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Move múltiplos números de telefone de um grupo beta para outro (apenas administradores)",
         "tags": [
           "Beta Whitelist"
@@ -572,7 +717,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Telefones movidos entre grupos com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -582,7 +727,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Dados inválidos ou IDs de grupos iguais",
             "content": {
               "application/json": {
                 "schema": {
@@ -602,7 +747,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
             "content": {
               "application/json": {
                 "schema": {
@@ -612,7 +757,27 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Grupo beta de origem ou destino não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -621,16 +786,16 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/admin/beta/whitelist/bulk-remove": {
       "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Remove múltiplos números de telefone da whitelist beta (apenas administradores)",
         "tags": [
           "Beta Whitelist"
@@ -649,7 +814,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Telefones removidos da whitelist em lote com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -659,7 +824,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Dados inválidos ou lista de telefones vazia",
             "content": {
               "application/json": {
                 "schema": {
@@ -679,7 +844,27 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -688,16 +873,16 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/admin/beta/whitelist/{phone_number}": {
       "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Adiciona um número de telefone a um grupo beta (apenas administradores)",
         "tags": [
           "Beta Whitelist"
@@ -727,7 +912,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Telefone adicionado à whitelist com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -737,7 +922,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Número de telefone ou dados inválidos",
             "content": {
               "application/json": {
                 "schema": {
@@ -757,7 +942,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
             "content": {
               "application/json": {
                 "schema": {
@@ -767,7 +952,7 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Grupo beta não encontrado",
             "content": {
               "application/json": {
                 "schema": {
@@ -777,7 +962,27 @@
             }
           },
           "409": {
-            "description": "Conflict",
+            "description": "Conflito - telefone já está na whitelist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -786,14 +991,14 @@
               }
             }
           }
-        },
+        }
+      },
+      "delete": {
         "security": [
           {
             "bearerAuth": []
           }
-        ]
-      },
-      "delete": {
+        ],
         "description": "Remove um número de telefone da whitelist beta (apenas administradores)",
         "tags": [
           "Beta Whitelist"
@@ -812,7 +1017,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Telefone removido da whitelist com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -822,7 +1027,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Número de telefone é obrigatório ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -842,7 +1047,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
             "content": {
               "application/json": {
                 "schema": {
@@ -852,7 +1057,27 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Telefone não encontrado na whitelist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -861,12 +1086,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/admin/cache/read": {
@@ -948,6 +1168,11 @@
     },
     "/admin/phone/quarantine/stats": {
       "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Obtém estatísticas sobre telefones em quarentena (apenas administradores)",
         "tags": [
           "phone"
@@ -955,7 +1180,7 @@
         "summary": "Obter estatísticas de quarentena",
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Estatísticas de quarentena obtidas com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -975,7 +1200,27 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores podem obter estatísticas de quarentena",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -984,16 +1229,16 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/admin/phone/quarantined": {
       "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Lista todos os telefones em quarentena com paginação (apenas administradores)",
         "tags": [
           "phone"
@@ -1019,7 +1264,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Lista de telefones em quarentena obtida com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -1029,7 +1274,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Parâmetros de paginação inválidos",
             "content": {
               "application/json": {
                 "schema": {
@@ -1049,7 +1294,27 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores podem listar telefones em quarentena",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -1058,12 +1323,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/citizen/ethnicity/options": {
@@ -1075,7 +1335,7 @@
         "summary": "Listar opções de etnia",
         "responses": {
           "200": {
-            "description": "Lista de opções de etnia válidas",
+            "description": "Lista de opções de etnia válidas obtida com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -1132,7 +1392,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Dados do cidadão",
+            "description": "Dados do cidadão obtidos com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -1162,7 +1422,7 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
             "content": {
               "application/json": {
                 "schema": {
@@ -1172,7 +1432,27 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Cidadão não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -1220,7 +1500,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Endereço autodeclarado atualizado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -1230,7 +1510,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de CPF inválido ou dados de endereço incorretos",
             "content": {
               "application/json": {
                 "schema": {
@@ -1250,7 +1530,7 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
             "content": {
               "application/json": {
                 "schema": {
@@ -1260,7 +1540,27 @@
             }
           },
           "409": {
-            "description": "Endereço não alterado",
+            "description": "Conflito - endereço não alterado (dados idênticos aos atuais)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - informações de endereço inválidas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1270,7 +1570,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -1318,7 +1618,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Email autodeclarado atualizado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -1328,7 +1628,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de CPF inválido ou dados de email incorretos",
             "content": {
               "application/json": {
                 "schema": {
@@ -1348,7 +1648,7 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
             "content": {
               "application/json": {
                 "schema": {
@@ -1358,7 +1658,7 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Cidadão não encontrado",
             "content": {
               "application/json": {
                 "schema": {
@@ -1368,7 +1668,27 @@
             }
           },
           "409": {
-            "description": "Email não alterado (email corresponde aos dados atuais)",
+            "description": "Conflito - email não alterado (email corresponde aos dados atuais)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - formato de email inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1378,7 +1698,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -1456,7 +1776,7 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
             "content": {
               "application/json": {
                 "schema": {
@@ -1467,6 +1787,26 @@
           },
           "404": {
             "description": "Cidadão não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - valor de etnia não é válido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1554,7 +1894,7 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
             "content": {
               "application/json": {
                 "schema": {
@@ -1565,6 +1905,26 @@
           },
           "404": {
             "description": "Cidadão não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - nome de exibição muito longo ou vazio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1611,7 +1971,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Status do primeiro login obtido com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -1621,7 +1981,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de CPF inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1641,7 +2001,17 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1651,7 +2021,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -1686,7 +2056,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Status do primeiro login atualizado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -1696,7 +2066,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de CPF inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1716,7 +2086,17 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1726,7 +2106,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -1792,7 +2172,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Lista paginada de entidades jurídicas",
+            "description": "Lista paginada de entidades jurídicas obtida com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -1822,7 +2202,17 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1890,7 +2280,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Lista paginada de chamados do 1746",
+            "description": "Lista paginada de chamados do 1746 obtida com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -1920,7 +2310,17 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1967,7 +2367,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Status do opt-in obtido com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -1977,7 +2377,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de CPF inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -1997,7 +2397,17 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2007,7 +2417,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -2053,7 +2463,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Status do opt-in atualizado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2063,7 +2473,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de CPF inválido ou dados de opt-in incorretos",
             "content": {
               "application/json": {
                 "schema": {
@@ -2083,7 +2493,27 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - valor de opt-in inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2093,7 +2523,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -2141,7 +2571,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Telefone autodeclarado submetido para validação com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2151,7 +2581,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de CPF inválido ou dados de telefone incorretos",
             "content": {
               "application/json": {
                 "schema": {
@@ -2171,7 +2601,7 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
             "content": {
               "application/json": {
                 "schema": {
@@ -2181,7 +2611,7 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Cidadão não encontrado",
             "content": {
               "application/json": {
                 "schema": {
@@ -2191,7 +2621,27 @@
             }
           },
           "409": {
-            "description": "Telefone não alterado (telefone corresponde aos dados atuais verificados)",
+            "description": "Conflito - telefone não alterado (telefone corresponde aos dados atuais verificados)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - formato de telefone inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2201,7 +2651,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -2249,7 +2699,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Código de verificação validado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2259,7 +2709,27 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de CPF inválido ou dados de verificação incorretos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
             "content": {
               "application/json": {
                 "schema": {
@@ -2269,7 +2739,27 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Código de verificação não encontrado ou expirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - código inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2279,7 +2769,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -2318,7 +2808,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Dados da carteira do cidadão",
+            "description": "Dados da carteira do cidadão obtidos com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2348,7 +2838,7 @@
             }
           },
           "403": {
-            "description": "Acesso negado",
+            "description": "Acesso negado - permissões insuficientes",
             "content": {
               "application/json": {
                 "schema": {
@@ -2359,6 +2849,16 @@
           },
           "404": {
             "description": "Cidadão não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2483,11 +2983,21 @@
         "summary": "Métricas Prometheus",
         "responses": {
           "200": {
-            "description": "Métricas Prometheus",
+            "description": "Métricas Prometheus obtidas com sucesso",
             "content": {
               "text/plain": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
                 }
               }
             }
@@ -2520,7 +3030,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Status beta verificado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2530,7 +3040,17 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Número de telefone é obrigatório ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2540,7 +3060,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -2593,7 +3113,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Telefone vinculado ao CPF com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2603,7 +3123,17 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de telefone inválido ou dados de vinculação incorretos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2613,7 +3143,37 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflito - telefone já está vinculado a outro CPF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - CPF ou telefone inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2623,7 +3183,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -2660,7 +3220,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Informações do cidadão obtidas com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2670,7 +3230,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de telefone inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2690,7 +3250,27 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nenhum cidadão encontrado para este telefone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2700,7 +3280,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -2719,7 +3299,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Realiza opt-in para receber notificações",
+        "description": "Realiza opt-in para receber notificações do chatbot",
         "tags": [
           "phone"
         ],
@@ -2748,7 +3328,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Opt-in realizado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2758,7 +3338,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de telefone inválido ou dados de opt-in incorretos",
             "content": {
               "application/json": {
                 "schema": {
@@ -2778,7 +3358,37 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflito - telefone já possui opt-in ativo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - telefone em quarentena ou bloqueado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2788,7 +3398,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -2807,7 +3417,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Realiza opt-out para parar de receber notificações",
+        "description": "Realiza opt-out para parar de receber notificações do chatbot",
         "tags": [
           "phone"
         ],
@@ -2836,7 +3446,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Opt-out realizado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2846,7 +3456,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de telefone inválido ou dados de opt-out incorretos",
             "content": {
               "application/json": {
                 "schema": {
@@ -2866,7 +3476,37 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Telefone não encontrado ou sem opt-in ativo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - opt-out já realizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2876,7 +3516,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -2913,7 +3553,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Telefone colocado em quarentena com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2923,7 +3563,17 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de telefone inválido ou parâmetros incorretos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2933,7 +3583,27 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores podem colocar telefones em quarentena",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - telefone já em quarentena ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2943,7 +3613,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -2978,7 +3648,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Telefone liberado da quarentena com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2988,7 +3658,17 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de telefone inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -2998,7 +3678,37 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores podem liberar telefones da quarentena",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Telefone não encontrado em quarentena",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - telefone não está em quarentena",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3008,7 +3718,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -3056,7 +3766,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Registro rejeitado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -3066,7 +3776,17 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de telefone inválido ou dados de rejeição incorretos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3076,7 +3796,27 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - registro não pode ser rejeitado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3086,7 +3826,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -3100,7 +3840,7 @@
     },
     "/phone/{phone_number}/status": {
       "get": {
-        "description": "Obtém o status de um número de telefone (quarentena, CPF vinculado, etc.)",
+        "description": "Obtém o status de um número de telefone (quarentena, CPF vinculado, opt-in/opt-out, etc.)",
         "tags": [
           "phone"
         ],
@@ -3118,7 +3858,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Status do telefone obtido com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -3128,7 +3868,27 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de telefone inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Telefone não encontrado no sistema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3138,7 +3898,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -3162,7 +3922,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Valida um registro de usuário contra dados base",
+        "description": "Valida um registro de usuário contra dados base do governo",
         "tags": [
           "phone"
         ],
@@ -3191,7 +3951,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Registro validado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -3201,7 +3961,17 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de telefone inválido ou dados de registro incorretos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3211,7 +3981,27 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - informações não conferem com a base",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3221,7 +4011,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -3235,14 +4025,14 @@
     },
     "/v1/avatars": {
       "get": {
-        "description": "Get paginated list of available profile picture avatars",
+        "description": "Obtém lista paginada de avatares de foto de perfil disponíveis",
         "tags": [
           "avatars"
         ],
-        "summary": "List available avatars",
+        "summary": "Listar avatares disponíveis",
         "parameters": [
           {
-            "description": "Page number (default: 1)",
+            "description": "Número da página (padrão: 1)",
             "name": "page",
             "in": "query",
             "schema": {
@@ -3250,7 +4040,7 @@
             }
           },
           {
-            "description": "Items per page (default: 20, max: 100)",
+            "description": "Itens por página (padrão: 20, máximo: 100)",
             "name": "per_page",
             "in": "query",
             "schema": {
@@ -3260,7 +4050,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Lista de avatares obtida com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -3270,7 +4060,17 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Parâmetros de paginação inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3280,7 +4080,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -3302,11 +4102,11 @@
             "bearerAuth": []
           }
         ],
-        "description": "Create a new profile picture avatar (admin only)",
+        "description": "Cria um novo avatar de foto de perfil (somente administradores)",
         "tags": [
           "avatars"
         ],
-        "summary": "Create a new avatar",
+        "summary": "Criar novo avatar",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3315,12 +4115,12 @@
               }
             }
           },
-          "description": "Avatar data",
+          "description": "Dados do avatar",
           "required": true
         },
         "responses": {
           "201": {
-            "description": "Created",
+            "description": "Avatar criado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -3330,7 +4130,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Dados de avatar inválidos ou formato incorreto",
             "content": {
               "application/json": {
                 "schema": {
@@ -3340,7 +4140,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3350,7 +4150,17 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3360,7 +4170,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -3379,14 +4189,14 @@
             "bearerAuth": []
           }
         ],
-        "description": "Soft delete a profile picture avatar (admin only)",
+        "description": "Exclui um avatar de foto de perfil (exclusão suave, somente administradores)",
         "tags": [
           "avatars"
         ],
-        "summary": "Delete an avatar",
+        "summary": "Excluir avatar",
         "parameters": [
           {
-            "description": "Avatar ID",
+            "description": "ID do avatar",
             "name": "id",
             "in": "path",
             "required": true,
@@ -3397,10 +4207,10 @@
         ],
         "responses": {
           "204": {
-            "description": "No Content"
+            "description": "Avatar excluído com sucesso"
           },
           "400": {
-            "description": "Bad Request",
+            "description": "ID do avatar é obrigatório ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3410,7 +4220,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3420,7 +4230,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - somente administradores",
             "content": {
               "application/json": {
                 "schema": {
@@ -3430,7 +4240,17 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Avatar não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3440,7 +4260,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -3459,15 +4279,15 @@
             "bearerAuth": []
           }
         ],
-        "description": "Get the current profile picture avatar for a user",
+        "description": "Obtém o avatar de foto de perfil atual de um usuário",
         "tags": [
           "avatars",
           "citizen"
         ],
-        "summary": "Get user's current avatar",
+        "summary": "Obter avatar atual do usuário",
         "parameters": [
           {
-            "description": "User CPF",
+            "description": "CPF do usuário",
             "name": "cpf",
             "in": "path",
             "required": true,
@@ -3478,7 +4298,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Avatar do usuário obtido com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -3488,7 +4308,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de CPF inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3498,7 +4318,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3508,7 +4328,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - permissões insuficientes",
             "content": {
               "application/json": {
                 "schema": {
@@ -3518,7 +4338,17 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Usuário não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3528,7 +4358,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -3545,15 +4375,15 @@
             "bearerAuth": []
           }
         ],
-        "description": "Set or change the profile picture avatar for a user",
+        "description": "Define ou altera o avatar de foto de perfil de um usuário",
         "tags": [
           "avatars",
           "citizen"
         ],
-        "summary": "Update user's avatar",
+        "summary": "Atualizar avatar do usuário",
         "parameters": [
           {
-            "description": "User CPF",
+            "description": "CPF do usuário",
             "name": "cpf",
             "in": "path",
             "required": true,
@@ -3570,12 +4400,12 @@
               }
             }
           },
-          "description": "Avatar selection",
+          "description": "Seleção de avatar",
           "required": true
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Avatar do usuário atualizado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -3585,7 +4415,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Formato de CPF inválido ou ID de avatar inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3595,7 +4425,7 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3605,7 +4435,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Acesso negado - permissões insuficientes",
             "content": {
               "application/json": {
                 "schema": {
@@ -3615,7 +4445,27 @@
             }
           },
           "404": {
-            "description": "Not Found",
+            "description": "Usuário ou avatar não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - avatar inexistente ou inativo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
             "content": {
               "application/json": {
                 "schema": {
@@ -3625,7 +4475,7 @@
             }
           },
           "500": {
-            "description": "Internal Server Error",
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -3657,7 +4507,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Email validado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -3667,7 +4517,27 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Campo email é obrigatório ou formato inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
@@ -3704,7 +4574,7 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Telefone validado com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -3714,7 +4584,27 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "Campo telefone é obrigatório ou formato inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
             "content": {
               "application/json": {
                 "schema": {
