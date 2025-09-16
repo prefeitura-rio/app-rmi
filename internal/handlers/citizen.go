@@ -68,11 +68,13 @@ func queueCFLookupJob(ctx context.Context, cpf, address string) {
 // @Produce json
 // @Param cpf path string true "CPF do cidadão (11 dígitos)" minLength(11) maxLength(11)
 // @Security BearerAuth
-// @Success 200 {object} models.Citizen "Dados do cidadão"
+// @Success 200 {object} models.Citizen "Dados do cidadão obtidos com sucesso"
 // @Failure 400 {object} ErrorResponse "Formato de CPF inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
-// @Failure 404 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 404 {object} ErrorResponse "Cidadão não encontrado"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf} [get]
 func GetCitizenData(c *gin.Context) {
 	startTime := time.Now()
@@ -394,12 +396,14 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 // @Param cpf path string true "Número do CPF"
 // @Param data body models.SelfDeclaredAddressInput true "Endereço autodeclarado"
 // @Security BearerAuth
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} SuccessResponse "Endereço autodeclarado atualizado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou dados de endereço incorretos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
-// @Failure 409 {object} ErrorResponse "Endereço não alterado"
-// @Failure 500 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 409 {object} ErrorResponse "Conflito - endereço não alterado (dados idênticos aos atuais)"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - informações de endereço inválidas"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/address [put]
 func UpdateSelfDeclaredAddress(c *gin.Context) {
 	startTime := time.Now()
@@ -614,13 +618,15 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 // @Param cpf path string true "Número do CPF"
 // @Param data body models.SelfDeclaredPhoneInput true "Telefone autodeclarado"
 // @Security BearerAuth
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} SuccessResponse "Telefone autodeclarado submetido para validação com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou dados de telefone incorretos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
-// @Failure 404 {object} ErrorResponse
-// @Failure 409 {object} ErrorResponse "Telefone não alterado (telefone corresponde aos dados atuais verificados)"
-// @Failure 500 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 404 {object} ErrorResponse "Cidadão não encontrado"
+// @Failure 409 {object} ErrorResponse "Conflito - telefone não alterado (telefone corresponde aos dados atuais verificados)"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - formato de telefone inválido"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/phone [put]
 func UpdateSelfDeclaredPhone(c *gin.Context) {
 	startTime := time.Now()
@@ -839,13 +845,15 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 // @Param cpf path string true "Número do CPF"
 // @Param data body models.SelfDeclaredEmailInput true "Email autodeclarado"
 // @Security BearerAuth
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} SuccessResponse "Email autodeclarado atualizado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou dados de email incorretos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
-// @Failure 404 {object} ErrorResponse
-// @Failure 409 {object} ErrorResponse "Email não alterado (email corresponde aos dados atuais)"
-// @Failure 500 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 404 {object} ErrorResponse "Cidadão não encontrado"
+// @Failure 409 {object} ErrorResponse "Conflito - email não alterado (email corresponde aos dados atuais)"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - formato de email inválido"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/email [put]
 func UpdateSelfDeclaredEmail(c *gin.Context) {
 	startTime := time.Now()
@@ -1014,8 +1022,10 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 // @Success 200 {object} SuccessResponse "Etnia atualizada com sucesso"
 // @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou valor de etnia inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
 // @Failure 404 {object} ErrorResponse "Cidadão não encontrado"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - valor de etnia não é válido"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/ethnicity [put]
 func UpdateSelfDeclaredRaca(c *gin.Context) {
@@ -1171,8 +1181,10 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 // @Success 200 {object} SuccessResponse "Nome de exibição atualizado com sucesso"
 // @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou valor de nome de exibição inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
 // @Failure 404 {object} ErrorResponse "Cidadão não encontrado"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - nome de exibição muito longo ou vazio"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/exhibition-name [put]
 func UpdateSelfDeclaredNomeExibicao(c *gin.Context) {
@@ -1417,7 +1429,8 @@ func HealthCheck(c *gin.Context) {
 // @Description Expõe métricas Prometheus para monitoramento do sistema
 // @Tags metrics
 // @Produce text/plain
-// @Success 200 {string} string "Métricas Prometheus"
+// @Success 200 {string} string "Métricas Prometheus obtidas com sucesso"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /metrics [get]
 func MetricsHandler(c *gin.Context) {
 	// Prometheus metrics are automatically exposed by promauto
@@ -1433,11 +1446,12 @@ func MetricsHandler(c *gin.Context) {
 // @Produce json
 // @Param cpf path string true "Número do CPF"
 // @Security BearerAuth
-// @Success 200 {object} models.UserConfigResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} models.UserConfigResponse "Status do primeiro login obtido com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
-// @Failure 500 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/firstlogin [get]
 func GetFirstLogin(c *gin.Context) {
 	startTime := time.Now()
@@ -1550,11 +1564,12 @@ func GetFirstLogin(c *gin.Context) {
 // @Produce json
 // @Param cpf path string true "Número do CPF"
 // @Security BearerAuth
-// @Success 200 {object} models.UserConfigResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} models.UserConfigResponse "Status do primeiro login atualizado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
-// @Failure 500 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/firstlogin [put]
 func UpdateFirstLogin(c *gin.Context) {
 	startTime := time.Now()
@@ -1665,11 +1680,12 @@ func UpdateFirstLogin(c *gin.Context) {
 // @Produce json
 // @Param cpf path string true "Número do CPF"
 // @Security BearerAuth
-// @Success 200 {object} models.UserConfigOptInResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} models.UserConfigOptInResponse "Status do opt-in obtido com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
-// @Failure 500 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/optin [get]
 func GetOptIn(c *gin.Context) {
 	startTime := time.Now()
@@ -1771,11 +1787,13 @@ func GetOptIn(c *gin.Context) {
 // @Param cpf path string true "Número do CPF"
 // @Param data body models.UserConfigOptInResponse true "Status de opt-in"
 // @Security BearerAuth
-// @Success 200 {object} models.UserConfigOptInResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} models.UserConfigOptInResponse "Status do opt-in atualizado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou dados de opt-in incorretos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
-// @Failure 500 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - valor de opt-in inválido"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/optin [put]
 func UpdateOptIn(c *gin.Context) {
 	startTime := time.Now()
@@ -1899,7 +1917,7 @@ func UpdateOptIn(c *gin.Context) {
 // @Tags citizen
 // @Accept json
 // @Produce json
-// @Success 200 {array} string "Lista de opções de etnia válidas"
+// @Success 200 {array} string "Lista de opções de etnia válidas obtida com sucesso"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/ethnicity/options [get]
 func GetEthnicityOptions(c *gin.Context) {
@@ -1944,11 +1962,12 @@ func GetEthnicityOptions(c *gin.Context) {
 // @Produce json
 // @Param cpf path string true "CPF do cidadão (11 dígitos)" minLength(11) maxLength(11)
 // @Security BearerAuth
-// @Success 200 {object} models.CitizenWallet "Dados da carteira do cidadão"
+// @Success 200 {object} models.CitizenWallet "Dados da carteira do cidadão obtidos com sucesso"
 // @Failure 400 {object} ErrorResponse "Formato de CPF inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
 // @Failure 404 {object} ErrorResponse "Cidadão não encontrado"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/wallet [get]
 func GetCitizenWallet(c *gin.Context) {
@@ -2153,10 +2172,11 @@ func GetCitizenWallet(c *gin.Context) {
 // @Param page query int false "Número da página (padrão: 1)" minimum(1)
 // @Param per_page query int false "Itens por página (padrão: 10, máximo: 100)" minimum(1) maximum(100)
 // @Security BearerAuth
-// @Success 200 {object} models.PaginatedMaintenanceRequests "Lista paginada de chamados do 1746"
+// @Success 200 {object} models.PaginatedMaintenanceRequests "Lista paginada de chamados do 1746 obtida com sucesso"
 // @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou parâmetros de paginação inválidos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/maintenance-request [get]
 func GetMaintenanceRequests(c *gin.Context) {
@@ -2406,12 +2426,14 @@ func GetMaintenanceRequests(c *gin.Context) {
 // @Param cpf path string true "Número do CPF"
 // @Param data body models.ValidatePhoneVerificationRequest true "Código de verificação"
 // @Security BearerAuth
-// @Success 200 {object} models.ValidatePhoneVerificationResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} models.ValidatePhoneVerificationResponse "Código de verificação validado com sucesso e telefone ativado"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou código de verificação incorreto"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 404 {object} ErrorResponse "Código de verificação não encontrado ou expirado"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - código de verificação inválido"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/phone/validate [post]
 
 type ErrorResponse struct {
