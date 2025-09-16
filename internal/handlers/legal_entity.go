@@ -25,10 +25,11 @@ import (
 // @Param per_page query int false "Itens por página (padrão: 10, máximo: 100)" minimum(1) maximum(100)
 // @Param natureza_juridica_id query string false "Filtro opcional por ID da natureza jurídica"
 // @Security BearerAuth
-// @Success 200 {object} models.PaginatedLegalEntities "Lista paginada de entidades jurídicas"
+// @Success 200 {object} models.PaginatedLegalEntities "Lista paginada de entidades jurídicas obtida com sucesso"
 // @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou parâmetros de paginação inválidos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse "Acesso negado"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/legal-entities [get]
 func GetLegalEntities(c *gin.Context) {

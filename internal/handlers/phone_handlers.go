@@ -43,13 +43,15 @@ func isPhoneParsingError(err error) bool {
 
 // GetPhoneStatus godoc
 // @Summary Obter status do telefone
-// @Description Obtém o status de um número de telefone (quarentena, CPF vinculado, etc.)
+// @Description Obtém o status de um número de telefone (quarentena, CPF vinculado, opt-in/opt-out, etc.)
 // @Tags phone
 // @Produce json
 // @Param phone_number path string true "Número do telefone"
-// @Success 200 {object} models.PhoneStatusResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Success 200 {object} models.PhoneStatusResponse "Status do telefone obtido com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de telefone inválido"
+// @Failure 404 {object} ErrorResponse "Telefone não encontrado no sistema"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /phone/{phone_number}/status [get]
 func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 	startTime := time.Now()
@@ -139,11 +141,13 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 // @Produce json
 // @Param phone_number path string true "Número do telefone"
 // @Security BearerAuth
-// @Success 200 {object} models.PhoneCitizenResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} models.PhoneCitizenResponse "Informações do cidadão obtidas com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de telefone inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 404 {object} ErrorResponse "Nenhum cidadão encontrado para este telefone"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /phone/{phone_number}/citizen [get]
 func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 	startTime := time.Now()
@@ -230,17 +234,20 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 
 // ValidateRegistration godoc
 // @Summary Validar registro
-// @Description Valida um registro de usuário contra dados base
+// @Description Valida um registro de usuário contra dados base do governo
 // @Tags phone
 // @Accept json
 // @Produce json
 // @Param phone_number path string true "Número do telefone"
 // @Param data body models.ValidateRegistrationRequest true "Dados do registro"
 // @Security BearerAuth
-// @Success 200 {object} models.ValidateRegistrationResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Success 200 {object} models.ValidateRegistrationResponse "Registro validado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de telefone inválido ou dados de registro incorretos"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - informações não conferem com a base"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /phone/{phone_number}/validate-registration [post]
 func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 	startTime := time.Now()
@@ -336,18 +343,21 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 
 // OptIn godoc
 // @Summary Realizar opt-in
-// @Description Realiza opt-in para receber notificações
+// @Description Realiza opt-in para receber notificações do chatbot
 // @Tags phone
 // @Accept json
 // @Produce json
 // @Param phone_number path string true "Número do telefone"
 // @Param data body models.OptInRequest true "Dados do opt-in"
 // @Security BearerAuth
-// @Success 200 {object} models.OptInResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} models.OptInResponse "Opt-in realizado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de telefone inválido ou dados de opt-in incorretos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 409 {object} ErrorResponse "Conflito - telefone já possui opt-in ativo"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - telefone em quarentena ou bloqueado"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /phone/{phone_number}/opt-in [post]
 func (h *PhoneHandlers) OptIn(c *gin.Context) {
 	startTime := time.Now()
@@ -436,18 +446,21 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 
 // OptOut godoc
 // @Summary Realizar opt-out
-// @Description Realiza opt-out para parar de receber notificações
+// @Description Realiza opt-out para parar de receber notificações do chatbot
 // @Tags phone
 // @Accept json
 // @Produce json
 // @Param phone_number path string true "Número do telefone"
 // @Param data body models.OptOutRequest true "Dados do opt-out"
 // @Security BearerAuth
-// @Success 200 {object} models.OptOutResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} models.OptOutResponse "Opt-out realizado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de telefone inválido ou dados de opt-out incorretos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 404 {object} ErrorResponse "Telefone não encontrado ou sem opt-in ativo"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - opt-out já realizado"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /phone/{phone_number}/opt-out [post]
 func (h *PhoneHandlers) OptOut(c *gin.Context) {
 	startTime := time.Now()
@@ -545,10 +558,13 @@ func (h *PhoneHandlers) OptOut(c *gin.Context) {
 // @Param phone_number path string true "Número do telefone"
 // @Param data body models.RejectRegistrationRequest true "Dados da rejeição"
 // @Security BearerAuth
-// @Success 200 {object} models.RejectRegistrationResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Success 200 {object} models.RejectRegistrationResponse "Registro rejeitado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de telefone inválido ou dados de rejeição incorretos"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - registro não pode ser rejeitado"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /phone/{phone_number}/reject-registration [post]
 func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 	startTime := time.Now()
@@ -648,10 +664,14 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 // @Param phone_number path string true "Número do telefone"
 // @Param data body models.BindRequest true "Dados da vinculação"
 // @Security BearerAuth
-// @Success 200 {object} models.BindResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Success 200 {object} models.BindResponse "Telefone vinculado ao CPF com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de telefone inválido ou dados de vinculação incorretos"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 409 {object} ErrorResponse "Conflito - telefone já está vinculado a outro CPF"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - CPF ou telefone inválido"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /phone/{phone_number}/bind [post]
 func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 	startTime := time.Now()
@@ -748,10 +768,13 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 // @Produce json
 // @Param phone_number path string true "Número do telefone"
 // @Security BearerAuth
-// @Success 200 {object} models.QuarantineResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Success 200 {object} models.QuarantineResponse "Telefone colocado em quarentena com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de telefone inválido ou parâmetros incorretos"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores podem colocar telefones em quarentena"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - telefone já em quarentena ou inválido"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /phone/{phone_number}/quarantine [post]
 func (h *PhoneHandlers) QuarantinePhone(c *gin.Context) {
 	startTime := time.Now()
@@ -834,10 +857,14 @@ func (h *PhoneHandlers) QuarantinePhone(c *gin.Context) {
 // @Produce json
 // @Param phone_number path string true "Número do telefone"
 // @Security BearerAuth
-// @Success 200 {object} models.QuarantineResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Success 200 {object} models.QuarantineResponse "Telefone liberado da quarentena com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de telefone inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores podem liberar telefones da quarentena"
+// @Failure 404 {object} ErrorResponse "Telefone não encontrado em quarentena"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - telefone não está em quarentena"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /phone/{phone_number}/quarantine [delete]
 func (h *PhoneHandlers) ReleaseQuarantine(c *gin.Context) {
 	startTime := time.Now()
@@ -920,10 +947,13 @@ func (h *PhoneHandlers) ReleaseQuarantine(c *gin.Context) {
 // @Produce json
 // @Param page query int false "Página (padrão: 1)"
 // @Param per_page query int false "Itens por página (padrão: 10)"
-// @Success 200 {object} models.QuarantinedListResponse
-// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Success 200 {object} models.QuarantinedListResponse "Lista de telefones em quarentena obtida com sucesso"
+// @Failure 400 {object} ErrorResponse "Parâmetros de paginação inválidos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores podem listar telefones em quarentena"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/phone/quarantined [get]
 func (h *PhoneHandlers) GetQuarantinedPhones(c *gin.Context) {
 	startTime := time.Now()
@@ -1004,9 +1034,12 @@ func (h *PhoneHandlers) GetQuarantinedPhones(c *gin.Context) {
 // @Description Obtém estatísticas sobre telefones em quarentena (apenas administradores)
 // @Tags phone
 // @Produce json
-// @Success 200 {object} models.QuarantineStats
+// @Security BearerAuth
+// @Success 200 {object} models.QuarantineStats "Estatísticas de quarentena obtidas com sucesso"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores podem obter estatísticas de quarentena"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/phone/quarantine/stats [get]
 func (h *PhoneHandlers) GetQuarantineStats(c *gin.Context) {
 	startTime := time.Now()

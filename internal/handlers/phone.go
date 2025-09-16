@@ -51,8 +51,10 @@ type PhoneValidationResponse struct {
 // @Accept json
 // @Produce json
 // @Param data body PhoneValidationRequest true "Telefone a ser validado"
-// @Success 200 {object} PhoneValidationResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} PhoneValidationResponse "Telefone validado com sucesso"
+// @Failure 400 {object} ErrorResponse "Campo telefone é obrigatório ou formato inválido"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /validate/phone [post]
 func ValidatePhoneNumber(c *gin.Context) {
 	startTime := time.Now()

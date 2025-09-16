@@ -49,8 +49,10 @@ type EmailValidationResponse struct {
 // @Accept json
 // @Produce json
 // @Param data body EmailValidationRequest true "Email a ser validado"
-// @Success 200 {object} EmailValidationResponse
-// @Failure 400 {object} ErrorResponse
+// @Success 200 {object} EmailValidationResponse "Email validado com sucesso"
+// @Failure 400 {object} ErrorResponse "Campo email é obrigatório ou formato inválido"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /validate/email [post]
 func ValidateEmailAddress(c *gin.Context) {
 	startTime := time.Now()

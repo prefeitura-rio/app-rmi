@@ -28,10 +28,14 @@ import (
 // @Param cpf path string true "Número do CPF"
 // @Param data body models.PhoneVerificationValidateRequest true "Código de verificação e telefone"
 // @Security BearerAuth
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Success 200 {object} SuccessResponse "Código de verificação validado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou dados de verificação incorretos"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 404 {object} ErrorResponse "Código de verificação não encontrado ou expirado"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - código inválido"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/phone/validate [post]
 func ValidatePhoneVerification(c *gin.Context) {
 	startTime := time.Now()

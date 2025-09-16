@@ -32,16 +32,17 @@ func NewAvatarHandlers(logger *logging.SafeLogger, cacheService *services.CacheS
 }
 
 // ListAvatars godoc
-// @Summary List available avatars
-// @Description Get paginated list of available profile picture avatars
+// @Summary Listar avatares disponíveis
+// @Description Obtém lista paginada de avatares de foto de perfil disponíveis
 // @Tags avatars
 // @Accept json
 // @Produce json
-// @Param page query int false "Page number (default: 1)"
-// @Param per_page query int false "Items per page (default: 20, max: 100)"
-// @Success 200 {object} models.AvatarsListResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Param page query int false "Número da página (padrão: 1)"
+// @Param per_page query int false "Itens por página (padrão: 20, máximo: 100)"
+// @Success 200 {object} models.AvatarsListResponse "Lista de avatares obtida com sucesso"
+// @Failure 400 {object} ErrorResponse "Parâmetros de paginação inválidos"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /v1/avatars [get]
 func (h *AvatarHandlers) ListAvatars(c *gin.Context) {
 	// Create context with tracing
@@ -78,18 +79,19 @@ func (h *AvatarHandlers) ListAvatars(c *gin.Context) {
 }
 
 // CreateAvatar godoc
-// @Summary Create a new avatar
-// @Description Create a new profile picture avatar (admin only)
+// @Summary Criar novo avatar
+// @Description Cria um novo avatar de foto de perfil (somente administradores)
 // @Tags avatars
 // @Accept json
 // @Produce json
-// @Param data body models.AvatarRequest true "Avatar data"
-// @Success 201 {object} models.AvatarResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Param data body models.AvatarRequest true "Dados do avatar"
 // @Security BearerAuth
+// @Success 201 {object} models.AvatarResponse "Avatar criado com sucesso"
+// @Failure 400 {object} ErrorResponse "Dados de avatar inválidos ou formato incorreto"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /v1/avatars [post]
 func (h *AvatarHandlers) CreateAvatar(c *gin.Context) {
 	// Create context with tracing
@@ -130,19 +132,20 @@ func (h *AvatarHandlers) CreateAvatar(c *gin.Context) {
 }
 
 // DeleteAvatar godoc
-// @Summary Delete an avatar
-// @Description Soft delete a profile picture avatar (admin only)
+// @Summary Excluir avatar
+// @Description Exclui um avatar de foto de perfil (exclusão suave, somente administradores)
 // @Tags avatars
 // @Accept json
 // @Produce json
-// @Param id path string true "Avatar ID"
-// @Success 204
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Param id path string true "ID do avatar"
 // @Security BearerAuth
+// @Success 204 "Avatar excluído com sucesso"
+// @Failure 400 {object} ErrorResponse "ID do avatar é obrigatório ou inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 404 {object} ErrorResponse "Avatar não encontrado"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /v1/avatars/{id} [delete]
 func (h *AvatarHandlers) DeleteAvatar(c *gin.Context) {
 	// Create context with tracing
@@ -175,19 +178,20 @@ func (h *AvatarHandlers) DeleteAvatar(c *gin.Context) {
 }
 
 // GetUserAvatar godoc
-// @Summary Get user's current avatar
-// @Description Get the current profile picture avatar for a user
+// @Summary Obter avatar atual do usuário
+// @Description Obtém o avatar de foto de perfil atual de um usuário
 // @Tags avatars,citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "User CPF"
-// @Success 200 {object} models.UserAvatarResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Param cpf path string true "CPF do usuário"
 // @Security BearerAuth
+// @Success 200 {object} models.UserAvatarResponse "Avatar do usuário obtido com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 404 {object} ErrorResponse "Usuário não encontrado"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /v1/citizen/{cpf}/avatar [get]
 func (h *AvatarHandlers) GetUserAvatar(c *gin.Context) {
 	// Create context with tracing
@@ -254,20 +258,22 @@ func (h *AvatarHandlers) GetUserAvatar(c *gin.Context) {
 }
 
 // UpdateUserAvatar godoc
-// @Summary Update user's avatar
-// @Description Set or change the profile picture avatar for a user
+// @Summary Atualizar avatar do usuário
+// @Description Define ou altera o avatar de foto de perfil de um usuário
 // @Tags avatars,citizen
 // @Accept json
 // @Produce json
-// @Param cpf path string true "User CPF"
-// @Param data body models.UserAvatarRequest true "Avatar selection"
-// @Success 200 {object} models.UserAvatarResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Param cpf path string true "CPF do usuário"
+// @Param data body models.UserAvatarRequest true "Seleção de avatar"
 // @Security BearerAuth
+// @Success 200 {object} models.UserAvatarResponse "Avatar do usuário atualizado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou ID de avatar inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 404 {object} ErrorResponse "Usuário ou avatar não encontrado"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - avatar inexistente ou inativo"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /v1/citizen/{cpf}/avatar [put]
 func (h *AvatarHandlers) UpdateUserAvatar(c *gin.Context) {
 	// Create context with tracing

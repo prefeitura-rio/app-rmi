@@ -38,11 +38,14 @@ func NewBetaGroupHandlers(logger *logging.SafeLogger, betaGroupService *services
 // @Accept json
 // @Produce json
 // @Param group body models.BetaGroupRequest true "Dados do grupo"
-// @Success 201 {object} models.BetaGroupResponse
-// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Success 201 {object} models.BetaGroupResponse "Grupo beta criado com sucesso"
+// @Failure 400 {object} ErrorResponse "Dados inválidos ou nome de grupo inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
-// @Failure 409 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 409 {object} ErrorResponse "Conflito - nome de grupo já existe"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/beta/groups [post]
 func (h *BetaGroupHandlers) CreateGroup(c *gin.Context) {
 	startTime := time.Now()
@@ -131,11 +134,14 @@ func (h *BetaGroupHandlers) CreateGroup(c *gin.Context) {
 // @Tags Beta Groups
 // @Produce json
 // @Param group_id path string true "ID do grupo"
-// @Success 200 {object} models.BetaGroupResponse
-// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Success 200 {object} models.BetaGroupResponse "Grupo beta obtido com sucesso"
+// @Failure 400 {object} ErrorResponse "ID do grupo é obrigatório ou inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 404 {object} ErrorResponse "Grupo beta não encontrado"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/beta/groups/{group_id} [get]
 func (h *BetaGroupHandlers) GetGroup(c *gin.Context) {
 	startTime := time.Now()
@@ -224,10 +230,13 @@ func (h *BetaGroupHandlers) GetGroup(c *gin.Context) {
 // @Produce json
 // @Param page query int false "Página (padrão: 1)"
 // @Param per_page query int false "Itens por página (padrão: 10)"
-// @Success 200 {object} models.BetaGroupListResponse
-// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Success 200 {object} models.BetaGroupListResponse "Lista de grupos beta obtida com sucesso"
+// @Failure 400 {object} ErrorResponse "Parâmetros de paginação inválidos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/beta/groups [get]
 func (h *BetaGroupHandlers) ListGroups(c *gin.Context) {
 	startTime := time.Now()
@@ -311,12 +320,15 @@ func (h *BetaGroupHandlers) ListGroups(c *gin.Context) {
 // @Produce json
 // @Param group_id path string true "ID do grupo"
 // @Param group body models.BetaGroupRequest true "Dados do grupo"
-// @Success 200 {object} models.BetaGroupResponse
-// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Success 200 {object} models.BetaGroupResponse "Grupo beta atualizado com sucesso"
+// @Failure 400 {object} ErrorResponse "ID do grupo ou dados inválidos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 409 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 404 {object} ErrorResponse "Grupo beta não encontrado"
+// @Failure 409 {object} ErrorResponse "Conflito - nome de grupo já existe"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/beta/groups/{group_id} [put]
 func (h *BetaGroupHandlers) UpdateGroup(c *gin.Context) {
 	startTime := time.Now()
@@ -422,11 +434,14 @@ func (h *BetaGroupHandlers) UpdateGroup(c *gin.Context) {
 // @Tags Beta Groups
 // @Produce json
 // @Param group_id path string true "ID do grupo"
+// @Security BearerAuth
 // @Success 204 "Grupo excluído com sucesso"
-// @Failure 400 {object} ErrorResponse
+// @Failure 400 {object} ErrorResponse "ID do grupo é obrigatório ou inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 404 {object} ErrorResponse "Grupo beta não encontrado"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/beta/groups/{group_id} [delete]
 func (h *BetaGroupHandlers) DeleteGroup(c *gin.Context) {
 	startTime := time.Now()
@@ -512,9 +527,10 @@ func (h *BetaGroupHandlers) DeleteGroup(c *gin.Context) {
 // @Tags Beta Whitelist
 // @Produce json
 // @Param phone_number path string true "Número de telefone"
-// @Success 200 {object} models.BetaStatusResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
+// @Success 200 {object} models.BetaStatusResponse "Status beta verificado com sucesso"
+// @Failure 400 {object} ErrorResponse "Número de telefone é obrigatório ou inválido"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /phone/{phone_number}/beta-status [get]
 func (h *BetaGroupHandlers) GetBetaStatus(c *gin.Context) {
 	startTime := time.Now()
@@ -586,12 +602,15 @@ func (h *BetaGroupHandlers) GetBetaStatus(c *gin.Context) {
 // @Produce json
 // @Param phone_number path string true "Número de telefone"
 // @Param data body models.BetaWhitelistRequest true "Dados da whitelist"
-// @Success 200 {object} models.BetaWhitelistResponse
-// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Success 200 {object} models.BetaWhitelistResponse "Telefone adicionado à whitelist com sucesso"
+// @Failure 400 {object} ErrorResponse "Número de telefone ou dados inválidos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 409 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 404 {object} ErrorResponse "Grupo beta não encontrado"
+// @Failure 409 {object} ErrorResponse "Conflito - telefone já está na whitelist"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/beta/whitelist/{phone_number} [post]
 func (h *BetaGroupHandlers) AddToWhitelist(c *gin.Context) {
 	startTime := time.Now()
@@ -698,11 +717,14 @@ func (h *BetaGroupHandlers) AddToWhitelist(c *gin.Context) {
 // @Tags Beta Whitelist
 // @Produce json
 // @Param phone_number path string true "Número de telefone"
-// @Success 200 {object} models.BetaWhitelistResponse
-// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Success 200 {object} models.BetaWhitelistResponse "Telefone removido da whitelist com sucesso"
+// @Failure 400 {object} ErrorResponse "Número de telefone é obrigatório ou inválido"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 404 {object} ErrorResponse "Telefone não encontrado na whitelist"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/beta/whitelist/{phone_number} [delete]
 func (h *BetaGroupHandlers) RemoveFromWhitelist(c *gin.Context) {
 	startTime := time.Now()
@@ -789,10 +811,13 @@ func (h *BetaGroupHandlers) RemoveFromWhitelist(c *gin.Context) {
 // @Param page query int false "Página (padrão: 1)"
 // @Param per_page query int false "Itens por página (padrão: 10)"
 // @Param group_id query string false "Filtrar por ID do grupo"
-// @Success 200 {object} models.BetaWhitelistListResponse
-// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Success 200 {object} models.BetaWhitelistListResponse "Lista de telefones na whitelist obtida com sucesso"
+// @Failure 400 {object} ErrorResponse "Parâmetros de paginação inválidos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/beta/whitelist [get]
 func (h *BetaGroupHandlers) ListWhitelistedPhones(c *gin.Context) {
 	startTime := time.Now()
@@ -880,11 +905,14 @@ func (h *BetaGroupHandlers) ListWhitelistedPhones(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param data body models.BetaWhitelistBulkRequest true "Dados da operação em lote"
-// @Success 200 {array} models.BetaWhitelistResponse
-// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Success 200 {array} models.BetaWhitelistResponse "Telefones adicionados à whitelist em lote com sucesso"
+// @Failure 400 {object} ErrorResponse "Dados inválidos ou lista de telefones vazia"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 404 {object} ErrorResponse "Grupo beta não encontrado"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/beta/whitelist/bulk-add [post]
 func (h *BetaGroupHandlers) BulkAddToWhitelist(c *gin.Context) {
 	startTime := time.Now()
@@ -976,10 +1004,13 @@ func (h *BetaGroupHandlers) BulkAddToWhitelist(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param data body models.BetaWhitelistBulkRemoveRequest true "Dados da operação em lote"
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Success 200 {object} SuccessResponse "Telefones removidos da whitelist em lote com sucesso"
+// @Failure 400 {object} ErrorResponse "Dados inválidos ou lista de telefones vazia"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/beta/whitelist/bulk-remove [post]
 func (h *BetaGroupHandlers) BulkRemoveFromWhitelist(c *gin.Context) {
 	startTime := time.Now()
@@ -1060,11 +1091,14 @@ func (h *BetaGroupHandlers) BulkRemoveFromWhitelist(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param data body models.BetaWhitelistMoveRequest true "Dados da operação de movimentação"
-// @Success 200 {object} SuccessResponse
-// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Success 200 {object} SuccessResponse "Telefones movidos entre grupos com sucesso"
+// @Failure 400 {object} ErrorResponse "Dados inválidos ou IDs de grupos iguais"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
+// @Failure 404 {object} ErrorResponse "Grupo beta de origem ou destino não encontrado"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /admin/beta/whitelist/bulk-move [post]
 func (h *BetaGroupHandlers) BulkMoveWhitelist(c *gin.Context) {
 	startTime := time.Now()
