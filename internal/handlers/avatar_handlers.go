@@ -43,7 +43,7 @@ func NewAvatarHandlers(logger *logging.SafeLogger, cacheService *services.CacheS
 // @Failure 400 {object} ErrorResponse "Parâmetros de paginação inválidos"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
-// @Router /v1/avatars [get]
+// @Router /avatars [get]
 func (h *AvatarHandlers) ListAvatars(c *gin.Context) {
 	// Create context with tracing
 	ctx := c.Request.Context()
@@ -92,7 +92,7 @@ func (h *AvatarHandlers) ListAvatars(c *gin.Context) {
 // @Failure 403 {object} ErrorResponse "Acesso negado - somente administradores"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
-// @Router /v1/avatars [post]
+// @Router /avatars [post]
 func (h *AvatarHandlers) CreateAvatar(c *gin.Context) {
 	// Create context with tracing
 	ctx := c.Request.Context()
@@ -146,7 +146,7 @@ func (h *AvatarHandlers) CreateAvatar(c *gin.Context) {
 // @Failure 404 {object} ErrorResponse "Avatar não encontrado"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
-// @Router /v1/avatars/{id} [delete]
+// @Router /avatars/{id} [delete]
 func (h *AvatarHandlers) DeleteAvatar(c *gin.Context) {
 	// Create context with tracing
 	ctx := c.Request.Context()
@@ -192,7 +192,7 @@ func (h *AvatarHandlers) DeleteAvatar(c *gin.Context) {
 // @Failure 404 {object} ErrorResponse "Usuário não encontrado"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
-// @Router /v1/citizen/{cpf}/avatar [get]
+// @Router /citizen/{cpf}/avatar [get]
 func (h *AvatarHandlers) GetUserAvatar(c *gin.Context) {
 	// Create context with tracing
 	ctx := c.Request.Context()
@@ -274,7 +274,7 @@ func (h *AvatarHandlers) GetUserAvatar(c *gin.Context) {
 // @Failure 422 {object} ErrorResponse "Dados não processáveis - avatar inexistente ou inativo"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
-// @Router /v1/citizen/{cpf}/avatar [put]
+// @Router /citizen/{cpf}/avatar [put]
 func (h *AvatarHandlers) UpdateUserAvatar(c *gin.Context) {
 	// Create context with tracing
 	ctx := c.Request.Context()

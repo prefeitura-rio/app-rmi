@@ -1265,11 +1265,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Lista de grupos beta obtida com sucesso
           schema:
             $ref: '#/definitions/models.BetaGroupListResponse'
         "400":
-          description: Bad Request
+          description: Parâmetros de paginação inválidos
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1277,9 +1277,19 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Listar grupos beta
       tags:
       - Beta Groups
@@ -1298,11 +1308,11 @@ paths:
       - application/json
       responses:
         "201":
-          description: Created
+          description: Grupo beta criado com sucesso
           schema:
             $ref: '#/definitions/models.BetaGroupResponse'
         "400":
-          description: Bad Request
+          description: Dados inválidos ou nome de grupo inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1310,13 +1320,23 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "409":
-          description: Conflict
+          description: Conflito - nome de grupo já existe
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Criar grupo beta
       tags:
       - Beta Groups
@@ -1336,7 +1356,7 @@ paths:
         "204":
           description: Grupo excluído com sucesso
         "400":
-          description: Bad Request
+          description: ID do grupo é obrigatório ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1344,13 +1364,23 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Grupo beta não encontrado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Excluir grupo beta
       tags:
       - Beta Groups
@@ -1366,11 +1396,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Grupo beta obtido com sucesso
           schema:
             $ref: '#/definitions/models.BetaGroupResponse'
         "400":
-          description: Bad Request
+          description: ID do grupo é obrigatório ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1378,13 +1408,23 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Grupo beta não encontrado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Obter grupo beta
       tags:
       - Beta Groups
@@ -1408,11 +1448,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Grupo beta atualizado com sucesso
           schema:
             $ref: '#/definitions/models.BetaGroupResponse'
         "400":
-          description: Bad Request
+          description: ID do grupo ou dados inválidos
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1420,17 +1460,27 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Grupo beta não encontrado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "409":
-          description: Conflict
+          description: Conflito - nome de grupo já existe
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Atualizar grupo beta
       tags:
       - Beta Groups
@@ -1454,11 +1504,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Lista de telefones na whitelist obtida com sucesso
           schema:
             $ref: '#/definitions/models.BetaWhitelistListResponse'
         "400":
-          description: Bad Request
+          description: Parâmetros de paginação inválidos
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1466,9 +1516,19 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Listar telefones na whitelist
       tags:
       - Beta Whitelist
@@ -1485,11 +1545,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Telefone removido da whitelist com sucesso
           schema:
             $ref: '#/definitions/models.BetaWhitelistResponse'
         "400":
-          description: Bad Request
+          description: Número de telefone é obrigatório ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1497,13 +1557,23 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Telefone não encontrado na whitelist
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Remover telefone da whitelist
       tags:
       - Beta Whitelist
@@ -1527,11 +1597,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Telefone adicionado à whitelist com sucesso
           schema:
             $ref: '#/definitions/models.BetaWhitelistResponse'
         "400":
-          description: Bad Request
+          description: Número de telefone ou dados inválidos
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1539,17 +1609,27 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Grupo beta não encontrado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "409":
-          description: Conflict
+          description: Conflito - telefone já está na whitelist
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Adicionar telefone à whitelist
       tags:
       - Beta Whitelist
@@ -1570,13 +1650,13 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Telefones adicionados à whitelist em lote com sucesso
           schema:
             items:
               $ref: '#/definitions/models.BetaWhitelistResponse'
             type: array
         "400":
-          description: Bad Request
+          description: Dados inválidos ou lista de telefones vazia
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1584,13 +1664,23 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Grupo beta não encontrado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Adicionar múltiplos telefones à whitelist
       tags:
       - Beta Whitelist
@@ -1611,11 +1701,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Telefones movidos entre grupos com sucesso
           schema:
             $ref: '#/definitions/handlers.SuccessResponse'
         "400":
-          description: Bad Request
+          description: Dados inválidos ou IDs de grupos iguais
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1623,13 +1713,23 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Grupo beta de origem ou destino não encontrado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Mover múltiplos telefones entre grupos
       tags:
       - Beta Whitelist
@@ -1650,11 +1750,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Telefones removidos da whitelist em lote com sucesso
           schema:
             $ref: '#/definitions/handlers.SuccessResponse'
         "400":
-          description: Bad Request
+          description: Dados inválidos ou lista de telefones vazia
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1662,9 +1762,19 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Remover múltiplos telefones da whitelist
       tags:
       - Beta Whitelist
@@ -1716,7 +1826,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Estatísticas de quarentena obtidas com sucesso
           schema:
             $ref: '#/definitions/models.QuarantineStats'
         "401":
@@ -1724,9 +1834,20 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores podem obter estatísticas
+            de quarentena
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Obter estatísticas de quarentena
       tags:
       - phone
@@ -1746,11 +1867,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Lista de telefones em quarentena obtida com sucesso
           schema:
             $ref: '#/definitions/models.QuarantinedListResponse'
         "400":
-          description: Bad Request
+          description: Parâmetros de paginação inválidos
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1758,12 +1879,147 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores podem listar telefones
+            em quarentena
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Listar telefones em quarentena
       tags:
       - phone
+  /avatars:
+    get:
+      consumes:
+      - application/json
+      description: Obtém lista paginada de avatares de foto de perfil disponíveis
+      parameters:
+      - description: 'Número da página (padrão: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 20, máximo: 100)'
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de avatares obtida com sucesso
+          schema:
+            $ref: '#/definitions/models.AvatarsListResponse'
+        "400":
+          description: Parâmetros de paginação inválidos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Listar avatares disponíveis
+      tags:
+      - avatars
+    post:
+      consumes:
+      - application/json
+      description: Cria um novo avatar de foto de perfil (somente administradores)
+      parameters:
+      - description: Dados do avatar
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.AvatarRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Avatar criado com sucesso
+          schema:
+            $ref: '#/definitions/models.AvatarResponse'
+        "400":
+          description: Dados de avatar inválidos ou formato incorreto
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado - somente administradores
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar novo avatar
+      tags:
+      - avatars
+  /avatars/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Exclui um avatar de foto de perfil (exclusão suave, somente administradores)
+      parameters:
+      - description: ID do avatar
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Avatar excluído com sucesso
+        "400":
+          description: ID do avatar é obrigatório ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado - somente administradores
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Avatar não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir avatar
+      tags:
+      - avatars
   /citizen/{cpf}:
     get:
       consumes:
@@ -1782,7 +2038,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Dados do cidadão
+          description: Dados do cidadão obtidos com sucesso
           schema:
             $ref: '#/definitions/models.Citizen'
         "400":
@@ -1794,11 +2050,19 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Cidadão não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -1828,11 +2092,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Endereço autodeclarado atualizado com sucesso
           schema:
             $ref: '#/definitions/handlers.SuccessResponse'
         "400":
-          description: Bad Request
+          description: Formato de CPF inválido ou dados de endereço incorretos
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1840,21 +2104,134 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "409":
-          description: Endereço não alterado
+          description: Conflito - endereço não alterado (dados idênticos aos atuais)
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - informações de endereço inválidas
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Atualizar endereço autodeclarado
       tags:
+      - citizen
+  /citizen/{cpf}/avatar:
+    get:
+      consumes:
+      - application/json
+      description: Obtém o avatar de foto de perfil atual de um usuário
+      parameters:
+      - description: CPF do usuário
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Avatar do usuário obtido com sucesso
+          schema:
+            $ref: '#/definitions/models.UserAvatarResponse'
+        "400":
+          description: Formato de CPF inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Usuário não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter avatar atual do usuário
+      tags:
+      - avatars
+      - citizen
+    put:
+      consumes:
+      - application/json
+      description: Define ou altera o avatar de foto de perfil de um usuário
+      parameters:
+      - description: CPF do usuário
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Seleção de avatar
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.UserAvatarRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Avatar do usuário atualizado com sucesso
+          schema:
+            $ref: '#/definitions/models.UserAvatarResponse'
+        "400":
+          description: Formato de CPF inválido ou ID de avatar inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Usuário ou avatar não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - avatar inexistente ou inativo
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar avatar do usuário
+      tags:
+      - avatars
       - citizen
   /citizen/{cpf}/email:
     put:
@@ -1878,11 +2255,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Email autodeclarado atualizado com sucesso
           schema:
             $ref: '#/definitions/handlers.SuccessResponse'
         "400":
-          description: Bad Request
+          description: Formato de CPF inválido ou dados de email incorretos
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -1890,19 +2267,28 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Cidadão não encontrado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "409":
-          description: Email não alterado (email corresponde aos dados atuais)
+          description: Conflito - email não alterado (email corresponde aos dados
+            atuais)
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - formato de email inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -1945,11 +2331,19 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Cidadão não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - valor de etnia não é válido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
@@ -1997,11 +2391,19 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Cidadão não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - nome de exibição muito longo ou vazio
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
@@ -2028,11 +2430,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Status do primeiro login obtido com sucesso
           schema:
             $ref: '#/definitions/models.UserConfigResponse'
         "400":
-          description: Bad Request
+          description: Formato de CPF inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -2040,11 +2442,15 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2066,11 +2472,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Status do primeiro login atualizado com sucesso
           schema:
             $ref: '#/definitions/models.UserConfigResponse'
         "400":
-          description: Bad Request
+          description: Formato de CPF inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -2078,11 +2484,15 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2124,7 +2534,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Lista paginada de entidades jurídicas
+          description: Lista paginada de entidades jurídicas obtida com sucesso
           schema:
             $ref: '#/definitions/models.PaginatedLegalEntities'
         "400":
@@ -2136,7 +2546,11 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
@@ -2177,7 +2591,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Lista paginada de chamados do 1746
+          description: Lista paginada de chamados do 1746 obtida com sucesso
           schema:
             $ref: '#/definitions/models.PaginatedMaintenanceRequests'
         "400":
@@ -2189,7 +2603,11 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
@@ -2216,11 +2634,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Status do opt-in obtido com sucesso
           schema:
             $ref: '#/definitions/models.UserConfigOptInResponse'
         "400":
-          description: Bad Request
+          description: Formato de CPF inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -2228,11 +2646,15 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2260,11 +2682,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Status do opt-in atualizado com sucesso
           schema:
             $ref: '#/definitions/models.UserConfigOptInResponse'
         "400":
-          description: Bad Request
+          description: Formato de CPF inválido ou dados de opt-in incorretos
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -2272,11 +2694,19 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - valor de opt-in inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2306,11 +2736,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Telefone autodeclarado submetido para validação com sucesso
           schema:
             $ref: '#/definitions/handlers.SuccessResponse'
         "400":
-          description: Bad Request
+          description: Formato de CPF inválido ou dados de telefone incorretos
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -2318,20 +2748,28 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Cidadão não encontrado
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "409":
-          description: Telefone não alterado (telefone corresponde aos dados atuais
-            verificados)
+          description: Conflito - telefone não alterado (telefone corresponde aos
+            dados atuais verificados)
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - formato de telefone inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2360,19 +2798,35 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Código de verificação validado com sucesso
           schema:
             $ref: '#/definitions/handlers.SuccessResponse'
         "400":
-          description: Bad Request
+          description: Formato de CPF inválido ou dados de verificação incorretos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado - permissões insuficientes
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
-          description: Not Found
+          description: Código de verificação não encontrado ou expirado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - código inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2398,7 +2852,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Dados da carteira do cidadão
+          description: Dados da carteira do cidadão obtidos com sucesso
           schema:
             $ref: '#/definitions/models.CitizenWallet'
         "400":
@@ -2410,11 +2864,15 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Acesso negado
+          description: Acesso negado - permissões insuficientes
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Cidadão não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
@@ -2436,7 +2894,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Lista de opções de etnia válidas
+          description: Lista de opções de etnia válidas obtida com sucesso
           schema:
             items:
               type: string
@@ -2503,9 +2961,13 @@ paths:
       - text/plain
       responses:
         "200":
-          description: Métricas Prometheus
+          description: Métricas Prometheus obtidas com sucesso
           schema:
             type: string
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
       summary: Métricas Prometheus
       tags:
       - metrics
@@ -2522,15 +2984,19 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Status beta verificado com sucesso
           schema:
             $ref: '#/definitions/models.BetaStatusResponse'
         "400":
-          description: Bad Request
+          description: Número de telefone é obrigatório ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       summary: Verificar status beta
@@ -2557,19 +3023,35 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Telefone vinculado ao CPF com sucesso
           schema:
             $ref: '#/definitions/models.BindResponse'
         "400":
-          description: Bad Request
+          description: Formato de telefone inválido ou dados de vinculação incorretos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflito - telefone já está vinculado a outro CPF
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - CPF ou telefone inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2590,11 +3072,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Informações do cidadão obtidas com sucesso
           schema:
             $ref: '#/definitions/models.PhoneCitizenResponse'
         "400":
-          description: Bad Request
+          description: Formato de telefone inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -2602,11 +3084,19 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Nenhum cidadão encontrado para este telefone
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2618,7 +3108,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Realiza opt-in para receber notificações
+      description: Realiza opt-in para receber notificações do chatbot
       parameters:
       - description: Número do telefone
         in: path
@@ -2635,11 +3125,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Opt-in realizado com sucesso
           schema:
             $ref: '#/definitions/models.OptInResponse'
         "400":
-          description: Bad Request
+          description: Formato de telefone inválido ou dados de opt-in incorretos
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -2647,11 +3137,23 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflito - telefone já possui opt-in ativo
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - telefone em quarentena ou bloqueado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2663,7 +3165,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Realiza opt-out para parar de receber notificações
+      description: Realiza opt-out para parar de receber notificações do chatbot
       parameters:
       - description: Número do telefone
         in: path
@@ -2680,11 +3182,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Opt-out realizado com sucesso
           schema:
             $ref: '#/definitions/models.OptOutResponse'
         "400":
-          description: Bad Request
+          description: Formato de telefone inválido ou dados de opt-out incorretos
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
@@ -2692,11 +3194,23 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Telefone não encontrado ou sem opt-in ativo
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - opt-out já realizado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2717,19 +3231,36 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Telefone liberado da quarentena com sucesso
           schema:
             $ref: '#/definitions/models.QuarantineResponse'
         "400":
-          description: Bad Request
+          description: Formato de telefone inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores podem liberar telefones
+            da quarentena
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Telefone não encontrado em quarentena
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - telefone não está em quarentena
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2751,19 +3282,32 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Telefone colocado em quarentena com sucesso
           schema:
             $ref: '#/definitions/models.QuarantineResponse'
         "400":
-          description: Bad Request
+          description: Formato de telefone inválido ou parâmetros incorretos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - somente administradores podem colocar telefones
+            em quarentena
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - telefone já em quarentena ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2792,19 +3336,31 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Registro rejeitado com sucesso
           schema:
             $ref: '#/definitions/models.RejectRegistrationResponse'
         "400":
-          description: Bad Request
+          description: Formato de telefone inválido ou dados de rejeição incorretos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - registro não pode ser rejeitado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2815,7 +3371,7 @@ paths:
   /phone/{phone_number}/status:
     get:
       description: Obtém o status de um número de telefone (quarentena, CPF vinculado,
-        etc.)
+        opt-in/opt-out, etc.)
       parameters:
       - description: Número do telefone
         in: path
@@ -2826,15 +3382,23 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Status do telefone obtido com sucesso
           schema:
             $ref: '#/definitions/models.PhoneStatusResponse'
         "400":
-          description: Bad Request
+          description: Formato de telefone inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Telefone não encontrado no sistema
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       summary: Obter status do telefone
@@ -2844,7 +3408,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Valida um registro de usuário contra dados base
+      description: Valida um registro de usuário contra dados base do governo
       parameters:
       - description: Número do telefone
         in: path
@@ -2861,19 +3425,31 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Registro validado com sucesso
           schema:
             $ref: '#/definitions/models.ValidateRegistrationResponse'
         "400":
-          description: Bad Request
+          description: Formato de telefone inválido ou dados de registro incorretos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "403":
-          description: Forbidden
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Dados não processáveis - informações não conferem com a base
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
-          description: Internal Server Error
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       security:
@@ -2881,211 +3457,6 @@ paths:
       summary: Validar registro
       tags:
       - phone
-  /v1/avatars:
-    get:
-      consumes:
-      - application/json
-      description: Get paginated list of available profile picture avatars
-      parameters:
-      - description: 'Page number (default: 1)'
-        in: query
-        name: page
-        type: integer
-      - description: 'Items per page (default: 20, max: 100)'
-        in: query
-        name: per_page
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.AvatarsListResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      summary: List available avatars
-      tags:
-      - avatars
-    post:
-      consumes:
-      - application/json
-      description: Create a new profile picture avatar (admin only)
-      parameters:
-      - description: Avatar data
-        in: body
-        name: data
-        required: true
-        schema:
-          $ref: '#/definitions/models.AvatarRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/models.AvatarResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Create a new avatar
-      tags:
-      - avatars
-  /v1/avatars/{id}:
-    delete:
-      consumes:
-      - application/json
-      description: Soft delete a profile picture avatar (admin only)
-      parameters:
-      - description: Avatar ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "204":
-          description: No Content
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Delete an avatar
-      tags:
-      - avatars
-  /v1/citizen/{cpf}/avatar:
-    get:
-      consumes:
-      - application/json
-      description: Get the current profile picture avatar for a user
-      parameters:
-      - description: User CPF
-        in: path
-        name: cpf
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.UserAvatarResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Get user's current avatar
-      tags:
-      - avatars
-      - citizen
-    put:
-      consumes:
-      - application/json
-      description: Set or change the profile picture avatar for a user
-      parameters:
-      - description: User CPF
-        in: path
-        name: cpf
-        required: true
-        type: string
-      - description: Avatar selection
-        in: body
-        name: data
-        required: true
-        schema:
-          $ref: '#/definitions/models.UserAvatarRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.UserAvatarResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/handlers.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Update user's avatar
-      tags:
-      - avatars
-      - citizen
   /validate/email:
     post:
       consumes:
@@ -3103,11 +3474,19 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Email validado com sucesso
           schema:
             $ref: '#/definitions/handlers.EmailValidationResponse'
         "400":
-          description: Bad Request
+          description: Campo email é obrigatório ou formato inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       summary: Valida endereço de email
@@ -3129,11 +3508,19 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Telefone validado com sucesso
           schema:
             $ref: '#/definitions/handlers.PhoneValidationResponse'
         "400":
-          description: Bad Request
+          description: Campo telefone é obrigatório ou formato inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       summary: Valida número de telefone
