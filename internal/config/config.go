@@ -51,6 +51,7 @@ type Config struct {
 	LogradouroCollection         string `json:"mongo_logradouro_collection"`
 	AvatarsCollection            string `json:"mongo_avatars_collection"`
 	LegalEntityCollection        string `json:"mongo_legal_entity_collection"`
+	PetCollection                string `json:"mongo_pet_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -145,6 +146,12 @@ func LoadConfig() error {
 	legalEntityCollection := os.Getenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 	if legalEntityCollection == "" {
 		return fmt.Errorf("MONGODB_LEGAL_ENTITY_COLLECTION environment variable is required")
+	}
+
+	// Check if MONGODB_PET_COLLECTION is set
+	petCollection := os.Getenv("MONGODB_PET_COLLECTION")
+	if petCollection == "" {
+		return fmt.Errorf("MONGODB_PET_COLLECTION environment variable is required")
 	}
 
 	phoneVerificationTTL, err := time.ParseDuration(getEnvOrDefault("PHONE_VERIFICATION_TTL", "5m"))
@@ -307,6 +314,7 @@ func LoadConfig() error {
 		LogradouroCollection:         getEnvOrDefault("MONGODB_LOGRADOURO_COLLECTION", "logradouro"),
 		AvatarsCollection:            getEnvOrDefault("MONGODB_AVATARS_COLLECTION", "avatars"),
 		LegalEntityCollection:        legalEntityCollection,
+		PetCollection:                petCollection,
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,

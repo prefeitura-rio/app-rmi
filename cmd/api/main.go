@@ -100,6 +100,9 @@ func main() {
 	// Initialize legal entity service for Pessoa Jurídica queries
 	services.InitLegalEntityService()
 
+	// Initialize pet service for pets queries
+	services.InitPetService()
+
 	// Initialize CF rate limiter for CF lookup requests
 	services.InitCFRateLimiter(config.AppConfig.CFLookupGlobalRateLimit, observability.Logger())
 
@@ -155,6 +158,10 @@ func main() {
 			citizen.PUT("/:cpf/optin", middleware.RequireOwnCPF(), handlers.UpdateOptIn)
 			citizen.POST("/:cpf/phone/validate", middleware.RequireOwnCPF(), handlers.ValidatePhoneVerification)
 			citizen.GET("/:cpf/legal-entities", middleware.RequireOwnCPF(), handlers.GetLegalEntities)
+			citizen.GET("/:cpf/pets", middleware.RequireOwnCPF(), handlers.GetPets)
+			citizen.GET("/:cpf/pets/:pet_id", middleware.RequireOwnCPF(), handlers.GetPet)
+			citizen.GET("/:cpf/pets/clinic", middleware.RequireOwnCPF(), handlers.GetPetClinic)
+			citizen.GET("/:cpf/pets/stats", middleware.RequireOwnCPF(), handlers.GetPetStats)
 
 			// Avatar endpoints
 			citizen.GET("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.GetUserAvatar)

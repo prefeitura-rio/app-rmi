@@ -261,7 +261,7 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) error {
 		// For other collections, update the entire document
 		update = bson.M{"$set": bsonData}
 	}
-	
+
 	opts := options.Update().SetUpsert(true)
 
 	_, err = w.mongo.Collection(job.Collection).UpdateOne(ctx, filter, update, opts)
