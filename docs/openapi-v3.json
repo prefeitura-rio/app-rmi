@@ -2999,6 +2999,400 @@
         }
       }
     },
+    "/citizen/{cpf}/pets": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Recupera a lista paginada de pets associados ao CPF do cidadão.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Obter pets associados ao CPF",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          },
+          {
+            "description": "Número da página (padrão: 1)",
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "description": "Itens por página (padrão: 10, máximo: 100)",
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista paginada de pets obtida com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.PaginatedPets"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF inválido ou parâmetros de paginação inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/citizen/{cpf}/pets/clinic": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Recupera informações da clínica credenciada associada aos pets do cidadão.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Obter dados da clínica credenciada para pets do CPF",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dados da clínica obtidos com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.PetClinicResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/citizen/{cpf}/pets/stats": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Recupera as estatísticas de quantidade de pets por tipo associadas ao CPF do cidadão.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Obter estatísticas de pets do CPF",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estatísticas obtidas com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.PetStatsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/citizen/{cpf}/pets/{pet_id}": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Recupera um pet específico associado ao CPF do cidadão pelo ID do pet.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Obter pet específico por ID",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          },
+          {
+            "description": "ID do pet",
+            "name": "pet_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pet obtido com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.Pet"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF inválido ou ID do pet inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pet não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/citizen/{cpf}/phone": {
       "put": {
         "security": [
@@ -4873,6 +5267,26 @@
           }
         }
       },
+      "models.AccreditedClinic": {
+        "type": "object",
+        "properties": {
+          "celular": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "endereco": {
+            "$ref": "#/components/schemas/models.ClinicAddress"
+          },
+          "nome": {
+            "type": "string"
+          },
+          "telefone": {
+            "type": "string"
+          }
+        }
+      },
       "models.Aluno": {
         "type": "object",
         "properties": {
@@ -5270,6 +5684,26 @@
           },
           "saude": {
             "$ref": "#/components/schemas/models.Saude"
+          }
+        }
+      },
+      "models.ClinicAddress": {
+        "type": "object",
+        "properties": {
+          "bairro": {
+            "type": "string"
+          },
+          "cidade": {
+            "type": "string"
+          },
+          "complemento": {
+            "type": "string"
+          },
+          "logradouro": {
+            "type": "string"
+          },
+          "numero": {
+            "type": "string"
           }
         }
       },
@@ -5997,6 +6431,34 @@
           }
         }
       },
+      "models.PaginatedPets": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.Pet"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer"
+              },
+              "per_page": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "total_pages": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
       "models.PaginationInfo": {
         "type": "object",
         "properties": {
@@ -6043,6 +6505,96 @@
           },
           "tipo": {
             "type": "string"
+          }
+        }
+      },
+      "models.Pet": {
+        "type": "object",
+        "properties": {
+          "animal_nome": {
+            "type": "string"
+          },
+          "antirrabica_data": {
+            "type": "string"
+          },
+          "antirrabica_validade_data": {
+            "type": "string"
+          },
+          "especie_nome": {
+            "type": "string"
+          },
+          "fase_vida_nome": {
+            "type": "string"
+          },
+          "foto_url": {
+            "type": "string"
+          },
+          "id_animal": {
+            "type": "integer"
+          },
+          "indicador": {
+            "type": "boolean"
+          },
+          "indicador_ativo": {
+            "type": "boolean"
+          },
+          "indicador_castrado": {
+            "type": "boolean"
+          },
+          "microchip_numero": {
+            "type": "string"
+          },
+          "nascimento_data": {
+            "type": "string"
+          },
+          "pedigree_indicador": {
+            "type": "boolean"
+          },
+          "pedigree_origem_nome": {
+            "type": "string"
+          },
+          "porte_nome": {
+            "type": "string"
+          },
+          "qrcode_payload": {
+            "type": "string"
+          },
+          "raca_nome": {
+            "type": "string"
+          },
+          "registro_data": {
+            "type": "string"
+          },
+          "sexo_sigla": {
+            "type": "string"
+          },
+          "vermifugacao_data": {
+            "type": "string"
+          },
+          "vermifugacao_validade_data": {
+            "type": "string"
+          }
+        }
+      },
+      "models.PetClinicResponse": {
+        "type": "object",
+        "properties": {
+          "clinic": {
+            "$ref": "#/components/schemas/models.AccreditedClinic"
+          },
+          "cpf": {
+            "type": "string"
+          }
+        }
+      },
+      "models.PetStatsResponse": {
+        "type": "object",
+        "properties": {
+          "cpf": {
+            "type": "string"
+          },
+          "statistics": {
+            "$ref": "#/components/schemas/models.Statistics"
           }
         }
       },
@@ -6386,6 +6938,20 @@
           },
           "descricao": {
             "type": "string"
+          }
+        }
+      },
+      "models.Statistics": {
+        "type": "object",
+        "properties": {
+          "quantidade_cachorro": {
+            "type": "integer"
+          },
+          "quantidade_gato": {
+            "type": "integer"
+          },
+          "quantidade_outro": {
+            "type": "integer"
           }
         }
       },
