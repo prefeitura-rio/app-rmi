@@ -1326,6 +1326,255 @@
         }
       }
     },
+    "/avatars": {
+      "get": {
+        "description": "Obtém lista paginada de avatares de foto de perfil disponíveis",
+        "tags": [
+          "avatars"
+        ],
+        "summary": "Listar avatares disponíveis",
+        "parameters": [
+          {
+            "description": "Número da página (padrão: 1)",
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Itens por página (padrão: 20, máximo: 100)",
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de avatares obtida com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.AvatarsListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parâmetros de paginação inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Cria um novo avatar de foto de perfil (somente administradores)",
+        "tags": [
+          "avatars"
+        ],
+        "summary": "Criar novo avatar",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.AvatarRequest"
+              }
+            }
+          },
+          "description": "Dados do avatar",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Avatar criado com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.AvatarResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados de avatar inválidos ou formato incorreto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - somente administradores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/avatars/{id}": {
+      "delete": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Exclui um avatar de foto de perfil (exclusão suave, somente administradores)",
+        "tags": [
+          "avatars"
+        ],
+        "summary": "Excluir avatar",
+        "parameters": [
+          {
+            "description": "ID do avatar",
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Avatar excluído com sucesso"
+          },
+          "400": {
+            "description": "ID do avatar é obrigatório ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - somente administradores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Avatar não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/citizen/ethnicity/options": {
       "get": {
         "description": "Retorna a lista de opções válidas de etnia para autodeclaração. Esta lista é usada para validar as atualizações de etnia autodeclarada.",
@@ -1551,6 +1800,221 @@
           },
           "422": {
             "description": "Dados não processáveis - informações de endereço inválidas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/citizen/{cpf}/avatar": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Obtém o avatar de foto de perfil atual de um usuário",
+        "tags": [
+          "avatars",
+          "citizen"
+        ],
+        "summary": "Obter avatar atual do usuário",
+        "parameters": [
+          {
+            "description": "CPF do usuário",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Avatar do usuário obtido com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.UserAvatarResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Usuário não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Define ou altera o avatar de foto de perfil de um usuário",
+        "tags": [
+          "avatars",
+          "citizen"
+        ],
+        "summary": "Atualizar avatar do usuário",
+        "parameters": [
+          {
+            "description": "CPF do usuário",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.UserAvatarRequest"
+              }
+            }
+          },
+          "description": "Seleção de avatar",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Avatar do usuário atualizado com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.UserAvatarResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF inválido ou ID de avatar inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Usuário ou avatar não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - avatar inexistente ou inativo",
             "content": {
               "application/json": {
                 "schema": {
@@ -3992,470 +4456,6 @@
           },
           "422": {
             "description": "Dados não processáveis - informações não conferem com a base",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Muitas requisições - limite de taxa excedido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erro interno do servidor",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/avatars": {
-      "get": {
-        "description": "Obtém lista paginada de avatares de foto de perfil disponíveis",
-        "tags": [
-          "avatars"
-        ],
-        "summary": "Listar avatares disponíveis",
-        "parameters": [
-          {
-            "description": "Número da página (padrão: 1)",
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Itens por página (padrão: 20, máximo: 100)",
-            "name": "per_page",
-            "in": "query",
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Lista de avatares obtida com sucesso",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/models.AvatarsListResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Parâmetros de paginação inválidos",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Muitas requisições - limite de taxa excedido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erro interno do servidor",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "description": "Cria um novo avatar de foto de perfil (somente administradores)",
-        "tags": [
-          "avatars"
-        ],
-        "summary": "Criar novo avatar",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/models.AvatarRequest"
-              }
-            }
-          },
-          "description": "Dados do avatar",
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Avatar criado com sucesso",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/models.AvatarResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Dados de avatar inválidos ou formato incorreto",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Token de autenticação não fornecido ou inválido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Acesso negado - somente administradores",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Muitas requisições - limite de taxa excedido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erro interno do servidor",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/avatars/{id}": {
-      "delete": {
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "description": "Exclui um avatar de foto de perfil (exclusão suave, somente administradores)",
-        "tags": [
-          "avatars"
-        ],
-        "summary": "Excluir avatar",
-        "parameters": [
-          {
-            "description": "ID do avatar",
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Avatar excluído com sucesso"
-          },
-          "400": {
-            "description": "ID do avatar é obrigatório ou inválido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Token de autenticação não fornecido ou inválido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Acesso negado - somente administradores",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Avatar não encontrado",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Muitas requisições - limite de taxa excedido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erro interno do servidor",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/citizen/{cpf}/avatar": {
-      "get": {
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "description": "Obtém o avatar de foto de perfil atual de um usuário",
-        "tags": [
-          "avatars",
-          "citizen"
-        ],
-        "summary": "Obter avatar atual do usuário",
-        "parameters": [
-          {
-            "description": "CPF do usuário",
-            "name": "cpf",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Avatar do usuário obtido com sucesso",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/models.UserAvatarResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Formato de CPF inválido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Token de autenticação não fornecido ou inválido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Acesso negado - permissões insuficientes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Usuário não encontrado",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Muitas requisições - limite de taxa excedido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erro interno do servidor",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "description": "Define ou altera o avatar de foto de perfil de um usuário",
-        "tags": [
-          "avatars",
-          "citizen"
-        ],
-        "summary": "Atualizar avatar do usuário",
-        "parameters": [
-          {
-            "description": "CPF do usuário",
-            "name": "cpf",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/models.UserAvatarRequest"
-              }
-            }
-          },
-          "description": "Seleção de avatar",
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Avatar do usuário atualizado com sucesso",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/models.UserAvatarResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Formato de CPF inválido ou ID de avatar inválido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Token de autenticação não fornecido ou inválido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Acesso negado - permissões insuficientes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Usuário ou avatar não encontrado",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Dados não processáveis - avatar inexistente ou inativo",
             "content": {
               "application/json": {
                 "schema": {
