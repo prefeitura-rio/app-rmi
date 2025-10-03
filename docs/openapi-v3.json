@@ -3107,95 +3107,6 @@
         }
       }
     },
-    "/citizen/{cpf}/pets/clinic": {
-      "get": {
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "description": "Recupera informações da clínica credenciada associada aos pets do cidadão.",
-        "tags": [
-          "citizen"
-        ],
-        "summary": "Obter dados da clínica credenciada para pets do CPF",
-        "parameters": [
-          {
-            "description": "CPF do cidadão (11 dígitos)",
-            "name": "cpf",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 11,
-              "maxLength": 11
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Dados da clínica obtidos com sucesso",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/models.PetClinicResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Formato de CPF inválido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Token de autenticação não fornecido ou inválido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Acesso negado - permissões insuficientes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Muitas requisições - limite de taxa excedido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erro interno do servidor",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/citizen/{cpf}/pets/stats": {
       "get": {
         "security": [
@@ -6520,6 +6431,9 @@
           "antirrabica_validade_data": {
             "type": "string"
           },
+          "clinica_credenciada": {
+            "$ref": "#/components/schemas/models.AccreditedClinic"
+          },
           "especie_nome": {
             "type": "string"
           },
@@ -6572,17 +6486,6 @@
             "type": "string"
           },
           "vermifugacao_validade_data": {
-            "type": "string"
-          }
-        }
-      },
-      "models.PetClinicResponse": {
-        "type": "object",
-        "properties": {
-          "clinic": {
-            "$ref": "#/components/schemas/models.AccreditedClinic"
-          },
-          "cpf": {
             "type": "string"
           }
         }
