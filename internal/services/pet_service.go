@@ -160,48 +160,6 @@ func (s *PetService) GetPetByID(ctx context.Context, cpf string, petID int) (*mo
 	return &pets[0], nil
 }
 
-// GetPetClinic retrieves the accredited clinic information for a CPF
-func (s *PetService) GetPetClinic(ctx context.Context, cpf string) (*models.PetClinicResponse, error) {
-	collection := s.database.Collection(config.AppConfig.PetCollection)
-
-	// Build filter query
-	filter := bson.M{
-		"cpf": cpf,
-	}
-
-	// Execute query for first document
-	var rawPet models.RawCitizenPets
-	err := collection.FindOne(ctx, filter).Decode(&rawPet)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return &models.PetClinicResponse{
-				CPF:    cpf,
-				Clinic: nil,
-			}, nil
-		}
-		return nil, fmt.Errorf("failed to find pet clinic data: %w", err)
-	}
-
-	// Extract clinic data (prioritize nested over root)
-	var clinic *models.AccreditedClinic
-	if rawPet.PetData != nil && rawPet.PetData.AccreditedClinic != nil {
-		clinic = rawPet.PetData.AccreditedClinic
-	} else {
-		clinic = rawPet.AccreditedClinic
-	}
-
-	response := &models.PetClinicResponse{
-		CPF:    cpf,
-		Clinic: clinic,
-	}
-
-	s.logger.Debug("retrieved pet clinic data",
-		zap.String("cpf", cpf),
-		zap.Bool("has_clinic", clinic != nil))
-
-	return response, nil
-}
-
 // GetPetStats retrieves the pet statistics for a CPF
 func (s *PetService) GetPetStats(ctx context.Context, cpf string) (*models.PetStatsResponse, error) {
 	collection := s.database.Collection(config.AppConfig.PetCollection)

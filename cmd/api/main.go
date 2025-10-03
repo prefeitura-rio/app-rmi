@@ -160,7 +160,6 @@ func main() {
 			citizen.GET("/:cpf/legal-entities", middleware.RequireOwnCPF(), handlers.GetLegalEntities)
 			citizen.GET("/:cpf/pets", middleware.RequireOwnCPF(), handlers.GetPets)
 			citizen.GET("/:cpf/pets/:pet_id", middleware.RequireOwnCPF(), handlers.GetPet)
-			citizen.GET("/:cpf/pets/clinic", middleware.RequireOwnCPF(), handlers.GetPetClinic)
 			citizen.GET("/:cpf/pets/stats", middleware.RequireOwnCPF(), handlers.GetPetStats)
 
 			// Avatar endpoints
