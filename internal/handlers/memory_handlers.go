@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -21,11 +22,11 @@ import (
 // MemoryModel representa a estrutura de memória
 type MemoryModel struct {
 	MemoryID    string    `json:"memory_id,omitempty" bson:"memory_id,omitempty"`
-	MemoryName  string    `json:"memory_name" bson:"memory_name" validate:"required"`
-	Description string    `json:"description" bson:"description" validate:"required"`
-	Relevance   string    `json:"relevance" bson:"relevance" validate:"required,oneof=low medium high"`
-	MemoryType  string    `json:"memory_type" bson:"memory_type" validate:"required,oneof=base appended"`
-	Value       string    `json:"value" bson:"value" validate:"required"`
+	MemoryName  string    `json:"memory_name" bson:"memory_name" binding:"required"`
+	Description string    `json:"description" bson:"description" binding:"required"`
+	Relevance   string    `json:"relevance" bson:"relevance" binding:"required,oneof=low medium high"`
+	MemoryType  string    `json:"memory_type" bson:"memory_type" binding:"required,oneof=base appended"`
+	Value       string    `json:"value" bson:"value" binding:"required"`
 	CreatedAt   time.Time `json:"created_at,omitempty" bson:"created_at,omitempty"`
 	UpdatedAt   time.Time `json:"updated_at,omitempty" bson:"updated_at,omitempty"`
 }
@@ -131,11 +132,6 @@ func GetMemoryList(c *gin.Context) {
 	}
 
 	observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
-
-	// Cache the result with tracing (already handled in getMemoryListData)
-	ctx, cacheSetSpan := utils.TraceCacheSet(ctx, fmt.Sprintf("memory_list:%s", phoneNumber), config.AppConfig.RedisTTL)
-	utils.AddSpanAttribute(cacheSetSpan, "cache.set_success", true)
-	cacheSetSpan.End()
 
 	// Serialize response with tracing
 	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
@@ -247,47 +243,36 @@ func GetMemoryByName(c *gin.Context) {
 	utils.AddSpanAttribute(cacheGetSpan, "cache.hit", false)
 	cacheGetSpan.End()
 
-	// Cache miss - query MongoDB
+	// Cache miss - query MongoDB with FindOne and timeout
 	ctx, dbFindSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.ChatMemoryCollection, "phone_number_and_memory_name")
-	cursor, err := config.MongoDB.Collection(config.AppConfig.ChatMemoryCollection).Find(
-		ctx,
+
+	// Create a context with timeout for the FindOne operation
+	findCtx, cancel := context.WithTimeout(ctx, utils.DefaultQueryTimeout)
+	defer cancel()
+
+	err = config.MongoDB.Collection(config.AppConfig.ChatMemoryCollection).FindOne(
+		findCtx,
 		bson.M{
 			"phone_number": phoneNumber,
 			"memory_name":  memoryName,
 		},
-	)
+	).Decode(&memory)
+	dbFindSpan.End()
+
 	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Memory not found for phone number and memory name"})
+			return
+		}
 		utils.RecordErrorInSpan(dbFindSpan, err, map[string]interface{}{
-			"operation":    "mongodb_find",
+			"operation":    "mongodb_find_one",
 			"phone_number": phoneNumber,
 			"memory_name":  memoryName,
 		})
-		dbFindSpan.End()
 		logger.Error("failed to find memory data from MongoDB", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error"})
 		return
 	}
-	defer cursor.Close(ctx)
-
-	if cursor.Next(ctx) {
-		err = cursor.Decode(&memory)
-		if err != nil {
-			utils.RecordErrorInSpan(dbFindSpan, err, map[string]interface{}{
-				"operation":    "mongodb_decode",
-				"phone_number": phoneNumber,
-				"memory_name":  memoryName,
-			})
-			dbFindSpan.End()
-			logger.Error("failed to decode memory data from MongoDB", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error"})
-			return
-		}
-	} else {
-		dbFindSpan.End()
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "Memory not found for phone number and memory name"})
-		return
-	}
-	dbFindSpan.End()
 
 	observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
 
@@ -326,7 +311,7 @@ func GetMemoryByName(c *gin.Context) {
 // @Param phone_number path string true "Número do telefone"
 // @Param memory body MemoryModel true "Dados da memória a ser criada"
 // @Security BearerAuth
-// @Success 200 {object} MemoryModel "Memória criada com sucesso"
+// @Success 201 {object} MemoryModel "Memória criada com sucesso"
 // @Failure 400 {object} ErrorResponse "Número de telefone ou dados da memória inválidos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
@@ -367,7 +352,7 @@ func CreateMemory(c *gin.Context) {
 	}
 	phoneSpan.End()
 
-	// Parse and validate request body
+	// Parse and validate request body using Gin's built-in validation
 	var memory MemoryModel
 	ctx, bodySpan := utils.TraceInputValidation(ctx, "request_body", "memory_data")
 	if err := c.ShouldBindJSON(&memory); err != nil {
@@ -380,81 +365,14 @@ func CreateMemory(c *gin.Context) {
 	}
 	bodySpan.End()
 
-	// Validate memory fields
-	ctx, validationSpan := utils.TraceInputValidation(ctx, "memory_validation", "memory_fields")
-	if memory.MemoryName == "" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("MemoryName is required"), map[string]interface{}{
-			"field": "memory_name",
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "MemoryName is required"})
-		return
-	}
-	if memory.Description == "" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("Description is required"), map[string]interface{}{
-			"field": "description",
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Description is required"})
-		return
-	}
-	if memory.Relevance == "" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("Relevance is required"), map[string]interface{}{
-			"field": "relevance",
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Relevance is required"})
-		return
-	}
-	if memory.Relevance != "low" && memory.Relevance != "medium" && memory.Relevance != "high" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("Relevance must be one of: low, medium, high"), map[string]interface{}{
-			"field": "relevance",
-			"value": memory.Relevance,
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Relevance must be one of: low, medium, high"})
-		return
-	}
-	if memory.MemoryType == "" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("MemoryType is required"), map[string]interface{}{
-			"field": "memory_type",
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "MemoryType is required"})
-		return
-	}
-	if memory.MemoryType != "base" && memory.MemoryType != "appended" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("MemoryType must be one of: base, appended"), map[string]interface{}{
-			"field": "memory_type",
-			"value": memory.MemoryType,
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "MemoryType must be one of: base, appended"})
-		return
-	}
-	if memory.Value == "" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("Value is required"), map[string]interface{}{
-			"field": "value",
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Value is required"})
-		return
-	}
-	validationSpan.End()
+	// Normalize memory name: trim spaces and convert to lowercase for case-insensitive uniqueness
+	memory.MemoryName = strings.TrimSpace(strings.ToLower(memory.MemoryName))
 
-	// Generate UUIDv7 if MemoryID is not provided
-	if memory.MemoryID == "" {
-		memory.MemoryID = utils.GenerateUUID()
-	}
-
-	// Set timestamps if not provided
-	currentTime := time.Now()
-	if memory.CreatedAt.IsZero() {
-		memory.CreatedAt = currentTime
-	}
-	if memory.UpdatedAt.IsZero() {
-		memory.UpdatedAt = currentTime
-	}
+	// Always generate memory_id and timestamps on the server, ignore client values
+	memory.MemoryID = utils.GenerateUUID()
+	currentTime := time.Now().UTC()
+	memory.CreatedAt = currentTime
+	memory.UpdatedAt = currentTime
 
 	// Check if memory with same name already exists for this phone number
 	ctx, checkSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.ChatMemoryCollection, "check_duplicate_memory_name")
@@ -507,6 +425,17 @@ func CreateMemory(c *gin.Context) {
 			"memory_id":    memory.MemoryID,
 		})
 		insertSpan.End()
+
+		// Check for duplicate key error (E11000)
+		if mongo.IsDuplicateKeyError(err) {
+			logger.Warn("duplicate memory name for phone number",
+				zap.String("phone_number", phoneNumber),
+				zap.String("memory_name", memory.MemoryName),
+				zap.Error(err))
+			c.JSON(http.StatusConflict, ErrorResponse{Error: "Memory name already exists for this phone number"})
+			return
+		}
+
 		logger.Error("failed to insert memory into MongoDB", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error"})
 		return
@@ -535,7 +464,7 @@ func CreateMemory(c *gin.Context) {
 
 	// Serialize response with tracing
 	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
-	c.JSON(http.StatusOK, memory)
+	c.JSON(http.StatusCreated, memory)
 	responseSpan.End()
 
 	// Log total operation time
@@ -619,7 +548,7 @@ func UpdateMemory(c *gin.Context) {
 	}
 	memorySpan.End()
 
-	// Parse and validate request body
+	// Parse and validate request body using Gin's built-in validation
 	var memory MemoryModel
 	ctx, bodySpan := utils.TraceInputValidation(ctx, "request_body", "memory_data")
 	if err := c.ShouldBindJSON(&memory); err != nil {
@@ -632,67 +561,8 @@ func UpdateMemory(c *gin.Context) {
 	}
 	bodySpan.End()
 
-	// Validate memory fields
-	ctx, validationSpan := utils.TraceInputValidation(ctx, "memory_validation", "memory_fields")
-	if memory.MemoryName == "" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("MemoryName is required"), map[string]interface{}{
-			"field": "memory_name",
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "MemoryName is required"})
-		return
-	}
-	if memory.Description == "" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("Description is required"), map[string]interface{}{
-			"field": "description",
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Description is required"})
-		return
-	}
-	if memory.Relevance == "" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("Relevance is required"), map[string]interface{}{
-			"field": "relevance",
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Relevance is required"})
-		return
-	}
-	if memory.Relevance != "low" && memory.Relevance != "medium" && memory.Relevance != "high" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("Relevance must be one of: low, medium, high"), map[string]interface{}{
-			"field": "relevance",
-			"value": memory.Relevance,
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Relevance must be one of: low, medium, high"})
-		return
-	}
-	if memory.MemoryType == "" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("MemoryType is required"), map[string]interface{}{
-			"field": "memory_type",
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "MemoryType is required"})
-		return
-	}
-	if memory.MemoryType != "base" && memory.MemoryType != "appended" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("MemoryType must be one of: base, appended"), map[string]interface{}{
-			"field": "memory_type",
-			"value": memory.MemoryType,
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "MemoryType must be one of: base, appended"})
-		return
-	}
-	if memory.Value == "" {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("Value is required"), map[string]interface{}{
-			"field": "value",
-		})
-		validationSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Value is required"})
-		return
-	}
-	validationSpan.End()
+	// Normalize memory name: trim spaces and convert to lowercase for case-insensitive uniqueness
+	memory.MemoryName = strings.TrimSpace(strings.ToLower(memory.MemoryName))
 
 	// First, check if the memory exists
 	ctx, checkSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.ChatMemoryCollection, "check_memory_exists")
@@ -723,12 +593,42 @@ func UpdateMemory(c *gin.Context) {
 		return
 	}
 
-	// Update timestamps
-	currentTime := time.Now()
+	// Update timestamps with UTC for consistency
+	currentTime := time.Now().UTC()
 	memory.UpdatedAt = currentTime
 	// Preserve the original created_at and memory_id
 	memory.CreatedAt = existingMemory.CreatedAt
 	memory.MemoryID = existingMemory.MemoryID
+
+	// Check if memory name is being changed and if the new name already exists for this phone number
+	if memory.MemoryName != memoryName {
+		ctx, checkSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.ChatMemoryCollection, "check_duplicate_memory_name_update")
+		var duplicateMemory MemoryModel
+		err := config.MongoDB.Collection(config.AppConfig.ChatMemoryCollection).FindOne(
+			ctx,
+			bson.M{
+				"phone_number": phoneNumber,
+				"memory_name":  memory.MemoryName,
+			},
+		).Decode(&duplicateMemory)
+		checkSpan.End()
+
+		if err == nil {
+			// Memory with the new name already exists for this phone number
+			c.JSON(http.StatusConflict, ErrorResponse{Error: "Memory name already exists for this phone number"})
+			return
+		} else if err != mongo.ErrNoDocuments {
+			// Some other error occurred
+			utils.RecordErrorInSpan(span, err, map[string]interface{}{
+				"operation":    "mongodb_find_duplicate_update",
+				"phone_number": phoneNumber,
+				"memory_name":  memory.MemoryName,
+			})
+			logger.Error("failed to check for duplicate memory name during update", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error"})
+			return
+		}
+	}
 
 	// Prepare update document for MongoDB
 	update := bson.M{
@@ -847,7 +747,7 @@ func UpdateMemory(c *gin.Context) {
 // @Param phone_number path string true "Número do telefone"
 // @Param memory_name path string true "Nome da memória a ser deletada"
 // @Security BearerAuth
-// @Success 200 {object} SuccessResponse "Memória deletada com sucesso"
+// @Success 204 "Memória deletada com sucesso"
 // @Failure 400 {object} ErrorResponse "Número de telefone ou nome da memória inválidos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
@@ -988,7 +888,7 @@ func DeleteMemory(c *gin.Context) {
 
 	// Serialize response with tracing
 	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
-	c.JSON(http.StatusOK, SuccessResponse{Message: "Memory deleted successfully"})
+	c.Status(http.StatusNoContent)
 	responseSpan.End()
 
 	// Log total operation time
