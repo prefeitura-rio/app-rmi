@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
@@ -310,6 +311,107 @@ func GetPetStats(c *gin.Context) {
 	logger.Debug("GetPetStats completed",
 		zap.String("cpf", cpf),
 		zap.Bool("has_stats", stats.Statistics != nil),
+		zap.Duration("total_duration", totalDuration),
+		zap.String("status", "success"))
+}
+
+// RegisterPet godoc
+// @Summary Registrar novo pet
+// @Description Registra um novo pet para o CPF do cidadão (auto-declarado).
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "CPF do cidadão (11 dígitos)" minLength(11) maxLength(11)
+// @Param pet body models.PetRegistrationRequest true "Dados do pet para registro"
+// @Security BearerAuth
+// @Success 201 {object} models.Pet "Pet registrado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou dados do pet inválidos"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/{cpf}/pets [post]
+func RegisterPet(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "RegisterPet")
+	defer span.End()
+
+	cpf := c.Param("cpf")
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+
+	// Add CPF to span attributes
+	span.SetAttributes(
+		attribute.String("cpf", cpf),
+		attribute.String("operation", "register_pet"),
+		attribute.String("service", "pet"),
+	)
+
+	logger.Debug("RegisterPet called", zap.String("cpf", cpf))
+
+	// Validate CPF with tracing
+	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
+	if !utils.ValidateCPF(cpf) {
+		utils.RecordErrorInSpan(cpfSpan, fmt.Errorf("invalid CPF format"), map[string]interface{}{
+			"cpf": cpf,
+		})
+		cpfSpan.End()
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
+		return
+	}
+	cpfSpan.End()
+
+	// Parse and validate request body
+	ctx, parseSpan := utils.TraceInputParsing(ctx, "pet_registration_request")
+	var req models.PetRegistrationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.RecordErrorInSpan(parseSpan, err, map[string]interface{}{
+			"validation_error": err.Error(),
+		})
+		parseSpan.End()
+		logger.Error("invalid pet registration request", zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: fmt.Sprintf("Invalid request: %s", err.Error())})
+		return
+	}
+	parseSpan.End()
+
+	// Check if pet service is available
+	if services.PetServiceInstance == nil {
+		logger.Error("pet service not initialized")
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Pet service unavailable"})
+		return
+	}
+
+	// Register pet with tracing
+	ctx, registerSpan := utils.TraceBusinessLogic(ctx, "register_pet")
+	pet, err := services.PetServiceInstance.RegisterPet(ctx, cpf, &req)
+	if err != nil {
+		utils.RecordErrorInSpan(registerSpan, err, map[string]interface{}{
+			"operation": "register_pet",
+			"cpf":       cpf,
+			"pet_name":  req.Name,
+		})
+		registerSpan.End()
+		logger.Error("failed to register pet", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to register pet"})
+		return
+	}
+	utils.AddSpanAttribute(registerSpan, "pet_id", *pet.ID)
+	utils.AddSpanAttribute(registerSpan, "pet_name", pet.Name)
+	registerSpan.End()
+
+	observability.DatabaseOperations.WithLabelValues("insert", "success").Inc()
+
+	// Serialize response with tracing
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusCreated, pet)
+	responseSpan.End()
+
+	// Log total operation time
+	totalDuration := time.Since(startTime)
+	logger.Info("RegisterPet completed",
+		zap.String("cpf", cpf),
+		zap.Int("pet_id", *pet.ID),
+		zap.String("pet_name", pet.Name),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }

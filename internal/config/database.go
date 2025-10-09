@@ -329,6 +329,11 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure self-registered pets collection indexes
+	if err := ensureSelfRegisteredPetIndex(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -1322,6 +1327,90 @@ func ensurePetIndex(ctx context.Context, logger *zap.Logger) error {
 	} else {
 		logger.Debug("pet indexes already exist",
 			zap.String("collection", AppConfig.PetCollection))
+	}
+
+	return nil
+}
+
+// ensureSelfRegisteredPetIndex creates the indexes for self-registered pets collection
+func ensureSelfRegisteredPetIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.PetsSelfRegisteredCollection)
+
+	// Check if indexes already exist
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		logger.Error("failed to list self-registered pet indexes", zap.Error(err))
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	existingIndexes := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existingIndexes[name] = true
+		}
+	}
+
+	// Define required indexes for self-registered pets collection
+	requiredIndexes := []mongo.IndexModel{
+		// Index 1: CPF lookup (primary query pattern)
+		{
+			Keys:    bson.D{{Key: "cpf", Value: 1}},
+			Options: options.Index().SetName("idx_self_registered_pets_cpf"),
+		},
+		// Index 2: CPF + ID composite for specific pet retrieval
+		{
+			Keys: bson.D{
+				{Key: "cpf", Value: 1},
+				{Key: "_id", Value: 1},
+			},
+			Options: options.Index().SetName("idx_self_registered_pets_cpf_id"),
+		},
+	}
+
+	// Create missing indexes
+	indexesToCreate := []mongo.IndexModel{}
+	requiredNames := []string{
+		"idx_self_registered_pets_cpf",
+		"idx_self_registered_pets_cpf_id",
+	}
+
+	for i, indexModel := range requiredIndexes {
+		if !existingIndexes[requiredNames[i]] {
+			indexesToCreate = append(indexesToCreate, indexModel)
+		}
+	}
+
+	// Create all missing indexes
+	if len(indexesToCreate) > 0 {
+		logger.Info("creating missing self-registered pet indexes",
+			zap.String("collection", AppConfig.PetsSelfRegisteredCollection),
+			zap.Int("count", len(indexesToCreate)))
+
+		_, err = collection.Indexes().CreateMany(ctx, indexesToCreate)
+		if err != nil {
+			// Check if it's a duplicate key error (another instance created it)
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("self-registered pet indexes already exist (created by another instance)",
+					zap.String("collection", AppConfig.PetsSelfRegisteredCollection))
+				return nil
+			}
+			logger.Error("failed to create self-registered pet indexes",
+				zap.String("collection", AppConfig.PetsSelfRegisteredCollection),
+				zap.Error(err))
+			return err
+		}
+
+		logger.Info("created self-registered pet indexes successfully",
+			zap.String("collection", AppConfig.PetsSelfRegisteredCollection),
+			zap.Int("created_count", len(indexesToCreate)))
+	} else {
+		logger.Debug("self-registered pet indexes already exist",
+			zap.String("collection", AppConfig.PetsSelfRegisteredCollection))
 	}
 
 	return nil

@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 )
 
@@ -41,51 +42,62 @@ func InitPetService() {
 	logger.Info("indexes will be managed by global database maintenance system")
 }
 
-// GetPetsByCPF retrieves pets associated with a CPF with pagination
+// GetPetsByCPF retrieves pets associated with a CPF with pagination (merges curated and self-registered)
 func (s *PetService) GetPetsByCPF(ctx context.Context, cpf string, page, perPage int) (*models.PaginatedPets, error) {
-	collection := s.database.Collection(config.AppConfig.PetCollection)
+	// Fetch curated pets from original collection
+	curatedCollection := s.database.Collection(config.AppConfig.PetCollection)
+	curatedFilter := bson.M{"cpf": cpf}
 
-	// Build filter query
-	filter := bson.M{
-		"cpf": cpf,
-	}
-
-	// Calculate pagination (will be applied after parsing)
-	skip := (page - 1) * perPage
-
-	// Set up find options with sorting (no pagination yet since we need to flatten first)
-	findOptions := options.Find().
-		SetSort(bson.D{{Key: "cpf", Value: 1}}) // Sort by CPF
-
-	// Execute query
-	cursor, err := collection.Find(ctx, filter, findOptions)
+	curatedCursor, err := curatedCollection.Find(ctx, curatedFilter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find pets: %w", err)
+		return nil, fmt.Errorf("failed to find curated pets: %w", err)
 	}
-	defer cursor.Close(ctx)
+	defer curatedCursor.Close(ctx)
 
-	// Decode results into raw format first
-	var rawPets []models.RawCitizenPets
-	if err = cursor.All(ctx, &rawPets); err != nil {
-		return nil, fmt.Errorf("failed to decode pets: %w", err)
+	var rawCuratedPets []models.RawCitizenPets
+	if err = curatedCursor.All(ctx, &rawCuratedPets); err != nil {
+		return nil, fmt.Errorf("failed to decode curated pets: %w", err)
 	}
 
-	// Convert raw pets to individual Pet structs (flatten the structure)
+	// Convert raw curated pets to individual Pet structs and mark as curated
 	var allPets []models.Pet
-	for _, rawPet := range rawPets {
+	for _, rawPet := range rawCuratedPets {
 		parsedPet, err := rawPet.ToCitizenPets()
 		if err != nil {
-			// Log error but continue with other pets
-			s.logger.Error("failed to parse pet data",
+			s.logger.Error("failed to parse curated pet data",
 				zap.String("cpf", rawPet.CPF),
 				zap.Error(err))
 			continue
 		}
-		// Add all pets from this citizen to the flat list
+		// Mark all curated pets with source
+		for i := range parsedPet.Pets {
+			parsedPet.Pets[i].Source = "curated"
+		}
 		allPets = append(allPets, parsedPet.Pets...)
 	}
 
-	// Apply pagination to the flattened pet list
+	// Fetch self-registered pets
+	selfRegisteredCollection := s.database.Collection(config.AppConfig.PetsSelfRegisteredCollection)
+	selfRegisteredFilter := bson.M{"cpf": cpf}
+
+	selfRegisteredCursor, err := selfRegisteredCollection.Find(ctx, selfRegisteredFilter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find self-registered pets: %w", err)
+	}
+	defer selfRegisteredCursor.Close(ctx)
+
+	var selfRegisteredPets []models.SelfRegisteredPet
+	if err = selfRegisteredCursor.All(ctx, &selfRegisteredPets); err != nil {
+		return nil, fmt.Errorf("failed to decode self-registered pets: %w", err)
+	}
+
+	// Convert self-registered pets and add to the list
+	for _, selfPet := range selfRegisteredPets {
+		allPets = append(allPets, *selfPet.ToPet())
+	}
+
+	// Apply pagination to the merged pet list
+	skip := (page - 1) * perPage
 	start := skip
 	end := skip + perPage
 	if start >= len(allPets) {
@@ -98,66 +110,85 @@ func (s *PetService) GetPetsByCPF(ctx context.Context, cpf string, page, perPage
 	paginatedPets := allPets[start:end]
 
 	// Build paginated response
-	response := &models.PaginatedPets{
-		Data: paginatedPets,
-	}
-	// Calculate correct totals based on actual pets count
 	totalPets := len(allPets)
 	totalPetsPages := int(math.Ceil(float64(totalPets) / float64(perPage)))
 
+	response := &models.PaginatedPets{
+		Data: paginatedPets,
+	}
 	response.Pagination.Page = page
 	response.Pagination.PerPage = perPage
 	response.Pagination.Total = totalPets
 	response.Pagination.TotalPages = totalPetsPages
 
-	s.logger.Debug("retrieved pets for CPF",
+	s.logger.Debug("retrieved merged pets for CPF",
 		zap.String("cpf", cpf),
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.Int("total", totalPets),
+		zap.Int("curated", len(allPets)-len(selfRegisteredPets)),
+		zap.Int("self_registered", len(selfRegisteredPets)),
 		zap.Int("returned", len(paginatedPets)))
 
 	return response, nil
 }
 
-// GetPetByID retrieves a specific pet by its ID for a given CPF
+// GetPetByID retrieves a specific pet by its ID for a given CPF (searches both collections)
 func (s *PetService) GetPetByID(ctx context.Context, cpf string, petID int) (*models.Pet, error) {
-	collection := s.database.Collection(config.AppConfig.PetCollection)
+	// First, try to find in curated collection
+	curatedCollection := s.database.Collection(config.AppConfig.PetCollection)
+	curatedFilter := bson.M{"cpf": cpf}
 
-	// Build filter query to find the citizen's pets document
-	filter := bson.M{
-		"cpf": cpf,
-	}
-
-	// Use aggregation to extract the specific pet from the nested structure
 	pipeline := []bson.M{
-		{"$match": filter},
+		{"$match": curatedFilter},
 		{"$unwind": "$pet.pet"},
 		{"$match": bson.M{"pet.pet.id_animal": petID}},
 		{"$replaceRoot": bson.M{"newRoot": "$pet.pet"}},
 	}
 
-	cursor, err := collection.Aggregate(ctx, pipeline)
+	cursor, err := curatedCollection.Aggregate(ctx, pipeline)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find pet: %w", err)
+		return nil, fmt.Errorf("failed to find curated pet: %w", err)
 	}
 	defer cursor.Close(ctx)
 
 	var pets []models.Pet
 	if err = cursor.All(ctx, &pets); err != nil {
-		return nil, fmt.Errorf("failed to decode pet: %w", err)
+		return nil, fmt.Errorf("failed to decode curated pet: %w", err)
 	}
 
-	if len(pets) == 0 {
-		return nil, fmt.Errorf("pet not found")
+	if len(pets) > 0 {
+		pets[0].Source = "curated"
+		s.logger.Debug("retrieved curated pet",
+			zap.String("cpf", cpf),
+			zap.Int("pet_id", petID),
+			zap.String("pet_name", pets[0].Name))
+		return &pets[0], nil
 	}
 
-	s.logger.Debug("retrieved specific pet",
+	// Not found in curated collection, try self-registered
+	selfRegisteredCollection := s.database.Collection(config.AppConfig.PetsSelfRegisteredCollection)
+	selfRegisteredFilter := bson.M{
+		"cpf": cpf,
+		"_id": petID,
+	}
+
+	var selfPet models.SelfRegisteredPet
+	err = selfRegisteredCollection.FindOne(ctx, selfRegisteredFilter).Decode(&selfPet)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("pet not found")
+		}
+		return nil, fmt.Errorf("failed to find self-registered pet: %w", err)
+	}
+
+	pet := selfPet.ToPet()
+	s.logger.Debug("retrieved self-registered pet",
 		zap.String("cpf", cpf),
 		zap.Int("pet_id", petID),
-		zap.String("pet_name", pets[0].Name))
+		zap.String("pet_name", pet.Name))
 
-	return &pets[0], nil
+	return pet, nil
 }
 
 // GetPetStats retrieves the pet statistics for a CPF
@@ -200,4 +231,47 @@ func (s *PetService) GetPetStats(ctx context.Context, cpf string) (*models.PetSt
 		zap.Bool("has_stats", stats != nil))
 
 	return response, nil
+}
+
+// RegisterPet registers a new self-registered pet for a CPF
+func (s *PetService) RegisterPet(ctx context.Context, cpf string, req *models.PetRegistrationRequest) (*models.Pet, error) {
+	collection := s.database.Collection(config.AppConfig.PetsSelfRegisteredCollection)
+
+	// Generate unique ID using timestamp + random ObjectID bytes
+	objectID := primitive.NewObjectID()
+	petID := int(time.Now().Unix() + int64(objectID.Timestamp().Unix()))
+
+	// Create self-registered pet document
+	now := time.Now()
+	selfPet := models.SelfRegisteredPet{
+		ID:                 petID,
+		CPF:                cpf,
+		Name:               req.Name,
+		MicrochipNumber:    req.MicrochipNumber,
+		SexAbbreviation:    req.SexAbbreviation,
+		BirthDate:          req.BirthDate,
+		NeuteredIndicator:  req.NeuteredIndicator,
+		SpeciesName:        req.SpeciesName,
+		PedigreeIndicator:  req.PedigreeIndicator,
+		PedigreeOriginName: req.PedigreeOriginName,
+		BreedName:          req.BreedName,
+		SizeName:           req.SizeName,
+		PhotoURL:           req.PhotoURL,
+		Source:             "self_registered",
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+
+	// Insert the pet document
+	_, err := collection.InsertOne(ctx, selfPet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register pet: %w", err)
+	}
+
+	s.logger.Info("registered new pet",
+		zap.String("cpf", cpf),
+		zap.Int("pet_id", petID),
+		zap.String("pet_name", req.Name))
+
+	return selfPet.ToPet(), nil
 }
