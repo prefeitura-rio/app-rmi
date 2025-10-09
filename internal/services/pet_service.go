@@ -191,44 +191,47 @@ func (s *PetService) GetPetByID(ctx context.Context, cpf string, petID int) (*mo
 	return pet, nil
 }
 
-// GetPetStats retrieves the pet statistics for a CPF
+// GetPetStats retrieves the pet statistics for a CPF (includes both curated and self-registered counts)
 func (s *PetService) GetPetStats(ctx context.Context, cpf string) (*models.PetStatsResponse, error) {
+	// Get curated pet statistics
 	collection := s.database.Collection(config.AppConfig.PetCollection)
+	filter := bson.M{"cpf": cpf}
 
-	// Build filter query
-	filter := bson.M{
-		"cpf": cpf,
-	}
-
-	// Execute query for first document
 	var rawPet models.RawCitizenPets
 	err := collection.FindOne(ctx, filter).Decode(&rawPet)
+
+	var stats *models.Statistics
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return &models.PetStatsResponse{
-				CPF:        cpf,
-				Statistics: nil,
-			}, nil
+		if err != mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("failed to find pet statistics: %w", err)
 		}
-		return nil, fmt.Errorf("failed to find pet statistics: %w", err)
+		// No curated pets found, stats will be nil
+	} else {
+		// Extract statistics (prioritize nested over root)
+		if rawPet.PetData != nil && rawPet.PetData.Statistics != nil {
+			stats = rawPet.PetData.Statistics
+		} else {
+			stats = rawPet.Statistics
+		}
 	}
 
-	// Extract statistics (prioritize nested over root)
-	var stats *models.Statistics
-	if rawPet.PetData != nil && rawPet.PetData.Statistics != nil {
-		stats = rawPet.PetData.Statistics
-	} else {
-		stats = rawPet.Statistics
+	// Count self-registered pets
+	selfRegisteredCollection := s.database.Collection(config.AppConfig.PetsSelfRegisteredCollection)
+	selfRegisteredCount, err := selfRegisteredCollection.CountDocuments(ctx, bson.M{"cpf": cpf})
+	if err != nil {
+		return nil, fmt.Errorf("failed to count self-registered pets: %w", err)
 	}
 
 	response := &models.PetStatsResponse{
-		CPF:        cpf,
-		Statistics: stats,
+		CPF:                     cpf,
+		Statistics:              stats,
+		SelfRegisteredPetsCount: int(selfRegisteredCount),
 	}
 
 	s.logger.Debug("retrieved pet statistics",
 		zap.String("cpf", cpf),
-		zap.Bool("has_stats", stats != nil))
+		zap.Bool("has_curated_stats", stats != nil),
+		zap.Int("self_registered_count", int(selfRegisteredCount)))
 
 	return response, nil
 }
