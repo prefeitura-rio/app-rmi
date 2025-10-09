@@ -2961,7 +2961,7 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
+                    "201": {
                         "description": "Memória criada com sucesso",
                         "schema": {
                             "$ref": "#/definitions/handlers.MemoryModel"
@@ -3206,11 +3206,8 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "Memória deletada com sucesso",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.SuccessResponse"
-                        }
+                    "204": {
+                        "description": "Memória deletada com sucesso"
                     },
                     "400": {
                         "description": "Número de telefone ou nome da memória inválidos",

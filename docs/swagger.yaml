@@ -3314,7 +3314,7 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
+        "201":
           description: Memória criada com sucesso
           schema:
             $ref: '#/definitions/handlers.MemoryModel'
@@ -3366,10 +3366,8 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
+        "204":
           description: Memória deletada com sucesso
-          schema:
-            $ref: '#/definitions/handlers.SuccessResponse'
         "400":
           description: Número de telefone ou nome da memória inválidos
           schema:
