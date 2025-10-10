@@ -95,9 +95,9 @@ type PaginatedPets struct {
 
 // PetStatsResponse represents the statistics for a citizen's pets
 type PetStatsResponse struct {
-	CPF                      string      `json:"cpf"`
-	Statistics               *Statistics `json:"statistics"`                 // Curated pets statistics from governo
-	SelfRegisteredPetsCount  int         `json:"self_registered_pets_count"` // Count of non-curated self-registered pets
+	CPF                     string      `json:"cpf"`
+	Statistics              *Statistics `json:"statistics"`                 // Curated pets statistics from governo
+	SelfRegisteredPetsCount int         `json:"self_registered_pets_count"` // Count of non-curated self-registered pets
 }
 
 // ParseKeyValuePairs converts key-value pair structure to a map
