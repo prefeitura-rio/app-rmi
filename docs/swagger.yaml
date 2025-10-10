@@ -68,6 +68,38 @@ definitions:
       timestamp:
         type: string
     type: object
+  handlers.MemoryModel:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      memory_id:
+        type: string
+      memory_name:
+        type: string
+      memory_type:
+        enum:
+        - base
+        - appended
+        type: string
+      relevance:
+        enum:
+        - low
+        - medium
+        - high
+        type: string
+      updated_at:
+        type: string
+      value:
+        type: string
+    required:
+    - description
+    - memory_name
+    - memory_type
+    - relevance
+    - value
+    type: object
   handlers.PhoneValidationRequest:
     description: Estrutura de entrada contendo o número de telefone a ser validado.
     properties:
@@ -3312,6 +3344,261 @@ paths:
       summary: Verificação de saúde
       tags:
       - health
+  /memory/{phone_number}:
+    get:
+      consumes:
+      - application/json
+      description: Recupera a lista de memórias associadas ao telefone do cidadão.
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de memórias obtida com sucesso
+          schema:
+            items:
+              $ref: '#/definitions/handlers.MemoryModel'
+            type: array
+        "400":
+          description: Número de telefone inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter memórias associadas ao número de telefone.
+      tags:
+      - memory
+    post:
+      consumes:
+      - application/json
+      description: Cria uma única memória associada ao telefone do cidadão.
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Dados da memória a ser criada
+        in: body
+        name: memory
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.MemoryModel'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Memória criada com sucesso
+          schema:
+            $ref: '#/definitions/handlers.MemoryModel'
+        "400":
+          description: Número de telefone ou dados da memória inválidos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Memória com esse nome já existe para este número de telefone
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cria memória associada ao número de telefone.
+      tags:
+      - memory
+  /memory/{phone_number}/{memory_name}:
+    delete:
+      consumes:
+      - application/json
+      description: Deleta uma única memória associada ao telefone do cidadão.
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Nome da memória a ser deletada
+        in: path
+        name: memory_name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Memória deletada com sucesso
+        "400":
+          description: Número de telefone ou nome da memória inválidos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Memória não encontrada
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Deleta memória associada ao número de telefone.
+      tags:
+      - memory
+    get:
+      consumes:
+      - application/json
+      description: Recupera uma única memória associada ao telefone do cidadão.
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Nome da memória
+        in: path
+        name: memory_name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Memória obtida com sucesso
+          schema:
+            $ref: '#/definitions/handlers.MemoryModel'
+        "400":
+          description: Número de telefone ou nome da memória inválidos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Memória não encontrada
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter memória associada ao número de telefone pelo nome.
+      tags:
+      - memory
+    put:
+      consumes:
+      - application/json
+      description: Atualiza uma única memória associada ao telefone do cidadão.
+      parameters:
+      - description: Número do telefone
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Nome da memória a ser atualizada
+        in: path
+        name: memory_name
+        required: true
+        type: string
+      - description: Dados da memória a ser atualizada
+        in: body
+        name: memory
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.MemoryModel'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Memória atualizada com sucesso
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Número de telefone ou nome da memória inválidos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Memória não encontrada
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "429":
+          description: Muitas requisições - limite de taxa excedido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualiza memória associada ao número de telefone.
+      tags:
+      - memory
   /metrics:
     get:
       description: Expõe métricas Prometheus para monitoramento do sistema

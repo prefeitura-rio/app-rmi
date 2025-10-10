@@ -334,6 +334,11 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure chat memory collection indexes
+	if err := ensureChatMemoryIndex(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -1413,6 +1418,64 @@ func ensureSelfRegisteredPetIndex(ctx context.Context, logger *zap.Logger) error
 			zap.String("collection", AppConfig.PetsSelfRegisteredCollection))
 	}
 
+	return nil
+}
+
+// ensureChatMemoryIndex creates the unique index on (phone_number, memory_name) for chat memory collection
+func ensureChatMemoryIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.ChatMemoryCollection)
+
+	// Check if indexes already exist
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		logger.Error("failed to list chat memory indexes", zap.Error(err))
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	existingIndexes := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existingIndexes[name] = true
+		}
+	}
+
+	// Check if the unique compound index already exists
+	if existingIndexes["phone_number_1_memory_name_1"] {
+		logger.Debug("chat memory collection index already exists",
+			zap.String("collection", AppConfig.ChatMemoryCollection))
+		return nil
+	}
+
+	// Create unique compound index on (phone_number, memory_name)
+	indexModel := mongo.IndexModel{
+		Keys: bson.D{{Key: "phone_number", Value: 1}, {Key: "memory_name", Value: 1}},
+		Options: options.Index().
+			SetName("phone_number_1_memory_name_1").
+			SetUnique(true),
+	}
+
+	_, err = collection.Indexes().CreateOne(ctx, indexModel)
+	if err != nil {
+		// Check if it's a duplicate key error (another instance created it)
+		if mongo.IsDuplicateKeyError(err) {
+			logger.Info("chat memory index already exists (created by another instance)",
+				zap.String("collection", AppConfig.ChatMemoryCollection))
+			return nil
+		}
+		logger.Error("failed to create chat memory index",
+			zap.String("collection", AppConfig.ChatMemoryCollection),
+			zap.Error(err))
+		return err
+	}
+
+	logger.Info("created chat memory collection index",
+		zap.String("collection", AppConfig.ChatMemoryCollection),
+		zap.String("index", "phone_number_1_memory_name_1"))
 	return nil
 }
 

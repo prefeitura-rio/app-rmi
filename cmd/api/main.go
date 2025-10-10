@@ -139,6 +139,17 @@ func main() {
 		// Metrics endpoint (no auth required) - for Prometheus scraping
 		v1.GET("/metrics", handlers.MetricsHandler)
 
+		// Memory endpoints (require auth)
+		memory := v1.Group("/memory")
+		memory.Use(middleware.AuthMiddleware())
+		{
+			memory.GET("/:phone_number", handlers.GetMemoryList)
+			memory.GET("/:phone_number/:memory_name", handlers.GetMemoryByName)
+			memory.POST("/:phone_number", handlers.CreateMemory)
+			memory.PUT("/:phone_number/:memory_name", handlers.UpdateMemory)
+			memory.DELETE("/:phone_number/:memory_name", handlers.DeleteMemory)
+		}
+
 		// Citizen endpoints (require auth)
 		citizen := v1.Group("/citizen")
 		citizen.Use(middleware.AuthMiddleware())

@@ -2930,6 +2930,398 @@
                 }
             }
         },
+        "/memory/{phone_number}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Recupera a lista de memórias associadas ao telefone do cidadão.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "memory"
+                ],
+                "summary": "Obter memórias associadas ao número de telefone.",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista de memórias obtida com sucesso",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handlers.MemoryModel"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Número de telefone inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Muitas requisições - limite de taxa excedido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria uma única memória associada ao telefone do cidadão.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "memory"
+                ],
+                "summary": "Cria memória associada ao número de telefone.",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dados da memória a ser criada",
+                        "name": "memory",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.MemoryModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Memória criada com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.MemoryModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Número de telefone ou dados da memória inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Memória com esse nome já existe para este número de telefone",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Muitas requisições - limite de taxa excedido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/memory/{phone_number}/{memory_name}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Recupera uma única memória associada ao telefone do cidadão.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "memory"
+                ],
+                "summary": "Obter memória associada ao número de telefone pelo nome.",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Nome da memória",
+                        "name": "memory_name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Memória obtida com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.MemoryModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Número de telefone ou nome da memória inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Memória não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Muitas requisições - limite de taxa excedido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza uma única memória associada ao telefone do cidadão.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "memory"
+                ],
+                "summary": "Atualiza memória associada ao número de telefone.",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Nome da memória a ser atualizada",
+                        "name": "memory_name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dados da memória a ser atualizada",
+                        "name": "memory",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.MemoryModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Memória atualizada com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Número de telefone ou nome da memória inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Memória não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Muitas requisições - limite de taxa excedido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Deleta uma única memória associada ao telefone do cidadão.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "memory"
+                ],
+                "summary": "Deleta memória associada ao número de telefone.",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Nome da memória a ser deletada",
+                        "name": "memory_name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Memória deletada com sucesso"
+                    },
+                    "400": {
+                        "description": "Número de telefone ou nome da memória inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Memória não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Muitas requisições - limite de taxa excedido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/metrics": {
             "get": {
                 "description": "Expõe métricas Prometheus para monitoramento do sistema",
@@ -3898,6 +4290,51 @@
                     "type": "boolean"
                 },
                 "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.MemoryModel": {
+            "type": "object",
+            "required": [
+                "description",
+                "memory_name",
+                "memory_type",
+                "relevance",
+                "value"
+            ],
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "memory_id": {
+                    "type": "string"
+                },
+                "memory_name": {
+                    "type": "string"
+                },
+                "memory_type": {
+                    "type": "string",
+                    "enum": [
+                        "base",
+                        "appended"
+                    ]
+                },
+                "relevance": {
+                    "type": "string",
+                    "enum": [
+                        "low",
+                        "medium",
+                        "high"
+                    ]
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "value": {
                     "type": "string"
                 }
             }
