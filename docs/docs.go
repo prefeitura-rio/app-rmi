@@ -2374,6 +2374,82 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Registra um novo pet para o CPF do cidadão (auto-declarado).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Registrar novo pet",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dados do pet para registro",
+                        "name": "pet",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.PetRegistrationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Pet registrado com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/models.Pet"
+                        }
+                    },
+                    "400": {
+                        "description": "Formato de CPF inválido ou dados do pet inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Muitas requisições - limite de taxa excedido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
             }
         },
         "/citizen/{cpf}/pets/stats": {
@@ -5683,11 +5759,66 @@ const docTemplate = `{
                 "sexo_sigla": {
                     "type": "string"
                 },
+                "source": {
+                    "description": "\"curated\" or \"self_registered\"",
+                    "type": "string"
+                },
                 "vermifugacao_data": {
                     "type": "string"
                 },
                 "vermifugacao_validade_data": {
                     "type": "string"
+                }
+            }
+        },
+        "models.PetRegistrationRequest": {
+            "type": "object",
+            "required": [
+                "animal_nome",
+                "especie_nome",
+                "indicador_castrado",
+                "nascimento_data",
+                "porte_nome",
+                "raca_nome",
+                "sexo_sigla"
+            ],
+            "properties": {
+                "animal_nome": {
+                    "type": "string"
+                },
+                "especie_nome": {
+                    "type": "string"
+                },
+                "foto_url": {
+                    "type": "string"
+                },
+                "indicador_castrado": {
+                    "type": "boolean"
+                },
+                "microchip_numero": {
+                    "type": "string"
+                },
+                "nascimento_data": {
+                    "type": "string"
+                },
+                "pedigree_indicador": {
+                    "type": "boolean"
+                },
+                "pedigree_origem_nome": {
+                    "type": "string"
+                },
+                "porte_nome": {
+                    "type": "string"
+                },
+                "raca_nome": {
+                    "type": "string"
+                },
+                "sexo_sigla": {
+                    "type": "string",
+                    "enum": [
+                        "M",
+                        "F"
+                    ]
                 }
             }
         },
@@ -5697,8 +5828,17 @@ const docTemplate = `{
                 "cpf": {
                     "type": "string"
                 },
+                "self_registered_pets_count": {
+                    "description": "Count of non-curated self-registered pets",
+                    "type": "integer"
+                },
                 "statistics": {
-                    "$ref": "#/definitions/models.Statistics"
+                    "description": "Curated pets statistics from governo",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.Statistics"
+                        }
+                    ]
                 }
             }
         },

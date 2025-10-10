@@ -28,6 +28,7 @@ type Pet struct {
 	DewormingDate        *time.Time        `bson:"vermifugacao_data,omitempty" json:"vermifugacao_data,omitempty"`
 	DewormingExpiryDate  *time.Time        `bson:"vermifugacao_validade_data,omitempty" json:"vermifugacao_validade_data,omitempty"`
 	AccreditedClinic     *AccreditedClinic `bson:"clinica_credenciada,omitempty" json:"clinica_credenciada,omitempty"`
+	Source               string            `bson:"source,omitempty" json:"source,omitempty"` // "curated" or "self_registered"
 }
 
 // Statistics represents pet statistics for a citizen
@@ -94,8 +95,9 @@ type PaginatedPets struct {
 
 // PetStatsResponse represents the statistics for a citizen's pets
 type PetStatsResponse struct {
-	CPF        string      `json:"cpf"`
-	Statistics *Statistics `json:"statistics"`
+	CPF                     string      `json:"cpf"`
+	Statistics              *Statistics `json:"statistics"`                 // Curated pets statistics from governo
+	SelfRegisteredPetsCount int         `json:"self_registered_pets_count"` // Count of non-curated self-registered pets
 }
 
 // ParseKeyValuePairs converts key-value pair structure to a map
@@ -139,4 +141,60 @@ func (raw *RawCitizenPets) ToCitizenPets() (*CitizenPets, error) {
 	}
 
 	return result, nil
+}
+
+// PetRegistrationRequest represents the request to register a new pet
+type PetRegistrationRequest struct {
+	Name               string     `json:"animal_nome" binding:"required"`
+	MicrochipNumber    string     `json:"microchip_numero,omitempty"`
+	SexAbbreviation    string     `json:"sexo_sigla" binding:"required,oneof=M F"`
+	BirthDate          *time.Time `json:"nascimento_data" binding:"required"`
+	NeuteredIndicator  bool       `json:"indicador_castrado" binding:"required"`
+	SpeciesName        string     `json:"especie_nome" binding:"required"`
+	PedigreeIndicator  *bool      `json:"pedigree_indicador,omitempty"`
+	PedigreeOriginName string     `json:"pedigree_origem_nome,omitempty"`
+	BreedName          string     `json:"raca_nome" binding:"required"`
+	SizeName           string     `json:"porte_nome" binding:"required"`
+	PhotoURL           string     `json:"foto_url,omitempty"`
+}
+
+// SelfRegisteredPet represents a pet document in the self-registered collection
+type SelfRegisteredPet struct {
+	ID                 int        `bson:"_id" json:"id_animal"`
+	CPF                string     `bson:"cpf" json:"cpf"`
+	Name               string     `bson:"animal_nome" json:"animal_nome"`
+	MicrochipNumber    string     `bson:"microchip_numero,omitempty" json:"microchip_numero,omitempty"`
+	SexAbbreviation    string     `bson:"sexo_sigla" json:"sexo_sigla"`
+	BirthDate          *time.Time `bson:"nascimento_data" json:"nascimento_data"`
+	NeuteredIndicator  bool       `bson:"indicador_castrado" json:"indicador_castrado"`
+	SpeciesName        string     `bson:"especie_nome" json:"especie_nome"`
+	PedigreeIndicator  *bool      `bson:"pedigree_indicador,omitempty" json:"pedigree_indicador,omitempty"`
+	PedigreeOriginName string     `bson:"pedigree_origem_nome,omitempty" json:"pedigree_origem_nome,omitempty"`
+	BreedName          string     `bson:"raca_nome" json:"raca_nome"`
+	SizeName           string     `bson:"porte_nome" json:"porte_nome"`
+	PhotoURL           string     `bson:"foto_url,omitempty" json:"foto_url,omitempty"`
+	Source             string     `bson:"source" json:"source"`
+	CreatedAt          time.Time  `bson:"created_at" json:"created_at"`
+	UpdatedAt          time.Time  `bson:"updated_at" json:"updated_at"`
+}
+
+// ToPet converts a SelfRegisteredPet to a Pet model
+func (s *SelfRegisteredPet) ToPet() *Pet {
+	neuteredPtr := &s.NeuteredIndicator
+	idPtr := &s.ID
+	return &Pet{
+		ID:                 idPtr,
+		Name:               s.Name,
+		MicrochipNumber:    s.MicrochipNumber,
+		SexAbbreviation:    s.SexAbbreviation,
+		BirthDate:          s.BirthDate,
+		NeuteredIndicator:  neuteredPtr,
+		SpeciesName:        s.SpeciesName,
+		PedigreeIndicator:  s.PedigreeIndicator,
+		PedigreeOriginName: s.PedigreeOriginName,
+		BreedName:          s.BreedName,
+		SizeName:           s.SizeName,
+		PhotoURL:           s.PhotoURL,
+		Source:             s.Source,
+	}
 }
