@@ -1398,6 +1398,281 @@ PHONE_QUARANTINE_TTL=4320h  # 6 meses (6 * 30 * 24 horas)
 - Logs estruturados para todas as operações de quarentena
 - Rastreamento de histórico completo para compliance
 
+## 🧠 **Funcionalidades de Memória**
+
+Sistema de memória para chatbot que permite gerenciar memórias de longo prazo relacionadas ao cidadão, proporcionando contexto persistente para conversas e personalização de experiências.
+
+### **Visão Geral**
+- **🎯 Memórias Persistidas**: Armazenamento de informações contextuais de longo prazo
+- **📝 Tipos de Memória**: Memórias base (fundamentais) e anexadas (contextuais)
+- **⚡ Cache Inteligente**: Verificação rápida de memórias com cache Redis
+- **🔍 Busca por Nome**: Acesso direto a memórias específicas via nome
+- **📊 Relevância Hierárquica**: Classificação por importância (baixa, média, alta)
+- **🔄 CRUD Completo**: Operações completas de criação, leitura, atualização e exclusão
+
+### **Funcionalidades Principais**
+
+#### **Gerenciamento de Memórias**
+- **🆕 Criação de Memórias**: Criação de novas memórias com validação de unicidade
+- **📖 Listagem de Memórias**: Recuperação de todas as memórias associadas a um telefone
+- **🔍 Busca por Nome**: Acesso direto a memórias específicas via nome único
+- **✏️ Atualização de Memórias**: Modificação de memórias existentes com verificação de duplicatas
+- **🗑️ Exclusão de Memórias**: Remoção segura de memórias com limpeza de cache
+- **🔄 Controle de Versões**: Timestamps automáticos para rastreamento de mudanças
+
+#### **Características Técnicas**
+- **🔐 Autenticação**: Endpoints protegidos com autenticação Bearer
+- **💾 Cache Multi-Nível**: Cache Redis para listas e memórias individuais
+- **📈 Performance**: Otimização com tracing OpenTelemetry e monitoramento
+- **✅ Validação**: Validação robusta de formato de telefone e dados de entrada
+- **🔄 Atomicidade**: Operações atômicas com tratamento de concorrência
+- **📊 Observabilidade**: Métricas completas e logs estruturados
+
+### **Modelo de Dados**
+
+#### **MemoryModel**
+```json
+{
+  "memory_id": "uuid-da-memoria",
+  "memory_name": "nome-da-memoria",
+  "description": "Descrição da memória",
+  "relevance": "low|medium|high",
+  "memory_type": "base|appended", 
+  "value": "Conteúdo da memória",
+  "created_at": "2025-08-07T15:30:00Z",
+  "updated_at": "2025-08-07T15:30:00Z"
+}
+```
+
+#### **Campos e Validações**
+- **memory_name**: Nome único da memória (obrigatório, case-insensitive)
+- **description**: Descrição da memória (obrigatório)
+- **relevance**: Relevância (obrigatório: low, medium, high)
+- **memory_type**: Tipo de memória (obrigatório: base, appended)
+- **value**: Conteúdo da memória (obrigatório)
+- **timestamps**: Criado/atualizado automaticamente
+
+### **Endpoints da API**
+
+#### **Endpoints de Memória**
+
+##### **GET /memory/{phone_number}**
+Recupera a lista de todas as memórias associadas ao telefone do cidadão.
+- **Autenticação**: Requer role `rmi-admin`
+- **Cache**: Resultados cacheados com TTL configurável
+- **Resposta**: Array de objetos `MemoryModel` (vazio se não houver memórias)
+- **Status**: 200 (sucesso), 400 (telefone inválido), 401/403 (autenticação), 500 (erro interno)
+
+##### **GET /memory/{phone_number}/{memory_name}**
+Recupera uma memória específica associada ao telefone pelo nome.
+- **Autenticação**: Requer role `rmi-admin`
+- **Cache**: Cache individual por memória
+- **Resposta**: Objeto `MemoryModel`
+- **Status**: 200 (sucesso), 400 (dados inválidos), 404 (não encontrado), 401/403 (autenticação), 500 (erro interno)
+
+##### **POST /memory/{phone_number}**
+Cria uma nova memória associada ao telefone do cidadão.
+- **Autenticação**: Requer role `rmi-admin`
+- **Body**: Objeto `MemoryModel` (sem memory_id e timestamps)
+- **Validação**: Verificação de duplicatas (nome único por telefone)
+- **Resposta**: Objeto `MemoryModel` criado
+- **Status**: 201 (criado), 400 (dados inválidos), 409 (duplicado), 401/403 (autenticação), 500 (erro interno)
+
+##### **PUT /memory/{phone_number}/{memory_name}**
+Atualiza uma memória existente associada ao telefone.
+- **Autenticação**: Requer role `rmi-admin`
+- **Body**: Objeto `MemoryModel` com dados atualizados
+- **Validação**: Verificação de duplicatas se nome for alterado
+- **Resposta**: `{"message": "Memory updated successfully"}`
+- **Status**: 200 (sucesso), 400 (dados inválidos), 404 (não encontrado), 409 (duplicado), 401/403 (autenticação), 500 (erro interno)
+
+##### **DELETE /memory/{phone_number}/{memory_name}**
+Remove uma memória associada ao telefone.
+- **Autenticação**: Requer role `rmi-admin`
+- **Resposta**: Status 204 (sem conteúdo)
+- **Status**: 204 (sucesso), 400 (dados inválidos), 404 (não encontrado), 401/403 (autenticação), 500 (erro interno)
+
+### **Configuração**
+
+#### **Variáveis de Ambiente**
+| Variável | Descrição | Padrão | Obrigatório |
+|----------|-----------|---------|------------|
+| MONGODB_CHAT_MEMORY_COLLECTION | Nome da coleção de memórias da conversa | chat_memory | Não |
+
+### **Características Técnicas**
+
+#### **Cache Redis**
+- **Cache de Lista**: `memory_list:{phone_number}` - TTL configurável
+- **Cache Individual**: `memory:{phone_number}:{memory_name}` - TTL configurável
+- **Invalidação Inteligente**: Cache limpo automaticamente em operações de escrita
+- **Performance**: Consultas rápidas sem necessidade de acesso ao banco
+
+#### **Banco de Dados**
+- **Índices Otimizados**: Índices para consultas por telefone e nome da memória
+- **Integridade**: Constraints para nomes únicos de memória por telefone
+- **Timestamps**: Controle automático de criação e atualização
+
+#### **Segurança**
+- **Controle de Acesso**: Endpoints requerem role `rmi-admin`
+- **Validação**: Verificação de duplicatas e dados válidos
+- **Auditoria**: Logs de todas as operações com tracing
+
+#### **Performance**
+- **Cache Inteligente**: Cache Redis para verificações frequentes
+- **Tracing**: Monitoramento completo com OpenTelemetry
+- **Validação Eficiente**: Validação rápida de formato de telefone
+- **Operações em Lote**: Processamento batch para operações de cache
+
+### **Fluxo de Operação**
+
+#### **Criação de Memória**
+1. **Validação**: Verifica formato do telefone e dados de entrada
+2. **Verificação de Duplicata**: Confirma que nome da memória é único para o telefone
+3. **Geração de ID**: UUID único gerado automaticamente
+4. **Inserção no MongoDB**: Armazena memória com timestamps
+5. **Invalidação de Cache**: Limpa cache de lista e individual
+6. **Resposta**: Retorna memória criada com status 201
+
+#### **Leitura de Memória**
+1. **Validação**: Verifica formato do telefone
+2. **Cache Check**: Tenta obter do cache Redis primeiro
+3. **MongoDB Fallback**: Se cache miss, consulta MongoDB
+4. **Cache Update**: Atualiza cache para futuras consultas
+5. **Resposta**: Retorna memória(s) encontrada(s)
+
+#### **Atualização de Memória**
+1. **Validação**: Verifica dados de entrada
+2. **Verificação de Existência**: Confirma que memória existe
+3. **Verificação de Duplicata**: Se nome mudar, verifica se novo nome é único
+4. **Atualização no MongoDB**: Aplica mudanças com novo timestamp
+5. **Atualização de Cache**: Atualiza cache individual e limpa cache de lista
+6. **Resposta**: Confirmação de sucesso
+
+#### **Exclusão de Memória**
+1. **Validação**: Verifica dados de entrada
+2. **Verificação de Existência**: Confirma que memória existe
+3. **Exclusão no MongoDB**: Remove documento
+4. **Limpeza de Cache**: Remove cache individual e de lista
+5. **Resposta**: Status 204 (sem conteúdo)
+
+### **Monitoramento e Observabilidade**
+
+#### **Métricas Disponíveis**
+```yaml
+# Operações de banco
+app_rmi_database_operations_total{operation="find", collection="chat_memory", status="success"}
+app_rmi_database_operations_total{operation="insert", collection="chat_memory", status="success"}
+app_rmi_database_operations_total{operation="update", collection="chat_memory", status="success"}
+app_rmi_database_operations_total{operation="delete", collection="chat_memory", status="success"}
+
+# Performance
+app_rmi_operation_duration_seconds{operation="GetMemoryList"}
+app_rmi_operation_duration_seconds{operation="GetMemoryByName"}
+app_rmi_operation_duration_seconds{operation="CreateMemory"}
+app_rmi_operation_duration_seconds{operation="UpdateMemory"}
+app_rmi_operation_duration_seconds{operation="DeleteMemory"}
+```
+
+#### **Traces OpenTelemetry**
+- **Span Completo**: Rastreamento de toda a operação
+- **Atributos**: Telefone, nome da memória, operação, duração
+- **Erros**: Categorização e detalhamento de falhas
+- **Performance**: Timing de cada etapa da operação
+
+### **Casos de Uso**
+
+#### **Chatbot com Contexto Persistente**
+1. **Inicialização**: Bot recupera memórias do usuário
+2. **Contextualização**: Usa memórias para personalizar conversa
+3. **Atualização**: Adiciona novas informações como memórias
+4. **Manutenção**: Remove memórias irrelevantes ou desatualizadas
+
+#### **Sistema de Preferências**
+1. **Preferências do Usuário**: Armazena preferências como memórias base
+2. **Contexto de Conversa**: Memórias anexadas para contexto específico
+3. **Evolução**: Atualiza preferências baseadas em interações
+
+#### **Personalização de Experiência**
+1. **Perfil do Usuário**: Memórias que definem características do usuário
+2. **Histórico de Interações**: Contexto de conversas anteriores
+3. **Preferências Comportamentais**: Padrões de interação do usuário
+
+### **Exemplos de Uso**
+
+#### **Criar Memória de Preferência**
+```bash
+curl -X POST "http://localhost:8080/memory/+5511999887766" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "memory_name": "preferencia_idioma",
+    "description": "Preferência de idioma do usuário",
+    "relevance": "high", 
+    "memory_type": "base",
+    "value": "portugues"
+  }'
+```
+
+#### **Recuperar Todas as Memórias**
+```bash
+curl -X GET "http://localhost:8080/memory/+5511999887766" \
+  -H "Authorization: Bearer <token>"
+```
+
+#### **Atualizar Memória Existente**
+```bash
+curl -X PUT "http://localhost:8080/memory/+5511999887766/preferencia_idioma" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "memory_name": "preferencia_idioma",
+    "description": "Preferência de idioma atualizada",
+    "relevance": "high",
+    "memory_type": "base", 
+    "value": "portugues_brasil"
+  }'
+```
+
+### **Integração com Outros Sistemas**
+
+#### **Chatbot Integration**
+- **Contexto Persistente**: Memórias fornecem contexto entre sessões
+- **Personalização**: Experiência customizada baseada em histórico
+- **Aprendizado Contínuo**: Sistema evolui com interações do usuário
+
+#### **Sistema de Analytics**
+- **Padrões de Uso**: Análise de quais memórias são mais relevantes
+- **Evolução de Preferências**: Tracking de mudanças ao longo do tempo
+- **Otimização**: Identificação de memórias mais úteis
+
+---
+
+**🎯 Objetivo**: Prover um sistema robusto de memória que permita chatbots manterem contexto persistente e oferecerem experiências personalizadas baseadas no histórico de interações com o usuário.
+
+### Configuração
+
+#### Variáveis de Ambiente
+| Variável | Descrição | Padrão | Obrigatório |
+|----------|-----------|---------|------------|
+| MONGODB_CHAT_MEMORY_COLLECTION | Nome da coleção de memórias da conversa | chat_memory | Não |
+
+### Características Técnicas
+
+#### Cache Redis
+- **TTL Configurável**: Cache de status beta com TTL personalizável
+- **Invalidação Inteligente**: Cache limpo quando associações mudam
+- **Performance**: Verificações rápidas sem consulta ao banco
+
+#### Segurança
+- **Controle de Acesso**: Endpoints administrativos requerem role `rmi-admin`
+- **Validação**: Verificação de duplicatas e dados válidos
+- **Auditoria**: Logs de todas as operações administrativas
+
+#### Performance
+- **Cache Inteligente**: Cache Redis para verificações frequentes
+- **Paginação**: Listagens paginadas para grandes volumes
+- **Índices**: Índices otimizados para consultas rápidas
+
 ## Funcionalidades de Beta Whitelist
 
 Sistema de whitelist para chatbot beta que permite gerenciar grupos de teste e controlar acesso de números de telefone.
