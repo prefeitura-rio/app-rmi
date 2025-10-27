@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -355,12 +356,12 @@ func (s *BetaGroupService) GetBetaStatus(ctx context.Context, phoneNumber string
 	if err := cached.Err(); err == nil {
 		cachedValue, err := cached.Result()
 		if err == nil && cachedValue != "" {
-			// Parse cached response (simplified for now)
-			// In a real implementation, you'd want to properly deserialize this
-			return &models.BetaStatusResponse{
-				PhoneNumber:     phoneNumber,
-				BetaWhitelisted: cachedValue != "false",
-			}, nil
+			// Deserialize full response from cache
+			var response models.BetaStatusResponse
+			if err := json.Unmarshal([]byte(cachedValue), &response); err == nil {
+				return &response, nil
+			}
+			// If deserialization fails, fall through to database query
 		}
 	}
 
@@ -371,11 +372,14 @@ func (s *BetaGroupService) GetBetaStatus(ctx context.Context, phoneNumber string
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			// Cache negative result
-			config.Redis.Set(ctx, cacheKey, "false", config.AppConfig.BetaStatusCacheTTL)
-			return &models.BetaStatusResponse{
+			response := &models.BetaStatusResponse{
 				PhoneNumber:     phoneNumber,
 				BetaWhitelisted: false,
-			}, nil
+			}
+			if cacheJSON, err := json.Marshal(response); err == nil {
+				config.Redis.Set(ctx, cacheKey, string(cacheJSON), config.AppConfig.BetaStatusCacheTTL)
+			}
+			return response, nil
 		}
 		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
 	}
@@ -394,12 +398,10 @@ func (s *BetaGroupService) GetBetaStatus(ctx context.Context, phoneNumber string
 		}
 	}
 
-	// Cache the result
-	cacheValue := "false"
-	if response.BetaWhitelisted {
-		cacheValue = "true"
+	// Cache the complete response as JSON
+	if cacheJSON, err := json.Marshal(response); err == nil {
+		config.Redis.Set(ctx, cacheKey, string(cacheJSON), config.AppConfig.BetaStatusCacheTTL)
 	}
-	config.Redis.Set(ctx, cacheKey, cacheValue, config.AppConfig.BetaStatusCacheTTL)
 
 	return response, nil
 }
