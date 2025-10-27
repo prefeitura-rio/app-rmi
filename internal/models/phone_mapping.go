@@ -14,8 +14,8 @@ type PhoneCPFMapping struct {
 	ValidationAttempt ValidationAttempt `bson:"validation_attempt,omitempty" json:"validation_attempt,omitempty"`
 	Channel           string            `bson:"channel,omitempty" json:"channel,omitempty"`
 	BetaGroupID       string            `bson:"beta_group_id,omitempty" json:"beta_group_id,omitempty"`
-	CreatedAt         time.Time         `bson:"created_at" json:"created_at"`
-	UpdatedAt         time.Time         `bson:"updated_at" json:"updated_at"`
+	CreatedAt         *time.Time        `bson:"created_at,omitempty" json:"created_at,omitempty"`
+	UpdatedAt         *time.Time        `bson:"updated_at,omitempty" json:"updated_at,omitempty"`
 }
 
 // QuarantineEvent represents a quarantine event in the history

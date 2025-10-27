@@ -139,8 +139,8 @@ func (s *PhoneMappingService) QuarantinePhone(ctx context.Context, phoneNumber s
 					QuarantineUntil: quarantineUntil,
 				},
 			},
-			CreatedAt: now,
-			UpdatedAt: now,
+			CreatedAt: &now,
+			UpdatedAt: &now,
 		}
 
 		_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
@@ -307,8 +307,8 @@ func (s *PhoneMappingService) BindPhoneToCPF(ctx context.Context, phoneNumber, c
 			CPF:         cpf,
 			Status:      models.MappingStatusActive,
 			Channel:     channel,
-			CreatedAt:   now,
-			UpdatedAt:   now,
+			CreatedAt:   &now,
+			UpdatedAt:   &now,
 		}
 
 		_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
@@ -736,8 +736,8 @@ func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, chann
 			CPF:         cpf,
 			Status:      models.MappingStatusActive,
 			Channel:     channel,
-			CreatedAt:   now,
-			UpdatedAt:   now,
+			CreatedAt:   &now,
+			UpdatedAt:   &now,
 		}
 
 		_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
@@ -835,8 +835,8 @@ func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber, reason, c
 				// CPF is empty since this phone is not bound to any CPF
 				Status:    models.MappingStatusBlocked,
 				Channel:   channel,
-				CreatedAt: now,
-				UpdatedAt: now,
+				CreatedAt: &now,
+				UpdatedAt: &now,
 			}
 
 			_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
