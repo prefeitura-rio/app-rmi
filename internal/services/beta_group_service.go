@@ -441,6 +441,9 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 	for cursor.Next(ctx) {
 		var mapping models.PhoneCPFMapping
 		if err := cursor.Decode(&mapping); err != nil {
+			s.logger.Warn("failed to decode phone mapping in whitelist",
+				zap.Error(err),
+				zap.String("collection", config.AppConfig.PhoneMappingCollection))
 			continue
 		}
 
@@ -453,11 +456,17 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 			}
 		}
 
+		// Use current time if UpdatedAt is nil (for backwards compatibility)
+		addedAt := time.Now()
+		if mapping.UpdatedAt != nil {
+			addedAt = *mapping.UpdatedAt
+		}
+
 		whitelisted = append(whitelisted, models.BetaWhitelistResponse{
 			PhoneNumber: "+" + mapping.PhoneNumber,
 			GroupID:     mapping.BetaGroupID,
 			GroupName:   groupName,
-			AddedAt:     mapping.UpdatedAt,
+			AddedAt:     addedAt,
 		})
 	}
 
