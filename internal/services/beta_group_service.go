@@ -426,10 +426,14 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 	}
 
 	// Find phones with pagination
+	// Use compound sort: updated_at desc, then _id desc for consistent ordering
 	findOptions := options.Find().
 		SetSkip(int64(skip)).
 		SetLimit(int64(perPage)).
-		SetSort(bson.D{{Key: "updated_at", Value: -1}})
+		SetSort(bson.D{
+			{Key: "updated_at", Value: -1},
+			{Key: "_id", Value: -1},
+		})
 
 	cursor, err := phoneCollection.Find(ctx, filter, findOptions)
 	if err != nil {
@@ -439,32 +443,54 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 
 	var whitelisted []models.BetaWhitelistResponse
 	for cursor.Next(ctx) {
-		var mapping models.PhoneCPFMapping
-		if err := cursor.Decode(&mapping); err != nil {
-			s.logger.Warn("failed to decode phone mapping in whitelist",
+		// Use flexible bson.M to handle potentially malformed entries
+		var rawDoc bson.M
+		if err := cursor.Decode(&rawDoc); err != nil {
+			s.logger.Warn("failed to decode raw document in whitelist",
 				zap.Error(err),
+				zap.String("collection", config.AppConfig.PhoneMappingCollection))
+			continue
+		}
+
+		// Extract phone number (required field)
+		phoneNumber, ok := rawDoc["phone_number"].(string)
+		if !ok || phoneNumber == "" {
+			s.logger.Warn("phone mapping missing phone_number field",
+				zap.String("collection", config.AppConfig.PhoneMappingCollection),
+				zap.Any("document", rawDoc))
+			continue
+		}
+
+		// Extract beta_group_id (should exist due to filter, but check anyway)
+		betaGroupID, _ := rawDoc["beta_group_id"].(string)
+		if betaGroupID == "" {
+			s.logger.Warn("phone mapping missing beta_group_id field",
+				zap.String("phone_number", phoneNumber),
 				zap.String("collection", config.AppConfig.PhoneMappingCollection))
 			continue
 		}
 
 		// Get group name
 		groupName := ""
-		if mapping.BetaGroupID != "" {
-			group, err := s.GetGroup(ctx, mapping.BetaGroupID)
-			if err == nil {
-				groupName = group.Name
-			}
+		group, err := s.GetGroup(ctx, betaGroupID)
+		if err == nil {
+			groupName = group.Name
 		}
 
-		// Use current time if UpdatedAt is nil (for backwards compatibility)
-		addedAt := time.Now()
-		if mapping.UpdatedAt != nil {
-			addedAt = *mapping.UpdatedAt
+		// Extract updated_at timestamp with fallback to created_at
+		var addedAt time.Time
+		if updatedAt, ok := rawDoc["updated_at"].(primitive.DateTime); ok {
+			addedAt = updatedAt.Time()
+		} else if createdAt, ok := rawDoc["created_at"].(primitive.DateTime); ok {
+			addedAt = createdAt.Time()
+		} else {
+			// If both timestamps are missing, use zero time
+			addedAt = time.Time{}
 		}
 
 		whitelisted = append(whitelisted, models.BetaWhitelistResponse{
-			PhoneNumber: "+" + mapping.PhoneNumber,
-			GroupID:     mapping.BetaGroupID,
+			PhoneNumber: "+" + phoneNumber,
+			GroupID:     betaGroupID,
 			GroupName:   groupName,
 			AddedAt:     addedAt,
 		})
