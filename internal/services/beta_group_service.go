@@ -454,10 +454,18 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 
 		// Extract phone number (required field)
 		phoneNumber, ok := rawDoc["phone_number"].(string)
-		if !ok || phoneNumber == "" {
-			s.logger.Warn("phone mapping missing phone_number field",
+		if !ok {
+			s.logger.Warn("phone mapping has non-string phone_number field",
 				zap.String("collection", config.AppConfig.PhoneMappingCollection),
-				zap.Any("document", rawDoc))
+				zap.Any("phone_number_value", rawDoc["phone_number"]),
+				zap.String("phone_number_type", fmt.Sprintf("%T", rawDoc["phone_number"])),
+				zap.Any("beta_group_id", rawDoc["beta_group_id"]))
+			continue
+		}
+		if phoneNumber == "" {
+			s.logger.Warn("phone mapping has empty phone_number",
+				zap.String("collection", config.AppConfig.PhoneMappingCollection),
+				zap.Any("beta_group_id", rawDoc["beta_group_id"]))
 			continue
 		}
 
