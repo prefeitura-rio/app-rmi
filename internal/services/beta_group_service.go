@@ -461,10 +461,23 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 			continue
 		}
 
-		// Extract beta_group_id (should exist due to filter, but check anyway)
-		betaGroupID, _ := rawDoc["beta_group_id"].(string)
+		// Extract beta_group_id (handle both string and ObjectID types)
+		var betaGroupID string
+		switch v := rawDoc["beta_group_id"].(type) {
+		case string:
+			betaGroupID = v
+		case primitive.ObjectID:
+			betaGroupID = v.Hex()
+		default:
+			s.logger.Warn("phone mapping has invalid beta_group_id type",
+				zap.String("phone_number", phoneNumber),
+				zap.String("collection", config.AppConfig.PhoneMappingCollection),
+				zap.Any("beta_group_id", rawDoc["beta_group_id"]))
+			continue
+		}
+
 		if betaGroupID == "" {
-			s.logger.Warn("phone mapping missing beta_group_id field",
+			s.logger.Warn("phone mapping has empty beta_group_id",
 				zap.String("phone_number", phoneNumber),
 				zap.String("collection", config.AppConfig.PhoneMappingCollection))
 			continue
