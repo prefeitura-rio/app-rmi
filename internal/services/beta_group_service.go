@@ -510,7 +510,7 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 		}
 
 		whitelisted = append(whitelisted, models.BetaWhitelistResponse{
-			PhoneNumber: "+" + phoneNumber,
+			PhoneNumber: phoneNumber,
 			GroupID:     betaGroupID,
 			GroupName:   groupName,
 			AddedAt:     addedAt,
