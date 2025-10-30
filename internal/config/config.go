@@ -54,6 +54,7 @@ type Config struct {
 	PetCollection                string `json:"mongo_pet_collection"`
 	PetsSelfRegisteredCollection string `json:"mongo_pets_self_registered_collection"`
 	ChatMemoryCollection         string `json:"mongo_chat_memory_collection"`
+	DepartmentCollection         string `json:"mongo_department_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -166,6 +167,12 @@ func LoadConfig() error {
 	chatMemoryCollection := os.Getenv("MONGODB_CHAT_MEMORY_COLLECTION")
 	if chatMemoryCollection == "" {
 		return fmt.Errorf("MONGODB_CHAT_MEMORY_COLLECTION environment variable is required")
+	}
+
+	// Check if MONGODB_DEPARTMENT_COLLECTION is set
+	departmentCollection := os.Getenv("MONGODB_DEPARTMENT_COLLECTION")
+	if departmentCollection == "" {
+		return fmt.Errorf("MONGODB_DEPARTMENT_COLLECTION environment variable is required")
 	}
 
 	phoneVerificationTTL, err := time.ParseDuration(getEnvOrDefault("PHONE_VERIFICATION_TTL", "5m"))
@@ -331,6 +338,7 @@ func LoadConfig() error {
 		PetCollection:                petCollection,
 		PetsSelfRegisteredCollection: petsSelfRegisteredCollection,
 		ChatMemoryCollection:         chatMemoryCollection,
+		DepartmentCollection:         departmentCollection,
 
 		// Phone verification configuration
 		PhoneVerificationTTL: phoneVerificationTTL,

@@ -2906,6 +2906,147 @@ const docTemplate = `{
                 }
             }
         },
+        "/departments": {
+            "get": {
+                "description": "Recupera a lista paginada de departamentos com filtros opcionais (hierarquia, nível, busca).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "departments"
+                ],
+                "summary": "Listar departamentos/unidades administrativas",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Código da UA pai para filtrar departamentos filhos",
+                        "name": "parent_id",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Nível mínimo do departamento",
+                        "name": "min_level",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Nível máximo do departamento",
+                        "name": "max_level",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Nível exato do departamento (sobrescreve min/max)",
+                        "name": "exact_level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sigla da UA para filtro exato",
+                        "name": "sigla_ua",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Texto para busca textual em nome_ua",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Número da página (padrão: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Itens por página (padrão: 10, máximo: 100)",
+                        "name": "per_page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista paginada de departamentos obtida com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/models.DepartmentListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Parâmetros inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/departments/{cd_ua}": {
+            "get": {
+                "description": "Recupera um departamento específico pelo código da UA (cd_ua).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "departments"
+                ],
+                "summary": "Obter departamento/unidade administrativa por ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Código da Unidade Administrativa",
+                        "name": "cd_ua",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Departamento obtido com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/models.DepartmentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Código da UA inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Departamento não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Verifica a saúde da API e suas dependências (MongoDB e Redis). Retorna status detalhado para cada serviço.",
@@ -4936,6 +5077,61 @@ const docTemplate = `{
                 }
             }
         },
+        "models.DepartmentListResponse": {
+            "type": "object",
+            "properties": {
+                "departments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.DepartmentResponse"
+                    }
+                },
+                "pagination": {
+                    "$ref": "#/definitions/models.PaginationInfo"
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.DepartmentResponse": {
+            "type": "object",
+            "properties": {
+                "cd_ua": {
+                    "type": "string"
+                },
+                "cd_ua_pai": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "msg": {
+                    "type": "string"
+                },
+                "nivel": {
+                    "type": "integer"
+                },
+                "nome_ua": {
+                    "type": "string"
+                },
+                "ordem_absoluta": {
+                    "type": "string"
+                },
+                "ordem_relativa": {
+                    "type": "string"
+                },
+                "ordem_ua_basica": {
+                    "type": "string"
+                },
+                "sigla_ua": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Documentos": {
             "type": "object",
             "properties": {
@@ -6352,6 +6548,10 @@ const docTemplate = `{
         {
             "description": "Operações relacionadas a cidadãos, incluindo consulta e atualização de dados autodeclarados",
             "name": "citizen"
+        },
+        {
+            "description": "Operações relacionadas a departamentos/unidades administrativas (UA)",
+            "name": "departments"
         },
         {
             "description": "Operações de verificação de saúde da API",

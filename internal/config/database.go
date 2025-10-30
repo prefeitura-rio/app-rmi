@@ -339,6 +339,11 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure department collection indexes
+	if err := ensureDepartmentIndex(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -1824,4 +1829,112 @@ func applyDatabasePerformanceOptimizations(logger *zap.Logger) {
 	// 2. Modify write concern levels
 	// 3. Analyze and optimize slow queries
 	// 4. Adjust index usage patterns
+}
+
+// ensureDepartmentIndex creates the indexes for department collection
+func ensureDepartmentIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.DepartmentCollection)
+
+	// Check if indexes already exist
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		logger.Error("failed to list department indexes", zap.Error(err))
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	existingIndexes := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existingIndexes[name] = true
+		}
+	}
+
+	// Define required indexes for department collection
+	requiredIndexes := []mongo.IndexModel{
+		// Index 1: Unique index on cd_ua (primary lookup field)
+		{
+			Keys:    bson.D{{Key: "cd_ua", Value: 1}},
+			Options: options.Index().SetName("idx_department_cd_ua").SetUnique(true),
+		},
+		// Index 2: Parent lookup for hierarchical queries
+		{
+			Keys:    bson.D{{Key: "cd_ua_pai", Value: 1}},
+			Options: options.Index().SetName("idx_department_parent"),
+		},
+		// Index 3: Level filtering
+		{
+			Keys:    bson.D{{Key: "nivel", Value: 1}},
+			Options: options.Index().SetName("idx_department_level"),
+		},
+		// Index 4: Sigla UA lookup
+		{
+			Keys:    bson.D{{Key: "sigla_ua", Value: 1}},
+			Options: options.Index().SetName("idx_department_sigla"),
+		},
+		// Index 5: Text search index on nome_ua for search functionality
+		{
+			Keys:    bson.D{{Key: "nome_ua", Value: "text"}},
+			Options: options.Index().SetName("idx_department_text_search"),
+		},
+		// Index 6: Compound index for sorting (nivel + ordem_absoluta)
+		{
+			Keys: bson.D{
+				{Key: "nivel", Value: 1},
+				{Key: "ordem_absoluta", Value: 1},
+			},
+			Options: options.Index().SetName("idx_department_sort"),
+		},
+	}
+
+	// Create missing indexes
+	indexesToCreate := []mongo.IndexModel{}
+	requiredNames := []string{
+		"idx_department_cd_ua",
+		"idx_department_parent",
+		"idx_department_level",
+		"idx_department_sigla",
+		"idx_department_text_search",
+		"idx_department_sort",
+	}
+
+	for i, indexModel := range requiredIndexes {
+		if !existingIndexes[requiredNames[i]] {
+			indexesToCreate = append(indexesToCreate, indexModel)
+		}
+	}
+
+	// Create all missing indexes
+	if len(indexesToCreate) > 0 {
+		logger.Info("creating missing department indexes",
+			zap.String("collection", AppConfig.DepartmentCollection),
+			zap.Int("count", len(indexesToCreate)))
+
+		_, err = collection.Indexes().CreateMany(ctx, indexesToCreate)
+		if err != nil {
+			// Check if it's a duplicate key error (another instance created it)
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("department indexes already exist (created by another instance)",
+					zap.String("collection", AppConfig.DepartmentCollection))
+				return nil
+			}
+			logger.Error("failed to create department indexes",
+				zap.String("collection", AppConfig.DepartmentCollection),
+				zap.Error(err))
+			return err
+		}
+
+		logger.Info("created department indexes successfully",
+			zap.String("collection", AppConfig.DepartmentCollection),
+			zap.Int("created_count", len(indexesToCreate)))
+	} else {
+		logger.Debug("department indexes already exist",
+			zap.String("collection", AppConfig.DepartmentCollection))
+	}
+
+	return nil
 }

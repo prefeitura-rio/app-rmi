@@ -50,6 +50,9 @@ import (
 // @tag.name citizen
 // @tag.description Operações relacionadas a cidadãos, incluindo consulta e atualização de dados autodeclarados
 
+// @tag.name departments
+// @tag.description Operações relacionadas a departamentos/unidades administrativas (UA)
+
 // @tag.name health
 // @tag.description Operações de verificação de saúde da API
 
@@ -102,6 +105,9 @@ func main() {
 
 	// Initialize pet service for pets queries
 	services.InitPetService()
+
+	// Initialize department service for department/UA queries
+	services.InitDepartmentService()
 
 	// Initialize CF rate limiter for CF lookup requests
 	services.InitCFRateLimiter(config.AppConfig.CFLookupGlobalRateLimit, observability.Logger())
@@ -258,6 +264,13 @@ func main() {
 		{
 			configGroup.GET("/channels", phoneHandlers.GetAvailableChannels)
 			configGroup.GET("/opt-out-reasons", phoneHandlers.GetOptOutReasons)
+		}
+
+		// Department routes (public)
+		departments := v1.Group("/departments")
+		{
+			departments.GET("", handlers.ListDepartments)
+			departments.GET("/:cd_ua", handlers.GetDepartment)
 		}
 	}
 
