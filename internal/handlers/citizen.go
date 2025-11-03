@@ -693,14 +693,32 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	// Compare data with tracing
 	ctx, compareSpan := utils.TraceDataComparison(ctx, "phone_comparison")
 	// Only return 409 if phone numbers match AND the current phone is verified (Indicador == true)
-	// This allows users to re-enter the same phone number if they never verified it
-	if current != nil && current.Principal != nil && current.Indicador != nil && *current.Indicador &&
-		current.Principal.DDI != nil && *current.Principal.DDI == input.DDI &&
-		current.Principal.DDD != nil && *current.Principal.DDD == input.DDD &&
-		current.Principal.Valor != nil && *current.Principal.Valor == input.Valor {
-		compareSpan.End()
-		c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: phone matches current data"})
-		return
+	// AND the data is not outdated (updated within threshold OR no updated_at timestamp)
+	// This allows users to re-enter the same phone number if:
+	// 1. They never verified it (Indicador != true)
+	// 2. The data is outdated (updated_at > threshold ago)
+	// 3. No updated_at timestamp exists (legacy data)
+	if current != nil && current.Telefone != nil && current.Telefone.Principal != nil &&
+		current.Telefone.Indicador != nil && *current.Telefone.Indicador &&
+		current.Telefone.Principal.DDI != nil && *current.Telefone.Principal.DDI == input.DDI &&
+		current.Telefone.Principal.DDD != nil && *current.Telefone.Principal.DDD == input.DDD &&
+		current.Telefone.Principal.Valor != nil && *current.Telefone.Principal.Valor == input.Valor {
+
+		// Check if data is outdated (allow re-declaration if outdated or no timestamp)
+		isOutdated := current.UpdatedAt == nil || time.Since(*current.UpdatedAt) > config.AppConfig.SelfDeclaredOutdatedThreshold
+
+		if !isOutdated {
+			// Data is recent and matches - return conflict
+			compareSpan.End()
+			c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: phone matches current data"})
+			return
+		}
+
+		// Data is outdated or has no timestamp - allow re-declaration
+		logger.Debug("allowing phone re-declaration for outdated data",
+			zap.String("cpf", cpf),
+			zap.Bool("has_updated_at", current.UpdatedAt != nil),
+			zap.Duration("threshold", config.AppConfig.SelfDeclaredOutdatedThreshold))
 	}
 	compareSpan.End()
 
@@ -804,11 +822,11 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	}
 
 	oldValue := "none"
-	if current != nil && current.Principal != nil {
+	if current != nil && current.Telefone != nil && current.Telefone.Principal != nil {
 		oldValue = fmt.Sprintf("%s%s%s",
-			*current.Principal.DDI,
-			*current.Principal.DDD,
-			*current.Principal.Valor)
+			*current.Telefone.Principal.DDI,
+			*current.Telefone.Principal.DDD,
+			*current.Telefone.Principal.Valor)
 	}
 
 	newValue := fullPhone
@@ -917,11 +935,28 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 
 	// Compare data with tracing
 	ctx, compareSpan := utils.TraceDataComparison(ctx, "email_comparison")
-	if current != nil && current.Principal != nil &&
-		current.Principal.Valor != nil && *current.Principal.Valor == input.Valor {
-		compareSpan.End()
-		c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: email matches current data"})
-		return
+	// Only return 409 if email matches AND the data is not outdated
+	// This allows users to re-enter the same email if:
+	// 1. The data is outdated (updated_at > threshold ago)
+	// 2. No updated_at timestamp exists (legacy data)
+	if current != nil && current.Email != nil && current.Email.Principal != nil &&
+		current.Email.Principal.Valor != nil && *current.Email.Principal.Valor == input.Valor {
+
+		// Check if data is outdated (allow re-declaration if outdated or no timestamp)
+		isOutdated := current.UpdatedAt == nil || time.Since(*current.UpdatedAt) > config.AppConfig.SelfDeclaredOutdatedThreshold
+
+		if !isOutdated {
+			// Data is recent and matches - return conflict
+			compareSpan.End()
+			c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: email matches current data"})
+			return
+		}
+
+		// Data is outdated or has no timestamp - allow re-declaration
+		logger.Debug("allowing email re-declaration for outdated data",
+			zap.String("cpf", cpf),
+			zap.Bool("has_updated_at", current.UpdatedAt != nil),
+			zap.Duration("threshold", config.AppConfig.SelfDeclaredOutdatedThreshold))
 	}
 	compareSpan.End()
 
@@ -981,8 +1016,8 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 	}
 
 	oldValue := "none"
-	if current != nil && current.Principal != nil {
-		oldValue = *current.Principal.Valor
+	if current != nil && current.Email != nil && current.Email.Principal != nil && current.Email.Principal.Valor != nil {
+		oldValue = *current.Email.Principal.Valor
 	}
 
 	newValue := input.Valor
@@ -2496,8 +2531,14 @@ func getCurrentAddressData(ctx context.Context, cpf string) (*models.Endereco, e
 	return selfDeclared.Endereco, nil
 }
 
-// getCurrentPhoneData gets only the phone field from self_declared data for comparison
-func getCurrentPhoneData(ctx context.Context, cpf string) (*models.Telefone, error) {
+// PhoneDataWithTimestamp holds phone data with its update timestamp
+type PhoneDataWithTimestamp struct {
+	Telefone  *models.Telefone
+	UpdatedAt *time.Time
+}
+
+// getCurrentPhoneData gets only the phone field and updated_at from self_declared data for comparison
+func getCurrentPhoneData(ctx context.Context, cpf string) (*PhoneDataWithTimestamp, error) {
 	// Try to get from cache first using DataManager
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
 
@@ -2509,17 +2550,27 @@ func getCurrentPhoneData(ctx context.Context, cpf string) (*models.Telefone, err
 
 	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_phone", &phoneData)
 	if err == nil && phoneData.Telefone != nil {
-		return phoneData.Telefone, nil
+		var updatedAt *time.Time
+		if phoneData.UpdatedAt != "" {
+			if parsed, err := time.Parse(time.RFC3339, phoneData.UpdatedAt); err == nil {
+				updatedAt = &parsed
+			}
+		}
+		return &PhoneDataWithTimestamp{
+			Telefone:  phoneData.Telefone,
+			UpdatedAt: updatedAt,
+		}, nil
 	}
 
-	// Fallback to MongoDB with field projection (only get telefone field)
+	// Fallback to MongoDB with field projection (get telefone and updated_at fields)
 	var selfDeclared struct {
-		Telefone *models.Telefone `bson:"telefone"`
+		Telefone  *models.Telefone `bson:"telefone"`
+		UpdatedAt *time.Time       `bson:"updated_at"`
 	}
 	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(
 		ctx,
 		bson.M{"cpf": cpf},
-		options.FindOne().SetProjection(bson.M{"telefone": 1}),
+		options.FindOne().SetProjection(bson.M{"telefone": 1, "updated_at": 1}),
 	).Decode(&selfDeclared)
 
 	if err == mongo.ErrNoDocuments {
@@ -2529,11 +2580,20 @@ func getCurrentPhoneData(ctx context.Context, cpf string) (*models.Telefone, err
 		return nil, err
 	}
 
-	return selfDeclared.Telefone, nil
+	return &PhoneDataWithTimestamp{
+		Telefone:  selfDeclared.Telefone,
+		UpdatedAt: selfDeclared.UpdatedAt,
+	}, nil
 }
 
-// getCurrentEmailData gets only the email field from self_declared data for comparison
-func getCurrentEmailData(ctx context.Context, cpf string) (*models.Email, error) {
+// EmailDataWithTimestamp holds email data with its update timestamp
+type EmailDataWithTimestamp struct {
+	Email     *models.Email
+	UpdatedAt *time.Time
+}
+
+// getCurrentEmailData gets only the email field and updated_at from self_declared data for comparison
+func getCurrentEmailData(ctx context.Context, cpf string) (*EmailDataWithTimestamp, error) {
 	// Try to get from cache first using DataManager
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
 
@@ -2545,17 +2605,27 @@ func getCurrentEmailData(ctx context.Context, cpf string) (*models.Email, error)
 
 	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_email", &emailData)
 	if err == nil && emailData.Email != nil {
-		return emailData.Email, nil
+		var updatedAt *time.Time
+		if emailData.UpdatedAt != "" {
+			if parsed, err := time.Parse(time.RFC3339, emailData.UpdatedAt); err == nil {
+				updatedAt = &parsed
+			}
+		}
+		return &EmailDataWithTimestamp{
+			Email:     emailData.Email,
+			UpdatedAt: updatedAt,
+		}, nil
 	}
 
-	// Fallback to MongoDB with field projection (only get email field)
+	// Fallback to MongoDB with field projection (get email and updated_at fields)
 	var selfDeclared struct {
-		Email *models.Email `bson:"email"`
+		Email     *models.Email `bson:"email"`
+		UpdatedAt *time.Time    `bson:"updated_at"`
 	}
 	err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(
 		ctx,
 		bson.M{"cpf": cpf},
-		options.FindOne().SetProjection(bson.M{"email": 1}),
+		options.FindOne().SetProjection(bson.M{"email": 1, "updated_at": 1}),
 	).Decode(&selfDeclared)
 
 	if err == mongo.ErrNoDocuments {
@@ -2565,7 +2635,10 @@ func getCurrentEmailData(ctx context.Context, cpf string) (*models.Email, error)
 		return nil, err
 	}
 
-	return selfDeclared.Email, nil
+	return &EmailDataWithTimestamp{
+		Email:     selfDeclared.Email,
+		UpdatedAt: selfDeclared.UpdatedAt,
+	}, nil
 }
 
 // getSelfDeclaredAddressForCFLookup gets the current self-declared address for CF lookup
