@@ -61,6 +61,9 @@ type Config struct {
 	PhoneQuarantineTTL   time.Duration `json:"phone_quarantine_ttl"` // 6 months
 	BetaStatusCacheTTL   time.Duration `json:"beta_status_cache_ttl"`
 
+	// Self-declared data configuration
+	SelfDeclaredOutdatedThreshold time.Duration `json:"self_declared_outdated_threshold"` // Time after which self-declared data is considered outdated (default: 180 days)
+
 	// Address building configuration
 	AddressCacheTTL time.Duration `json:"address_cache_ttl"`
 
@@ -188,6 +191,11 @@ func LoadConfig() error {
 	betaStatusCacheTTL, err := time.ParseDuration(getEnvOrDefault("BETA_STATUS_CACHE_TTL", "24h")) // 24 hours
 	if err != nil {
 		return fmt.Errorf("invalid BETA_STATUS_CACHE_TTL: %w", err)
+	}
+
+	selfDeclaredOutdatedThreshold, err := time.ParseDuration(getEnvOrDefault("SELF_DECLARED_OUTDATED_THRESHOLD", "4320h")) // 180 days
+	if err != nil {
+		return fmt.Errorf("invalid SELF_DECLARED_OUTDATED_THRESHOLD: %w", err)
 	}
 
 	addressCacheTTL, err := time.ParseDuration(getEnvOrDefault("ADDRESS_CACHE_TTL", "6h")) // 6 hours
@@ -341,9 +349,10 @@ func LoadConfig() error {
 		DepartmentCollection:         departmentCollection,
 
 		// Phone verification configuration
-		PhoneVerificationTTL: phoneVerificationTTL,
-		PhoneQuarantineTTL:   phoneQuarantineTTL,
-		BetaStatusCacheTTL:   betaStatusCacheTTL,
+		PhoneVerificationTTL:          phoneVerificationTTL,
+		PhoneQuarantineTTL:            phoneQuarantineTTL,
+		BetaStatusCacheTTL:            betaStatusCacheTTL,
+		SelfDeclaredOutdatedThreshold: selfDeclaredOutdatedThreshold,
 
 		// Address building configuration
 		AddressCacheTTL: addressCacheTTL,
