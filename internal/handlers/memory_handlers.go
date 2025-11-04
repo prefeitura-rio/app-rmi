@@ -99,16 +99,16 @@ func GetMemoryList(c *gin.Context) {
 	logger.Debug("GetMemoryList called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing using utils.ValidatePhoneFormat directly
-	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
-	if err := utils.ValidatePhoneFormat(phoneNumber); err != nil {
-		utils.RecordErrorInSpan(phoneSpan, fmt.Errorf("Invalid phone number format"), map[string]interface{}{
-			"phone_number": phoneNumber,
-		})
-		phoneSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
-		return
-	}
-	phoneSpan.End()
+	// ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
+	// if err := utils.ValidatePhoneFormat(phoneNumber); err != nil {
+	// 	utils.RecordErrorInSpan(phoneSpan, fmt.Errorf("Invalid phone number format"), map[string]interface{}{
+	// 		"phone_number": phoneNumber,
+	// 	})
+	// 	phoneSpan.End()
+	// 	c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
+	// 	return
+	// }
+	// phoneSpan.End()
 
 	// Use getMemoryListData which implements cache-aware reading for multiple entries
 	ctx, getDataSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.ChatMemoryCollection, "phone_number")
@@ -190,16 +190,16 @@ func GetMemoryByName(c *gin.Context) {
 	)
 
 	// Validate phone number with tracing using utils.ValidatePhoneFormat directly
-	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
-	if err := utils.ValidatePhoneFormat(phoneNumber); err != nil {
-		utils.RecordErrorInSpan(phoneSpan, fmt.Errorf("Invalid phone number format"), map[string]interface{}{
-			"phone_number": phoneNumber,
-		})
-		phoneSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
-		return
-	}
-	phoneSpan.End()
+	// ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
+	// if err := utils.ValidatePhoneFormat(phoneNumber); err != nil {
+	// 	utils.RecordErrorInSpan(phoneSpan, fmt.Errorf("Invalid phone number format"), map[string]interface{}{
+	// 		"phone_number": phoneNumber,
+	// 	})
+	// 	phoneSpan.End()
+	// 	c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
+	// 	return
+	// }
+	// phoneSpan.End()
 
 	// Validate memory name (basic validation - not empty)
 	ctx, memorySpan := utils.TraceInputValidation(ctx, "memory_name_format", "memory_name")
@@ -341,16 +341,16 @@ func CreateMemory(c *gin.Context) {
 	logger.Debug("CreateMemory called", zap.String("phone_number", phoneNumber))
 
 	// Validate phone number with tracing using utils.ValidatePhoneFormat directly
-	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
-	if err := utils.ValidatePhoneFormat(phoneNumber); err != nil {
-		utils.RecordErrorInSpan(phoneSpan, fmt.Errorf("Invalid phone number format"), map[string]interface{}{
-			"phone_number": phoneNumber,
-		})
-		phoneSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
-		return
-	}
-	phoneSpan.End()
+	// ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
+	// if err := utils.ValidatePhoneFormat(phoneNumber); err != nil {
+	// 	utils.RecordErrorInSpan(phoneSpan, fmt.Errorf("Invalid phone number format"), map[string]interface{}{
+	// 		"phone_number": phoneNumber,
+	// 	})
+	// 	phoneSpan.End()
+	// 	c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
+	// 	return
+	// }
+	// phoneSpan.End()
 
 	// Parse and validate request body using Gin's built-in validation
 	var memory MemoryModel
@@ -525,16 +525,16 @@ func UpdateMemory(c *gin.Context) {
 	)
 
 	// Validate phone number with tracing using utils.ValidatePhoneFormat directly
-	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
-	if err := utils.ValidatePhoneFormat(phoneNumber); err != nil {
-		utils.RecordErrorInSpan(phoneSpan, fmt.Errorf("Invalid phone number format"), map[string]interface{}{
-			"phone_number": phoneNumber,
-		})
-		phoneSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
-		return
-	}
-	phoneSpan.End()
+	// ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
+	// if err := utils.ValidatePhoneFormat(phoneNumber); err != nil {
+	// 	utils.RecordErrorInSpan(phoneSpan, fmt.Errorf("Invalid phone number format"), map[string]interface{}{
+	// 		"phone_number": phoneNumber,
+	// 	})
+	// 	phoneSpan.End()
+	// 	c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
+	// 	return
+	// }
+	// phoneSpan.End()
 
 	// Validate memory name (basic validation - not empty)
 	ctx, memorySpan := utils.TraceInputValidation(ctx, "memory_name_format", "memory_name")
@@ -785,16 +785,16 @@ func DeleteMemory(c *gin.Context) {
 	)
 
 	// Validate phone number with tracing using utils.ValidatePhoneFormat directly
-	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
-	if err := utils.ValidatePhoneFormat(phoneNumber); err != nil {
-		utils.RecordErrorInSpan(phoneSpan, fmt.Errorf("Invalid phone number format"), map[string]interface{}{
-			"phone_number": phoneNumber,
-		})
-		phoneSpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
-		return
-	}
-	phoneSpan.End()
+	// ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
+	// if err := utils.ValidatePhoneFormat(phoneNumber); err != nil {
+	// 	utils.RecordErrorInSpan(phoneSpan, fmt.Errorf("Invalid phone number format"), map[string]interface{}{
+	// 		"phone_number": phoneNumber,
+	// 	})
+	// 	phoneSpan.End()
+	// 	c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
+	// 	return
+	// }
+	// phoneSpan.End()
 
 	// Validate memory name (basic validation - not empty)
 	ctx, memorySpan := utils.TraceInputValidation(ctx, "memory_name_format", "memory_name")
