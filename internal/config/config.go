@@ -56,6 +56,7 @@ type Config struct {
 	ChatMemoryCollection           string `json:"mongo_chat_memory_collection"`
 	DepartmentCollection           string `json:"mongo_department_collection"`
 	NotificationCategoryCollection string `json:"mongo_notification_category_collection"`
+	CNAECollection                 string `json:"mongo_cnae_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -184,6 +185,12 @@ func LoadConfig() error {
 
 	// Notification category collection with default
 	notificationCategoryCollection := getEnvOrDefault("MONGODB_NOTIFICATION_CATEGORY_COLLECTION", "notification_categories")
+
+	// Check if MONGODB_CNAE_COLLECTION is set
+	cnaeCollection := os.Getenv("MONGODB_CNAE_COLLECTION")
+	if cnaeCollection == "" {
+		return fmt.Errorf("MONGODB_CNAE_COLLECTION environment variable is required")
+	}
 
 	phoneVerificationTTL, err := time.ParseDuration(getEnvOrDefault("PHONE_VERIFICATION_TTL", "5m"))
 	if err != nil {
@@ -360,6 +367,7 @@ func LoadConfig() error {
 		ChatMemoryCollection:           chatMemoryCollection,
 		DepartmentCollection:           departmentCollection,
 		NotificationCategoryCollection: notificationCategoryCollection,
+		CNAECollection:                 cnaeCollection,
 
 		// Phone verification configuration
 		PhoneVerificationTTL:          phoneVerificationTTL,

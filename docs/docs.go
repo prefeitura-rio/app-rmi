@@ -3261,6 +3261,94 @@ const docTemplate = `{
                 }
             }
         },
+        "/cnaes": {
+            "get": {
+                "description": "Recupera a lista paginada de CNAEs (Classificação Nacional de Atividades Econômicas) com filtros opcionais",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cnaes"
+                ],
+                "summary": "Listar CNAEs",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Número da página (padrão: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Itens por página (padrão: 10, máximo: 100)",
+                        "name": "per_page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Texto para busca na denominação",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtro por seção (ex: A)",
+                        "name": "secao",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtro por divisão (ex: 1)",
+                        "name": "divisao",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtro por grupo (ex: 1.1)",
+                        "name": "grupo",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtro por classe (ex: 01.12-1)",
+                        "name": "classe",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtro por subclasse",
+                        "name": "subclasse",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista paginada de CNAEs obtida com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/models.CNAEListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Parâmetros inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/config/channels": {
             "get": {
                 "description": "Obtém a lista de canais disponíveis para comunicação",
@@ -4133,7 +4221,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get notification preferences for a phone number including global and category opt-ins (synced with CPF)",
+                "description": "Get notification preferences for a phone number including global and category opt-ins (synced with CPF). Admin only.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4143,7 +4231,7 @@ const docTemplate = `{
                 "tags": [
                     "notification-preferences"
                 ],
-                "summary": "Get phone notification preferences",
+                "summary": "Get phone notification preferences (admin only)",
                 "parameters": [
                     {
                         "type": "string",
@@ -4173,7 +4261,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "Access denied",
+                        "description": "Admin access required",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -4198,7 +4286,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update notification preferences for a phone number (synced with CPF preferences)",
+                "description": "Update notification preferences for a phone number (synced with CPF preferences). Admin only.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4208,7 +4296,7 @@ const docTemplate = `{
                 "tags": [
                     "notification-preferences"
                 ],
-                "summary": "Update phone notification preferences",
+                "summary": "Update phone notification preferences (admin only)",
                 "parameters": [
                     {
                         "type": "string",
@@ -4247,7 +4335,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "Access denied",
+                        "description": "Admin access required",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -4280,7 +4368,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update opt-in preference for a single notification category for a phone number",
+                "description": "Update opt-in preference for a single notification category for a phone number. Admin only.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4290,7 +4378,7 @@ const docTemplate = `{
                 "tags": [
                     "notification-preferences"
                 ],
-                "summary": "Update single category preference for phone",
+                "summary": "Update single category preference for phone (admin only)",
                 "parameters": [
                     {
                         "type": "string",
@@ -4336,7 +4424,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "Access denied",
+                        "description": "Admin access required",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -5560,6 +5648,46 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "models.CNAE": {
+            "type": "object",
+            "properties": {
+                "classe": {
+                    "type": "string"
+                },
+                "denominacao": {
+                    "type": "string"
+                },
+                "divisao": {
+                    "type": "string"
+                },
+                "grupo": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "secao": {
+                    "type": "string"
+                },
+                "subclasse": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.CNAEListResponse": {
+            "type": "object",
+            "properties": {
+                "cnaes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.CNAE"
+                    }
+                },
+                "pagination": {
+                    "$ref": "#/definitions/models.PaginationInfo"
                 }
             }
         },
@@ -7240,9 +7368,6 @@ const docTemplate = `{
         },
         "models.UpdateCategoryPreferenceRequest": {
             "type": "object",
-            "required": [
-                "opt_in"
-            ],
             "properties": {
                 "opt_in": {
                     "type": "boolean"

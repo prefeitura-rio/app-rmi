@@ -349,6 +349,11 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure CNAE collection indexes
+	if err := ensureCNAEIndex(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -2024,6 +2029,87 @@ func ensureNotificationCategoryIndex(ctx context.Context, logger *zap.Logger) er
 	} else {
 		logger.Debug("notification_category indexes already exist",
 			zap.String("collection", AppConfig.NotificationCategoryCollection))
+	}
+
+	return nil
+}
+
+// ensureCNAEIndex creates the indexes for CNAE collection
+func ensureCNAEIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.CNAECollection)
+
+	// Check if indexes already exist
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		logger.Error("failed to list CNAE indexes", zap.Error(err))
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	existingIndexes := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existingIndexes[name] = true
+		}
+	}
+
+	// Define required indexes for CNAE collection
+	requiredIndexes := []mongo.IndexModel{
+		// Index 1: Index on Classe (primary lookup field) - not unique due to empty values in data
+		{
+			Keys:    bson.D{{Key: "Classe", Value: 1}},
+			Options: options.Index().SetName("idx_cnae_classe"),
+		},
+		// Index 2: Text search index on Denominacao for search functionality
+		{
+			Keys:    bson.D{{Key: "Denominacao", Value: "text"}},
+			Options: options.Index().SetName("idx_cnae_text_search"),
+		},
+	}
+
+	// Create missing indexes
+	indexesToCreate := []mongo.IndexModel{}
+	requiredNames := []string{
+		"idx_cnae_classe",
+		"idx_cnae_text_search",
+	}
+
+	for i, indexModel := range requiredIndexes {
+		if !existingIndexes[requiredNames[i]] {
+			indexesToCreate = append(indexesToCreate, indexModel)
+		}
+	}
+
+	// Create all missing indexes
+	if len(indexesToCreate) > 0 {
+		logger.Info("creating missing CNAE indexes",
+			zap.String("collection", AppConfig.CNAECollection),
+			zap.Int("count", len(indexesToCreate)))
+
+		_, err = collection.Indexes().CreateMany(ctx, indexesToCreate)
+		if err != nil {
+			// Check if it's a duplicate key error (another instance created it)
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("CNAE indexes already exist (created by another instance)",
+					zap.String("collection", AppConfig.CNAECollection))
+				return nil
+			}
+			logger.Error("failed to create CNAE indexes",
+				zap.String("collection", AppConfig.CNAECollection),
+				zap.Error(err))
+			return err
+		}
+
+		logger.Info("created CNAE indexes successfully",
+			zap.String("collection", AppConfig.CNAECollection),
+			zap.Int("created_count", len(indexesToCreate)))
+	} else {
+		logger.Debug("CNAE indexes already exist",
+			zap.String("collection", AppConfig.CNAECollection))
 	}
 
 	return nil
