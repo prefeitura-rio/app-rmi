@@ -58,10 +58,14 @@ type PhoneNotificationPreferencesResponse struct {
 type UpdateNotificationPreferencesRequest struct {
 	OptIn          *bool           `json:"opt_in,omitempty"`
 	CategoryOptIns map[string]bool `json:"category_opt_ins,omitempty"`
+	Channel        string          `json:"channel" binding:"required"`
+	Reason         *string         `json:"reason,omitempty"`
 }
 
 // UpdateCategoryPreferenceRequest represents the request to update a single category
 // Note: opt_in field uses bool (not *bool) so false values work correctly in JSON
 type UpdateCategoryPreferenceRequest struct {
-	OptIn bool `json:"opt_in"`
+	OptIn   bool    `json:"opt_in"`
+	Channel string  `json:"channel" binding:"required"`
+	Reason  *string `json:"reason,omitempty"`
 }
