@@ -4234,6 +4234,121 @@
         }
       }
     },
+    "/cnaes": {
+      "get": {
+        "description": "Recupera a lista paginada de CNAEs (Classificação Nacional de Atividades Econômicas) com filtros opcionais",
+        "tags": [
+          "cnaes"
+        ],
+        "summary": "Listar CNAEs",
+        "parameters": [
+          {
+            "description": "Número da página (padrão: 1)",
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "description": "Itens por página (padrão: 10, máximo: 100)",
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "description": "Texto para busca na denominação",
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filtro por seção (ex: A)",
+            "name": "secao",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filtro por divisão (ex: 1)",
+            "name": "divisao",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filtro por grupo (ex: 1.1)",
+            "name": "grupo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filtro por classe (ex: 01.12-1)",
+            "name": "classe",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filtro por subclasse",
+            "name": "subclasse",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista paginada de CNAEs obtida com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.CNAEListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Parâmetros inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/config/channels": {
       "get": {
         "description": "Obtém a lista de canais disponíveis para comunicação",
@@ -7169,6 +7284,46 @@
           },
           "status": {
             "type": "string"
+          }
+        }
+      },
+      "models.CNAE": {
+        "type": "object",
+        "properties": {
+          "classe": {
+            "type": "string"
+          },
+          "denominacao": {
+            "type": "string"
+          },
+          "divisao": {
+            "type": "string"
+          },
+          "grupo": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "secao": {
+            "type": "string"
+          },
+          "subclasse": {
+            "type": "string"
+          }
+        }
+      },
+      "models.CNAEListResponse": {
+        "type": "object",
+        "properties": {
+          "cnaes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.CNAE"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/models.PaginationInfo"
           }
         }
       },
