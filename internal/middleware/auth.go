@@ -132,12 +132,20 @@ func RequireAdmin() gin.HandlerFunc {
 			return
 		}
 
-		// Check if user has admin role
+		// Check if user has admin role in RealmAccess or ResourceAccess.Superapp
 		isAdmin := false
 		for _, role := range jwtClaims.RealmAccess.Roles {
 			if role == config.AppConfig.AdminGroup {
 				isAdmin = true
 				break
+			}
+		}
+		if !isAdmin {
+			for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
+				if role == config.AppConfig.AdminGroup {
+					isAdmin = true
+					break
+				}
 			}
 		}
 
@@ -172,12 +180,20 @@ func RequireOwnCPF() gin.HandlerFunc {
 		requestedCPF := c.Param("cpf")
 		userCPF := jwtClaims.PreferredUsername
 
-		// Check if user is admin
+		// Check if user is admin in RealmAccess or ResourceAccess.Superapp
 		isAdmin := false
 		for _, role := range jwtClaims.RealmAccess.Roles {
 			if role == config.AppConfig.AdminGroup {
 				isAdmin = true
 				break
+			}
+		}
+		if !isAdmin {
+			for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
+				if role == config.AppConfig.AdminGroup {
+					isAdmin = true
+					break
+				}
 			}
 		}
 

@@ -26,6 +26,9 @@ type JWTClaims struct {
 		Account struct {
 			Roles []string `json:"roles"`
 		} `json:"account"`
+		Superapp struct {
+			Roles []string `json:"roles"`
+		} `json:"superapp"`
 	} `json:"resource_access"`
 	Scope             string   `json:"scope"`
 	Address           struct{} `json:"address"`

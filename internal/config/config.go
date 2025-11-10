@@ -38,23 +38,25 @@ type Config struct {
 	RedisPoolTimeout  time.Duration `json:"redis_pool_timeout"`
 
 	// Collection names
-	CitizenCollection            string `json:"mongo_citizen_collection"`
-	SelfDeclaredCollection       string `json:"mongo_self_declared_collection"`
-	PhoneVerificationCollection  string `json:"mongo_phone_verification_collection"`
-	UserConfigCollection         string `json:"mongo_user_config_collection"`
-	MaintenanceRequestCollection string `json:"mongo_maintenance_request_collection"`
-	PhoneMappingCollection       string `json:"mongo_phone_mapping_collection"`
-	OptInHistoryCollection       string `json:"mongo_opt_in_history_collection"`
-	BetaGroupCollection          string `json:"mongo_beta_group_collection"`
-	AuditLogsCollection          string `json:"mongo_audit_logs_collection"`
-	BairroCollection             string `json:"mongo_bairro_collection"`
-	LogradouroCollection         string `json:"mongo_logradouro_collection"`
-	AvatarsCollection            string `json:"mongo_avatars_collection"`
-	LegalEntityCollection        string `json:"mongo_legal_entity_collection"`
-	PetCollection                string `json:"mongo_pet_collection"`
-	PetsSelfRegisteredCollection string `json:"mongo_pets_self_registered_collection"`
-	ChatMemoryCollection         string `json:"mongo_chat_memory_collection"`
-	DepartmentCollection         string `json:"mongo_department_collection"`
+	CitizenCollection              string `json:"mongo_citizen_collection"`
+	SelfDeclaredCollection         string `json:"mongo_self_declared_collection"`
+	PhoneVerificationCollection    string `json:"mongo_phone_verification_collection"`
+	UserConfigCollection           string `json:"mongo_user_config_collection"`
+	MaintenanceRequestCollection   string `json:"mongo_maintenance_request_collection"`
+	PhoneMappingCollection         string `json:"mongo_phone_mapping_collection"`
+	OptInHistoryCollection         string `json:"mongo_opt_in_history_collection"`
+	BetaGroupCollection            string `json:"mongo_beta_group_collection"`
+	AuditLogsCollection            string `json:"mongo_audit_logs_collection"`
+	BairroCollection               string `json:"mongo_bairro_collection"`
+	LogradouroCollection           string `json:"mongo_logradouro_collection"`
+	AvatarsCollection              string `json:"mongo_avatars_collection"`
+	LegalEntityCollection          string `json:"mongo_legal_entity_collection"`
+	PetCollection                  string `json:"mongo_pet_collection"`
+	PetsSelfRegisteredCollection   string `json:"mongo_pets_self_registered_collection"`
+	ChatMemoryCollection           string `json:"mongo_chat_memory_collection"`
+	DepartmentCollection           string `json:"mongo_department_collection"`
+	NotificationCategoryCollection string `json:"mongo_notification_category_collection"`
+	CNAECollection                 string `json:"mongo_cnae_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -69,6 +71,9 @@ type Config struct {
 
 	// Avatar configuration
 	AvatarCacheTTL time.Duration `json:"avatar_cache_ttl"`
+
+	// Notification category configuration
+	NotificationCategoryCacheTTL time.Duration `json:"notification_category_cache_ttl"`
 
 	// MCP Server configuration
 	MCPServerURL            string        `json:"mcp_server_url"`
@@ -178,6 +183,15 @@ func LoadConfig() error {
 		return fmt.Errorf("MONGODB_DEPARTMENT_COLLECTION environment variable is required")
 	}
 
+	// Notification category collection with default
+	notificationCategoryCollection := getEnvOrDefault("MONGODB_NOTIFICATION_CATEGORY_COLLECTION", "notification_categories")
+
+	// Check if MONGODB_CNAE_COLLECTION is set
+	cnaeCollection := os.Getenv("MONGODB_CNAE_COLLECTION")
+	if cnaeCollection == "" {
+		return fmt.Errorf("MONGODB_CNAE_COLLECTION environment variable is required")
+	}
+
 	phoneVerificationTTL, err := time.ParseDuration(getEnvOrDefault("PHONE_VERIFICATION_TTL", "5m"))
 	if err != nil {
 		return fmt.Errorf("invalid PHONE_VERIFICATION_TTL: %w", err)
@@ -206,6 +220,11 @@ func LoadConfig() error {
 	avatarCacheTTL, err := time.ParseDuration(getEnvOrDefault("AVATAR_CACHE_TTL", "1h")) // 1 hour
 	if err != nil {
 		return fmt.Errorf("invalid AVATAR_CACHE_TTL: %w", err)
+	}
+
+	notificationCategoryCacheTTL, err := time.ParseDuration(getEnvOrDefault("NOTIFICATION_CATEGORY_CACHE_TTL", "6h")) // 6 hours
+	if err != nil {
+		return fmt.Errorf("invalid NOTIFICATION_CATEGORY_CACHE_TTL: %w", err)
 	}
 
 	// CF Lookup configuration
@@ -330,23 +349,25 @@ func LoadConfig() error {
 		RedisPoolTimeout:  getEnvAsDurationOrDefault("REDIS_POOL_TIMEOUT", 4*time.Second),  // Longer wait
 
 		// Collection names
-		CitizenCollection:            citizenCollection,
-		SelfDeclaredCollection:       getEnvOrDefault("MONGODB_SELF_DECLARED_COLLECTION", "self_declared"),
-		PhoneVerificationCollection:  getEnvOrDefault("MONGODB_PHONE_VERIFICATION_COLLECTION", "phone_verifications"),
-		UserConfigCollection:         getEnvOrDefault("MONGODB_USER_CONFIG_COLLECTION", "user_config"),
-		MaintenanceRequestCollection: maintenanceRequestCollection,
-		PhoneMappingCollection:       getEnvOrDefault("MONGODB_PHONE_MAPPING_COLLECTION", "phone_cpf_mappings"),
-		OptInHistoryCollection:       getEnvOrDefault("MONGODB_OPT_IN_HISTORY_COLLECTION", "opt_in_history"),
-		BetaGroupCollection:          getEnvOrDefault("MONGODB_BETA_GROUP_COLLECTION", "beta_groups"),
-		AuditLogsCollection:          getEnvOrDefault("MONGODB_AUDIT_LOGS_COLLECTION", "audit_logs"),
-		BairroCollection:             getEnvOrDefault("MONGODB_BAIRRO_COLLECTION", "bairro"),
-		LogradouroCollection:         getEnvOrDefault("MONGODB_LOGRADOURO_COLLECTION", "logradouro"),
-		AvatarsCollection:            getEnvOrDefault("MONGODB_AVATARS_COLLECTION", "avatars"),
-		LegalEntityCollection:        legalEntityCollection,
-		PetCollection:                petCollection,
-		PetsSelfRegisteredCollection: petsSelfRegisteredCollection,
-		ChatMemoryCollection:         chatMemoryCollection,
-		DepartmentCollection:         departmentCollection,
+		CitizenCollection:              citizenCollection,
+		SelfDeclaredCollection:         getEnvOrDefault("MONGODB_SELF_DECLARED_COLLECTION", "self_declared"),
+		PhoneVerificationCollection:    getEnvOrDefault("MONGODB_PHONE_VERIFICATION_COLLECTION", "phone_verifications"),
+		UserConfigCollection:           getEnvOrDefault("MONGODB_USER_CONFIG_COLLECTION", "user_config"),
+		MaintenanceRequestCollection:   maintenanceRequestCollection,
+		PhoneMappingCollection:         getEnvOrDefault("MONGODB_PHONE_MAPPING_COLLECTION", "phone_cpf_mappings"),
+		OptInHistoryCollection:         getEnvOrDefault("MONGODB_OPT_IN_HISTORY_COLLECTION", "opt_in_history"),
+		BetaGroupCollection:            getEnvOrDefault("MONGODB_BETA_GROUP_COLLECTION", "beta_groups"),
+		AuditLogsCollection:            getEnvOrDefault("MONGODB_AUDIT_LOGS_COLLECTION", "audit_logs"),
+		BairroCollection:               getEnvOrDefault("MONGODB_BAIRRO_COLLECTION", "bairro"),
+		LogradouroCollection:           getEnvOrDefault("MONGODB_LOGRADOURO_COLLECTION", "logradouro"),
+		AvatarsCollection:              getEnvOrDefault("MONGODB_AVATARS_COLLECTION", "avatars"),
+		LegalEntityCollection:          legalEntityCollection,
+		PetCollection:                  petCollection,
+		PetsSelfRegisteredCollection:   petsSelfRegisteredCollection,
+		ChatMemoryCollection:           chatMemoryCollection,
+		DepartmentCollection:           departmentCollection,
+		NotificationCategoryCollection: notificationCategoryCollection,
+		CNAECollection:                 cnaeCollection,
 
 		// Phone verification configuration
 		PhoneVerificationTTL:          phoneVerificationTTL,
@@ -359,6 +380,9 @@ func LoadConfig() error {
 
 		// Avatar configuration
 		AvatarCacheTTL: avatarCacheTTL,
+
+		// Notification category configuration
+		NotificationCategoryCacheTTL: notificationCategoryCacheTTL,
 
 		// MCP Server configuration
 		MCPServerURL:            mcpServerURL,

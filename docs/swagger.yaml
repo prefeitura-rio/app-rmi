@@ -377,6 +377,32 @@ definitions:
       status:
         type: string
     type: object
+  models.CNAE:
+    properties:
+      classe:
+        type: string
+      denominacao:
+        type: string
+      divisao:
+        type: string
+      grupo:
+        type: string
+      id:
+        type: string
+      secao:
+        type: string
+      subclasse:
+        type: string
+    type: object
+  models.CNAEListResponse:
+    properties:
+      cnaes:
+        items:
+          $ref: '#/definitions/models.CNAE'
+        type: array
+      pagination:
+        $ref: '#/definitions/models.PaginationInfo'
+    type: object
   models.CRAS:
     properties:
       endereco:
@@ -494,6 +520,25 @@ definitions:
         type: string
       id:
         type: string
+    type: object
+  models.CreateNotificationCategoryRequest:
+    properties:
+      active:
+        type: boolean
+      default_opt_in:
+        type: boolean
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      order:
+        type: integer
+    required:
+    - description
+    - id
+    - name
     type: object
   models.DepartmentListResponse:
     properties:
@@ -902,6 +947,45 @@ definitions:
       uf:
         type: string
     type: object
+  models.NotificationCategoriesResponse:
+    properties:
+      categories:
+        items:
+          $ref: '#/definitions/models.NotificationCategory'
+        type: array
+    type: object
+  models.NotificationCategory:
+    properties:
+      active:
+        type: boolean
+      created_at:
+        type: string
+      default_opt_in:
+        type: boolean
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      order:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  models.NotificationPreferencesResponse:
+    properties:
+      category_opt_ins:
+        additionalProperties:
+          type: boolean
+        type: object
+      cpf:
+        type: string
+      opt_in:
+        type: boolean
+      updated_at:
+        type: string
+    type: object
   models.Obito:
     properties:
       ano:
@@ -1138,6 +1222,19 @@ definitions:
       name:
         type: string
     type: object
+  models.PhoneNotificationPreferencesResponse:
+    properties:
+      category_opt_ins:
+        additionalProperties:
+          type: boolean
+        type: object
+      opt_in:
+        type: boolean
+      phone_number:
+        type: string
+      updated_at:
+        type: string
+    type: object
   models.PhoneStatusResponse:
     properties:
       beta_group_id:
@@ -1146,12 +1243,18 @@ definitions:
         type: string
       beta_whitelisted:
         type: boolean
+      category_opt_ins:
+        additionalProperties:
+          type: boolean
+        type: object
       cpf:
         type: string
       found:
         type: boolean
       name:
         type: string
+      opt_in:
+        type: boolean
       opted_out:
         type: boolean
       phone_number:
@@ -1401,6 +1504,33 @@ definitions:
       valor:
         type: string
     type: object
+  models.UpdateCategoryPreferenceRequest:
+    properties:
+      opt_in:
+        type: boolean
+    type: object
+  models.UpdateNotificationCategoryRequest:
+    properties:
+      active:
+        type: boolean
+      default_opt_in:
+        type: boolean
+      description:
+        type: string
+      name:
+        type: string
+      order:
+        type: integer
+    type: object
+  models.UpdateNotificationPreferencesRequest:
+    properties:
+      category_opt_ins:
+        additionalProperties:
+          type: boolean
+        type: object
+      opt_in:
+        type: boolean
+    type: object
   models.UserAvatarRequest:
     properties:
       avatar_id:
@@ -1415,6 +1545,10 @@ definitions:
     type: object
   models.UserConfigOptInResponse:
     properties:
+      category_opt_ins:
+        additionalProperties:
+          type: boolean
+        type: object
       opt_in:
         type: boolean
     type: object
@@ -2038,6 +2172,124 @@ paths:
       summary: Ler chave arbitrária do cache Redis
       tags:
       - admin
+  /admin/notification-categories:
+    post:
+      consumes:
+      - application/json
+      description: Create a new notification category (admin only)
+      parameters:
+      - description: Category data
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateNotificationCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Category created successfully
+          schema:
+            $ref: '#/definitions/models.NotificationCategory'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Category already exists
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create notification category
+      tags:
+      - notification-categories
+  /admin/notification-categories/{category_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Soft-delete a notification category by setting active=false (admin
+        only)
+      parameters:
+      - description: Category ID
+        in: path
+        name: category_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Category deleted successfully
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Category not found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete notification category
+      tags:
+      - notification-categories
+    put:
+      consumes:
+      - application/json
+      description: Update an existing notification category (admin only)
+      parameters:
+      - description: Category ID
+        in: path
+        name: category_id
+        required: true
+        type: string
+      - description: Updated category data
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateNotificationCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Category updated successfully
+          schema:
+            $ref: '#/definitions/models.NotificationCategory'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Category not found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update notification category
+      tags:
+      - notification-categories
   /admin/phone/quarantine/stats:
     get:
       description: Obtém estatísticas sobre telefones em quarentena (apenas administradores)
@@ -2838,6 +3090,149 @@ paths:
       summary: Obter chamados do 1746 do cidadão
       tags:
       - citizen
+  /citizen/{cpf}/notification-preferences:
+    get:
+      consumes:
+      - application/json
+      description: Get notification preferences for a citizen including global and
+        category opt-ins
+      parameters:
+      - description: CPF number
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Notification preferences
+          schema:
+            $ref: '#/definitions/models.NotificationPreferencesResponse'
+        "400":
+          description: Invalid CPF format
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get citizen notification preferences
+      tags:
+      - notification-preferences
+    put:
+      consumes:
+      - application/json
+      description: Update notification preferences for a citizen (global and/or category
+        opt-ins)
+      parameters:
+      - description: CPF number
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Updated preferences
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateNotificationPreferencesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Preferences updated successfully
+          schema:
+            $ref: '#/definitions/models.NotificationPreferencesResponse'
+        "400":
+          description: Invalid CPF format or request body
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Invalid category ID
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update citizen notification preferences
+      tags:
+      - notification-preferences
+  /citizen/{cpf}/notification-preferences/categories/{category_id}:
+    patch:
+      consumes:
+      - application/json
+      description: Update opt-in preference for a single notification category
+      parameters:
+      - description: CPF number
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Category ID
+        in: path
+        name: category_id
+        required: true
+        type: string
+      - description: Category preference
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateCategoryPreferenceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Preference updated successfully
+          schema:
+            $ref: '#/definitions/models.NotificationPreferencesResponse'
+        "400":
+          description: Invalid CPF format or request body
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Access denied
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Invalid category ID
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update single category preference
+      tags:
+      - notification-preferences
   /citizen/{cpf}/optin:
     get:
       consumes:
@@ -3332,6 +3727,66 @@ paths:
       summary: Listar opções de etnia
       tags:
       - citizen
+  /cnaes:
+    get:
+      consumes:
+      - application/json
+      description: Recupera a lista paginada de CNAEs (Classificação Nacional de Atividades
+        Econômicas) com filtros opcionais
+      parameters:
+      - description: 'Número da página (padrão: 1)'
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 10, máximo: 100)'
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      - description: Texto para busca na denominação
+        in: query
+        name: search
+        type: string
+      - description: 'Filtro por seção (ex: A)'
+        in: query
+        name: secao
+        type: string
+      - description: 'Filtro por divisão (ex: 1)'
+        in: query
+        name: divisao
+        type: string
+      - description: 'Filtro por grupo (ex: 1.1)'
+        in: query
+        name: grupo
+        type: string
+      - description: 'Filtro por classe (ex: 01.12-1)'
+        in: query
+        name: classe
+        type: string
+      - description: Filtro por subclasse
+        in: query
+        name: subclasse
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista paginada de CNAEs obtida com sucesso
+          schema:
+            $ref: '#/definitions/models.CNAEListResponse'
+        "400":
+          description: Parâmetros inválidos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Listar CNAEs
+      tags:
+      - cnaes
   /config/channels:
     get:
       description: Obtém a lista de canais disponíveis para comunicação
@@ -3748,6 +4203,25 @@ paths:
       summary: Métricas Prometheus
       tags:
       - metrics
+  /notification-categories:
+    get:
+      consumes:
+      - application/json
+      description: List all active notification categories
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of active categories
+          schema:
+            $ref: '#/definitions/models.NotificationCategoriesResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: List notification categories
+      tags:
+      - notification-categories
   /phone/{phone_number}/beta-status:
     get:
       description: Verifica se um número de telefone está na whitelist beta (com cache)
@@ -3881,6 +4355,162 @@ paths:
       summary: Obter cidadão por telefone
       tags:
       - phone
+  /phone/{phone_number}/notification-preferences:
+    get:
+      consumes:
+      - application/json
+      description: Get notification preferences for a phone number including global
+        and category opt-ins (synced with CPF). Admin only.
+      parameters:
+      - description: Phone number
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Notification preferences
+          schema:
+            $ref: '#/definitions/models.PhoneNotificationPreferencesResponse'
+        "400":
+          description: Invalid phone format
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Admin access required
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Phone not found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get phone notification preferences (admin only)
+      tags:
+      - notification-preferences
+    put:
+      consumes:
+      - application/json
+      description: Update notification preferences for a phone number (synced with
+        CPF preferences). Admin only.
+      parameters:
+      - description: Phone number
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Updated preferences
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateNotificationPreferencesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Preferences updated successfully
+          schema:
+            $ref: '#/definitions/models.PhoneNotificationPreferencesResponse'
+        "400":
+          description: Invalid phone format or request body
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Admin access required
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Phone not found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Invalid category ID
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update phone notification preferences (admin only)
+      tags:
+      - notification-preferences
+  /phone/{phone_number}/notification-preferences/categories/{category_id}:
+    patch:
+      consumes:
+      - application/json
+      description: Update opt-in preference for a single notification category for
+        a phone number. Admin only.
+      parameters:
+      - description: Phone number
+        in: path
+        name: phone_number
+        required: true
+        type: string
+      - description: Category ID
+        in: path
+        name: category_id
+        required: true
+        type: string
+      - description: Category preference
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateCategoryPreferenceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Preference updated successfully
+          schema:
+            $ref: '#/definitions/models.PhoneNotificationPreferencesResponse'
+        "400":
+          description: Invalid phone format or request body
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Admin access required
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Phone not found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Invalid category ID
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update single category preference for phone (admin only)
+      tags:
+      - notification-preferences
   /phone/{phone_number}/opt-in:
     post:
       consumes:
@@ -4319,5 +4949,9 @@ tags:
   name: citizen
 - description: Operações relacionadas a departamentos/unidades administrativas (UA)
   name: departments
+- description: Gerenciamento de categorias de notificação (admin) e listagem pública
+  name: notification-categories
+- description: Gerenciamento de preferências de notificação por CPF e telefone
+  name: notification-preferences
 - description: Operações de verificação de saúde da API
   name: health
