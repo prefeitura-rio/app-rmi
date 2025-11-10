@@ -9,6 +9,8 @@ type PhoneCPFMapping struct {
 	PhoneNumber       string            `bson:"phone_number" json:"phone_number"`
 	CPF               string            `bson:"cpf,omitempty" json:"cpf,omitempty"`
 	Status            string            `bson:"status" json:"status"`
+	OptIn             bool              `bson:"opt_in" json:"opt_in"`
+	CategoryOptIns    map[string]bool   `bson:"category_opt_ins,omitempty" json:"category_opt_ins,omitempty"`
 	QuarantineUntil   *time.Time        `bson:"quarantine_until,omitempty" json:"quarantine_until,omitempty"`
 	QuarantineHistory []QuarantineEvent `bson:"quarantine_history,omitempty" json:"quarantine_history,omitempty"`
 	ValidationAttempt ValidationAttempt `bson:"validation_attempt,omitempty" json:"validation_attempt,omitempty"`
@@ -34,16 +36,18 @@ type ValidationAttempt struct {
 
 // PhoneStatusResponse represents the response for phone status check
 type PhoneStatusResponse struct {
-	PhoneNumber     string     `json:"phone_number"`
-	Found           bool       `json:"found"`
-	Quarantined     bool       `json:"quarantined"`
-	OptedOut        bool       `json:"opted_out"`
-	CPF             string     `json:"cpf,omitempty"`
-	Name            string     `json:"name,omitempty"`
-	QuarantineUntil *time.Time `json:"quarantine_until,omitempty"`
-	BetaWhitelisted bool       `json:"beta_whitelisted"`
-	BetaGroupID     string     `json:"beta_group_id,omitempty"`
-	BetaGroupName   string     `json:"beta_group_name,omitempty"`
+	PhoneNumber     string          `json:"phone_number"`
+	Found           bool            `json:"found"`
+	Quarantined     bool            `json:"quarantined"`
+	OptedOut        bool            `json:"opted_out"`
+	OptIn           bool            `json:"opt_in"`
+	CategoryOptIns  map[string]bool `json:"category_opt_ins,omitempty"`
+	CPF             string          `json:"cpf,omitempty"`
+	Name            string          `json:"name,omitempty"`
+	QuarantineUntil *time.Time      `json:"quarantine_until,omitempty"`
+	BetaWhitelisted bool            `json:"beta_whitelisted"`
+	BetaGroupID     string          `json:"beta_group_id,omitempty"`
+	BetaGroupName   string          `json:"beta_group_name,omitempty"`
 }
 
 // QuarantineRequest represents the request to quarantine a phone number

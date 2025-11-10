@@ -1770,9 +1770,12 @@ func GetOptIn(c *gin.Context) {
 				zap.String("cpf", cpf),
 				zap.String("reason", "document_not_found"))
 
-			// Serialize response with tracing
+			// Serialize response with tracing (with nil category_opt_ins for backward compatibility)
 			_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
-			c.JSON(http.StatusOK, models.UserConfigOptInResponse{OptIn: true})
+			c.JSON(http.StatusOK, models.UserConfigOptInResponse{
+				OptIn:          true,
+				CategoryOptIns: nil, // Empty for users without config
+			})
 			responseSpan.End()
 
 			// Log total operation time
@@ -1801,7 +1804,10 @@ func GetOptIn(c *gin.Context) {
 
 	// Serialize response with tracing
 	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
-	c.JSON(http.StatusOK, models.UserConfigOptInResponse{OptIn: userConfig.OptIn})
+	c.JSON(http.StatusOK, models.UserConfigOptInResponse{
+		OptIn:          userConfig.OptIn,
+		CategoryOptIns: userConfig.CategoryOptIns,
+	})
 	responseSpan.End()
 
 	// Log total operation time

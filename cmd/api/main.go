@@ -53,6 +53,12 @@ import (
 // @tag.name departments
 // @tag.description Operações relacionadas a departamentos/unidades administrativas (UA)
 
+// @tag.name notification-categories
+// @tag.description Gerenciamento de categorias de notificação (admin) e listagem pública
+
+// @tag.name notification-preferences
+// @tag.description Gerenciamento de preferências de notificação por CPF e telefone
+
 // @tag.name health
 // @tag.description Operações de verificação de saúde da API
 
@@ -118,6 +124,8 @@ func main() {
 	// Initialize handlers
 	phoneHandlers := handlers.NewPhoneHandlers(observability.Logger(), phoneMappingService, configService)
 	betaGroupHandlers := handlers.NewBetaGroupHandlers(observability.Logger(), betaGroupService)
+	notificationCategoryHandlers := handlers.NewNotificationCategoryHandlers(observability.Logger())
+	notificationPreferencesHandlers := handlers.NewNotificationPreferencesHandlers(observability.Logger())
 
 	// Set Gin mode to reduce verbose route logging
 	gin.SetMode(gin.ReleaseMode)
@@ -271,6 +279,39 @@ func main() {
 		{
 			departments.GET("", handlers.ListDepartments)
 			departments.GET("/:cd_ua", handlers.GetDepartment)
+		}
+
+		// Notification category routes (public)
+		notificationCategories := v1.Group("/notification-categories")
+		{
+			notificationCategories.GET("", notificationCategoryHandlers.ListCategories)
+		}
+
+		// Admin notification category routes (protected)
+		adminNotificationCategories := v1.Group("/admin/notification-categories")
+		adminNotificationCategories.Use(middleware.AuthMiddleware(), middleware.RequireAdmin())
+		{
+			adminNotificationCategories.POST("", notificationCategoryHandlers.CreateCategory)
+			adminNotificationCategories.PUT("/:category_id", notificationCategoryHandlers.UpdateCategory)
+			adminNotificationCategories.DELETE("/:category_id", notificationCategoryHandlers.DeleteCategory)
+		}
+
+		// Citizen notification preferences routes (protected)
+		citizenPreferences := v1.Group("/citizen/:cpf/notification-preferences")
+		citizenPreferences.Use(middleware.AuthMiddleware(), middleware.RequireOwnCPF())
+		{
+			citizenPreferences.GET("", notificationPreferencesHandlers.GetCitizenPreferences)
+			citizenPreferences.PUT("", notificationPreferencesHandlers.UpdateCitizenPreferences)
+			citizenPreferences.PATCH("/categories/:category_id", notificationPreferencesHandlers.UpdateCitizenCategoryPreference)
+		}
+
+		// Phone notification preferences routes (admin only)
+		phonePreferences := v1.Group("/phone/:phone_number/notification-preferences")
+		phonePreferences.Use(middleware.AuthMiddleware(), middleware.RequireAdmin())
+		{
+			phonePreferences.GET("", notificationPreferencesHandlers.GetPhonePreferences)
+			phonePreferences.PUT("", notificationPreferencesHandlers.UpdatePhonePreferences)
+			phonePreferences.PATCH("/categories/:category_id", notificationPreferencesHandlers.UpdatePhoneCategoryPreference)
 		}
 	}
 
