@@ -127,6 +127,10 @@ func main() {
 	notificationCategoryHandlers := handlers.NewNotificationCategoryHandlers(observability.Logger())
 	notificationPreferencesHandlers := handlers.NewNotificationPreferencesHandlers(observability.Logger())
 
+	// Initialize CNAE service and handlers
+	cnaeService := services.NewCNAEService(config.MongoDB, observability.Logger())
+	cnaeHandlers := handlers.NewCNAEHandlers(cnaeService, observability.Logger())
+
 	// Set Gin mode to reduce verbose route logging
 	gin.SetMode(gin.ReleaseMode)
 
@@ -279,6 +283,12 @@ func main() {
 		{
 			departments.GET("", handlers.ListDepartments)
 			departments.GET("/:cd_ua", handlers.GetDepartment)
+		}
+
+		// CNAE routes (public)
+		cnaes := v1.Group("/cnaes")
+		{
+			cnaes.GET("", cnaeHandlers.ListCNAEs)
 		}
 
 		// Notification category routes (public)
