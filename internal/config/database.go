@@ -344,6 +344,11 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure notification_category collection indexes
+	if err := ensureNotificationCategoryIndex(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -1934,6 +1939,91 @@ func ensureDepartmentIndex(ctx context.Context, logger *zap.Logger) error {
 	} else {
 		logger.Debug("department indexes already exist",
 			zap.String("collection", AppConfig.DepartmentCollection))
+	}
+
+	return nil
+}
+
+// ensureNotificationCategoryIndex creates the indexes for notification_category collection
+func ensureNotificationCategoryIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.NotificationCategoryCollection)
+
+	// Check if indexes already exist
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		logger.Error("failed to list notification_category indexes", zap.Error(err))
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	existingIndexes := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existingIndexes[name] = true
+		}
+	}
+
+	// Define required indexes for notification_category collection
+	requiredIndexes := []mongo.IndexModel{
+		// Index 1: Active filtering with order sorting
+		{
+			Keys: bson.D{
+				{Key: "active", Value: 1},
+				{Key: "order", Value: 1},
+			},
+			Options: options.Index().SetName("idx_notification_category_active_order"),
+		},
+		// Index 2: Order sorting
+		{
+			Keys:    bson.D{{Key: "order", Value: 1}},
+			Options: options.Index().SetName("idx_notification_category_order"),
+		},
+	}
+
+	// Create missing indexes
+	indexesToCreate := []mongo.IndexModel{}
+	requiredNames := []string{
+		"idx_notification_category_id",
+		"idx_notification_category_active_order",
+		"idx_notification_category_order",
+	}
+
+	for i, indexModel := range requiredIndexes {
+		if !existingIndexes[requiredNames[i]] {
+			indexesToCreate = append(indexesToCreate, indexModel)
+		}
+	}
+
+	// Create all missing indexes
+	if len(indexesToCreate) > 0 {
+		logger.Info("creating missing notification_category indexes",
+			zap.String("collection", AppConfig.NotificationCategoryCollection),
+			zap.Int("count", len(indexesToCreate)))
+
+		_, err = collection.Indexes().CreateMany(ctx, indexesToCreate)
+		if err != nil {
+			// Check if it's a duplicate key error (another instance created it)
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("notification_category indexes already exist (created by another instance)",
+					zap.String("collection", AppConfig.NotificationCategoryCollection))
+				return nil
+			}
+			logger.Error("failed to create notification_category indexes",
+				zap.String("collection", AppConfig.NotificationCategoryCollection),
+				zap.Error(err))
+			return err
+		}
+
+		logger.Info("created notification_category indexes successfully",
+			zap.String("collection", AppConfig.NotificationCategoryCollection),
+			zap.Int("created_count", len(indexesToCreate)))
+	} else {
+		logger.Debug("notification_category indexes already exist",
+			zap.String("collection", AppConfig.NotificationCategoryCollection))
 	}
 
 	return nil
