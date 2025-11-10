@@ -1678,6 +1678,189 @@ echo ""
 # Clean up temporary files
 rm -f /tmp/api_response_*
 
+# ==========================================
+# Notification Preferences Tests
+# ==========================================
+echo "=================================================="
+echo -e "${BLUE}🔔 Testing Notification Preferences${NC}"
+echo "=================================================="
+
+# Test 1: List notification categories (public endpoint)
+echo -e "${BLUE}📋 Test: List Notification Categories${NC}"
+make_request "GET" "/notification-categories" "List_Notification_Categories" "" "$TOKEN"
+if [[ -f "/tmp/api_response_List_Notification_Categories" ]]; then
+    response=$(cat "/tmp/api_response_List_Notification_Categories")
+    if command -v jq >/dev/null 2>&1; then
+        category_count=$(echo "$response" | jq '.categories | length // 0' 2>/dev/null)
+        if [[ "$category_count" -gt 0 ]]; then
+            echo -e "${GREEN}✅ Listed $category_count notification categories${NC}"
+            ((TESTS_PASSED++))
+
+            # Show some categories
+            echo "$response" | jq -r '.categories[] | "  • \(.name) (id: \(.id), default: \(.default_opt_in))"' 2>/dev/null | head -5
+        else
+            echo -e "${RED}❌ No categories found${NC}"
+            ((TESTS_FAILED++))
+        fi
+    else
+        if echo "$response" | grep -q '"categories"'; then
+            echo -e "${GREEN}✅ Categories endpoint responded${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Invalid response format${NC}"
+            ((TESTS_FAILED++))
+        fi
+    fi
+else
+    echo -e "${RED}❌ Failed to list categories${NC}"
+    ((TESTS_FAILED++))
+fi
+
+# Test 2: Get citizen notification preferences
+echo -e "${BLUE}📋 Test: Get Citizen Notification Preferences${NC}"
+make_request "GET" "/citizen/$CPF/notification-preferences" "Get_Citizen_Notification_Preferences" "" "$TOKEN"
+if [[ -f "/tmp/api_response_Get_Citizen_Notification_Preferences" ]]; then
+    response=$(cat "/tmp/api_response_Get_Citizen_Notification_Preferences")
+    if command -v jq >/dev/null 2>&1; then
+        opt_in=$(echo "$response" | jq -r '.opt_in // "null"' 2>/dev/null)
+        category_count=$(echo "$response" | jq '.category_opt_ins | length // 0' 2>/dev/null)
+
+        if [[ "$opt_in" != "null" ]]; then
+            echo -e "${GREEN}✅ Got citizen preferences - Global opt-in: $opt_in, Categories: $category_count${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Invalid preferences response${NC}"
+            ((TESTS_FAILED++))
+        fi
+    else
+        if echo "$response" | grep -q '"opt_in"'; then
+            echo -e "${GREEN}✅ Citizen preferences endpoint responded${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Invalid response format${NC}"
+            ((TESTS_FAILED++))
+        fi
+    fi
+else
+    echo -e "${RED}❌ Failed to get citizen preferences${NC}"
+    ((TESTS_FAILED++))
+fi
+
+# Test 3: Update citizen notification preferences
+echo -e "${BLUE}📋 Test: Update Citizen Notification Preferences${NC}"
+update_payload=$(cat <<EOF
+{
+    "opt_in": true,
+    "category_opt_ins": {
+        "events": true,
+        "services": true,
+        "alerts": true,
+        "health": false
+    }
+}
+EOF
+)
+make_request "PUT" "/citizen/$CPF/notification-preferences" "Update_Citizen_Notification_Preferences" "$update_payload" "$TOKEN"
+if [[ -f "/tmp/api_response_Update_Citizen_Notification_Preferences" ]]; then
+    response=$(cat "/tmp/api_response_Update_Citizen_Notification_Preferences")
+    if command -v jq >/dev/null 2>&1; then
+        opt_in=$(echo "$response" | jq -r '.opt_in // "null"' 2>/dev/null)
+        events_opted=$(echo "$response" | jq -r '.category_opt_ins.events // "null"' 2>/dev/null)
+        health_opted=$(echo "$response" | jq -r '.category_opt_ins.health // "null"' 2>/dev/null)
+
+        if [[ "$opt_in" == "true" ]] && [[ "$events_opted" == "true" ]] && [[ "$health_opted" == "false" ]]; then
+            echo -e "${GREEN}✅ Successfully updated citizen preferences${NC}"
+            echo "  Global opt-in: $opt_in"
+            echo "  Events: $events_opted"
+            echo "  Health: $health_opted"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Preferences not updated correctly${NC}"
+            ((TESTS_FAILED++))
+        fi
+    else
+        if echo "$response" | grep -q '"opt_in".*true'; then
+            echo -e "${GREEN}✅ Citizen preferences updated${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Update failed${NC}"
+            ((TESTS_FAILED++))
+        fi
+    fi
+else
+    echo -e "${RED}❌ Failed to update citizen preferences${NC}"
+    ((TESTS_FAILED++))
+fi
+
+# Test 4: Update single category preference
+echo -e "${BLUE}📋 Test: Update Single Category Preference${NC}"
+category_payload='{"opt_in": true}'
+make_request "PATCH" "/citizen/$CPF/notification-preferences/categories/health" "Update_Citizen_Category_Preference" "$category_payload" "$TOKEN"
+if [[ -f "/tmp/api_response_Update_Citizen_Category_Preference" ]]; then
+    response=$(cat "/tmp/api_response_Update_Citizen_Category_Preference")
+    if command -v jq >/dev/null 2>&1; then
+        health_opted=$(echo "$response" | jq -r '.category_opt_ins.health // "null"' 2>/dev/null)
+
+        if [[ "$health_opted" == "true" ]]; then
+            echo -e "${GREEN}✅ Successfully updated health category to true${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Category preference not updated correctly${NC}"
+            ((TESTS_FAILED++))
+        fi
+    else
+        if echo "$response" | grep -q '"opt_in"'; then
+            echo -e "${GREEN}✅ Category preference updated${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Update failed${NC}"
+            ((TESTS_FAILED++))
+        fi
+    fi
+else
+    echo -e "${RED}❌ Failed to update category preference${NC}"
+    ((TESTS_FAILED++))
+fi
+
+# Test 5: Verify global opt-in as kill-switch
+echo -e "${BLUE}📋 Test: Global Opt-In Override${NC}"
+override_payload='{"opt_in": false}'
+make_request "PUT" "/citizen/$CPF/notification-preferences" "Test_Global_OptIn_Override" "$override_payload" "$TOKEN"
+if [[ -f "/tmp/api_response_Test_Global_OptIn_Override" ]]; then
+    response=$(cat "/tmp/api_response_Test_Global_OptIn_Override")
+    if command -v jq >/dev/null 2>&1; then
+        opt_in=$(echo "$response" | jq -r '.opt_in // "null"' 2>/dev/null)
+
+        if [[ "$opt_in" == "false" ]]; then
+            echo -e "${GREEN}✅ Global opt-in set to false (acts as kill-switch)${NC}"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}❌ Global opt-in not updated${NC}"
+            ((TESTS_FAILED++))
+        fi
+    fi
+
+    # Restore global opt-in
+    restore_payload='{"opt_in": true}'
+    make_request "PUT" "/citizen/$CPF/notification-preferences" "Restore_Global_OptIn" "$restore_payload" "$TOKEN" > /dev/null 2>&1
+fi
+
+# Test 6: Validate invalid category is rejected
+echo -e "${BLUE}📋 Test: Reject Invalid Category${NC}"
+invalid_payload='{"opt_in": true}'
+http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$API_BASE/citizen/$CPF/notification-preferences/categories/invalid_category_xyz" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$invalid_payload" 2>/dev/null)
+
+if [[ "$http_code" == "422" ]]; then
+    echo -e "${GREEN}✅ Correctly rejected invalid category (HTTP 422)${NC}"
+    ((TESTS_PASSED++))
+else
+    echo -e "${RED}❌ Did not reject invalid category (HTTP $http_code)${NC}"
+    ((TESTS_FAILED++))
+fi
+
 echo "=================================================="
 echo -e "${BLUE}📊 Test Results Summary:${NC}"
 echo -e "${GREEN}✅ Tests Passed: $TESTS_PASSED${NC}"
