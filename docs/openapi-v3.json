@@ -9004,9 +9004,18 @@
       },
       "models.UpdateCategoryPreferenceRequest": {
         "type": "object",
+        "required": [
+          "channel"
+        ],
         "properties": {
+          "channel": {
+            "type": "string"
+          },
           "opt_in": {
             "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
           }
         }
       },
@@ -9032,6 +9041,9 @@
       },
       "models.UpdateNotificationPreferencesRequest": {
         "type": "object",
+        "required": [
+          "channel"
+        ],
         "properties": {
           "category_opt_ins": {
             "type": "object",
@@ -9039,8 +9051,14 @@
               "type": "boolean"
             }
           },
+          "channel": {
+            "type": "string"
+          },
           "opt_in": {
             "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
           }
         }
       },

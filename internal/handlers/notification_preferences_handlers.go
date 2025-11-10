@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -235,6 +236,10 @@ func (h *NotificationPreferencesHandlers) UpdateCitizenPreferences(c *gin.Contex
 	if input.OptIn != nil {
 		utils.AddSpanAttribute(inputSpan, "input.opt_in", *input.OptIn)
 	}
+	utils.AddSpanAttribute(inputSpan, "input.channel", input.Channel)
+	if input.Reason != nil {
+		utils.AddSpanAttribute(inputSpan, "input.reason", *input.Reason)
+	}
 	inputSpan.End()
 
 	// Validate category IDs exist and are active
@@ -348,8 +353,18 @@ func (h *NotificationPreferencesHandlers) UpdateCitizenPreferences(c *gin.Contex
 	}
 	cacheSpan.End()
 
-	// TODO: Log audit events for global and category changes
-	// This will be implemented in the audit logging utilities update
+	// Log opt-in history for global preference change
+	if input.OptIn != nil && *input.OptIn != oldGlobalOptIn {
+		h.recordOptInHistory(ctx, cpf, oldGlobalOptIn, *input.OptIn, models.OptInScopeGlobal, nil, input.Channel, input.Reason)
+	}
+
+	// Log opt-in history for category preference changes
+	for categoryID, newValue := range input.CategoryOptIns {
+		oldValue, existed := oldCategoryOptIns[categoryID]
+		if !existed || oldValue != newValue {
+			h.recordOptInHistory(ctx, cpf, oldValue, newValue, models.OptInScopeCategory, &categoryID, input.Channel, input.Reason)
+		}
+	}
 
 	response := models.NotificationPreferencesResponse{
 		CPF:            cpf,
@@ -476,6 +491,11 @@ func (h *NotificationPreferencesHandlers) UpdateCitizenCategoryPreference(c *gin
 	cacheKey := fmt.Sprintf("user_config:%s", cpf)
 	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
 		logger.Warn("failed to invalidate cache", zap.String("cache_key", cacheKey), zap.Error(err))
+	}
+
+	// Log opt-in history for category preference change
+	if oldValue != input.OptIn {
+		h.recordOptInHistory(ctx, cpf, oldValue, input.OptIn, models.OptInScopeCategory, &categoryID, input.Channel, input.Reason)
 	}
 
 	response := models.NotificationPreferencesResponse{
@@ -681,6 +701,12 @@ func (h *NotificationPreferencesHandlers) UpdatePhonePreferences(c *gin.Context)
 
 	// Track old values for audit
 	oldGlobalOptIn := mapping.OptIn
+	oldCategoryOptIns := make(map[string]bool)
+	if mapping.CategoryOptIns != nil {
+		for k, v := range mapping.CategoryOptIns {
+			oldCategoryOptIns[k] = v
+		}
+	}
 
 	// Update global opt-in if provided
 	if input.OptIn != nil {
@@ -765,6 +791,21 @@ func (h *NotificationPreferencesHandlers) UpdatePhonePreferences(c *gin.Context)
 	}
 
 	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+
+	// Log opt-in history for global preference change (if CPF is mapped)
+	if mapping.CPF != "" {
+		if input.OptIn != nil && *input.OptIn != oldGlobalOptIn {
+			h.recordOptInHistoryWithPhone(ctx, storagePhone, mapping.CPF, oldGlobalOptIn, *input.OptIn, models.OptInScopeGlobal, nil, input.Channel, input.Reason)
+		}
+
+		// Log opt-in history for category preference changes
+		for categoryID, newValue := range input.CategoryOptIns {
+			oldValue, existed := oldCategoryOptIns[categoryID]
+			if !existed || oldValue != newValue {
+				h.recordOptInHistoryWithPhone(ctx, storagePhone, mapping.CPF, oldValue, newValue, models.OptInScopeCategory, &categoryID, input.Channel, input.Reason)
+			}
+		}
+	}
 
 	response := models.PhoneNotificationPreferencesResponse{
 		PhoneNumber:    phoneNumber,
@@ -913,6 +954,11 @@ func (h *NotificationPreferencesHandlers) UpdatePhoneCategoryPreference(c *gin.C
 				logger.Warn("failed to invalidate CPF cache", zap.String("cpf", mapping.CPF), zap.Error(err))
 			}
 		}
+
+		// Log opt-in history for category preference change
+		if oldValue != input.OptIn {
+			h.recordOptInHistoryWithPhone(ctx, storagePhone, mapping.CPF, oldValue, input.OptIn, models.OptInScopeCategory, &categoryID, input.Channel, input.Reason)
+		}
 	}
 
 	response := models.PhoneNotificationPreferencesResponse{
@@ -928,4 +974,53 @@ func (h *NotificationPreferencesHandlers) UpdatePhoneCategoryPreference(c *gin.C
 		zap.Bool("old_value", oldValue),
 		zap.Bool("new_value", input.OptIn),
 		zap.Duration("total_duration", time.Since(startTime)))
+}
+
+// recordOptInHistory records opt-in/opt-out history for notification preferences
+func (h *NotificationPreferencesHandlers) recordOptInHistory(ctx context.Context, cpf string, oldValue, newValue bool, scope string, categoryID *string, channel string, reason *string) {
+	h.recordOptInHistoryWithPhone(ctx, "", cpf, oldValue, newValue, scope, categoryID, channel, reason)
+}
+
+// recordOptInHistoryWithPhone records opt-in/opt-out history including phone number
+func (h *NotificationPreferencesHandlers) recordOptInHistoryWithPhone(ctx context.Context, phoneNumber, cpf string, oldValue, newValue bool, scope string, categoryID *string, channel string, reason *string) {
+	now := time.Now()
+
+	// Determine action based on scope and values
+	var action string
+	if scope == models.OptInScopeGlobal {
+		if newValue {
+			action = models.OptInActionOptIn
+		} else {
+			action = models.OptInActionOptOut
+		}
+	} else {
+		action = models.OptInActionCategoryUpdate
+	}
+
+	history := models.OptInHistory{
+		CPF:       cpf,
+		Action:    action,
+		Scope:     scope,
+		Category:  categoryID,
+		Channel:   channel,
+		Reason:    reason,
+		OldValue:  &oldValue,
+		NewValue:  &newValue,
+		Timestamp: now,
+	}
+
+	// Add phone number if provided
+	if phoneNumber != "" {
+		history.PhoneNumber = phoneNumber
+	}
+
+	_, err := config.MongoDB.Collection(config.AppConfig.OptInHistoryCollection).InsertOne(ctx, history)
+	if err != nil {
+		h.logger.Error("failed to record opt-in history",
+			zap.Error(err),
+			zap.String("cpf", cpf),
+			zap.String("scope", scope),
+			zap.String("action", action))
+		// Don't fail the main operation for this error
+	}
 }
