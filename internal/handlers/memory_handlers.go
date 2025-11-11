@@ -484,8 +484,7 @@ func CreateMemory(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param phone_number path string true "Número do telefone"
-// @Param memory_name path string true "Nome da memória a ser atualizada"
-// @Param memory body MemoryModel true "Dados da memória a ser atualizada"
+// @Param memory body MemoryModel true "Dados da memória a ser atualizada (memory_name identifica qual memória atualizar)"
 // @Security BearerAuth
 // @Success 200 {object} SuccessResponse "Memória atualizada com sucesso"
 // @Failure 400 {object} ErrorResponse "Número de telefone ou nome da memória inválidos"
@@ -494,7 +493,7 @@ func CreateMemory(c *gin.Context) {
 // @Failure 404 {object} ErrorResponse "Memória não encontrada"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
-// @Router /memory/{phone_number}/{memory_name} [put]
+// @Router /memory/{phone_number} [put]
 func UpdateMemory(c *gin.Context) {
 	startTime := time.Now()
 	ctx, span := otel.Tracer("").Start(c.Request.Context(), "UpdateMemory")
@@ -505,23 +504,19 @@ func UpdateMemory(c *gin.Context) {
 	defer monitor.End()
 
 	phoneNumber := c.Param("phone_number")
-	memoryName := c.Param("memory_name")
 	logger := observability.Logger().With(
 		zap.String("phone_number", phoneNumber),
-		zap.String("memory_name", memoryName),
 	)
 
 	// Add parameters to span attributes
 	span.SetAttributes(
 		attribute.String("phone_number", phoneNumber),
-		attribute.String("memory_name", memoryName),
 		attribute.String("operation", "update_memory"),
 		attribute.String("service", "memory"),
 	)
 
 	logger.Debug("UpdateMemory called",
 		zap.String("phone_number", phoneNumber),
-		zap.String("memory_name", memoryName),
 	)
 
 	// Validate phone number with tracing using utils.ValidatePhoneFormat directly
@@ -535,18 +530,6 @@ func UpdateMemory(c *gin.Context) {
 	// 	return
 	// }
 	// phoneSpan.End()
-
-	// Validate memory name (basic validation - not empty)
-	ctx, memorySpan := utils.TraceInputValidation(ctx, "memory_name_format", "memory_name")
-	if memoryName == "" {
-		utils.RecordErrorInSpan(memorySpan, fmt.Errorf("Memory name cannot be empty"), map[string]interface{}{
-			"memory_name": memoryName,
-		})
-		memorySpan.End()
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Memory name cannot be empty"})
-		return
-	}
-	memorySpan.End()
 
 	// Parse and validate request body using Gin's built-in validation
 	var memory MemoryModel
@@ -564,6 +547,16 @@ func UpdateMemory(c *gin.Context) {
 	// Normalize memory name: trim spaces and convert to lowercase for case-insensitive uniqueness
 	memory.MemoryName = strings.TrimSpace(strings.ToLower(memory.MemoryName))
 
+	// Validate memory name (basic validation - not empty)
+	if memory.MemoryName == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Memory name cannot be empty"})
+		return
+	}
+
+	// Update logger and span with memory_name from body
+	logger = logger.With(zap.String("memory_name", memory.MemoryName))
+	span.SetAttributes(attribute.String("memory_name", memory.MemoryName))
+
 	// First, check if the memory exists
 	ctx, checkSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.ChatMemoryCollection, "check_memory_exists")
 	var existingMemory MemoryModel
@@ -571,7 +564,7 @@ func UpdateMemory(c *gin.Context) {
 		ctx,
 		bson.M{
 			"phone_number": phoneNumber,
-			"memory_name":  memoryName,
+			"memory_name":  memory.MemoryName,
 		},
 	).Decode(&existingMemory)
 	checkSpan.End()
@@ -586,7 +579,7 @@ func UpdateMemory(c *gin.Context) {
 		utils.RecordErrorInSpan(span, err, map[string]interface{}{
 			"operation":    "mongodb_find",
 			"phone_number": phoneNumber,
-			"memory_name":  memoryName,
+			"memory_name":  memory.MemoryName,
 		})
 		logger.Error("failed to check if memory exists", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error"})
@@ -599,36 +592,6 @@ func UpdateMemory(c *gin.Context) {
 	// Preserve the original created_at and memory_id
 	memory.CreatedAt = existingMemory.CreatedAt
 	memory.MemoryID = existingMemory.MemoryID
-
-	// Check if memory name is being changed and if the new name already exists for this phone number
-	if memory.MemoryName != memoryName {
-		ctx, checkSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.ChatMemoryCollection, "check_duplicate_memory_name_update")
-		var duplicateMemory MemoryModel
-		err := config.MongoDB.Collection(config.AppConfig.ChatMemoryCollection).FindOne(
-			ctx,
-			bson.M{
-				"phone_number": phoneNumber,
-				"memory_name":  memory.MemoryName,
-			},
-		).Decode(&duplicateMemory)
-		checkSpan.End()
-
-		if err == nil {
-			// Memory with the new name already exists for this phone number
-			c.JSON(http.StatusConflict, ErrorResponse{Error: "Memory name already exists for this phone number"})
-			return
-		} else if err != mongo.ErrNoDocuments {
-			// Some other error occurred
-			utils.RecordErrorInSpan(span, err, map[string]interface{}{
-				"operation":    "mongodb_find_duplicate_update",
-				"phone_number": phoneNumber,
-				"memory_name":  memory.MemoryName,
-			})
-			logger.Error("failed to check for duplicate memory name during update", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Internal server error"})
-			return
-		}
-	}
 
 	// Prepare update document for MongoDB
 	update := bson.M{
@@ -648,7 +611,7 @@ func UpdateMemory(c *gin.Context) {
 		ctx,
 		bson.M{
 			"phone_number": phoneNumber,
-			"memory_name":  memoryName,
+			"memory_name":  memory.MemoryName,
 		},
 		update,
 	)
@@ -656,7 +619,7 @@ func UpdateMemory(c *gin.Context) {
 		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
 			"operation":    "mongodb_update",
 			"phone_number": phoneNumber,
-			"memory_name":  memoryName,
+			"memory_name":  memory.MemoryName,
 		})
 		updateSpan.End()
 		logger.Error("failed to update memory in MongoDB", zap.Error(err))
@@ -674,26 +637,19 @@ func UpdateMemory(c *gin.Context) {
 
 	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
 
-	// Handle cache invalidation and update based on memory name change using Redis pipeline
-	oldCacheKey := fmt.Sprintf("memory:%s:%s", phoneNumber, memoryName)
-	newCacheKey := fmt.Sprintf("memory:%s:%s", phoneNumber, memory.MemoryName)
+	// Handle cache invalidation and update using Redis pipeline
+	cacheKey := fmt.Sprintf("memory:%s:%s", phoneNumber, memory.MemoryName)
 
 	// Prepare keys for batch operations
-	var keysToDelete []string
-	var keysToSet map[string]interface{}
-
-	// If memory name changed, add old key to deletion list
-	if memory.MemoryName != memoryName {
-		keysToDelete = append(keysToDelete, oldCacheKey)
+	keysToDelete := []string{
+		fmt.Sprintf("memory_list:%s", phoneNumber),
 	}
 
-	// Always invalidate memory list cache
-	keysToDelete = append(keysToDelete, fmt.Sprintf("memory_list:%s", phoneNumber))
-
 	// Prepare new cache data
+	var keysToSet map[string]interface{}
 	if jsonData, err := json.Marshal(memory); err == nil {
 		keysToSet = map[string]interface{}{
-			newCacheKey: jsonData,
+			cacheKey: jsonData,
 		}
 	}
 
@@ -731,7 +687,7 @@ func UpdateMemory(c *gin.Context) {
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateMemory completed",
 		zap.String("phone_number", phoneNumber),
-		zap.String("memory_name", memoryName),
+		zap.String("memory_name", memory.MemoryName),
 		zap.Int64("matched_count", result.MatchedCount),
 		zap.Int64("modified_count", result.ModifiedCount),
 		zap.Duration("total_duration", totalDuration),

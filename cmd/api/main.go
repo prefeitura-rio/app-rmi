@@ -164,7 +164,7 @@ func main() {
 			memory.GET("/:phone_number", handlers.GetMemoryList)
 			memory.GET("/:phone_number/:memory_name", handlers.GetMemoryByName)
 			memory.POST("/:phone_number", handlers.CreateMemory)
-			memory.PUT("/:phone_number/:memory_name", handlers.UpdateMemory)
+			memory.PUT("/:phone_number", handlers.UpdateMemory)
 			memory.DELETE("/:phone_number/:memory_name", handlers.DeleteMemory)
 		}
 
