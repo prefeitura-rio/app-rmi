@@ -41,25 +41,15 @@ func (s *CNAEService) ListCNAEs(ctx context.Context, filters models.CNAEFilters)
 		filter["$text"] = bson.M{"$search": filters.Search}
 	}
 
-	// Field filters
+	// Field filters - all fields are strings
 	if filters.Secao != "" {
 		filter["Secao"] = filters.Secao
 	}
 	if filters.Divisao != "" {
-		// Divisao can be stored as int or string - query both
-		if divisaoInt, err := strconv.Atoi(filters.Divisao); err == nil {
-			filter["Divisao"] = divisaoInt
-		} else {
-			filter["Divisao"] = filters.Divisao
-		}
+		filter["Divisao"] = filters.Divisao
 	}
 	if filters.Grupo != "" {
-		// Grupo can be stored as float or string - try parsing as number
-		if grupoFloat, err := strconv.ParseFloat(filters.Grupo, 64); err == nil {
-			filter["Grupo"] = grupoFloat
-		} else {
-			filter["Grupo"] = filters.Grupo
-		}
+		filter["Grupo"] = filters.Grupo
 	}
 	if filters.Classe != "" {
 		filter["Classe"] = filters.Classe
@@ -155,7 +145,7 @@ func (s *CNAEService) convertRawToCNAE(rawDoc bson.M) models.CNAE {
 		cnae.Secao = secao
 	}
 
-	// Handle Divisao (can be int or string)
+	// Handle Divisao (string - but keep type handling for robustness)
 	if divisao, ok := rawDoc["Divisao"]; ok {
 		switch v := divisao.(type) {
 		case string:
@@ -171,7 +161,7 @@ func (s *CNAEService) convertRawToCNAE(rawDoc bson.M) models.CNAE {
 		}
 	}
 
-	// Handle Grupo (can be int, float, or string)
+	// Handle Grupo (string - but keep type handling for robustness)
 	if grupo, ok := rawDoc["Grupo"]; ok {
 		switch v := grupo.(type) {
 		case string:

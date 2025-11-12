@@ -4717,6 +4717,112 @@
           }
         }
       },
+      "put": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza uma única memória associada ao telefone do cidadão.",
+        "tags": [
+          "memory"
+        ],
+        "summary": "Atualiza memória associada ao número de telefone.",
+        "parameters": [
+          {
+            "description": "Número do telefone",
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/handlers.MemoryModel"
+              }
+            }
+          },
+          "description": "Dados da memória a ser atualizada (memory_name identifica qual memória atualizar)",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Memória atualizada com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Número de telefone ou nome da memória inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Memória não encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "security": [
           {
@@ -4863,121 +4969,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/handlers.MemoryModel"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Número de telefone ou nome da memória inválidos",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Token de autenticação não fornecido ou inválido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Acesso negado - permissões insuficientes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Memória não encontrada",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Muitas requisições - limite de taxa excedido",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erro interno do servidor",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "description": "Atualiza uma única memória associada ao telefone do cidadão.",
-        "tags": [
-          "memory"
-        ],
-        "summary": "Atualiza memória associada ao número de telefone.",
-        "parameters": [
-          {
-            "description": "Número do telefone",
-            "name": "phone_number",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Nome da memória a ser atualizada",
-            "name": "memory_name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/handlers.MemoryModel"
-              }
-            }
-          },
-          "description": "Dados da memória a ser atualizada",
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Memória atualizada com sucesso",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/handlers.SuccessResponse"
                 }
               }
             }

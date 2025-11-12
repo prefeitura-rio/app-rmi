@@ -112,9 +112,12 @@ func (s *DepartmentService) ListDepartments(ctx context.Context, filters Departm
 		filter["sigla_ua"] = filters.SiglaUA
 	}
 
-	// Text search filter
+	// Text search filter - case insensitive partial matching on nome_ua and sigla_ua
 	if filters.Search != "" {
-		filter["$text"] = bson.M{"$search": filters.Search}
+		filter["$or"] = []bson.M{
+			{"nome_ua": bson.M{"$regex": filters.Search, "$options": "i"}},
+			{"sigla_ua": bson.M{"$regex": filters.Search, "$options": "i"}},
+		}
 	}
 
 	// Calculate pagination
@@ -135,12 +138,6 @@ func (s *DepartmentService) ListDepartments(ctx context.Context, filters Departm
 			{Key: "nivel", Value: 1},
 			{Key: "ordem_absoluta", Value: 1},
 		})
-
-	// If using text search, sort by text score
-	if filters.Search != "" {
-		findOptions.SetProjection(bson.M{"score": bson.M{"$meta": "textScore"}})
-		findOptions.SetSort(bson.D{{Key: "score", Value: bson.M{"$meta": "textScore"}}})
-	}
 
 	// Execute query
 	cursor, err := collection.Find(ctx, filter, findOptions)

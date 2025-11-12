@@ -3631,6 +3631,86 @@ const docTemplate = `{
                     }
                 }
             },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza uma única memória associada ao telefone do cidadão.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "memory"
+                ],
+                "summary": "Atualiza memória associada ao número de telefone.",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do telefone",
+                        "name": "phone_number",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dados da memória a ser atualizada (memory_name identifica qual memória atualizar)",
+                        "name": "memory",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.MemoryModel"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Memória atualizada com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Número de telefone ou nome da memória inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Memória não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Muitas requisições - limite de taxa excedido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -3751,93 +3831,6 @@ const docTemplate = `{
                         "description": "Memória obtida com sucesso",
                         "schema": {
                             "$ref": "#/definitions/handlers.MemoryModel"
-                        }
-                    },
-                    "400": {
-                        "description": "Número de telefone ou nome da memória inválidos",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Token de autenticação não fornecido ou inválido",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Acesso negado - permissões insuficientes",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Memória não encontrada",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "429": {
-                        "description": "Muitas requisições - limite de taxa excedido",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Erro interno do servidor",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Atualiza uma única memória associada ao telefone do cidadão.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "memory"
-                ],
-                "summary": "Atualiza memória associada ao número de telefone.",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Número do telefone",
-                        "name": "phone_number",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Nome da memória a ser atualizada",
-                        "name": "memory_name",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Dados da memória a ser atualizada",
-                        "name": "memory",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handlers.MemoryModel"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Memória atualizada com sucesso",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.SuccessResponse"
                         }
                     },
                     "400": {
@@ -7368,9 +7361,18 @@ const docTemplate = `{
         },
         "models.UpdateCategoryPreferenceRequest": {
             "type": "object",
+            "required": [
+                "channel"
+            ],
             "properties": {
+                "channel": {
+                    "type": "string"
+                },
                 "opt_in": {
                     "type": "boolean"
+                },
+                "reason": {
+                    "type": "string"
                 }
             }
         },
@@ -7396,6 +7398,9 @@ const docTemplate = `{
         },
         "models.UpdateNotificationPreferencesRequest": {
             "type": "object",
+            "required": [
+                "channel"
+            ],
             "properties": {
                 "category_opt_ins": {
                     "type": "object",
@@ -7403,8 +7408,14 @@ const docTemplate = `{
                         "type": "boolean"
                     }
                 },
+                "channel": {
+                    "type": "string"
+                },
                 "opt_in": {
                     "type": "boolean"
+                },
+                "reason": {
+                    "type": "string"
                 }
             }
         },
