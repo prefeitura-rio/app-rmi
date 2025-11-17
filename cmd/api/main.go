@@ -142,6 +142,7 @@ func main() {
 		middleware.RequestTiming(), // Add comprehensive timing middleware
 		middleware.RequestLogger(),
 		middleware.RequestTracker(),
+		middleware.AuditMiddleware(), // Automatic audit logging for all write operations
 		cors.Default(),
 	)
 
