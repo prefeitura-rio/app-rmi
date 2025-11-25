@@ -2375,41 +2375,8 @@ func GetMaintenanceRequests(c *gin.Context) {
 	utils.AddSpanAttribute(convertSpan, "converted_requests_count", len(requests))
 	convertSpan.End()
 
-	// Build addresses for maintenance requests with tracing
-	_, addressSpan := utils.TraceBusinessLogic(ctx, "build_maintenance_request_addresses")
-	for i := range requests {
-		request := &requests[i]
-
-		// Extract address components
-		var bairroID, logradouroID string
-		var numeroLogradouro interface{}
-
-		if request.IDBairro != nil {
-			bairroID = *request.IDBairro
-		}
-		if request.IDLogradouro != nil {
-			logradouroID = *request.IDLogradouro
-		}
-		if request.NumeroLogradouro != nil {
-			numeroLogradouro = *request.NumeroLogradouro
-		}
-
-		// Build address if we have address components
-		if bairroID != "" || logradouroID != "" {
-			endereco, err := services.AddressServiceInstance.BuildAddress(ctx, bairroID, logradouroID, numeroLogradouro)
-			if err != nil {
-				logger.Warn("failed to build address for maintenance request",
-					zap.Error(err),
-					zap.String("request_id", request.ID),
-					zap.String("bairro_id", bairroID),
-					zap.String("logradouro_id", logradouroID))
-			} else if endereco != nil {
-				request.Endereco = endereco
-			}
-		}
-	}
-	utils.AddSpanAttribute(addressSpan, "addresses_built", len(requests))
-	addressSpan.End()
+	// Note: Addresses are now pre-built in the MongoDB documents and loaded directly
+	// No need to build them on demand anymore
 
 	// Calculate total pages with tracing
 	_, calcSpan := utils.TraceBusinessLogic(ctx, "calculate_pagination")

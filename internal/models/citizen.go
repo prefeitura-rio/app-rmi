@@ -278,43 +278,24 @@ type CitizenWallet struct {
 
 // MaintenanceRequestDocument represents the new document structure for 1746 calls
 type MaintenanceRequestDocument struct {
-	ID                             string      `json:"_id" bson:"_id"`
-	CPF                            string      `json:"cpf" bson:"cpf"`
-	CPFParticao                    int64       `json:"cpf_particao" bson:"cpf_particao"`
-	OrigemOcorrencia               string      `json:"origem_ocorrencia" bson:"origem_ocorrencia"`
-	IDChamado                      string      `json:"id_chamado" bson:"id_chamado"`
-	IDOrigemOcorrencia             string      `json:"id_origem_ocorrencia" bson:"id_origem_ocorrencia"`
-	DataInicio                     string      `json:"data_inicio" bson:"data_inicio"`
-	DataFim                        string      `json:"data_fim" bson:"data_fim"`
-	IDBairro                       string      `json:"id_bairro" bson:"id_bairro"`
-	IDTerritorialidade             string      `json:"id_territorialidade" bson:"id_territorialidade"`
-	IDLogradouro                   string      `json:"id_logradouro" bson:"id_logradouro"`
-	NumeroLogradouro               int         `json:"numero_logradouro" bson:"numero_logradouro"`
-	IDUnidadeOrganizacional        string      `json:"id_unidade_organizacional" bson:"id_unidade_organizacional"`
-	NomeUnidadeOrganizacional      string      `json:"nome_unidade_organizacional" bson:"nome_unidade_organizacional"`
-	IDUnidadeOrganizacionalMae     string      `json:"id_unidade_organizacional_mae" bson:"id_unidade_organizacional_mae"`
-	UnidadeOrganizacionalOuvidoria string      `json:"unidade_organizacional_ouvidoria" bson:"unidade_organizacional_ouvidoria"`
-	Categoria                      string      `json:"categoria" bson:"categoria"`
-	IDTipo                         string      `json:"id_tipo" bson:"id_tipo"`
-	Tipo                           string      `json:"tipo" bson:"tipo"`
-	IDSubtipo                      string      `json:"id_subtipo" bson:"id_subtipo"`
-	Subtipo                        string      `json:"subtipo" bson:"subtipo"`
-	Status                         string      `json:"status" bson:"status"`
-	Longitude                      *float64    `json:"longitude" bson:"longitude"`
-	Latitude                       *float64    `json:"latitude" bson:"latitude"`
-	DataAlvoFinalizacao            string      `json:"data_alvo_finalizacao" bson:"data_alvo_finalizacao"`
-	DataAlvoDiagnostico            string      `json:"data_alvo_diagnostico" bson:"data_alvo_diagnostico"`
-	DataRealDiagnostico            string      `json:"data_real_diagnostico" bson:"data_real_diagnostico"`
-	TempoPrazo                     interface{} `json:"tempo_prazo" bson:"tempo_prazo"`
-	PrazoUnidade                   string      `json:"prazo_unidade" bson:"prazo_unidade"`
-	PrazoTipo                      string      `json:"prazo_tipo" bson:"prazo_tipo"`
-	DentroPrazo                    string      `json:"dentro_prazo" bson:"dentro_prazo"`
-	Situacao                       string      `json:"situacao" bson:"situacao"`
-	TipoSituacao                   string      `json:"tipo_situacao" bson:"tipo_situacao"`
-	JustificativaStatus            interface{} `json:"justificativa_status" bson:"justificativa_status"`
-	Reclamacoes                    int         `json:"reclamacoes" bson:"reclamacoes"`
-	Descricao                      string      `json:"descricao" bson:"descricao"`
-	DataParticao                   string      `json:"data_particao" bson:"data_particao"`
+	ID                        string `json:"_id" bson:"_id"`
+	CPF                       string `json:"cpf" bson:"cpf"`
+	CPFParticao               int64  `json:"cpf_particao" bson:"cpf_particao"`
+	Categoria                 string `json:"categoria" bson:"categoria"`
+	DataAlvoFinalizacao       string `json:"data_alvo_finalizacao" bson:"data_alvo_finalizacao"`
+	DataFim                   string `json:"data_fim" bson:"data_fim"`
+	DataInicio                string `json:"data_inicio" bson:"data_inicio"`
+	Descricao                 string `json:"descricao" bson:"descricao"`
+	IDChamado                 string `json:"id" bson:"id"`                                                   // Renamed from id_chamado to id
+	Indicador                 bool   `json:"indicador" bson:"indicador"`
+	NomeUnidadeOrganizacional string `json:"nome_unidade_organizacional" bson:"nome_unidade_organizacional"`
+	OrigemOcorrencia          string `json:"origem_ocorrencia" bson:"origem_ocorrencia"`
+	Status                    string `json:"status" bson:"status"`
+	Subtipo                   string `json:"subtipo" bson:"subtipo"`
+	Tipo                      string `json:"tipo" bson:"tipo"`
+	Endereco                  string `json:"endereco" bson:"endereco"` // Pre-built address string
+	TotalChamados             int    `json:"total_chamados" bson:"total_chamados"`
+	TotalFechados             int    `json:"total_fechados" bson:"total_fechados"`
 }
 
 // MaintenanceRequestChamados represents maintenance request calls
@@ -387,54 +368,33 @@ type MaintenanceRequestStatus struct {
 	TipoSituacao        string      `json:"tipo_situacao" bson:"tipo_situacao"`
 }
 
-// MaintenanceRequest represents a maintenance request (for backward compatibility)
+// MaintenanceRequest represents a maintenance request (API response model)
+// Only includes fields that exist in the new MongoDB schema, with backward-compatible naming
 type MaintenanceRequest struct {
-	ID                             string      `json:"id" bson:"_id"`
-	CPF                            string      `json:"cpf" bson:"cpf"`
-	OrigemOcorrencia               string      `json:"origem_ocorrencia" bson:"origem_ocorrencia"`
-	IDChamado                      string      `json:"id_chamado" bson:"id_chamado"`
-	IDOrigemOcorrencia             string      `json:"id_origem_ocorrencia" bson:"id_origem_ocorrencia"`
-	DataInicio                     *time.Time  `json:"data_inicio" bson:"data_inicio"`
-	DataFim                        *time.Time  `json:"data_fim" bson:"data_fim"`
-	IDBairro                       *string     `json:"id_bairro" bson:"id_bairro"`
-	IDTerritorialidade             *string     `json:"id_territorialidade" bson:"id_territorialidade"`
-	IDLogradouro                   *string     `json:"id_logradouro" bson:"id_logradouro"`
-	NumeroLogradouro               *int        `json:"numero_logradouro" bson:"numero_logradouro"`
-	IDUnidadeOrganizacional        string      `json:"id_unidade_organizacional" bson:"id_unidade_organizacional"`
-	NomeUnidadeOrganizacional      string      `json:"nome_unidade_organizacional" bson:"nome_unidade_organizacional"`
-	IDUnidadeOrganizacionalMae     string      `json:"id_unidade_organizacional_mae" bson:"id_unidade_organizacional_mae"`
-	UnidadeOrganizacionalOuvidoria string      `json:"unidade_organizacional_ouvidoria" bson:"unidade_organizacional_ouvidoria"`
-	Categoria                      string      `json:"categoria" bson:"categoria"`
-	IDTipo                         string      `json:"id_tipo" bson:"id_tipo"`
-	Tipo                           string      `json:"tipo" bson:"tipo"`
-	IDSubtipo                      string      `json:"id_subtipo" bson:"id_subtipo"`
-	Subtipo                        string      `json:"subtipo" bson:"subtipo"`
-	Status                         string      `json:"status" bson:"status"`
-	Longitude                      *float64    `json:"longitude" bson:"longitude"`
-	Latitude                       *float64    `json:"latitude" bson:"latitude"`
-	DataAlvoFinalizacao            *time.Time  `json:"data_alvo_finalizacao" bson:"data_alvo_finalizacao"`
-	DataAlvoDiagnostico            *time.Time  `json:"data_alvo_diagnostico" bson:"data_alvo_diagnostico"`
-	DataRealDiagnostico            *time.Time  `json:"data_real_diagnostico" bson:"data_real_diagnostico"`
-	TempoPrazo                     interface{} `json:"tempo_prazo" bson:"tempo_prazo"`
-	PrazoUnidade                   string      `json:"prazo_unidade" bson:"prazo_unidade"`
-	PrazoTipo                      string      `json:"prazo_tipo" bson:"prazo_tipo"`
-	DentroPrazo                    string      `json:"dentro_prazo" bson:"dentro_prazo"`
-	Situacao                       string      `json:"situacao" bson:"situacao"`
-	TipoSituacao                   string      `json:"tipo_situacao" bson:"tipo_situacao"`
-	JustificativaStatus            interface{} `json:"justificativa_status" bson:"justificativa_status"`
-	Reclamacoes                    int         `json:"reclamacoes" bson:"reclamacoes"`
-	Descricao                      *string     `json:"descricao" bson:"descricao"`
-	Indicador                      bool        `json:"indicador" bson:"indicador"`
-	TotalChamados                  int         `json:"total_chamados" bson:"total_chamados"`
-	TotalFechados                  int         `json:"total_fechados" bson:"total_fechados"`
-	Endereco                       *string     `json:"endereco,omitempty" bson:"-"` // Human-readable address, built on demand
+	ID                        string     `json:"id"`
+	CPF                       string     `json:"cpf"`
+	IDChamado                 string     `json:"id_chamado"`                 // Maps from MongoDB "id" field
+	Categoria                 string     `json:"categoria"`
+	DataAlvoFinalizacao       *time.Time `json:"data_alvo_finalizacao,omitempty"`
+	DataFim                   *time.Time `json:"data_fim,omitempty"`
+	DataInicio                *time.Time `json:"data_inicio,omitempty"`
+	Descricao                 *string    `json:"descricao,omitempty"`
+	Indicador                 bool       `json:"indicador"`
+	NomeUnidadeOrganizacional string     `json:"nome_unidade_organizacional"`
+	OrigemOcorrencia          string     `json:"origem_ocorrencia"`
+	Status                    string     `json:"status"`
+	Subtipo                   string     `json:"subtipo"`
+	Tipo                      string     `json:"tipo"`
+	Endereco                  *string    `json:"endereco,omitempty"` // Pre-built address string
+	TotalChamados             int        `json:"total_chamados"`
+	TotalFechados             int        `json:"total_fechados"`
 }
 
 // ConvertToMaintenanceRequest converts a MaintenanceRequestDocument to a MaintenanceRequest for backward compatibility
 func (doc *MaintenanceRequestDocument) ConvertToMaintenanceRequest() *MaintenanceRequest {
 	// Helper function to parse time from string
-	parseTime := func(timeStr *string) *time.Time {
-		if timeStr == nil || *timeStr == "" {
+	parseTime := func(timeStr string) *time.Time {
+		if timeStr == "" {
 			return nil
 		}
 		// Try multiple time formats
@@ -446,7 +406,7 @@ func (doc *MaintenanceRequestDocument) ConvertToMaintenanceRequest() *Maintenanc
 			"2006-01-02",
 		}
 		for _, format := range formats {
-			if t, err := time.Parse(format, *timeStr); err == nil {
+			if t, err := time.Parse(format, timeStr); err == nil {
 				return &t
 			}
 		}
@@ -461,54 +421,25 @@ func (doc *MaintenanceRequestDocument) ConvertToMaintenanceRequest() *Maintenanc
 		return &s
 	}
 
-	// Helper function to safely handle int to pointer
-	intPtr := func(i int) *int {
-		if i == 0 {
-			return nil
-		}
-		return &i
-	}
-
-	// Use flat structure mapping (new format)
+	// Map from new simplified MongoDB structure to API response
 	return &MaintenanceRequest{
-		ID:                             doc.ID,
-		CPF:                            doc.CPF,
-		OrigemOcorrencia:               doc.OrigemOcorrencia,
-		IDChamado:                      doc.IDChamado,
-		IDOrigemOcorrencia:             doc.IDOrigemOcorrencia,
-		DataInicio:                     parseTime(&doc.DataInicio),
-		DataFim:                        parseTime(&doc.DataFim),
-		IDBairro:                       stringPtr(doc.IDBairro),
-		IDTerritorialidade:             stringPtr(doc.IDTerritorialidade),
-		IDLogradouro:                   stringPtr(doc.IDLogradouro),
-		NumeroLogradouro:               intPtr(doc.NumeroLogradouro),
-		IDUnidadeOrganizacional:        doc.IDUnidadeOrganizacional,
-		NomeUnidadeOrganizacional:      doc.NomeUnidadeOrganizacional,
-		IDUnidadeOrganizacionalMae:     doc.IDUnidadeOrganizacionalMae,
-		UnidadeOrganizacionalOuvidoria: doc.UnidadeOrganizacionalOuvidoria,
-		Categoria:                      doc.Categoria,
-		IDTipo:                         doc.IDTipo,
-		Tipo:                           doc.Tipo,
-		IDSubtipo:                      doc.IDSubtipo,
-		Subtipo:                        doc.Subtipo,
-		Status:                         doc.Status,
-		Longitude:                      doc.Longitude,
-		Latitude:                       doc.Latitude,
-		DataAlvoFinalizacao:            parseTime(&doc.DataAlvoFinalizacao),
-		DataAlvoDiagnostico:            parseTime(&doc.DataAlvoDiagnostico),
-		DataRealDiagnostico:            parseTime(&doc.DataRealDiagnostico),
-		TempoPrazo:                     doc.TempoPrazo,
-		PrazoUnidade:                   doc.PrazoUnidade,
-		PrazoTipo:                      doc.PrazoTipo,
-		DentroPrazo:                    doc.DentroPrazo,
-		Situacao:                       doc.Situacao,
-		TipoSituacao:                   doc.TipoSituacao,
-		JustificativaStatus:            doc.JustificativaStatus,
-		Reclamacoes:                    doc.Reclamacoes,
-		Descricao:                      stringPtr(doc.Descricao),
-		Indicador:                      false, // Default value since not in flat structure
-		TotalChamados:                  0,     // Default value since not in flat structure
-		TotalFechados:                  0,     // Default value since not in flat structure
+		ID:                        doc.ID,
+		CPF:                       doc.CPF,
+		IDChamado:                 doc.IDChamado, // MongoDB "id" field maps to "id_chamado" in API
+		Categoria:                 doc.Categoria,
+		DataAlvoFinalizacao:       parseTime(doc.DataAlvoFinalizacao),
+		DataFim:                   parseTime(doc.DataFim),
+		DataInicio:                parseTime(doc.DataInicio),
+		Descricao:                 stringPtr(doc.Descricao),
+		Indicador:                 doc.Indicador,
+		NomeUnidadeOrganizacional: doc.NomeUnidadeOrganizacional,
+		OrigemOcorrencia:          doc.OrigemOcorrencia,
+		Status:                    doc.Status,
+		Subtipo:                   doc.Subtipo,
+		Tipo:                      doc.Tipo,
+		Endereco:                  stringPtr(doc.Endereco),
+		TotalChamados:             doc.TotalChamados,
+		TotalFechados:             doc.TotalFechados,
 	}
 }
 
