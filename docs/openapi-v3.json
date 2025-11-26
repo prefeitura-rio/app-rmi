@@ -8012,9 +8012,6 @@
           "cpf": {
             "type": "string"
           },
-          "data_alvo_diagnostico": {
-            "type": "string"
-          },
           "data_alvo_finalizacao": {
             "type": "string"
           },
@@ -8024,78 +8021,27 @@
           "data_inicio": {
             "type": "string"
           },
-          "data_real_diagnostico": {
-            "type": "string"
-          },
-          "dentro_prazo": {
-            "type": "string"
-          },
           "descricao": {
             "type": "string"
           },
           "endereco": {
-            "description": "Human-readable address, built on demand",
+            "description": "Pre-built address string",
             "type": "string"
           },
           "id": {
             "type": "string"
           },
-          "id_bairro": {
-            "type": "string"
-          },
           "id_chamado": {
-            "type": "string"
-          },
-          "id_logradouro": {
-            "type": "string"
-          },
-          "id_origem_ocorrencia": {
-            "type": "string"
-          },
-          "id_subtipo": {
-            "type": "string"
-          },
-          "id_territorialidade": {
-            "type": "string"
-          },
-          "id_tipo": {
-            "type": "string"
-          },
-          "id_unidade_organizacional": {
-            "type": "string"
-          },
-          "id_unidade_organizacional_mae": {
+            "description": "Maps from MongoDB \"id\" field",
             "type": "string"
           },
           "indicador": {
             "type": "boolean"
           },
-          "justificativa_status": {},
-          "latitude": {
-            "type": "number"
-          },
-          "longitude": {
-            "type": "number"
-          },
           "nome_unidade_organizacional": {
             "type": "string"
           },
-          "numero_logradouro": {
-            "type": "integer"
-          },
           "origem_ocorrencia": {
-            "type": "string"
-          },
-          "prazo_tipo": {
-            "type": "string"
-          },
-          "prazo_unidade": {
-            "type": "string"
-          },
-          "reclamacoes": {
-            "type": "integer"
-          },
-          "situacao": {
             "type": "string"
           },
           "status": {
@@ -8104,11 +8050,7 @@
           "subtipo": {
             "type": "string"
           },
-          "tempo_prazo": {},
           "tipo": {
-            "type": "string"
-          },
-          "tipo_situacao": {
             "type": "string"
           },
           "total_chamados": {
@@ -8116,9 +8058,6 @@
           },
           "total_fechados": {
             "type": "integer"
-          },
-          "unidade_organizacional_ouvidoria": {
-            "type": "string"
           }
         }
       },
