@@ -7902,6 +7902,10 @@
           "cpf": {
             "type": "string"
           },
+          "deficiencia": {
+            "description": "Self-declared, not stored in base collection",
+            "type": "string"
+          },
           "documentos": {
             "description": "Wallet and internal fields",
             "allOf": [
@@ -7918,6 +7922,14 @@
           },
           "endereco": {
             "$ref": "#/components/schemas/models.Endereco"
+          },
+          "escolaridade": {
+            "description": "Self-declared, not stored in base collection",
+            "type": "string"
+          },
+          "genero": {
+            "description": "Self-declared, not stored in base collection",
+            "type": "string"
           },
           "mae": {
             "$ref": "#/components/schemas/models.Mae"
@@ -7942,6 +7954,10 @@
             "$ref": "#/components/schemas/models.Obito"
           },
           "raca": {
+            "type": "string"
+          },
+          "renda_familiar": {
+            "description": "Self-declared, not stored in base collection",
             "type": "string"
           },
           "saude": {
