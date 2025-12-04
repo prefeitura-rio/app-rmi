@@ -1995,6 +1995,673 @@ func GetEthnicityOptions(c *gin.Context) {
 		zap.String("status", "success"))
 }
 
+// UpdateSelfDeclaredGenero godoc
+// @Summary Atualizar gênero autodeclarado
+// @Description Atualiza ou cria o gênero autodeclarado de um cidadão por CPF. Aceita qualquer valor de texto livre, mas as opções sugeridas estão disponíveis no endpoint /citizen/gender/options.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "Número do CPF"
+// @Param data body models.SelfDeclaredGeneroInput true "Gênero autodeclarado"
+// @Security BearerAuth
+// @Success 200 {object} SuccessResponse "Gênero atualizado com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou valor de gênero vazio"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/{cpf}/gender [put]
+func UpdateSelfDeclaredGenero(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "UpdateSelfDeclaredGenero")
+	defer span.End()
+
+	cpf := c.Param("cpf")
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+
+	span.SetAttributes(
+		attribute.String("cpf", cpf),
+		attribute.String("operation", "update_gender"),
+		attribute.String("service", "citizen"),
+	)
+
+	logger.Debug("UpdateSelfDeclaredGenero called", zap.String("cpf", cpf))
+
+	ctx, inputSpan := utils.TraceInputParsing(ctx, "gender")
+	var input models.SelfDeclaredGeneroInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.RecordErrorInSpan(inputSpan, err, map[string]interface{}{
+			"error.type": "input_parsing",
+			"input.type": "SelfDeclaredGeneroInput",
+		})
+		inputSpan.End()
+		logger.Error("failed to parse input", zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid input format"})
+		return
+	}
+	utils.AddSpanAttribute(inputSpan, "input.valor", input.Valor)
+	inputSpan.End()
+
+	ctx, validationSpan := utils.TraceInputValidation(ctx, "gender_value", "gender")
+	if !models.IsValidGender(input.Valor) {
+		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("invalid gender value: %s", input.Valor), map[string]interface{}{
+			"invalid_value": input.Valor,
+		})
+		validationSpan.End()
+		logger.Error("invalid gender value", zap.String("value", input.Valor))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "gender cannot be empty"})
+		return
+	}
+	utils.AddSpanAttribute(validationSpan, "validated_value", input.Valor)
+	validationSpan.End()
+
+	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
+	var selfDeclared models.SelfDeclaredData
+	err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&selfDeclared)
+	if err != nil && err != mongo.ErrNoDocuments {
+		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{
+			"db.collection": config.AppConfig.SelfDeclaredCollection,
+			"db.filter":     "cpf",
+		})
+		findSpan.End()
+		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
+		logger.Error("failed to get self-declared data", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	oldGenero := ""
+	if selfDeclared.Genero != nil {
+		oldGenero = *selfDeclared.Genero
+	}
+	utils.AddSpanAttribute(findSpan, "old_gender", oldGenero)
+	utils.AddSpanAttribute(findSpan, "document_exists", err != mongo.ErrNoDocuments)
+	findSpan.End()
+
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_gender_via_cache")
+	cacheService := services.NewCacheService()
+	err = cacheService.UpdateSelfDeclaredGenero(ctx, cpf, input.Valor)
+	if err != nil {
+		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
+			"cache.operation": "update_self_declared_genero",
+			"cache.service":   "unified_cache_service",
+		})
+		updateSpan.End()
+		observability.DatabaseOperations.WithLabelValues("update", "error").Inc()
+		logger.Error("failed to update self-declared gender via cache service", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	utils.AddSpanAttribute(updateSpan, "new_gender", input.Valor)
+	updateSpan.End()
+
+	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+	observability.SelfDeclaredUpdates.WithLabelValues("success").Inc()
+
+	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
+	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	cacheStart := time.Now()
+	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_error", err.Error())
+		logger.Warn("failed to invalidate old cache", zap.Error(err))
+	} else {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_success", true)
+	}
+	cacheDuration := time.Since(cacheStart)
+	utils.AddSpanAttribute(cacheSpan, "cache.duration_ms", cacheDuration.Milliseconds())
+	cacheSpan.End()
+
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared gender updated successfully"})
+	responseSpan.End()
+
+	totalDuration := time.Since(startTime)
+	logger.Debug("UpdateSelfDeclaredGenero completed",
+		zap.String("cpf", cpf),
+		zap.Duration("total_duration", totalDuration),
+		zap.Duration("cache_duration", cacheDuration),
+		zap.String("status", "success"))
+}
+
+// GetGenderOptions godoc
+// @Summary Listar opções de gênero
+// @Description Retorna a lista de opções sugeridas de gênero para autodeclaração. Nota: Este campo aceita qualquer texto livre para a opção "Outro".
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Success 200 {array} string "Lista de opções de gênero sugeridas obtida com sucesso"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/gender/options [get]
+func GetGenderOptions(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "GetGenderOptions")
+	defer span.End()
+
+	logger := observability.Logger()
+
+	span.SetAttributes(
+		attribute.String("operation", "get_gender_options"),
+		attribute.String("service", "citizen"),
+	)
+
+	logger.Debug("GetGenderOptions called")
+
+	ctx, optionsSpan := utils.TraceBusinessLogic(ctx, "get_valid_gender_options")
+	options := models.ValidGenderOptions()
+	utils.AddSpanAttribute(optionsSpan, "options.count", len(options))
+	optionsSpan.End()
+
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, options)
+	responseSpan.End()
+
+	totalDuration := time.Since(startTime)
+	logger.Debug("GetGenderOptions completed",
+		zap.Int("options_count", len(options)),
+		zap.Duration("total_duration", totalDuration),
+		zap.String("status", "success"))
+}
+
+// UpdateSelfDeclaredRendaFamiliar godoc
+// @Summary Atualizar renda familiar autodeclarada
+// @Description Atualiza ou cria a renda familiar mensal autodeclarada de um cidadão por CPF. O valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/family-income/options.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "Número do CPF"
+// @Param data body models.SelfDeclaredRendaFamiliarInput true "Renda familiar autodeclarada"
+// @Security BearerAuth
+// @Success 200 {object} SuccessResponse "Renda familiar atualizada com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou valor de renda familiar inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - valor de renda familiar não é válido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/{cpf}/family-income [put]
+func UpdateSelfDeclaredRendaFamiliar(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "UpdateSelfDeclaredRendaFamiliar")
+	defer span.End()
+
+	cpf := c.Param("cpf")
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+
+	span.SetAttributes(
+		attribute.String("cpf", cpf),
+		attribute.String("operation", "update_family_income"),
+		attribute.String("service", "citizen"),
+	)
+
+	logger.Debug("UpdateSelfDeclaredRendaFamiliar called", zap.String("cpf", cpf))
+
+	ctx, inputSpan := utils.TraceInputParsing(ctx, "family_income")
+	var input models.SelfDeclaredRendaFamiliarInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.RecordErrorInSpan(inputSpan, err, map[string]interface{}{
+			"error.type": "input_parsing",
+			"input.type": "SelfDeclaredRendaFamiliarInput",
+		})
+		inputSpan.End()
+		logger.Error("failed to parse input", zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid input format"})
+		return
+	}
+	utils.AddSpanAttribute(inputSpan, "input.valor", input.Valor)
+	inputSpan.End()
+
+	ctx, validationSpan := utils.TraceInputValidation(ctx, "family_income_value", "family_income")
+	if !models.IsValidFamilyIncome(input.Valor) {
+		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("invalid family income value: %s", input.Valor), map[string]interface{}{
+			"invalid_value": input.Valor,
+		})
+		validationSpan.End()
+		logger.Error("invalid family income value", zap.String("value", input.Valor))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid family income value"})
+		return
+	}
+	utils.AddSpanAttribute(validationSpan, "validated_value", input.Valor)
+	validationSpan.End()
+
+	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
+	var selfDeclared models.SelfDeclaredData
+	err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&selfDeclared)
+	if err != nil && err != mongo.ErrNoDocuments {
+		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{
+			"db.collection": config.AppConfig.SelfDeclaredCollection,
+			"db.filter":     "cpf",
+		})
+		findSpan.End()
+		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
+		logger.Error("failed to get self-declared data", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	oldRendaFamiliar := ""
+	if selfDeclared.RendaFamiliar != nil {
+		oldRendaFamiliar = *selfDeclared.RendaFamiliar
+	}
+	utils.AddSpanAttribute(findSpan, "old_family_income", oldRendaFamiliar)
+	utils.AddSpanAttribute(findSpan, "document_exists", err != mongo.ErrNoDocuments)
+	findSpan.End()
+
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_family_income_via_cache")
+	cacheService := services.NewCacheService()
+	err = cacheService.UpdateSelfDeclaredRendaFamiliar(ctx, cpf, input.Valor)
+	if err != nil {
+		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
+			"cache.operation": "update_self_declared_renda_familiar",
+			"cache.service":   "unified_cache_service",
+		})
+		updateSpan.End()
+		observability.DatabaseOperations.WithLabelValues("update", "error").Inc()
+		logger.Error("failed to update self-declared family income via cache service", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	utils.AddSpanAttribute(updateSpan, "new_family_income", input.Valor)
+	updateSpan.End()
+
+	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+	observability.SelfDeclaredUpdates.WithLabelValues("success").Inc()
+
+	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
+	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	cacheStart := time.Now()
+	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_error", err.Error())
+		logger.Warn("failed to invalidate old cache", zap.Error(err))
+	} else {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_success", true)
+	}
+	cacheDuration := time.Since(cacheStart)
+	utils.AddSpanAttribute(cacheSpan, "cache.duration_ms", cacheDuration.Milliseconds())
+	cacheSpan.End()
+
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared family income updated successfully"})
+	responseSpan.End()
+
+	totalDuration := time.Since(startTime)
+	logger.Debug("UpdateSelfDeclaredRendaFamiliar completed",
+		zap.String("cpf", cpf),
+		zap.Duration("total_duration", totalDuration),
+		zap.Duration("cache_duration", cacheDuration),
+		zap.String("status", "success"))
+}
+
+// GetFamilyIncomeOptions godoc
+// @Summary Listar opções de renda familiar
+// @Description Retorna a lista de opções válidas de faixas de renda familiar mensal para autodeclaração.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Success 200 {array} string "Lista de opções de renda familiar válidas obtida com sucesso"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/family-income/options [get]
+func GetFamilyIncomeOptions(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "GetFamilyIncomeOptions")
+	defer span.End()
+
+	logger := observability.Logger()
+
+	span.SetAttributes(
+		attribute.String("operation", "get_family_income_options"),
+		attribute.String("service", "citizen"),
+	)
+
+	logger.Debug("GetFamilyIncomeOptions called")
+
+	ctx, optionsSpan := utils.TraceBusinessLogic(ctx, "get_valid_family_income_options")
+	options := models.ValidFamilyIncomeOptions()
+	utils.AddSpanAttribute(optionsSpan, "options.count", len(options))
+	optionsSpan.End()
+
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, options)
+	responseSpan.End()
+
+	totalDuration := time.Since(startTime)
+	logger.Debug("GetFamilyIncomeOptions completed",
+		zap.Int("options_count", len(options)),
+		zap.Duration("total_duration", totalDuration),
+		zap.String("status", "success"))
+}
+
+// UpdateSelfDeclaredEscolaridade godoc
+// @Summary Atualizar escolaridade autodeclarada
+// @Description Atualiza ou cria o nível de escolaridade autodeclarado de um cidadão por CPF. O valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/education/options.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "Número do CPF"
+// @Param data body models.SelfDeclaredEscolaridadeInput true "Escolaridade autodeclarada"
+// @Security BearerAuth
+// @Success 200 {object} SuccessResponse "Escolaridade atualizada com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou valor de escolaridade inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - valor de escolaridade não é válido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/{cpf}/education [put]
+func UpdateSelfDeclaredEscolaridade(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "UpdateSelfDeclaredEscolaridade")
+	defer span.End()
+
+	cpf := c.Param("cpf")
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+
+	span.SetAttributes(
+		attribute.String("cpf", cpf),
+		attribute.String("operation", "update_education"),
+		attribute.String("service", "citizen"),
+	)
+
+	logger.Debug("UpdateSelfDeclaredEscolaridade called", zap.String("cpf", cpf))
+
+	ctx, inputSpan := utils.TraceInputParsing(ctx, "education")
+	var input models.SelfDeclaredEscolaridadeInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.RecordErrorInSpan(inputSpan, err, map[string]interface{}{
+			"error.type": "input_parsing",
+			"input.type": "SelfDeclaredEscolaridadeInput",
+		})
+		inputSpan.End()
+		logger.Error("failed to parse input", zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid input format"})
+		return
+	}
+	utils.AddSpanAttribute(inputSpan, "input.valor", input.Valor)
+	inputSpan.End()
+
+	ctx, validationSpan := utils.TraceInputValidation(ctx, "education_value", "education")
+	if !models.IsValidEducation(input.Valor) {
+		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("invalid education value: %s", input.Valor), map[string]interface{}{
+			"invalid_value": input.Valor,
+		})
+		validationSpan.End()
+		logger.Error("invalid education value", zap.String("value", input.Valor))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid education value"})
+		return
+	}
+	utils.AddSpanAttribute(validationSpan, "validated_value", input.Valor)
+	validationSpan.End()
+
+	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
+	var selfDeclared models.SelfDeclaredData
+	err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&selfDeclared)
+	if err != nil && err != mongo.ErrNoDocuments {
+		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{
+			"db.collection": config.AppConfig.SelfDeclaredCollection,
+			"db.filter":     "cpf",
+		})
+		findSpan.End()
+		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
+		logger.Error("failed to get self-declared data", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	oldEscolaridade := ""
+	if selfDeclared.Escolaridade != nil {
+		oldEscolaridade = *selfDeclared.Escolaridade
+	}
+	utils.AddSpanAttribute(findSpan, "old_education", oldEscolaridade)
+	utils.AddSpanAttribute(findSpan, "document_exists", err != mongo.ErrNoDocuments)
+	findSpan.End()
+
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_education_via_cache")
+	cacheService := services.NewCacheService()
+	err = cacheService.UpdateSelfDeclaredEscolaridade(ctx, cpf, input.Valor)
+	if err != nil {
+		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
+			"cache.operation": "update_self_declared_escolaridade",
+			"cache.service":   "unified_cache_service",
+		})
+		updateSpan.End()
+		observability.DatabaseOperations.WithLabelValues("update", "error").Inc()
+		logger.Error("failed to update self-declared education via cache service", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	utils.AddSpanAttribute(updateSpan, "new_education", input.Valor)
+	updateSpan.End()
+
+	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+	observability.SelfDeclaredUpdates.WithLabelValues("success").Inc()
+
+	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
+	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	cacheStart := time.Now()
+	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_error", err.Error())
+		logger.Warn("failed to invalidate old cache", zap.Error(err))
+	} else {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_success", true)
+	}
+	cacheDuration := time.Since(cacheStart)
+	utils.AddSpanAttribute(cacheSpan, "cache.duration_ms", cacheDuration.Milliseconds())
+	cacheSpan.End()
+
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared education updated successfully"})
+	responseSpan.End()
+
+	totalDuration := time.Since(startTime)
+	logger.Debug("UpdateSelfDeclaredEscolaridade completed",
+		zap.String("cpf", cpf),
+		zap.Duration("total_duration", totalDuration),
+		zap.Duration("cache_duration", cacheDuration),
+		zap.String("status", "success"))
+}
+
+// GetEducationOptions godoc
+// @Summary Listar opções de escolaridade
+// @Description Retorna a lista de opções válidas de níveis de escolaridade para autodeclaração.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Success 200 {array} string "Lista de opções de escolaridade válidas obtida com sucesso"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/education/options [get]
+func GetEducationOptions(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "GetEducationOptions")
+	defer span.End()
+
+	logger := observability.Logger()
+
+	span.SetAttributes(
+		attribute.String("operation", "get_education_options"),
+		attribute.String("service", "citizen"),
+	)
+
+	logger.Debug("GetEducationOptions called")
+
+	ctx, optionsSpan := utils.TraceBusinessLogic(ctx, "get_valid_education_options")
+	options := models.ValidEducationOptions()
+	utils.AddSpanAttribute(optionsSpan, "options.count", len(options))
+	optionsSpan.End()
+
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, options)
+	responseSpan.End()
+
+	totalDuration := time.Since(startTime)
+	logger.Debug("GetEducationOptions completed",
+		zap.Int("options_count", len(options)),
+		zap.Duration("total_duration", totalDuration),
+		zap.String("status", "success"))
+}
+
+// UpdateSelfDeclaredDeficiencia godoc
+// @Summary Atualizar deficiência autodeclarada
+// @Description Atualiza ou cria a condição de deficiência autodeclarada de um cidadão por CPF. O valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/disability/options.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "Número do CPF"
+// @Param data body models.SelfDeclaredDeficienciaInput true "Deficiência autodeclarada"
+// @Security BearerAuth
+// @Success 200 {object} SuccessResponse "Deficiência atualizada com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou valor de deficiência inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 422 {object} ErrorResponse "Dados não processáveis - valor de deficiência não é válido"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/{cpf}/disability [put]
+func UpdateSelfDeclaredDeficiencia(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "UpdateSelfDeclaredDeficiencia")
+	defer span.End()
+
+	cpf := c.Param("cpf")
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+
+	span.SetAttributes(
+		attribute.String("cpf", cpf),
+		attribute.String("operation", "update_disability"),
+		attribute.String("service", "citizen"),
+	)
+
+	logger.Debug("UpdateSelfDeclaredDeficiencia called", zap.String("cpf", cpf))
+
+	ctx, inputSpan := utils.TraceInputParsing(ctx, "disability")
+	var input models.SelfDeclaredDeficienciaInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.RecordErrorInSpan(inputSpan, err, map[string]interface{}{
+			"error.type": "input_parsing",
+			"input.type": "SelfDeclaredDeficienciaInput",
+		})
+		inputSpan.End()
+		logger.Error("failed to parse input", zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid input format"})
+		return
+	}
+	utils.AddSpanAttribute(inputSpan, "input.valor", input.Valor)
+	inputSpan.End()
+
+	ctx, validationSpan := utils.TraceInputValidation(ctx, "disability_value", "disability")
+	if !models.IsValidDisability(input.Valor) {
+		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("invalid disability value: %s", input.Valor), map[string]interface{}{
+			"invalid_value": input.Valor,
+		})
+		validationSpan.End()
+		logger.Error("invalid disability value", zap.String("value", input.Valor))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid disability value"})
+		return
+	}
+	utils.AddSpanAttribute(validationSpan, "validated_value", input.Valor)
+	validationSpan.End()
+
+	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
+	var selfDeclared models.SelfDeclaredData
+	err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&selfDeclared)
+	if err != nil && err != mongo.ErrNoDocuments {
+		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{
+			"db.collection": config.AppConfig.SelfDeclaredCollection,
+			"db.filter":     "cpf",
+		})
+		findSpan.End()
+		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
+		logger.Error("failed to get self-declared data", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+
+	oldDeficiencia := ""
+	if selfDeclared.Deficiencia != nil {
+		oldDeficiencia = *selfDeclared.Deficiencia
+	}
+	utils.AddSpanAttribute(findSpan, "old_disability", oldDeficiencia)
+	utils.AddSpanAttribute(findSpan, "document_exists", err != mongo.ErrNoDocuments)
+	findSpan.End()
+
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_disability_via_cache")
+	cacheService := services.NewCacheService()
+	err = cacheService.UpdateSelfDeclaredDeficiencia(ctx, cpf, input.Valor)
+	if err != nil {
+		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
+			"cache.operation": "update_self_declared_deficiencia",
+			"cache.service":   "unified_cache_service",
+		})
+		updateSpan.End()
+		observability.DatabaseOperations.WithLabelValues("update", "error").Inc()
+		logger.Error("failed to update self-declared disability via cache service", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	utils.AddSpanAttribute(updateSpan, "new_disability", input.Valor)
+	updateSpan.End()
+
+	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+	observability.SelfDeclaredUpdates.WithLabelValues("success").Inc()
+
+	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
+	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	cacheStart := time.Now()
+	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_error", err.Error())
+		logger.Warn("failed to invalidate old cache", zap.Error(err))
+	} else {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_success", true)
+	}
+	cacheDuration := time.Since(cacheStart)
+	utils.AddSpanAttribute(cacheSpan, "cache.duration_ms", cacheDuration.Milliseconds())
+	cacheSpan.End()
+
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared disability updated successfully"})
+	responseSpan.End()
+
+	totalDuration := time.Since(startTime)
+	logger.Debug("UpdateSelfDeclaredDeficiencia completed",
+		zap.String("cpf", cpf),
+		zap.Duration("total_duration", totalDuration),
+		zap.Duration("cache_duration", cacheDuration),
+		zap.String("status", "success"))
+}
+
+// GetDisabilityOptions godoc
+// @Summary Listar opções de deficiência
+// @Description Retorna a lista de opções válidas de condições de deficiência para autodeclaração.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Success 200 {array} string "Lista de opções de deficiência válidas obtida com sucesso"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/disability/options [get]
+func GetDisabilityOptions(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "GetDisabilityOptions")
+	defer span.End()
+
+	logger := observability.Logger()
+
+	span.SetAttributes(
+		attribute.String("operation", "get_disability_options"),
+		attribute.String("service", "citizen"),
+	)
+
+	logger.Debug("GetDisabilityOptions called")
+
+	ctx, optionsSpan := utils.TraceBusinessLogic(ctx, "get_valid_disability_options")
+	options := models.ValidDisabilityOptions()
+	utils.AddSpanAttribute(optionsSpan, "options.count", len(options))
+	optionsSpan.End()
+
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, options)
+	responseSpan.End()
+
+	totalDuration := time.Since(startTime)
+	logger.Debug("GetDisabilityOptions completed",
+		zap.Int("options_count", len(options)),
+		zap.Duration("total_duration", totalDuration),
+		zap.String("status", "success"))
+}
+
 // GetCitizenWallet godoc
 // @Summary Obter dados da carteira do cidadão
 // @Description Recupera os dados da carteira do cidadão por CPF, incluindo informações de saúde e outros dados da carteira.

@@ -11,6 +11,10 @@ type SelfDeclaredData struct {
 	TelefonePending *Telefone `bson:"telefone_pending,omitempty" json:"telefone_pending"`
 	Raca            *string   `bson:"raca,omitempty" json:"raca"`
 	NomeExibicao    *string   `bson:"nome_exibicao,omitempty" json:"nome_exibicao"`
+	Genero          *string   `bson:"genero,omitempty" json:"genero"`
+	RendaFamiliar   *string   `bson:"renda_familiar,omitempty" json:"renda_familiar"`
+	Escolaridade    *string   `bson:"escolaridade,omitempty" json:"escolaridade"`
+	Deficiencia     *string   `bson:"deficiencia,omitempty" json:"deficiencia"`
 	Version         int32     `bson:"version,omitempty" json:"version,omitempty"`
 	UpdatedAt       time.Time `bson:"updated_at" json:"updated_at"`
 }

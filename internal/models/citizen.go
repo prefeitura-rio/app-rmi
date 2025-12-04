@@ -475,3 +475,93 @@ func IsValidEthnicity(value string) bool {
 	}
 	return false
 }
+
+// ValidGenderOptions returns a list of suggested gender options
+// Note: Gender accepts any value (free text for "Outro"), but these are the suggested options
+func ValidGenderOptions() []string {
+	return []string{
+		"Homem cisgênero",
+		"Homem transgênero",
+		"Mulher cisgênero",
+		"Mulher transgênero",
+		"Não binário",
+		"Prefiro não informar",
+		"Outro",
+	}
+}
+
+// IsValidGender always returns true as gender accepts free-form text
+// The suggested options are just recommendations
+func IsValidGender(value string) bool {
+	return len(value) > 0 // Just check non-empty
+}
+
+// ValidFamilyIncomeOptions returns a list of valid family income ranges
+func ValidFamilyIncomeOptions() []string {
+	return []string{
+		"Menos de 1 salário mínimo",
+		"1 a 2 salários mínimos",
+		"2 a 3 salários mínimos",
+		"3 a 5 salários mínimos",
+		"Mais de 5 salários mínimos",
+	}
+}
+
+// IsValidFamilyIncome checks if a given family income value is valid
+func IsValidFamilyIncome(value string) bool {
+	for _, valid := range ValidFamilyIncomeOptions() {
+		if valid == value {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidEducationOptions returns a list of valid education level options
+func ValidEducationOptions() []string {
+	return []string{
+		"Fundamental incompleto",
+		"Fundamental completo",
+		"Médio incompleto",
+		"Médio completo",
+		"Superior incompleto",
+		"Superior completo",
+		"Pós Graduação",
+		"Mestrado",
+		"Doutorado",
+	}
+}
+
+// IsValidEducation checks if a given education value is valid
+func IsValidEducation(value string) bool {
+	for _, valid := range ValidEducationOptions() {
+		if valid == value {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidDisabilityOptions returns a list of valid disability options
+func ValidDisabilityOptions() []string {
+	return []string{
+		"Não sou pessoa com deficiência",
+		"Física",
+		"Auditiva",
+		"Visual",
+		"Transtorno do Espectro Autista",
+		"Intelectual",
+		"Mental (psicossocial)",
+		"Reabilitado do INSS",
+	}
+}
+
+// IsValidDisability checks if a given disability value is valid
+func IsValidDisability(value string) bool {
+	for _, valid := range ValidDisabilityOptions() {
+		if valid == value {
+			return true
+		}
+	}
+	return false
+}

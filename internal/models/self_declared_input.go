@@ -29,3 +29,19 @@ type SelfDeclaredRacaInput struct {
 type SelfDeclaredNomeExibicaoInput struct {
 	Valor string `json:"valor" binding:"required"`
 }
+
+type SelfDeclaredGeneroInput struct {
+	Valor string `json:"valor" binding:"required"`
+}
+
+type SelfDeclaredRendaFamiliarInput struct {
+	Valor string `json:"valor" binding:"required"`
+}
+
+type SelfDeclaredEscolaridadeInput struct {
+	Valor string `json:"valor" binding:"required"`
+}
+
+type SelfDeclaredDeficienciaInput struct {
+	Valor string `json:"valor" binding:"required"`
+}

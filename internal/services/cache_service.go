@@ -86,6 +86,54 @@ func (s *CacheService) UpdateSelfDeclaredNomeExibicao(ctx context.Context, cpf s
 	return dataManager.Write(ctx, op)
 }
 
+// UpdateSelfDeclaredGenero updates self-declared gender via cache system
+func (s *CacheService) UpdateSelfDeclaredGenero(ctx context.Context, cpf string, genero string) error {
+	op := &SelfDeclaredGeneroDataOperation{
+		CPF:       cpf,
+		Genero:    genero,
+		UpdatedAt: time.Now(),
+	}
+
+	dataManager := NewDataManager(config.Redis, config.MongoDB, s.logger)
+	return dataManager.Write(ctx, op)
+}
+
+// UpdateSelfDeclaredRendaFamiliar updates self-declared family income via cache system
+func (s *CacheService) UpdateSelfDeclaredRendaFamiliar(ctx context.Context, cpf string, rendaFamiliar string) error {
+	op := &SelfDeclaredRendaFamiliarDataOperation{
+		CPF:           cpf,
+		RendaFamiliar: rendaFamiliar,
+		UpdatedAt:     time.Now(),
+	}
+
+	dataManager := NewDataManager(config.Redis, config.MongoDB, s.logger)
+	return dataManager.Write(ctx, op)
+}
+
+// UpdateSelfDeclaredEscolaridade updates self-declared education level via cache system
+func (s *CacheService) UpdateSelfDeclaredEscolaridade(ctx context.Context, cpf string, escolaridade string) error {
+	op := &SelfDeclaredEscolaridadeDataOperation{
+		CPF:          cpf,
+		Escolaridade: escolaridade,
+		UpdatedAt:    time.Now(),
+	}
+
+	dataManager := NewDataManager(config.Redis, config.MongoDB, s.logger)
+	return dataManager.Write(ctx, op)
+}
+
+// UpdateSelfDeclaredDeficiencia updates self-declared disability via cache system
+func (s *CacheService) UpdateSelfDeclaredDeficiencia(ctx context.Context, cpf string, deficiencia string) error {
+	op := &SelfDeclaredDeficienciaDataOperation{
+		CPF:         cpf,
+		Deficiencia: deficiencia,
+		UpdatedAt:   time.Now(),
+	}
+
+	dataManager := NewDataManager(config.Redis, config.MongoDB, s.logger)
+	return dataManager.Write(ctx, op)
+}
+
 // UpdateUserConfig updates user configuration via cache system
 func (s *CacheService) UpdateUserConfig(ctx context.Context, userID string, userConfig *models.UserConfig) error {
 	op := &UserConfigDataOperation{

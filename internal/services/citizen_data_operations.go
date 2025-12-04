@@ -403,3 +403,147 @@ func (op *SelfDeclaredNomeExibicaoDataOperation) GetTTL() time.Duration {
 func (op *SelfDeclaredNomeExibicaoDataOperation) GetType() string {
 	return "self_declared_nome_exibicao"
 }
+
+// SelfDeclaredGeneroDataOperation implements DataOperation for self-declared gender data
+type SelfDeclaredGeneroDataOperation struct {
+	CPF       string
+	Genero    string
+	UpdatedAt time.Time
+}
+
+// GetKey returns the CPF as the key
+func (op *SelfDeclaredGeneroDataOperation) GetKey() string {
+	return op.CPF
+}
+
+// GetCollection returns the self-declared collection name
+func (op *SelfDeclaredGeneroDataOperation) GetCollection() string {
+	return "self_declared"
+}
+
+// GetData returns the self-declared gender data
+func (op *SelfDeclaredGeneroDataOperation) GetData() interface{} {
+	return map[string]interface{}{
+		"cpf":        op.CPF,
+		"genero":     op.Genero,
+		"updated_at": op.UpdatedAt,
+	}
+}
+
+// GetTTL returns the TTL for self-declared gender data (24 hours)
+func (op *SelfDeclaredGeneroDataOperation) GetTTL() time.Duration {
+	return 24 * time.Hour
+}
+
+// GetType returns the operation type
+func (op *SelfDeclaredGeneroDataOperation) GetType() string {
+	return "self_declared_genero"
+}
+
+// SelfDeclaredRendaFamiliarDataOperation implements DataOperation for self-declared family income data
+type SelfDeclaredRendaFamiliarDataOperation struct {
+	CPF           string
+	RendaFamiliar string
+	UpdatedAt     time.Time
+}
+
+// GetKey returns the CPF as the key
+func (op *SelfDeclaredRendaFamiliarDataOperation) GetKey() string {
+	return op.CPF
+}
+
+// GetCollection returns the self-declared collection name
+func (op *SelfDeclaredRendaFamiliarDataOperation) GetCollection() string {
+	return "self_declared"
+}
+
+// GetData returns the self-declared family income data
+func (op *SelfDeclaredRendaFamiliarDataOperation) GetData() interface{} {
+	return map[string]interface{}{
+		"cpf":            op.CPF,
+		"renda_familiar": op.RendaFamiliar,
+		"updated_at":     op.UpdatedAt,
+	}
+}
+
+// GetTTL returns the TTL for self-declared family income data (24 hours)
+func (op *SelfDeclaredRendaFamiliarDataOperation) GetTTL() time.Duration {
+	return 24 * time.Hour
+}
+
+// GetType returns the operation type
+func (op *SelfDeclaredRendaFamiliarDataOperation) GetType() string {
+	return "self_declared_renda_familiar"
+}
+
+// SelfDeclaredEscolaridadeDataOperation implements DataOperation for self-declared education level data
+type SelfDeclaredEscolaridadeDataOperation struct {
+	CPF          string
+	Escolaridade string
+	UpdatedAt    time.Time
+}
+
+// GetKey returns the CPF as the key
+func (op *SelfDeclaredEscolaridadeDataOperation) GetKey() string {
+	return op.CPF
+}
+
+// GetCollection returns the self-declared collection name
+func (op *SelfDeclaredEscolaridadeDataOperation) GetCollection() string {
+	return "self_declared"
+}
+
+// GetData returns the self-declared education level data
+func (op *SelfDeclaredEscolaridadeDataOperation) GetData() interface{} {
+	return map[string]interface{}{
+		"cpf":          op.CPF,
+		"escolaridade": op.Escolaridade,
+		"updated_at":   op.UpdatedAt,
+	}
+}
+
+// GetTTL returns the TTL for self-declared education level data (24 hours)
+func (op *SelfDeclaredEscolaridadeDataOperation) GetTTL() time.Duration {
+	return 24 * time.Hour
+}
+
+// GetType returns the operation type
+func (op *SelfDeclaredEscolaridadeDataOperation) GetType() string {
+	return "self_declared_escolaridade"
+}
+
+// SelfDeclaredDeficienciaDataOperation implements DataOperation for self-declared disability data
+type SelfDeclaredDeficienciaDataOperation struct {
+	CPF         string
+	Deficiencia string
+	UpdatedAt   time.Time
+}
+
+// GetKey returns the CPF as the key
+func (op *SelfDeclaredDeficienciaDataOperation) GetKey() string {
+	return op.CPF
+}
+
+// GetCollection returns the self-declared collection name
+func (op *SelfDeclaredDeficienciaDataOperation) GetCollection() string {
+	return "self_declared"
+}
+
+// GetData returns the self-declared disability data
+func (op *SelfDeclaredDeficienciaDataOperation) GetData() interface{} {
+	return map[string]interface{}{
+		"cpf":         op.CPF,
+		"deficiencia": op.Deficiencia,
+		"updated_at":  op.UpdatedAt,
+	}
+}
+
+// GetTTL returns the TTL for self-declared disability data (24 hours)
+func (op *SelfDeclaredDeficienciaDataOperation) GetTTL() time.Duration {
+	return 24 * time.Hour
+}
+
+// GetType returns the operation type
+func (op *SelfDeclaredDeficienciaDataOperation) GetType() string {
+	return "self_declared_deficiencia"
+}

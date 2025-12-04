@@ -182,6 +182,10 @@ func main() {
 			citizen.PUT("/:cpf/email", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredEmail)
 			citizen.PUT("/:cpf/ethnicity", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredRaca)
 			citizen.PUT("/:cpf/exhibition-name", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredNomeExibicao)
+			citizen.PUT("/:cpf/gender", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredGenero)
+			citizen.PUT("/:cpf/family-income", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredRendaFamiliar)
+			citizen.PUT("/:cpf/education", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredEscolaridade)
+			citizen.PUT("/:cpf/disability", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredDeficiencia)
 			citizen.GET("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.GetFirstLogin)
 			citizen.PUT("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.UpdateFirstLogin)
 			citizen.GET("/:cpf/optin", middleware.RequireOwnCPF(), handlers.GetOptIn)
@@ -202,6 +206,10 @@ func main() {
 		public := v1.Group("/citizen")
 		{
 			public.GET("/ethnicity/options", handlers.GetEthnicityOptions)
+			public.GET("/gender/options", handlers.GetGenderOptions)
+			public.GET("/family-income/options", handlers.GetFamilyIncomeOptions)
+			public.GET("/education/options", handlers.GetEducationOptions)
+			public.GET("/disability/options", handlers.GetDisabilityOptions)
 		}
 
 		// Public avatar endpoints (no auth required)
