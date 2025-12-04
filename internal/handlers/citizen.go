@@ -220,6 +220,11 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 	}
 	// Always set exhibition name field (even if nil) to ensure it appears in JSON response
 	citizen.NomeExibicao = selfDeclared.NomeExibicao
+	// Set new demographic fields
+	citizen.Genero = selfDeclared.Genero
+	citizen.RendaFamiliar = selfDeclared.RendaFamiliar
+	citizen.Escolaridade = selfDeclared.Escolaridade
+	citizen.Deficiencia = selfDeclared.Deficiencia
 
 	return &citizen, nil
 }
@@ -235,6 +240,10 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		fmt.Sprintf("self_declared_phone:write:%s", cpf),
 		fmt.Sprintf("self_declared_raca:write:%s", cpf),
 		fmt.Sprintf("self_declared_nome_exibicao:write:%s", cpf),
+		fmt.Sprintf("self_declared_genero:write:%s", cpf),
+		fmt.Sprintf("self_declared_renda_familiar:write:%s", cpf),
+		fmt.Sprintf("self_declared_escolaridade:write:%s", cpf),
+		fmt.Sprintf("self_declared_deficiencia:write:%s", cpf),
 	}
 
 	// Try write buffer first (most recent data)
@@ -299,9 +308,47 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		selfDeclared.NomeExibicao = nomeExibicaoData.NomeExibicao
 	}
 
+	var generoData struct {
+		CPF       string  `json:"cpf"`
+		Genero    *string `json:"genero"`
+		UpdatedAt string  `json:"updated_at"`
+	}
+	if parseResult(keys[5], "genero", &generoData) && generoData.Genero != nil {
+		selfDeclared.Genero = generoData.Genero
+	}
+
+	var rendaFamiliarData struct {
+		CPF           string  `json:"cpf"`
+		RendaFamiliar *string `json:"renda_familiar"`
+		UpdatedAt     string  `json:"updated_at"`
+	}
+	if parseResult(keys[6], "renda_familiar", &rendaFamiliarData) && rendaFamiliarData.RendaFamiliar != nil {
+		selfDeclared.RendaFamiliar = rendaFamiliarData.RendaFamiliar
+	}
+
+	var escolaridadeData struct {
+		CPF          string  `json:"cpf"`
+		Escolaridade *string `json:"escolaridade"`
+		UpdatedAt    string  `json:"updated_at"`
+	}
+	if parseResult(keys[7], "escolaridade", &escolaridadeData) && escolaridadeData.Escolaridade != nil {
+		selfDeclared.Escolaridade = escolaridadeData.Escolaridade
+	}
+
+	var deficienciaData struct {
+		CPF         string  `json:"cpf"`
+		Deficiencia *string `json:"deficiencia"`
+		UpdatedAt   string  `json:"updated_at"`
+	}
+	if parseResult(keys[8], "deficiencia", &deficienciaData) && deficienciaData.Deficiencia != nil {
+		selfDeclared.Deficiencia = deficienciaData.Deficiencia
+	}
+
 	// If write buffer didn't have everything, try read cache in batch
 	if selfDeclared.Endereco == nil || selfDeclared.Email == nil ||
-		selfDeclared.Telefone == nil || selfDeclared.Raca == nil || selfDeclared.NomeExibicao == nil {
+		selfDeclared.Telefone == nil || selfDeclared.Raca == nil || selfDeclared.NomeExibicao == nil ||
+		selfDeclared.Genero == nil || selfDeclared.RendaFamiliar == nil ||
+		selfDeclared.Escolaridade == nil || selfDeclared.Deficiencia == nil {
 
 		cacheKeys := []string{
 			fmt.Sprintf("self_declared_address:cache:%s", cpf),
@@ -309,6 +356,10 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			fmt.Sprintf("self_declared_phone:cache:%s", cpf),
 			fmt.Sprintf("self_declared_raca:cache:%s", cpf),
 			fmt.Sprintf("self_declared_nome_exibicao:cache:%s", cpf),
+			fmt.Sprintf("self_declared_genero:cache:%s", cpf),
+			fmt.Sprintf("self_declared_renda_familiar:cache:%s", cpf),
+			fmt.Sprintf("self_declared_escolaridade:cache:%s", cpf),
+			fmt.Sprintf("self_declared_deficiencia:cache:%s", cpf),
 		}
 
 		cacheResults, err := services.BatchReadMultiple(ctx, cacheKeys, observability.Logger().Unwrap())
@@ -342,11 +393,25 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		if selfDeclared.NomeExibicao == nil && parseCacheResult(cacheKeys[4], "nome_exibicao", &nomeExibicaoData) && nomeExibicaoData.NomeExibicao != nil {
 			selfDeclared.NomeExibicao = nomeExibicaoData.NomeExibicao
 		}
+		if selfDeclared.Genero == nil && parseCacheResult(cacheKeys[5], "genero", &generoData) && generoData.Genero != nil {
+			selfDeclared.Genero = generoData.Genero
+		}
+		if selfDeclared.RendaFamiliar == nil && parseCacheResult(cacheKeys[6], "renda_familiar", &rendaFamiliarData) && rendaFamiliarData.RendaFamiliar != nil {
+			selfDeclared.RendaFamiliar = rendaFamiliarData.RendaFamiliar
+		}
+		if selfDeclared.Escolaridade == nil && parseCacheResult(cacheKeys[7], "escolaridade", &escolaridadeData) && escolaridadeData.Escolaridade != nil {
+			selfDeclared.Escolaridade = escolaridadeData.Escolaridade
+		}
+		if selfDeclared.Deficiencia == nil && parseCacheResult(cacheKeys[8], "deficiencia", &deficienciaData) && deficienciaData.Deficiencia != nil {
+			selfDeclared.Deficiencia = deficienciaData.Deficiencia
+		}
 	}
 
 	// Final fallback to MongoDB for any missing individual fields
 	if selfDeclared.Endereco == nil || selfDeclared.Email == nil ||
-		selfDeclared.Telefone == nil || selfDeclared.Raca == nil || selfDeclared.NomeExibicao == nil {
+		selfDeclared.Telefone == nil || selfDeclared.Raca == nil || selfDeclared.NomeExibicao == nil ||
+		selfDeclared.Genero == nil || selfDeclared.RendaFamiliar == nil ||
+		selfDeclared.Escolaridade == nil || selfDeclared.Deficiencia == nil {
 
 		observability.Logger().Debug("fallback to MongoDB for missing self-declared fields",
 			zap.String("cpf", cpf),
@@ -354,7 +419,11 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			zap.Bool("missing_email", selfDeclared.Email == nil),
 			zap.Bool("missing_telefone", selfDeclared.Telefone == nil),
 			zap.Bool("missing_raca", selfDeclared.Raca == nil),
-			zap.Bool("missing_nome_exibicao", selfDeclared.NomeExibicao == nil))
+			zap.Bool("missing_nome_exibicao", selfDeclared.NomeExibicao == nil),
+			zap.Bool("missing_genero", selfDeclared.Genero == nil),
+			zap.Bool("missing_renda_familiar", selfDeclared.RendaFamiliar == nil),
+			zap.Bool("missing_escolaridade", selfDeclared.Escolaridade == nil),
+			zap.Bool("missing_deficiencia", selfDeclared.Deficiencia == nil))
 
 		var mongoSelfDeclared models.SelfDeclaredData
 		err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&mongoSelfDeclared)
@@ -377,6 +446,18 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			}
 			if selfDeclared.NomeExibicao == nil && mongoSelfDeclared.NomeExibicao != nil {
 				selfDeclared.NomeExibicao = mongoSelfDeclared.NomeExibicao
+			}
+			if selfDeclared.Genero == nil && mongoSelfDeclared.Genero != nil {
+				selfDeclared.Genero = mongoSelfDeclared.Genero
+			}
+			if selfDeclared.RendaFamiliar == nil && mongoSelfDeclared.RendaFamiliar != nil {
+				selfDeclared.RendaFamiliar = mongoSelfDeclared.RendaFamiliar
+			}
+			if selfDeclared.Escolaridade == nil && mongoSelfDeclared.Escolaridade != nil {
+				selfDeclared.Escolaridade = mongoSelfDeclared.Escolaridade
+			}
+			if selfDeclared.Deficiencia == nil && mongoSelfDeclared.Deficiencia != nil {
+				selfDeclared.Deficiencia = mongoSelfDeclared.Deficiencia
 			}
 
 			observability.Logger().Debug("filled missing self-declared fields from MongoDB",

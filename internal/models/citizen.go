@@ -204,20 +204,24 @@ type Datalake struct {
 
 // Citizen represents citizen information
 type Citizen struct {
-	ID           string      `json:"_id" bson:"_id,omitempty"`
-	CPF          string      `json:"cpf" bson:"cpf"`
-	Nome         *string     `json:"nome" bson:"nome,omitempty"`
-	NomeSocial   *string     `json:"nome_social" bson:"nome_social,omitempty"`
-	NomeExibicao *string     `json:"nome_exibicao" bson:"-"` // Self-declared, not stored in base collection
-	Sexo         *string     `json:"sexo" bson:"sexo,omitempty"`
-	Nascimento   *Nascimento `json:"nascimento" bson:"nascimento,omitempty"`
-	Mae          *Mae        `json:"mae" bson:"mae,omitempty"`
-	MenorIdade   *bool       `json:"menor_idade" bson:"menor_idade,omitempty"`
-	Raca         *string     `json:"raca" bson:"raca,omitempty"`
-	Obito        *Obito      `json:"obito" bson:"obito,omitempty"`
-	Endereco     *Endereco   `json:"endereco" bson:"endereco,omitempty"`
-	Email        *Email      `json:"email" bson:"email,omitempty"`
-	Telefone     *Telefone   `json:"telefone" bson:"telefone,omitempty"`
+	ID            string      `json:"_id" bson:"_id,omitempty"`
+	CPF           string      `json:"cpf" bson:"cpf"`
+	Nome          *string     `json:"nome" bson:"nome,omitempty"`
+	NomeSocial    *string     `json:"nome_social" bson:"nome_social,omitempty"`
+	NomeExibicao  *string     `json:"nome_exibicao" bson:"-"` // Self-declared, not stored in base collection
+	Sexo          *string     `json:"sexo" bson:"sexo,omitempty"`
+	Nascimento    *Nascimento `json:"nascimento" bson:"nascimento,omitempty"`
+	Mae           *Mae        `json:"mae" bson:"mae,omitempty"`
+	MenorIdade    *bool       `json:"menor_idade" bson:"menor_idade,omitempty"`
+	Raca          *string     `json:"raca" bson:"raca,omitempty"`
+	Genero        *string     `json:"genero" bson:"-"`         // Self-declared, not stored in base collection
+	RendaFamiliar *string     `json:"renda_familiar" bson:"-"` // Self-declared, not stored in base collection
+	Escolaridade  *string     `json:"escolaridade" bson:"-"`   // Self-declared, not stored in base collection
+	Deficiencia   *string     `json:"deficiencia" bson:"-"`    // Self-declared, not stored in base collection
+	Obito         *Obito      `json:"obito" bson:"obito,omitempty"`
+	Endereco      *Endereco   `json:"endereco" bson:"endereco,omitempty"`
+	Email         *Email      `json:"email" bson:"email,omitempty"`
+	Telefone      *Telefone   `json:"telefone" bson:"telefone,omitempty"`
 	// Wallet and internal fields
 	Documentos        *Documentos        `json:"documentos,omitempty" bson:"documentos,omitempty"`
 	Saude             *Saude             `json:"saude,omitempty" bson:"saude,omitempty"`
@@ -231,39 +235,47 @@ type Citizen struct {
 
 // CitizenResponse represents citizen data for the regular citizen endpoint (excluding wallet fields)
 type CitizenResponse struct {
-	ID           string      `json:"_id" bson:"_id,omitempty"`
-	CPF          string      `json:"cpf" bson:"cpf"`
-	Nome         *string     `json:"nome" bson:"nome,omitempty"`
-	NomeSocial   *string     `json:"nome_social" bson:"nome_social,omitempty"`
-	NomeExibicao *string     `json:"nome_exibicao" bson:"-"` // Self-declared, not stored in base collection
-	Sexo         *string     `json:"sexo" bson:"sexo,omitempty"`
-	Nascimento   *Nascimento `json:"nascimento" bson:"nascimento,omitempty"`
-	Mae          *Mae        `json:"mae" bson:"mae,omitempty"`
-	MenorIdade   *bool       `json:"menor_idade" bson:"menor_idade,omitempty"`
-	Raca         *string     `json:"raca" bson:"raca,omitempty"`
-	Obito        *Obito      `json:"obito" bson:"obito,omitempty"`
-	Endereco     *Endereco   `json:"endereco" bson:"endereco,omitempty"`
-	Email        *Email      `json:"email" bson:"email,omitempty"`
-	Telefone     *Telefone   `json:"telefone" bson:"telefone,omitempty"`
+	ID            string      `json:"_id" bson:"_id,omitempty"`
+	CPF           string      `json:"cpf" bson:"cpf"`
+	Nome          *string     `json:"nome" bson:"nome,omitempty"`
+	NomeSocial    *string     `json:"nome_social" bson:"nome_social,omitempty"`
+	NomeExibicao  *string     `json:"nome_exibicao" bson:"-"` // Self-declared, not stored in base collection
+	Sexo          *string     `json:"sexo" bson:"sexo,omitempty"`
+	Nascimento    *Nascimento `json:"nascimento" bson:"nascimento,omitempty"`
+	Mae           *Mae        `json:"mae" bson:"mae,omitempty"`
+	MenorIdade    *bool       `json:"menor_idade" bson:"menor_idade,omitempty"`
+	Raca          *string     `json:"raca" bson:"raca,omitempty"`
+	Genero        *string     `json:"genero" bson:"-"`         // Self-declared, not stored in base collection
+	RendaFamiliar *string     `json:"renda_familiar" bson:"-"` // Self-declared, not stored in base collection
+	Escolaridade  *string     `json:"escolaridade" bson:"-"`   // Self-declared, not stored in base collection
+	Deficiencia   *string     `json:"deficiencia" bson:"-"`    // Self-declared, not stored in base collection
+	Obito         *Obito      `json:"obito" bson:"obito,omitempty"`
+	Endereco      *Endereco   `json:"endereco" bson:"endereco,omitempty"`
+	Email         *Email      `json:"email" bson:"email,omitempty"`
+	Telefone      *Telefone   `json:"telefone" bson:"telefone,omitempty"`
 }
 
 // ToCitizenResponse converts a Citizen to CitizenResponse (excluding wallet fields)
 func (c *Citizen) ToCitizenResponse() *CitizenResponse {
 	return &CitizenResponse{
-		ID:           c.ID,
-		CPF:          c.CPF,
-		Nome:         c.Nome,
-		NomeSocial:   c.NomeSocial,
-		NomeExibicao: c.NomeExibicao,
-		Sexo:         c.Sexo,
-		Nascimento:   c.Nascimento,
-		Mae:          c.Mae,
-		MenorIdade:   c.MenorIdade,
-		Raca:         c.Raca,
-		Obito:        c.Obito,
-		Endereco:     c.Endereco,
-		Email:        c.Email,
-		Telefone:     c.Telefone,
+		ID:            c.ID,
+		CPF:           c.CPF,
+		Nome:          c.Nome,
+		NomeSocial:    c.NomeSocial,
+		NomeExibicao:  c.NomeExibicao,
+		Sexo:          c.Sexo,
+		Nascimento:    c.Nascimento,
+		Mae:           c.Mae,
+		MenorIdade:    c.MenorIdade,
+		Raca:          c.Raca,
+		Genero:        c.Genero,
+		RendaFamiliar: c.RendaFamiliar,
+		Escolaridade:  c.Escolaridade,
+		Deficiencia:   c.Deficiencia,
+		Obito:         c.Obito,
+		Endereco:      c.Endereco,
+		Email:         c.Email,
+		Telefone:      c.Telefone,
 	}
 }
 
@@ -286,7 +298,7 @@ type MaintenanceRequestDocument struct {
 	DataFim                   string `json:"data_fim" bson:"data_fim"`
 	DataInicio                string `json:"data_inicio" bson:"data_inicio"`
 	Descricao                 string `json:"descricao" bson:"descricao"`
-	IDChamado                 string `json:"id" bson:"id"`                                                   // Renamed from id_chamado to id
+	IDChamado                 string `json:"id" bson:"id"` // Renamed from id_chamado to id
 	Indicador                 bool   `json:"indicador" bson:"indicador"`
 	NomeUnidadeOrganizacional string `json:"nome_unidade_organizacional" bson:"nome_unidade_organizacional"`
 	OrigemOcorrencia          string `json:"origem_ocorrencia" bson:"origem_ocorrencia"`
@@ -373,7 +385,7 @@ type MaintenanceRequestStatus struct {
 type MaintenanceRequest struct {
 	ID                        string     `json:"id"`
 	CPF                       string     `json:"cpf"`
-	IDChamado                 string     `json:"id_chamado"`                 // Maps from MongoDB "id" field
+	IDChamado                 string     `json:"id_chamado"` // Maps from MongoDB "id" field
 	Categoria                 string     `json:"categoria"`
 	DataAlvoFinalizacao       *time.Time `json:"data_alvo_finalizacao,omitempty"`
 	DataFim                   *time.Time `json:"data_fim,omitempty"`
