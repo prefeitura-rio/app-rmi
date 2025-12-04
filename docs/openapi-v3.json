@@ -1798,6 +1798,84 @@
         }
       }
     },
+    "/citizen/disability/options": {
+      "get": {
+        "description": "Retorna a lista de opções válidas de condições de deficiência para autodeclaração.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Listar opções de deficiência",
+        "responses": {
+          "200": {
+            "description": "Lista de opções de deficiência válidas obtida com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/citizen/education/options": {
+      "get": {
+        "description": "Retorna a lista de opções válidas de níveis de escolaridade para autodeclaração.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Listar opções de escolaridade",
+        "responses": {
+          "200": {
+            "description": "Lista de opções de escolaridade válidas obtida com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/citizen/ethnicity/options": {
       "get": {
         "description": "Retorna a lista de opções válidas de etnia para autodeclaração. Esta lista é usada para validar as atualizações de etnia autodeclarada.",
@@ -1808,6 +1886,84 @@
         "responses": {
           "200": {
             "description": "Lista de opções de etnia válidas obtida com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/citizen/family-income/options": {
+      "get": {
+        "description": "Retorna a lista de opções válidas de faixas de renda familiar mensal para autodeclaração.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Listar opções de renda familiar",
+        "responses": {
+          "200": {
+            "description": "Lista de opções de renda familiar válidas obtida com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/citizen/gender/options": {
+      "get": {
+        "description": "Retorna a lista de opções sugeridas de gênero para autodeclaração. Nota: Este campo aceita qualquer texto livre para a opção \"Outro\".",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Listar opções de gênero",
+        "responses": {
+          "200": {
+            "description": "Lista de opções de gênero sugeridas obtida com sucesso",
             "content": {
               "application/json": {
                 "schema": {
@@ -2269,6 +2425,202 @@
         }
       }
     },
+    "/citizen/{cpf}/disability": {
+      "put": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza ou cria a condição de deficiência autodeclarada de um cidadão por CPF. O valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/disability/options.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Atualizar deficiência autodeclarada",
+        "parameters": [
+          {
+            "description": "Número do CPF",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.SelfDeclaredDeficienciaInput"
+              }
+            }
+          },
+          "description": "Deficiência autodeclarada",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Deficiência atualizada com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF inválido ou valor de deficiência inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - valor de deficiência não é válido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/citizen/{cpf}/education": {
+      "put": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza ou cria o nível de escolaridade autodeclarado de um cidadão por CPF. O valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/education/options.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Atualizar escolaridade autodeclarada",
+        "parameters": [
+          {
+            "description": "Número do CPF",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.SelfDeclaredEscolaridadeInput"
+              }
+            }
+          },
+          "description": "Escolaridade autodeclarada",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Escolaridade atualizada com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF inválido ou valor de escolaridade inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - valor de escolaridade não é válido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/citizen/{cpf}/email": {
       "put": {
         "security": [
@@ -2633,6 +2985,104 @@
         }
       }
     },
+    "/citizen/{cpf}/family-income": {
+      "put": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza ou cria a renda familiar mensal autodeclarada de um cidadão por CPF. O valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/family-income/options.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Atualizar renda familiar autodeclarada",
+        "parameters": [
+          {
+            "description": "Número do CPF",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.SelfDeclaredRendaFamiliarInput"
+              }
+            }
+          },
+          "description": "Renda familiar autodeclarada",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Renda familiar atualizada com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF inválido ou valor de renda familiar inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dados não processáveis - valor de renda familiar não é válido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/citizen/{cpf}/firstlogin": {
       "get": {
         "security": [
@@ -2784,6 +3234,94 @@
           },
           "429": {
             "description": "Muitas requisições - limite de taxa excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/citizen/{cpf}/gender": {
+      "put": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza ou cria o gênero autodeclarado de um cidadão por CPF. Aceita qualquer valor de texto livre, mas as opções sugeridas estão disponíveis no endpoint /citizen/gender/options.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Atualizar gênero autodeclarado",
+        "parameters": [
+          {
+            "description": "Número do CPF",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.SelfDeclaredGeneroInput"
+              }
+            }
+          },
+          "description": "Gênero autodeclarado",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Gênero atualizado com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF inválido ou valor de gênero vazio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
             "content": {
               "application/json": {
                 "schema": {
@@ -8795,7 +9333,40 @@
           }
         }
       },
+      "models.SelfDeclaredDeficienciaInput": {
+        "type": "object",
+        "required": [
+          "valor"
+        ],
+        "properties": {
+          "valor": {
+            "type": "string"
+          }
+        }
+      },
       "models.SelfDeclaredEmailInput": {
+        "type": "object",
+        "required": [
+          "valor"
+        ],
+        "properties": {
+          "valor": {
+            "type": "string"
+          }
+        }
+      },
+      "models.SelfDeclaredEscolaridadeInput": {
+        "type": "object",
+        "required": [
+          "valor"
+        ],
+        "properties": {
+          "valor": {
+            "type": "string"
+          }
+        }
+      },
+      "models.SelfDeclaredGeneroInput": {
         "type": "object",
         "required": [
           "valor"
@@ -8837,6 +9408,17 @@
         }
       },
       "models.SelfDeclaredRacaInput": {
+        "type": "object",
+        "required": [
+          "valor"
+        ],
+        "properties": {
+          "valor": {
+            "type": "string"
+          }
+        }
+      },
+      "models.SelfDeclaredRendaFamiliarInput": {
         "type": "object",
         "required": [
           "valor"
