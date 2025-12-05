@@ -50,6 +50,10 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 			"self_declared_phone",
 			"self_declared_raca",
 			"self_declared_nome_exibicao",
+			"self_declared_genero",
+			"self_declared_renda_familiar",
+			"self_declared_escolaridade",
+			"self_declared_deficiencia",
 			"cf_lookup",
 		},
 	}
@@ -522,6 +526,14 @@ func getFieldNameFromJobType(jobType string) string {
 		return "raca"
 	case "self_declared_nome_exibicao":
 		return "nome_exibicao"
+	case "self_declared_genero":
+		return "genero"
+	case "self_declared_renda_familiar":
+		return "renda_familiar"
+	case "self_declared_escolaridade":
+		return "escolaridade"
+	case "self_declared_deficiencia":
+		return "deficiencia"
 	default:
 		return ""
 	}

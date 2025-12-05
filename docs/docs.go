@@ -1396,6 +1396,70 @@ const docTemplate = `{
                 }
             }
         },
+        "/citizen/disability/options": {
+            "get": {
+                "description": "Retorna a lista de opções válidas de condições de deficiência para autodeclaração.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Listar opções de deficiência",
+                "responses": {
+                    "200": {
+                        "description": "Lista de opções de deficiência válidas obtida com sucesso",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/education/options": {
+            "get": {
+                "description": "Retorna a lista de opções válidas de níveis de escolaridade para autodeclaração.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Listar opções de escolaridade",
+                "responses": {
+                    "200": {
+                        "description": "Lista de opções de escolaridade válidas obtida com sucesso",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/ethnicity/options": {
             "get": {
                 "description": "Retorna a lista de opções válidas de etnia para autodeclaração. Esta lista é usada para validar as atualizações de etnia autodeclarada.",
@@ -1412,6 +1476,70 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "Lista de opções de etnia válidas obtida com sucesso",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/family-income/options": {
+            "get": {
+                "description": "Retorna a lista de opções válidas de faixas de renda familiar mensal para autodeclaração.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Listar opções de renda familiar",
+                "responses": {
+                    "200": {
+                        "description": "Lista de opções de renda familiar válidas obtida com sucesso",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/gender/options": {
+            "get": {
+                "description": "Retorna a lista de opções sugeridas de gênero para autodeclaração. Nota: Este campo aceita qualquer texto livre para a opção \"Outro\".",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Listar opções de gênero",
+                "responses": {
+                    "200": {
+                        "description": "Lista de opções de gênero sugeridas obtida com sucesso",
                         "schema": {
                             "type": "array",
                             "items": {
@@ -1752,6 +1880,158 @@ const docTemplate = `{
                 }
             }
         },
+        "/citizen/{cpf}/disability": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza ou cria a condição de deficiência autodeclarada de um cidadão por CPF. O valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/disability/options.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Atualizar deficiência autodeclarada",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do CPF",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Deficiência autodeclarada",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SelfDeclaredDeficienciaInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deficiência atualizada com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Formato de CPF inválido ou valor de deficiência inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Dados não processáveis - valor de deficiência não é válido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/{cpf}/education": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza ou cria o nível de escolaridade autodeclarado de um cidadão por CPF. O valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/education/options.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Atualizar escolaridade autodeclarada",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do CPF",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Escolaridade autodeclarada",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SelfDeclaredEscolaridadeInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Escolaridade atualizada com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Formato de CPF inválido ou valor de escolaridade inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Dados não processáveis - valor de escolaridade não é válido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/{cpf}/email": {
             "put": {
                 "security": [
@@ -2022,6 +2302,82 @@ const docTemplate = `{
                 }
             }
         },
+        "/citizen/{cpf}/family-income": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza ou cria a renda familiar mensal autodeclarada de um cidadão por CPF. O valor deve ser uma das opções válidas retornadas pelo endpoint /citizen/family-income/options.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Atualizar renda familiar autodeclarada",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do CPF",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Renda familiar autodeclarada",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SelfDeclaredRendaFamiliarInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Renda familiar atualizada com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Formato de CPF inválido ou valor de renda familiar inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Dados não processáveis - valor de renda familiar não é válido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/{cpf}/firstlogin": {
             "get": {
                 "security": [
@@ -2141,6 +2497,76 @@ const docTemplate = `{
                     },
                     "429": {
                         "description": "Muitas requisições - limite de taxa excedido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/{cpf}/gender": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza ou cria o gênero autodeclarado de um cidadão por CPF. Aceita qualquer valor de texto livre, mas as opções sugeridas estão disponíveis no endpoint /citizen/gender/options.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Atualizar gênero autodeclarado",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número do CPF",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Gênero autodeclarado",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SelfDeclaredGeneroInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Gênero atualizado com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Formato de CPF inválido ou valor de gênero vazio",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -5730,6 +6156,10 @@ const docTemplate = `{
                 "cpf": {
                     "type": "string"
                 },
+                "deficiencia": {
+                    "description": "Self-declared, not stored in base collection",
+                    "type": "string"
+                },
                 "documentos": {
                     "description": "Wallet and internal fields",
                     "allOf": [
@@ -5746,6 +6176,14 @@ const docTemplate = `{
                 },
                 "endereco": {
                     "$ref": "#/definitions/models.Endereco"
+                },
+                "escolaridade": {
+                    "description": "Self-declared, not stored in base collection",
+                    "type": "string"
+                },
+                "genero": {
+                    "description": "Self-declared, not stored in base collection",
+                    "type": "string"
                 },
                 "mae": {
                     "$ref": "#/definitions/models.Mae"
@@ -5770,6 +6208,10 @@ const docTemplate = `{
                     "$ref": "#/definitions/models.Obito"
                 },
                 "raca": {
+                    "type": "string"
+                },
+                "renda_familiar": {
+                    "description": "Self-declared, not stored in base collection",
                     "type": "string"
                 },
                 "saude": {
@@ -6378,9 +6820,6 @@ const docTemplate = `{
                 "cpf": {
                     "type": "string"
                 },
-                "data_alvo_diagnostico": {
-                    "type": "string"
-                },
                 "data_alvo_finalizacao": {
                     "type": "string"
                 },
@@ -6390,78 +6829,27 @@ const docTemplate = `{
                 "data_inicio": {
                     "type": "string"
                 },
-                "data_real_diagnostico": {
-                    "type": "string"
-                },
-                "dentro_prazo": {
-                    "type": "string"
-                },
                 "descricao": {
                     "type": "string"
                 },
                 "endereco": {
-                    "description": "Human-readable address, built on demand",
+                    "description": "Pre-built address string",
                     "type": "string"
                 },
                 "id": {
                     "type": "string"
                 },
-                "id_bairro": {
-                    "type": "string"
-                },
                 "id_chamado": {
-                    "type": "string"
-                },
-                "id_logradouro": {
-                    "type": "string"
-                },
-                "id_origem_ocorrencia": {
-                    "type": "string"
-                },
-                "id_subtipo": {
-                    "type": "string"
-                },
-                "id_territorialidade": {
-                    "type": "string"
-                },
-                "id_tipo": {
-                    "type": "string"
-                },
-                "id_unidade_organizacional": {
-                    "type": "string"
-                },
-                "id_unidade_organizacional_mae": {
+                    "description": "Maps from MongoDB \"id\" field",
                     "type": "string"
                 },
                 "indicador": {
                     "type": "boolean"
                 },
-                "justificativa_status": {},
-                "latitude": {
-                    "type": "number"
-                },
-                "longitude": {
-                    "type": "number"
-                },
                 "nome_unidade_organizacional": {
                     "type": "string"
                 },
-                "numero_logradouro": {
-                    "type": "integer"
-                },
                 "origem_ocorrencia": {
-                    "type": "string"
-                },
-                "prazo_tipo": {
-                    "type": "string"
-                },
-                "prazo_unidade": {
-                    "type": "string"
-                },
-                "reclamacoes": {
-                    "type": "integer"
-                },
-                "situacao": {
                     "type": "string"
                 },
                 "status": {
@@ -6470,11 +6858,7 @@ const docTemplate = `{
                 "subtipo": {
                     "type": "string"
                 },
-                "tempo_prazo": {},
                 "tipo": {
-                    "type": "string"
-                },
-                "tipo_situacao": {
                     "type": "string"
                 },
                 "total_chamados": {
@@ -6482,9 +6866,6 @@ const docTemplate = `{
                 },
                 "total_fechados": {
                     "type": "integer"
-                },
-                "unidade_organizacional_ouvidoria": {
-                    "type": "string"
                 }
             }
         },
@@ -7222,7 +7603,40 @@ const docTemplate = `{
                 }
             }
         },
+        "models.SelfDeclaredDeficienciaInput": {
+            "type": "object",
+            "required": [
+                "valor"
+            ],
+            "properties": {
+                "valor": {
+                    "type": "string"
+                }
+            }
+        },
         "models.SelfDeclaredEmailInput": {
+            "type": "object",
+            "required": [
+                "valor"
+            ],
+            "properties": {
+                "valor": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SelfDeclaredEscolaridadeInput": {
+            "type": "object",
+            "required": [
+                "valor"
+            ],
+            "properties": {
+                "valor": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SelfDeclaredGeneroInput": {
             "type": "object",
             "required": [
                 "valor"
@@ -7264,6 +7678,17 @@ const docTemplate = `{
             }
         },
         "models.SelfDeclaredRacaInput": {
+            "type": "object",
+            "required": [
+                "valor"
+            ],
+            "properties": {
+                "valor": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SelfDeclaredRendaFamiliarInput": {
             "type": "object",
             "required": [
                 "valor"
