@@ -3988,6 +3988,81 @@ const docTemplate = `{
                 }
             }
         },
+        "/legal-entity/{cnpj}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Recupera informações detalhadas de uma entidade jurídica (pessoa jurídica) pelo CNPJ. O acesso é permitido para administradores ou se o CPF do JWT estiver como responsável ou sócio da entidade.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "legal-entity"
+                ],
+                "summary": "Obter informações de uma entidade jurídica por CNPJ",
+                "parameters": [
+                    {
+                        "maxLength": 14,
+                        "minLength": 14,
+                        "type": "string",
+                        "description": "CNPJ da entidade (14 dígitos)",
+                        "name": "cnpj",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Informações da entidade jurídica obtidas com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/models.LegalEntity"
+                        }
+                    },
+                    "400": {
+                        "description": "Formato de CNPJ inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - sem permissão para visualizar esta entidade",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Entidade jurídica não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Muitas requisições - limite de taxa excedido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/memory/{phone_number}": {
             "get": {
                 "security": [

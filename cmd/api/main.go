@@ -300,6 +300,13 @@ func main() {
 			cnaes.GET("", cnaeHandlers.ListCNAEs)
 		}
 
+		// Legal entity routes (protected)
+		legalEntity := v1.Group("/legal-entity")
+		legalEntity.Use(middleware.AuthMiddleware())
+		{
+			legalEntity.GET("/:cnpj", handlers.GetLegalEntityByCNPJ)
+		}
+
 		// Notification category routes (public)
 		notificationCategories := v1.Group("/notification-categories")
 		{

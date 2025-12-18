@@ -127,3 +127,21 @@ func ValidatePaginationParams(pageStr, perPageStr string) (int, int, error) {
 
 	return page, perPage, nil
 }
+
+// GetLegalEntityByCNPJ retrieves a legal entity by CNPJ
+func (s *LegalEntityService) GetLegalEntityByCNPJ(ctx context.Context, cnpj string) (*models.LegalEntity, error) {
+	collection := s.database.Collection(config.AppConfig.LegalEntityCollection)
+
+	var entity models.LegalEntity
+	err := collection.FindOne(ctx, bson.M{"cnpj": cnpj}).Decode(&entity)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("legal entity not found")
+		}
+		return nil, fmt.Errorf("failed to find legal entity: %w", err)
+	}
+
+	s.logger.Debug("retrieved legal entity by CNPJ", zap.String("cnpj", cnpj))
+
+	return &entity, nil
+}
