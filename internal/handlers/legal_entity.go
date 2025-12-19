@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
@@ -216,7 +217,7 @@ func GetLegalEntityByCNPJ(c *gin.Context) {
 		return
 	}
 
-	claimsMap, ok := claims.(map[string]interface{})
+	jwtClaims, ok := claims.(*models.JWTClaims)
 	if !ok {
 		utils.RecordErrorInSpan(accessSpan, fmt.Errorf("invalid claims type"), nil)
 		accessSpan.End()
@@ -226,17 +227,11 @@ func GetLegalEntityByCNPJ(c *gin.Context) {
 
 	// Check if user is admin
 	isAdmin := false
-	if resourceAccess, ok := claimsMap["resource_access"].(map[string]interface{}); ok {
-		if superapp, ok := resourceAccess["superapp"].(map[string]interface{}); ok {
-			if roles, ok := superapp["roles"].([]interface{}); ok {
-				for _, role := range roles {
-					if roleStr, ok := role.(string); ok && roleStr == "go:admin" {
-						isAdmin = true
-						utils.AddSpanAttribute(accessSpan, "is_admin", true)
-						break
-					}
-				}
-			}
+	for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
+		if role == "go:admin" {
+			isAdmin = true
+			utils.AddSpanAttribute(accessSpan, "is_admin", true)
+			break
 		}
 	}
 
@@ -257,9 +252,9 @@ func GetLegalEntityByCNPJ(c *gin.Context) {
 		return
 	}
 
-	// Get CPF from token
-	authenticatedCPF, ok := claimsMap["cpf"].(string)
-	if !ok {
+	// Get CPF from token (stored in PreferredUsername)
+	authenticatedCPF := jwtClaims.PreferredUsername
+	if authenticatedCPF == "" {
 		utils.RecordErrorInSpan(accessSpan, fmt.Errorf("CPF not found in token"), nil)
 		accessSpan.End()
 		logger.Warn("access denied - CPF not in token", zap.String("cnpj", cnpj))
