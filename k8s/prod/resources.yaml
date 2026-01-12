@@ -19,7 +19,6 @@ spec:
         istio:
           virtualService:
             name: rmi-virtual-service
-            namespace: istio-system
             routes:
               - primary
       steps:
