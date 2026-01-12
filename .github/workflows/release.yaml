@@ -63,7 +63,7 @@ jobs:
       - name: Get image digest
         id: digest
         run: |
-          DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:$VERSION --format '{{.Manifest.Digest}}')
+          DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:$VERSION --format '{{.Manifest.Digest}}' | grep -oE 'sha256:[a-f0-9]+' | head -n1)
           echo "DIGEST=$DIGEST" >> $GITHUB_ENV
           echo "Image digest: $DIGEST"
 

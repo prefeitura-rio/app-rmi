@@ -293,18 +293,20 @@ spec:
         prometheus:
           address: http://prometheus.istio-system.svc.cluster.local:9090
           query: |
-            sum(rate(
-              istio_requests_total{
-                destination_service_name=~"{{args.service-name}}",
-                response_code!~"5.."
-              }[2m]
-            ))
-            /
-            sum(rate(
-              istio_requests_total{
-                destination_service_name=~"{{args.service-name}}"
-              }[2m]
-            ))
+            scalar(
+              sum(rate(
+                istio_requests_total{
+                  destination_service_name=~"{{args.service-name}}",
+                  response_code!~"5.."
+                }[2m]
+              ))
+              /
+              sum(rate(
+                istio_requests_total{
+                  destination_service_name=~"{{args.service-name}}"
+                }[2m]
+              ))
+            )
     - name: error-rate
       interval: 1m
       successCondition: result <= 0.05
@@ -313,15 +315,17 @@ spec:
         prometheus:
           address: http://prometheus.istio-system.svc.cluster.local:9090
           query: |
-            sum(rate(
-              istio_requests_total{
-                destination_service_name=~"{{args.service-name}}",
-                response_code=~"5.."
-              }[2m]
-            ))
-            /
-            sum(rate(
-              istio_requests_total{
-                destination_service_name=~"{{args.service-name}}"
-              }[2m]
-            ))
+            scalar(
+              sum(rate(
+                istio_requests_total{
+                  destination_service_name=~"{{args.service-name}}",
+                  response_code=~"5.."
+                }[2m]
+              ))
+              /
+              sum(rate(
+                istio_requests_total{
+                  destination_service_name=~"{{args.service-name}}"
+                }[2m]
+              ))
+            )
