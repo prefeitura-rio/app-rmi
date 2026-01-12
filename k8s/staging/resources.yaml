@@ -1,20 +1,22 @@
 ---
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
 metadata:
   name: rmi
   annotations:
     secrets.infisical.com/auto-reload: "true"
 spec:
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
-  minReadySeconds: 5
+  replicas: 1
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: rmi
+  strategy:
+    blueGreen:
+      activeService: rmi
+      previewService: rmi-preview
+      autoPromotionEnabled: false
+      scaleDownDelaySeconds: 30
   template:
     metadata:
       labels:
@@ -132,6 +134,8 @@ metadata:
     autoscaling.keda.sh/trigger-authentication: "default"
 spec:
   scaleTargetRef:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
     name: rmi
   minReplicaCount: 1
   maxReplicaCount: 10
@@ -226,6 +230,20 @@ metadata:
   labels:
     app: rmi
   name: rmi
+spec:
+  ports:
+    - name: "80"
+      port: 80
+      targetPort: 8080
+  selector:
+    app: rmi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: rmi
+  name: rmi-preview
 spec:
   ports:
     - name: "80"
