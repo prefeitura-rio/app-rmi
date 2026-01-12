@@ -55,7 +55,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: rmi
-          image: ghcr.io/prefeitura-rio/app-rmi:v0.0.1@sha256:f081ef5f509c977a6f90a77b0b4a4f56e1ea066a1701a831f35e22afaac48ae1  # Updated by release workflow
+          image: ghcr.io/prefeitura-rio/app-rmi:v0.0.1@sha256:0930f8c7c9faa85e95a9447ba6e563da4e2a398032b5d8081de551444a01c067  # Updated by release workflow
           command: ["./api"]
           envFrom:
             - secretRef:
