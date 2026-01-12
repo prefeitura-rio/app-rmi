@@ -29,42 +29,8 @@ jobs:
           GOBIN="$PWD/bin" go install github.com/swaggo/swag/cmd/swag@latest
           echo "$PWD/bin" >> $GITHUB_PATH
 
-      - name: Generate Swagger v2
+      - name: Generate Swagger documentation
         run: swag init -g cmd/api/main.go
-
-      - name: Install swagger2openapi
-        run: npm install -g swagger2openapi
-
-      - name: Convert to OpenAPI v3
-        run: swagger2openapi docs/swagger.json -o docs/openapi-v3.json
-
-      - name: Post-process OpenAPI v3 JSON
-        run: |
-          jq '.servers = [
-              {"url": "https://services.pref.rio/rmi/v1", "description": "Production"},
-              {"url": "https://services.staging.app.dados.rio/rmi/v1", "description": "Staging"}
-            ] |
-              .components.securitySchemes = {
-                "bearerAuth": {
-                  "type": "http",
-                  "scheme": "bearer",
-                  "bearerFormat": "JWT"
-                }
-              } |
-              .paths |= with_entries(.value |= with_entries(.value.security = [{"bearerAuth": []}]))' \
-          docs/openapi-v3.json > docs/openapi-v3.json.tmp && \
-          mv docs/openapi-v3.json.tmp docs/openapi-v3.json
-
-      - name: Configure Git
-        run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'github-actions@github.com'
-
-      - name: Commit and push OpenAPI v3
-        run: |
-          git add docs/openapi-v3.json
-          git commit -m "chore: update OpenAPI v3 documentation for ${{ github.ref_name }}" || echo "No changes to commit"
-          git push
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -75,11 +41,8 @@ jobs:
       - name: Extract release version
         id: version
         run: |
-          # Get release tag (e.g., v1.2.3)
           VERSION=${{ github.ref_name }}
-          # Remove 'v' prefix if present
           VERSION_NO_V=${VERSION#v}
-          # Get commit hash
           COMMIT_HASH=$(git rev-parse --short HEAD)
 
           echo "VERSION=$VERSION" >> $GITHUB_ENV
@@ -97,27 +60,116 @@ jobs:
             --tag $IMAGE_NAME:latest-release \
             --push .
 
+      - name: Get image digest
+        id: digest
+        run: |
+          DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:$VERSION --format '{{.Manifest.Digest}}')
+          echo "DIGEST=$DIGEST" >> $GITHUB_ENV
+          echo "Image digest: $DIGEST"
+
       - name: Update production Rollout image
         run: |
-          # Update the image tag in prod resources
-          sed -i "s|image: ghcr.io/prefeitura-rio/app-rmi:.*|image: ghcr.io/prefeitura-rio/app-rmi:$VERSION@$(docker buildx imagetools inspect $IMAGE_NAME:$VERSION --format '{{.Manifest.Digest}}')|g" k8s/prod/resources.yaml
+          # Update the image tag with digest for immutable deployments
+          sed -i "s|image: ghcr.io/prefeitura-rio/app-rmi:.*  # Updated by release workflow|image: ghcr.io/prefeitura-rio/app-rmi:$VERSION@$DIGEST  # Updated by release workflow|g" k8s/prod/resources.yaml
 
-          # Commit and push the updated Rollout
+          # Configure git
+          git config user.name 'GitHub Actions'
+          git config user.email 'github-actions@github.com'
+
+          # Commit and push
           git add k8s/prod/resources.yaml
-          git commit -m "chore: update prod image to $VERSION" || echo "No changes to commit"
+          git commit -m "chore: update prod image to $VERSION@${DIGEST:0:12}"
           git push
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest
+
+      - name: Configure kubectl for GKE
+        run: gcloud container clusters get-credentials application --zone=us-central1 --project="${{ vars.GCP_PROJECT_ID }}"
+
+      - name: Wait for ArgoCD sync
+        run: |
+          echo "Waiting 30s for ArgoCD to detect and sync changes..."
+          sleep 30
+
+      - name: Monitor Rollout
+        timeout-minutes: 45
+        run: |
+          echo "Monitoring rollout progress..."
+
+          while true; do
+            PHASE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.phase}')
+            MESSAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.message}')
+
+            echo "Rollout phase: $PHASE"
+            echo "Message: $MESSAGE"
+
+            # Check if rollout completed successfully
+            if [ "$PHASE" = "Healthy" ]; then
+              echo "✅ Rollout completed successfully!"
+              exit 0
+            fi
+
+            # Check if rollout was aborted or degraded
+            if [ "$PHASE" = "Degraded" ]; then
+              echo "❌ Rollout failed - status is Degraded"
+              echo "Message: $MESSAGE"
+              kubectl get rollout rmi -n rmi -o yaml
+              exit 1
+            fi
+
+            if [ "$PHASE" = "Aborted" ]; then
+              echo "❌ Rollout was aborted (likely due to failed analysis)"
+              echo "Message: $MESSAGE"
+
+              # Get analysis run details
+              echo "Analysis Run Details:"
+              kubectl get analysisrun -n rmi -l rollout-pod-template-hash=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.canary.stableRS}') --sort-by=.metadata.creationTimestamp -o yaml || true
+
+              exit 1
+            fi
+
+            # Show current status
+            kubectl get rollout rmi -n rmi
+
+            echo "Waiting 30s before next check..."
+            sleep 30
+          done
+
       - name: Create deployment summary
+        if: always()
         run: |
           echo "## 🚀 Release Deployment" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version**: $VERSION" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: $COMMIT_HASH" >> $GITHUB_STEP_SUMMARY
-          echo "**Image**: \`$IMAGE_NAME:$VERSION\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image**: \`$IMAGE_NAME:$VERSION@${DIGEST:0:12}...\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
-          echo "1. ArgoCD will detect the updated Rollout manifest" >> $GITHUB_STEP_SUMMARY
-          echo "2. Argo Rollouts will start canary deployment (10% → 20% → 40% → 60% → 80% → 100%)" >> $GITHUB_STEP_SUMMARY
-          echo "3. Monitor with: \`kubectl argo rollouts get rollout rmi -n rmi --watch\`" >> $GITHUB_STEP_SUMMARY
-          echo "4. Promote manually: \`kubectl argo rollouts promote rmi -n rmi\`" >> $GITHUB_STEP_SUMMARY
-          echo "5. Abort if needed: \`kubectl argo rollouts abort rmi -n rmi\`" >> $GITHUB_STEP_SUMMARY
+
+          PHASE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+          echo "**Final Status**: $PHASE" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$PHASE" = "Healthy" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
+            echo "The canary deployment completed successfully and is now serving 100% traffic." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+            echo "The rollout did not complete successfully. Check the logs above for details." >> $GITHUB_STEP_SUMMARY
+          fi
