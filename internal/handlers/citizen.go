@@ -24,6 +24,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// Version is set via ldflags during build
+var Version = "dev"
+
 // queueCFLookupJob queues a background job to perform CF lookup for a citizen
 func queueCFLookupJob(ctx context.Context, cpf, address string) {
 	logger := observability.Logger().With(zap.String("cpf", cpf))
@@ -1502,6 +1505,7 @@ func HealthCheck(c *gin.Context) {
 	response := HealthResponse{
 		Status:    overallHealthy,
 		Timestamp: time.Now(),
+		Version:   Version,
 		Services: map[string]ServiceHealth{
 			"mongodb": {
 				Status: mongoHealthy,
@@ -3205,6 +3209,7 @@ type ServiceHealth struct {
 type HealthResponse struct {
 	Status    bool                     `json:"status"`
 	Timestamp time.Time                `json:"timestamp"`
+	Version   string                   `json:"version"`
 	Services  map[string]ServiceHealth `json:"services"`
 }
 

@@ -67,6 +67,8 @@ definitions:
         type: boolean
       timestamp:
         type: string
+      version:
+        type: string
     type: object
   handlers.MemoryModel:
     properties:

@@ -1,8 +1,8 @@
 # Build stage
 FROM golang:1.24-alpine AS builder
 
-# Install ca-certificates
-RUN apk add --no-cache ca-certificates
+# Install ca-certificates and git
+RUN apk add --no-cache ca-certificates git
 
 WORKDIR /app
 
@@ -19,9 +19,11 @@ COPY . .
 RUN go install github.com/swaggo/swag/cmd/swag@latest && \
     swag init -g cmd/api/main.go
 
-# Build both binaries
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o api cmd/api/main.go && \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o sync cmd/sync/main.go
+# Build both binaries with version from git
+ARG VERSION
+RUN if [ -z "$VERSION" ]; then VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown"); fi && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X github.com/prefeitura-rio/app-rmi/internal/handlers.Version=$VERSION" -o api cmd/api/main.go && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X github.com/prefeitura-rio/app-rmi/internal/handlers.Version=$VERSION" -o sync cmd/sync/main.go
 
 # Final stage
 FROM scratch

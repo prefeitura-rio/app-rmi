@@ -130,8 +130,10 @@ jobs:
       - name: Build and Push Docker Image using Buildx
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
         run: |
+          VERSION=$(git rev-parse --short HEAD)
           docker buildx build \
             --platform linux/amd64 \
+            --build-arg VERSION=$VERSION \
             --tag $IMAGE_NAME:$TAG1 \
             --tag $IMAGE_NAME:$TAG2 \
             --push .

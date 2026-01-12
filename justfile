@@ -123,18 +123,24 @@ deps-update:
 
 # Build the application
 build:
-    go build -o bin/api cmd/api/main.go
+    #!/usr/bin/env sh
+    VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "dev")
+    go build -ldflags "-X github.com/prefeitura-rio/app-rmi/internal/handlers.Version=$VERSION" -o bin/api cmd/api/main.go
 
 # Build the sync service
 build-sync:
-    go build -o bin/sync cmd/sync/main.go
+    #!/usr/bin/env sh
+    VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "dev")
+    go build -ldflags "-X github.com/prefeitura-rio/app-rmi/internal/handlers.Version=$VERSION" -o bin/sync cmd/sync/main.go
 
 # Build both API and sync service
 build-all: build build-sync
 
 # Build Docker image
 docker-build:
-	docker build -t rmi-service .
+	#!/usr/bin/env sh
+	VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "dev")
+	docker build --build-arg VERSION=$VERSION -t rmi-service .
 
 # Run Docker container (API service by default)
 docker-run: docker-build
