@@ -98,6 +98,12 @@ jobs:
           MONGODB_WHATSAPP_MEMORY_COLLECTION: whatsapp_memory
           MONGODB_AVATARS_COLLECTION: avatars
           MONGODB_MAINTENANCE_REQUEST_COLLECTION: maintenance_requests
+          MONGODB_LEGAL_ENTITY_COLLECTION: legal_entities
+          MONGODB_CHAT_MEMORY_COLLECTION: chat_memory
+          MONGODB_CNAE_COLLECTION: cnae
+          MONGODB_DEPARTMENT_COLLECTION: departments
+          MONGODB_PET_COLLECTION: pets
+          MONGODB_PETS_SELF_REGISTERED_COLLECTION: pets_self_registered
           REDIS_ADDR: localhost:6379
           REDIS_PASSWORD: ""
           REDIS_DB: 0
