@@ -103,22 +103,46 @@ jobs:
       - name: Configure kubectl for GKE
         run: gcloud container clusters get-credentials application --zone=us-central1 --project="${{ vars.GCP_PROJECT_ID }}"
 
-      - name: Wait for ArgoCD sync
+      - name: Wait for ArgoCD sync and rollout to start
+        timeout-minutes: 5
         run: |
-          echo "Waiting 30s for ArgoCD to detect and sync changes..."
-          sleep 30
+          echo "Waiting for ArgoCD to sync and rollout to use new image..."
+          echo "Expected image: $IMAGE_NAME:$VERSION@$DIGEST"
+
+          while true; do
+            CURRENT_IMAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.spec.template.spec.containers[0].image}')
+            echo "Current rollout image: $CURRENT_IMAGE"
+
+            if [[ "$CURRENT_IMAGE" == "$IMAGE_NAME:$VERSION@$DIGEST" ]]; then
+              echo "✅ Rollout spec updated with correct image!"
+              break
+            fi
+
+            echo "Waiting 10s for ArgoCD to sync..."
+            sleep 10
+          done
 
       - name: Monitor Rollout
         timeout-minutes: 45
         run: |
-          echo "Monitoring rollout progress..."
+          echo "Monitoring rollout progress for version $VERSION..."
+          echo "Expected image: $IMAGE_NAME:$VERSION@$DIGEST"
 
           while true; do
             PHASE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.phase}')
             MESSAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.message}')
+            CURRENT_IMAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.spec.template.spec.containers[0].image}')
 
             echo "Rollout phase: $PHASE"
             echo "Message: $MESSAGE"
+            echo "Current image: $CURRENT_IMAGE"
+
+            # Verify we're still monitoring the correct version
+            if [[ "$CURRENT_IMAGE" != "$IMAGE_NAME:$VERSION@$DIGEST" ]]; then
+              echo "⚠️ WARNING: Rollout image changed unexpectedly!"
+              echo "Expected: $IMAGE_NAME:$VERSION@$DIGEST"
+              echo "Got: $CURRENT_IMAGE"
+            fi
 
             # Check if rollout completed successfully
             if [ "$PHASE" = "Healthy" ]; then
