@@ -116,7 +116,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: rmi-sync
-          image: ghcr.io/prefeitura-rio/app-rmi:stable
+          image: ghcr.io/prefeitura-rio/app-rmi:stable  # Updated by release workflow
           command: ["./sync"]
           envFrom:
             - secretRef:
