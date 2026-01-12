@@ -85,6 +85,14 @@ test-coverage:
 test-race:
     go test -race -v ./...
 
+# Run E2E tests
+test-e2e:
+    @echo "Running E2E tests..."
+    @if [ -z "$TEST_BASE_URL" ]; then echo "Error: TEST_BASE_URL not set"; exit 1; fi
+    @if [ -z "$TEST_KEYCLOAK_URL" ]; then echo "Error: TEST_KEYCLOAK_URL not set"; exit 1; fi
+    @if [ -z "$TEST_CPF" ]; then echo "Error: TEST_CPF not set"; exit 1; fi
+    go test -v ./tests/e2e/...
+
 # Run tests with a specific CPF and race detection
 test-cpf-race cpf:
     go test -race -v ./... -cpf={{cpf}}
