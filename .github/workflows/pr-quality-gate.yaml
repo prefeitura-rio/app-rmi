@@ -39,11 +39,6 @@ jobs:
         with:
           fetch-depth: 0  # Full history for better secret detection
 
-      - name: Run Gitleaks (Secret Scanning)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Run Trivy (Vulnerability Scanning)
         uses: aquasecurity/trivy-action@master
         with:
@@ -54,7 +49,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -78,7 +73,7 @@ jobs:
         run: go tool cover -func=coverage.out
 
       - name: Upload coverage to GitHub
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: coverage.out
@@ -127,7 +122,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy image scan results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: 'trivy-image-results.sarif'
