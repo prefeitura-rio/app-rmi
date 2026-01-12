@@ -57,6 +57,25 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:latest
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -67,6 +86,23 @@ jobs:
           go-version: '1.24'
 
       - name: Run unit tests
+        env:
+          MONGODB_URI: mongodb://localhost:27017
+          MONGODB_DATABASE: rmi_test
+          MONGODB_CITIZEN_COLLECTION: citizens
+          MONGODB_SELF_DECLARED_COLLECTION: self_declared
+          MONGODB_PHONE_MAPPING_COLLECTION: phone_mapping
+          MONGODB_OPT_IN_HISTORY_COLLECTION: opt_in_history
+          MONGODB_AUDIT_LOG_COLLECTION: audit_logs
+          MONGODB_BETA_GROUPS_COLLECTION: beta_groups
+          MONGODB_WHATSAPP_MEMORY_COLLECTION: whatsapp_memory
+          MONGODB_AVATARS_COLLECTION: avatars
+          REDIS_ADDR: localhost:6379
+          REDIS_PASSWORD: ""
+          REDIS_DB: 0
+          REDIS_CLUSTER_ENABLED: "false"
+          JWT_ISSUER_URL: http://localhost:8080
+          PORT: "8080"
         run: go test -v -race -coverprofile=coverage.out ./...
 
       - name: Generate coverage report
@@ -132,25 +168,43 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint, security-scan, test, build]
     if: always()
+    permissions:
+      pull-requests: write
     steps:
-      - name: Check job results
-        run: |
-          echo "## 🚦 PR Quality Gate Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Code Linting | ${{ needs.lint.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Security Scanning | ${{ needs.security-scan.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Unit Tests | ${{ needs.test.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Docker Build | ${{ needs.build.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+      - name: Find previous quality gate comment
+        uses: peter-evans/find-comment@v2
+        id: find-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: '🚦 PR Quality Gate Results'
 
+      - name: Create or update PR comment
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          edit-mode: replace
+          body: |
+            ## 🚦 PR Quality Gate Results
+
+            | Check | Status |
+            |-------|--------|
+            | Code Linting | ${{ needs.lint.result == 'success' && '✅ Passed' || '❌ Failed' }} |
+            | Security Scanning | ${{ needs.security-scan.result == 'success' && '✅ Passed' || '❌ Failed' }} |
+            | Unit Tests | ${{ needs.test.result == 'success' && '✅ Passed' || '❌ Failed' }} |
+            | Docker Build | ${{ needs.build.result == 'success' && '✅ Passed' || '❌ Failed' }} |
+
+            ${{ needs.lint.result == 'success' && needs.security-scan.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' && '### ✅ All quality checks passed - PR is ready to merge' || '### ❌ Quality gate failed - PR is not ready to merge' }}
+
+            **Commit**: ${{ github.event.pull_request.head.sha }}
+            **Run**: [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Fail workflow if any check failed
+        run: |
           if [ "${{ needs.lint.result }}" != "success" ] || \
              [ "${{ needs.security-scan.result }}" != "success" ] || \
              [ "${{ needs.test.result }}" != "success" ] || \
              [ "${{ needs.build.result }}" != "success" ]; then
-            echo "### ❌ Quality gate failed - PR is not ready to merge" >> $GITHUB_STEP_SUMMARY
             exit 1
-          else
-            echo "### ✅ All quality checks passed - PR is ready to merge" >> $GITHUB_STEP_SUMMARY
           fi
