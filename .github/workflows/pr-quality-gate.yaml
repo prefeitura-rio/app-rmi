@@ -97,6 +97,7 @@ jobs:
           MONGODB_BETA_GROUPS_COLLECTION: beta_groups
           MONGODB_WHATSAPP_MEMORY_COLLECTION: whatsapp_memory
           MONGODB_AVATARS_COLLECTION: avatars
+          MONGODB_MAINTENANCE_REQUEST_COLLECTION: maintenance_requests
           REDIS_ADDR: localhost:6379
           REDIS_PASSWORD: ""
           REDIS_DB: 0
