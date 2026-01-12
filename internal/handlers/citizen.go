@@ -1457,6 +1457,7 @@ func HealthCheck(c *gin.Context) {
 	ctx, span := otel.Tracer("").Start(c.Request.Context(), "HealthCheck")
 	defer span.End()
 
+	// Health check endpoint - returns service status and version
 	logger := observability.Logger()
 	logger.Info("Health check requested")
 
