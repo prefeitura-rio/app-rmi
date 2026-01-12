@@ -17,6 +17,7 @@ spec:
       previewService: rmi-preview
       autoPromotionEnabled: false
       scaleDownDelaySeconds: 30
+      previewReplicaCount: 1
   template:
     metadata:
       labels:
