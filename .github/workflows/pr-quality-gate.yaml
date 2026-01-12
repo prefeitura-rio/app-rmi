@@ -191,10 +191,10 @@ jobs:
 
             | Check | Status |
             |-------|--------|
-            | Code Linting | ${{ needs.lint.result == 'success' && '✅ Passed' || '❌ Failed' }} |
-            | Security Scanning | ${{ needs.security-scan.result == 'success' && '✅ Passed' || '❌ Failed' }} |
-            | Unit Tests | ${{ needs.test.result == 'success' && '✅ Passed' || '❌ Failed' }} |
-            | Docker Build | ${{ needs.build.result == 'success' && '✅ Passed' || '❌ Failed' }} |
+            | Code Linting | ${{ needs.lint.result == 'success' && '✅ Passed' || needs.lint.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
+            | Security Scanning | ${{ needs.security-scan.result == 'success' && '✅ Passed' || needs.security-scan.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
+            | Unit Tests | ${{ needs.test.result == 'success' && '✅ Passed' || needs.test.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
+            | Docker Build | ${{ needs.build.result == 'success' && '✅ Passed' || needs.build.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
 
             ${{ needs.lint.result == 'success' && needs.security-scan.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' && '### ✅ All quality checks passed - PR is ready to merge' || '### ❌ Quality gate failed - PR is not ready to merge' }}
 
