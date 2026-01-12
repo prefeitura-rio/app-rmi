@@ -1,0 +1,122 @@
+name: Release and Deploy
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      - name: Install swag
+        run: |
+          mkdir -p bin
+          GOBIN="$PWD/bin" go install github.com/swaggo/swag/cmd/swag@latest
+          echo "$PWD/bin" >> $GITHUB_PATH
+
+      - name: Generate Swagger v2
+        run: swag init -g cmd/api/main.go
+
+      - name: Install swagger2openapi
+        run: npm install -g swagger2openapi
+
+      - name: Convert to OpenAPI v3
+        run: swagger2openapi docs/swagger.json -o docs/openapi-v3.json
+
+      - name: Post-process OpenAPI v3 JSON
+        run: |
+          jq '.servers = [
+              {"url": "https://services.pref.rio/rmi/v1", "description": "Production"},
+              {"url": "https://services.staging.app.dados.rio/rmi/v1", "description": "Staging"}
+            ] |
+              .components.securitySchemes = {
+                "bearerAuth": {
+                  "type": "http",
+                  "scheme": "bearer",
+                  "bearerFormat": "JWT"
+                }
+              } |
+              .paths |= with_entries(.value |= with_entries(.value.security = [{"bearerAuth": []}]))' \
+          docs/openapi-v3.json > docs/openapi-v3.json.tmp && \
+          mv docs/openapi-v3.json.tmp docs/openapi-v3.json
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'github-actions@github.com'
+
+      - name: Commit and push OpenAPI v3
+        run: |
+          git add docs/openapi-v3.json
+          git commit -m "chore: update OpenAPI v3 documentation for ${{ github.ref_name }}" || echo "No changes to commit"
+          git push
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+
+      - name: Extract release version
+        id: version
+        run: |
+          # Get release tag (e.g., v1.2.3)
+          VERSION=${{ github.ref_name }}
+          # Remove 'v' prefix if present
+          VERSION_NO_V=${VERSION#v}
+          # Get commit hash
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION_NO_V=$VERSION_NO_V" >> $GITHUB_ENV
+          echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_ENV
+          echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/app-rmi" >> $GITHUB_ENV
+
+      - name: Build and Push Docker Image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --build-arg VERSION=$COMMIT_HASH \
+            --tag $IMAGE_NAME:$VERSION \
+            --tag $IMAGE_NAME:$VERSION_NO_V \
+            --tag $IMAGE_NAME:latest-release \
+            --push .
+
+      - name: Update production Rollout image
+        run: |
+          # Update the image tag in prod resources
+          sed -i "s|image: ghcr.io/prefeitura-rio/app-rmi:.*|image: ghcr.io/prefeitura-rio/app-rmi:$VERSION@$(docker buildx imagetools inspect $IMAGE_NAME:$VERSION --format '{{.Manifest.Digest}}')|g" k8s/prod/resources.yaml
+
+          # Commit and push the updated Rollout
+          git add k8s/prod/resources.yaml
+          git commit -m "chore: update prod image to $VERSION" || echo "No changes to commit"
+          git push
+
+      - name: Create deployment summary
+        run: |
+          echo "## 🚀 Release Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: $COMMIT_HASH" >> $GITHUB_STEP_SUMMARY
+          echo "**Image**: \`$IMAGE_NAME:$VERSION\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. ArgoCD will detect the updated Rollout manifest" >> $GITHUB_STEP_SUMMARY
+          echo "2. Argo Rollouts will start canary deployment (10% → 20% → 40% → 60% → 80% → 100%)" >> $GITHUB_STEP_SUMMARY
+          echo "3. Monitor with: \`kubectl argo rollouts get rollout rmi -n rmi --watch\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. Promote manually: \`kubectl argo rollouts promote rmi -n rmi\`" >> $GITHUB_STEP_SUMMARY
+          echo "5. Abort if needed: \`kubectl argo rollouts abort rmi -n rmi\`" >> $GITHUB_STEP_SUMMARY

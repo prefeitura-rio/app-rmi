@@ -3,8 +3,7 @@ name: Build and Push image
 on:
   push:
     branches:
-      - main
-      - staging
+      - staging  # Only build staging on push, prod uses releases
 
 jobs:
   build:
