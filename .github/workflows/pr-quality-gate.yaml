@@ -87,6 +87,7 @@ jobs:
 
       - name: Run unit tests
         env:
+          # MongoDB configuration
           MONGODB_URI: mongodb://localhost:27017
           MONGODB_DATABASE: rmi_test
           MONGODB_CITIZEN_COLLECTION: citizens
@@ -104,12 +105,27 @@ jobs:
           MONGODB_DEPARTMENT_COLLECTION: departments
           MONGODB_PET_COLLECTION: pets
           MONGODB_PETS_SELF_REGISTERED_COLLECTION: pets_self_registered
+          # Redis configuration
           REDIS_ADDR: localhost:6379
           REDIS_PASSWORD: ""
           REDIS_DB: 0
           REDIS_CLUSTER_ENABLED: "false"
+          # API configuration
           JWT_ISSUER_URL: http://localhost:8080
           PORT: "8080"
+          # Feature flags - disable external integrations for tests
+          CF_LOOKUP_ENABLED: "false"
+          WHATSAPP_ENABLED: "false"
+          # MCP configuration (not needed when CF_LOOKUP_ENABLED=false, but providing anyway)
+          MCP_SERVER_URL: http://localhost:8000
+          MCP_AUTH_TOKEN: test-token
+          # WhatsApp configuration (not needed when WHATSAPP_ENABLED=false, but providing anyway)
+          WHATSAPP_API_BASE_URL: http://localhost:9000
+          WHATSAPP_API_USERNAME: test
+          WHATSAPP_API_PASSWORD: test
+          WHATSAPP_CAMPAIGN_NAME: test
+          WHATSAPP_COST_CENTER_ID: "1"
+          WHATSAPP_HSM_ID: "1"
         run: go test -v -race -coverprofile=coverage.out ./...
 
       - name: Generate coverage report
