@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 )
 
 func setupPhoneRouter() *gin.Engine {
@@ -18,16 +20,14 @@ func setupPhoneRouter() *gin.Engine {
 
 func TestValidatePhoneVerificationEndpoint(t *testing.T) {
 	r := setupPhoneRouter()
-	cpf := "12345678901"
+	cpf := "03561350712"
 
 	// Invalid body
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/v1/citizen/"+cpf+"/phone/validate", bytes.NewBufferString("{}"))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 for invalid body, got %d", w.Code)
-	}
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	// Missing code/phone (simulate not found)
 	w2 := httptest.NewRecorder()
@@ -35,9 +35,81 @@ func TestValidatePhoneVerificationEndpoint(t *testing.T) {
 	req2, _ := http.NewRequest("POST", "/v1/citizen/"+cpf+"/phone/validate", bytes.NewBuffer(body))
 	req2.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w2, req2)
-	if w2.Code != http.StatusNotFound && w2.Code != http.StatusInternalServerError {
-		t.Errorf("expected 404 or 500 for not found/DB error, got %d", w2.Code)
+	assert.Contains(t, []int{http.StatusNotFound, http.StatusInternalServerError}, w2.Code)
+}
+
+func TestValidatePhoneVerification_InvalidCPF(t *testing.T) {
+	r := setupPhoneRouter()
+
+	tests := []struct {
+		name string
+		cpf  string
+	}{
+		{"empty CPF", ""},
+		{"short CPF", "123"},
+		{"letters in CPF", "abcdefghijk"},
 	}
 
-	// Note: Happy path would require a real verification code in the DB, which is not practical for a static test.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"code":"123456","ddi":"55","ddd":"21","valor":"999999999"}`)
+			req, _ := http.NewRequest("POST", "/v1/citizen/"+tt.cpf+"/phone/validate", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+}
+
+func TestValidatePhoneVerification_MalformedJSON(t *testing.T) {
+	r := setupPhoneRouter()
+
+	req, _ := http.NewRequest("POST", "/v1/citizen/03561350712/phone/validate", bytes.NewBufferString("invalid json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestValidatePhoneVerification_MissingFields(t *testing.T) {
+	r := setupPhoneRouter()
+	cpf := "03561350712"
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"missing code", `{"ddi":"55","ddd":"21","valor":"999999999"}`},
+		{"missing ddi", `{"code":"123456","ddd":"21","valor":"999999999"}`},
+		{"missing ddd", `{"code":"123456","ddi":"55","valor":"999999999"}`},
+		{"missing valor", `{"code":"123456","ddi":"55","ddd":"21"}`},
+		{"empty code", `{"code":"","ddi":"55","ddd":"21","valor":"999999999"}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest("POST", "/v1/citizen/"+cpf+"/phone/validate", bytes.NewBufferString(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+}
+
+func TestValidatePhoneVerification_ResponseFormat(t *testing.T) {
+	r := setupPhoneRouter()
+	cpf := "03561350712"
+
+	body := []byte(`{"code":"000000","ddi":"55","ddd":"21","valor":"999999999"}`)
+	req, _ := http.NewRequest("POST", "/v1/citizen/"+cpf+"/phone/validate", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	// Should return JSON response
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err, "Response should be valid JSON")
 }

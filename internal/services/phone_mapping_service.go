@@ -69,6 +69,7 @@ func (s *PhoneMappingService) GetPhoneStatus(ctx context.Context, phoneNumber st
 		Found:           true,
 		Quarantined:     quarantined,
 		OptedOut:        optedOut,
+		OptIn:           mapping.OptIn,
 		QuarantineUntil: mapping.QuarantineUntil,
 	}
 

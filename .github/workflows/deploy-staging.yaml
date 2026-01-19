@@ -1,0 +1,208 @@
+name: Deploy to Staging with Blue-Green
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-and-test:
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if k8s-only changes
+        id: check-k8s-only
+        run: |
+          # Get list of changed files
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
+
+          # Check if only k8s/ files were changed
+          NON_K8S_FILES=$(echo "$CHANGED_FILES" | grep -v "^k8s/" || true)
+
+          if [ -z "$NON_K8S_FILES" ] && [ -n "$CHANGED_FILES" ]; then
+            echo "k8s_only=true" >> $GITHUB_OUTPUT
+            echo "Only k8s/ files changed, skipping build and tests"
+          else
+            echo "k8s_only=false" >> $GITHUB_OUTPUT
+            echo "Non-k8s files changed, proceeding with build and tests"
+          fi
+
+      - name: Set up Go
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      - name: Install swag
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: |
+          mkdir -p bin
+          GOBIN="$PWD/bin" go install github.com/swaggo/swag/cmd/swag@latest
+          echo "$PWD/bin" >> $GITHUB_PATH
+
+      - name: Generate Swagger documentation
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: swag init -g cmd/api/main.go
+
+      - name: Set up Docker Buildx
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+
+      - name: Extract metadata for Docker
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        id: meta
+        run: |
+          COMMIT_HASH=${{ github.sha }}
+          SHORT_HASH=$(git rev-parse --short HEAD)
+          IMAGE_NAME="ghcr.io/${{ github.repository_owner }}/app-rmi"
+
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+          echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_ENV
+          echo "SHORT_HASH=$SHORT_HASH" >> $GITHUB_ENV
+
+      - name: Build and Push Docker Image
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --build-arg VERSION=$SHORT_HASH \
+            --tag $IMAGE_NAME:latest \
+            --tag $IMAGE_NAME:$COMMIT_HASH \
+            --push .
+
+      - name: Get image digest
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        id: digest
+        run: |
+          DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:latest --format '{{.Manifest.Digest}}' | grep -oE 'sha256:[a-f0-9]+' | head -n1)
+          echo "DIGEST=$DIGEST" >> $GITHUB_ENV
+          echo "Image digest: $DIGEST"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest
+
+      - name: Configure kubectl for GKE
+        run: gcloud container clusters get-credentials application --zone=us-central1 --project="${{ vars.GCP_PROJECT_ID }}"
+
+      - name: Trigger Blue-Green Rollout
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: |
+          echo "Triggering blue-green rollout to preview service..."
+
+          # Update preview service image
+          kubectl set image deployment/rmi-preview rmi=$IMAGE_NAME:$COMMIT_HASH@$DIGEST -n rmi
+
+          # Wait for preview deployment to be ready
+          kubectl rollout status deployment/rmi-preview -n rmi --timeout=5m
+
+      - name: Run E2E Tests Against Preview
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        env:
+          TEST_BASE_URL: "https://services.staging.app.dados.rio/rmi-preview/v1"
+          TEST_KEYCLOAK_URL: ${{ secrets.TEST_KEYCLOAK_URL }}
+          TEST_KEYCLOAK_REALM: ${{ secrets.TEST_KEYCLOAK_REALM }}
+          TEST_KEYCLOAK_CLIENT_ID: ${{ secrets.TEST_KEYCLOAK_CLIENT_ID }}
+          TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+          TEST_CPF: ${{ secrets.TEST_CPF }}
+        run: |
+          echo "Running E2E tests against preview service..."
+          go test -v ./tests/e2e/... -timeout 15m
+
+      - name: Promote to Stable
+        if: steps.check-k8s-only.outputs.k8s_only != 'true' && success()
+        run: |
+          echo "✅ Tests passed! Promoting to stable..."
+
+          # Update stable service image
+          kubectl set image rollout/rmi rmi=$IMAGE_NAME:$COMMIT_HASH@$DIGEST -n rmi
+
+          # Monitor rollout (canary deployment handles gradual rollout)
+          kubectl argo rollouts get rollout rmi -n rmi --watch
+
+      - name: Rollback on Failure
+        if: steps.check-k8s-only.outputs.k8s_only != 'true' && failure()
+        run: |
+          echo "❌ Tests failed! Rolling back preview deployment..."
+
+          # Rollback preview deployment
+          kubectl rollout undo deployment/rmi-preview -n rmi
+
+          echo "Preview deployment rolled back. Stable service unchanged."
+          exit 1
+
+      - name: Create deployment summary
+        if: always() && steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: |
+          echo "## 🚀 Staging Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: $SHORT_HASH" >> $GITHUB_STEP_SUMMARY
+          echo "**Image**: \`$IMAGE_NAME:$COMMIT_HASH@${DIGEST:0:12}...\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "### ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
+            echo "- Preview tests passed" >> $GITHUB_STEP_SUMMARY
+            echo "- Promoted to stable service" >> $GITHUB_STEP_SUMMARY
+            echo "- Canary rollout in progress" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+            echo "- E2E tests failed" >> $GITHUB_STEP_SUMMARY
+            echo "- Preview rolled back" >> $GITHUB_STEP_SUMMARY
+            echo "- Stable service unchanged" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment on PR if exists
+        if: always() && steps.check-k8s-only.outputs.k8s_only != 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const prNumber = context.payload.pull_request?.number;
+            if (!prNumber) return;
+
+            const status = '${{ job.status }}' === 'success' ? '✅' : '❌';
+            const message = `${status} **Staging Deployment ${status === '✅' ? 'Succeeded' : 'Failed'}**
+
+            - **Commit**: \`${{ env.SHORT_HASH }}\`
+            - **Image**: \`${{ env.IMAGE_NAME }}:${{ env.COMMIT_HASH }}@${{ env.DIGEST }}\`
+
+            ${status === '✅' ?
+              '- Preview tests passed\n- Promoted to stable\n- Canary rollout in progress' :
+              '- E2E tests failed\n- Preview rolled back\n- Stable unchanged'}
+            `;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: message
+            });

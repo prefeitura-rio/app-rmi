@@ -6,6 +6,7 @@ import (
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -95,14 +96,14 @@ func (rp *RedisPipeline) BatchGet(keys []string) (map[string]interface{}, error)
 	pipe := config.Redis.Pipeline()
 
 	// Add get operations to pipeline
-	cmds := make([]interface{}, len(keys))
+	cmds := make([]*redis.StringCmd, len(keys))
 	for i, key := range keys {
 		cmds[i] = pipe.Get(rp.ctx, key)
 	}
 
 	// Execute pipeline
 	_, err := pipe.Exec(rp.ctx)
-	if err != nil {
+	if err != nil && err != redis.Nil {
 		logging.Logger.Error("failed to execute Redis pipeline",
 			zap.Error(err),
 			zap.Int("key_count", len(keys)))
@@ -112,9 +113,16 @@ func (rp *RedisPipeline) BatchGet(keys []string) (map[string]interface{}, error)
 	// Extract results
 	results := make(map[string]interface{})
 	for i, cmd := range cmds {
-		if getCmd, ok := cmd.(interface{ Val() interface{} }); ok {
-			results[keys[i]] = getCmd.Val()
+		val, err := cmd.Result()
+		if err == nil {
+			results[keys[i]] = val
+		} else if err != redis.Nil {
+			// Log non-nil errors but don't fail the whole operation
+			logging.Logger.Warn("failed to get key in batch",
+				zap.String("key", keys[i]),
+				zap.Error(err))
 		}
+		// If err == redis.Nil, key doesn't exist - skip it (don't add to results)
 	}
 
 	// Log performance metrics

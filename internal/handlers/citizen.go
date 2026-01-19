@@ -2112,6 +2112,13 @@ func UpdateSelfDeclaredGenero(c *gin.Context) {
 
 	logger.Debug("UpdateSelfDeclaredGenero called", zap.String("cpf", cpf))
 
+	// Validate CPF format
+	if !utils.ValidateCPF(cpf) {
+		logger.Error("invalid CPF format")
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid CPF format"})
+		return
+	}
+
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "gender")
 	var input models.SelfDeclaredGeneroInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -2278,6 +2285,13 @@ func UpdateSelfDeclaredRendaFamiliar(c *gin.Context) {
 	)
 
 	logger.Debug("UpdateSelfDeclaredRendaFamiliar called", zap.String("cpf", cpf))
+
+	// Validate CPF format
+	if !utils.ValidateCPF(cpf) {
+		logger.Error("invalid CPF format")
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid CPF format"})
+		return
+	}
 
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "family_income")
 	var input models.SelfDeclaredRendaFamiliarInput
@@ -2446,6 +2460,13 @@ func UpdateSelfDeclaredEscolaridade(c *gin.Context) {
 
 	logger.Debug("UpdateSelfDeclaredEscolaridade called", zap.String("cpf", cpf))
 
+	// Validate CPF format
+	if !utils.ValidateCPF(cpf) {
+		logger.Error("invalid CPF format")
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid CPF format"})
+		return
+	}
+
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "education")
 	var input models.SelfDeclaredEscolaridadeInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -2612,6 +2633,13 @@ func UpdateSelfDeclaredDeficiencia(c *gin.Context) {
 	)
 
 	logger.Debug("UpdateSelfDeclaredDeficiencia called", zap.String("cpf", cpf))
+
+	// Validate CPF format
+	if !utils.ValidateCPF(cpf) {
+		logger.Error("invalid CPF format")
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid CPF format"})
+		return
+	}
 
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "disability")
 	var input models.SelfDeclaredDeficienciaInput
