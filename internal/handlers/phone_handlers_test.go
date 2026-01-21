@@ -88,9 +88,18 @@ func setupPhoneHandlersTest(t *testing.T) (*PhoneHandlers, *gin.Engine, func()) 
 	router.GET("/config/channels", handlers.GetAvailableChannels)
 	router.GET("/config/opt-out-reasons", handlers.GetOptOutReasons)
 
-	return handlers, router, func() {
-		database.Drop(ctx)
+	// Cleanup function to drop test collections
+	cleanup := func() {
+		// Drop test collections used by this test file
+		database.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
+		database.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
+		database.Collection(config.AppConfig.OptInHistoryCollection).Drop(ctx)
 	}
+
+	// Clean up at start to ensure fresh state
+	cleanup()
+
+	return handlers, router, cleanup
 }
 
 // insertTestPhoneMapping inserts a test phone mapping into MongoDB
