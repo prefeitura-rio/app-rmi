@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func setupCNAEHandlersTest(t *testing.T) (*CNAEHandlers, *gin.Engine, func()) {
@@ -27,11 +29,24 @@ func setupCNAEHandlersTest(t *testing.T) (*CNAEHandlers, *gin.Engine, func()) {
 	ctx := context.Background()
 	database := config.MongoDB
 
+	// Cleanup function to drop test collection
+	cleanup := func() {
+		database.Collection(config.AppConfig.CNAECollection).Drop(ctx)
+	}
+
+	// Clean up at start to ensure fresh state
+	cleanup()
+
 	// Create text index for search
 	collection := database.Collection(config.AppConfig.CNAECollection)
-	// Note: We skip index creation in tests since it requires mongo.IndexModel
-	// and we're avoiding importing mongo package
-	_ = collection // Silence unused variable
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "Denominacao", Value: "text"}},
+		Options: options.Index().SetName("idx_cnae_text_search"),
+	}
+	_, err := collection.Indexes().CreateOne(ctx, indexModel)
+	if err != nil {
+		t.Fatalf("Failed to create CNAE text index: %v", err)
+	}
 
 	service := services.NewCNAEService(database, logging.Logger)
 	handlers := NewCNAEHandlers(service, logging.Logger)
@@ -39,9 +54,7 @@ func setupCNAEHandlersTest(t *testing.T) (*CNAEHandlers, *gin.Engine, func()) {
 	router := gin.New()
 	router.GET("/cnaes", handlers.ListCNAEs)
 
-	return handlers, router, func() {
-		database.Drop(ctx)
-	}
+	return handlers, router, cleanup
 }
 
 func TestNewCNAEHandlers(t *testing.T) {

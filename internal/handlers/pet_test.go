@@ -36,10 +36,16 @@ func setupPetHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	router.GET("/citizen/:cpf/pets/stats", GetPetStats)
 	router.POST("/citizen/:cpf/pets", RegisterPet)
 
-	return router, func() {
-		database.Drop(ctx)
+	// Cleanup function to drop test collections
+	cleanup := func() {
+		database.Collection(config.AppConfig.PetCollection).Drop(ctx)
 		services.PetServiceInstance = nil
 	}
+
+	// Clean up at start to ensure fresh state
+	cleanup()
+
+	return router, cleanup
 }
 
 func TestGetPets_InvalidCPF(t *testing.T) {
