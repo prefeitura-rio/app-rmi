@@ -42,12 +42,13 @@ func TestValidatePhoneVerification_InvalidCPF(t *testing.T) {
 	r := setupPhoneRouter()
 
 	tests := []struct {
-		name string
-		cpf  string
+		name           string
+		cpf            string
+		expectedStatus int
 	}{
-		{"empty CPF", ""},
-		{"short CPF", "123"},
-		{"letters in CPF", "abcdefghijk"},
+		{"empty CPF", "", http.StatusNotFound}, // Route won't match
+		{"short CPF", "123", http.StatusBadRequest},
+		{"letters in CPF", "abcdefghijk", http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {
@@ -57,7 +58,7 @@ func TestValidatePhoneVerification_InvalidCPF(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, req)
-			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Equal(t, tt.expectedStatus, w.Code)
 		})
 	}
 }
