@@ -803,6 +803,7 @@ func TestLoadConfig_CFLookupEnabledWithoutMCPToken(t *testing.T) {
 	setupMinimalEnv(t)
 	os.Setenv("CF_LOOKUP_ENABLED", "true")
 	os.Setenv("MCP_SERVER_URL", "https://mcp.example.com")
+	os.Unsetenv("MCP_AUTH_TOKEN") // Ensure MCP_AUTH_TOKEN is not set from CI env
 	defer os.Unsetenv("CF_LOOKUP_ENABLED")
 	defer os.Unsetenv("MCP_SERVER_URL")
 
