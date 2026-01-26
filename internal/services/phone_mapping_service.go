@@ -11,6 +11,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
@@ -614,6 +615,12 @@ func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber st
 			}
 			return ""
 		}(),
+		FirstName: func() string {
+			if citizen.Nome != nil {
+				return utils.ExtractFirstName(*citizen.Nome)
+			}
+			return ""
+		}(),
 	}, nil
 }
 
@@ -741,7 +748,7 @@ func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, chann
 			UpdatedAt:   &now,
 		}
 
-		_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
+		result, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
 		if err != nil {
 			s.logger.Error("failed to create phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
 			return nil, fmt.Errorf("failed to create phone mapping: %w", err)
@@ -750,8 +757,15 @@ func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, chann
 		// Record opt-in history
 		s.recordOptInHistory(ctx, phoneNumber, cpf, "opt_in", channel, "")
 
+		// Get the inserted ID as string
+		mappingID := ""
+		if oid, ok := result.InsertedID.(primitive.ObjectID); ok {
+			mappingID = oid.Hex()
+		}
+
 		return &models.OptInResponse{
-			Status: "opted_in",
+			Status:         "opted_in",
+			PhoneMappingID: mappingID,
 		}, nil
 	}
 

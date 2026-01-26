@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
@@ -11,14 +10,10 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func setupCNAEServiceTest(t *testing.T) (*CNAEService, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping CNAE service tests: MONGODB_URI not set")
-	}
+	setupTestEnvironment()
 
 	logging.InitLogger()
 
@@ -28,41 +23,27 @@ func setupCNAEServiceTest(t *testing.T) (*CNAEService, func()) {
 	config.AppConfig.CNAECollection = "test_cnaes"
 
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
-
-	database := client.Database("rmi_test")
-	config.MongoDB = database
 
 	// Create text index for search
-	collection := database.Collection(config.AppConfig.CNAECollection)
+	collection := config.MongoDB.Collection(config.AppConfig.CNAECollection)
 	indexModel := mongo.IndexModel{
 		Keys: bson.D{{Key: "Denominacao", Value: "text"}},
 	}
 	_, _ = collection.Indexes().CreateOne(ctx, indexModel)
 
-	service := NewCNAEService(database, logging.Logger)
+	service := NewCNAEService(config.MongoDB, logging.Logger)
 
 	return service, func() {
-		database.Drop(ctx)
-		client.Disconnect(ctx)
+		collection.Drop(ctx)
 	}
 }
 
 func TestNewCNAEService(t *testing.T) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping: MONGODB_URI not set")
-	}
+	setupTestEnvironment()
 
-	ctx := context.Background()
-	client, _ := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	defer client.Disconnect(ctx)
+	logging.InitLogger()
 
-	database := client.Database("test")
-	service := NewCNAEService(database, logging.Logger)
+	service := NewCNAEService(config.MongoDB, logging.Logger)
 
 	if service == nil {
 		t.Error("NewCNAEService() returned nil")

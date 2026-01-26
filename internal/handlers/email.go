@@ -116,6 +116,49 @@ func ValidateEmailAddress(c *gin.Context) {
 	utils.AddSpanAttribute(formatSpan, "email.length", len(email))
 	formatSpan.End()
 
+	// Pre-validation: Check basic structure before parsing (to provide better error messages)
+	ctx, preValidationSpan := utils.TraceBusinessLogic(ctx, "pre_validation")
+	atCount := strings.Count(email, "@")
+	if atCount != 1 {
+		utils.AddSpanAttribute(preValidationSpan, "validation.error", "invalid_at_count")
+		utils.AddSpanAttribute(preValidationSpan, "at_count", atCount)
+		preValidationSpan.End()
+		c.JSON(http.StatusOK, EmailValidationResponse{
+			Valid:   false,
+			Message: "formato de email inválido",
+		})
+		return
+	}
+
+	// Split to check domain structure before parsing
+	prelimParts := strings.Split(email, "@")
+	if len(prelimParts) == 2 {
+		prelimDomain := prelimParts[1]
+
+		// Check for domain starting/ending with dot
+		if strings.HasPrefix(prelimDomain, ".") || strings.HasSuffix(prelimDomain, ".") {
+			utils.AddSpanAttribute(preValidationSpan, "validation.error", "domain_dot_boundary")
+			preValidationSpan.End()
+			c.JSON(http.StatusOK, EmailValidationResponse{
+				Valid:   false,
+				Message: "domínio não pode começar ou terminar com ponto",
+			})
+			return
+		}
+
+		// Check for consecutive dots
+		if strings.Contains(prelimDomain, "..") {
+			utils.AddSpanAttribute(preValidationSpan, "validation.error", "consecutive_dots")
+			preValidationSpan.End()
+			c.JSON(http.StatusOK, EmailValidationResponse{
+				Valid:   false,
+				Message: "domínio não pode conter pontos consecutivos",
+			})
+			return
+		}
+	}
+	preValidationSpan.End()
+
 	// Parse email using Go's standard library with tracing
 	ctx, parseSpan := utils.TraceBusinessLogic(ctx, "parse_email_address")
 	addr, err := mail.ParseAddress(email)
@@ -176,27 +219,7 @@ func ValidateEmailAddress(c *gin.Context) {
 		return
 	}
 
-	// Check for valid domain structure
-	if strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
-		utils.AddSpanAttribute(validationSpan, "validation.error", "invalid_domain_structure")
-		validationSpan.End()
-		c.JSON(http.StatusOK, EmailValidationResponse{
-			Valid:   false,
-			Message: "domínio não pode começar ou terminar com ponto",
-		})
-		return
-	}
-
-	// Check for consecutive dots
-	if strings.Contains(domain, "..") {
-		utils.AddSpanAttribute(validationSpan, "validation.error", "consecutive_dots")
-		validationSpan.End()
-		c.JSON(http.StatusOK, EmailValidationResponse{
-			Valid:   false,
-			Message: "domínio não pode conter pontos consecutivos",
-		})
-		return
-	}
+	// Note: Domain structure (dots) already validated in pre-validation phase
 
 	// Check if domain has at least one dot
 	if !strings.Contains(domain, ".") {

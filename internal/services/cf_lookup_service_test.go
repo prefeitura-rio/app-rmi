@@ -17,16 +17,10 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // setupCFLookupTest initializes MongoDB and Redis for CF lookup service tests
 func setupCFLookupTest(t *testing.T) (*CFLookupService, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping CF lookup service tests: MONGODB_URI not set")
-	}
-
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
@@ -35,17 +29,10 @@ func setupCFLookupTest(t *testing.T) (*CFLookupService, func()) {
 	// Initialize logging
 	logging.InitLogger()
 
-	// Connect to MongoDB
+	// Check if MongoDB is initialized (via TestMain in common_test.go)
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
-
-	// Ping to verify connection
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		t.Fatalf("Failed to ping MongoDB: %v", err)
+	if config.MongoDB == nil {
+		t.Skip("MongoDB not initialized")
 	}
 
 	// Initialize Redis
@@ -57,14 +44,12 @@ func setupCFLookupTest(t *testing.T) (*CFLookupService, func()) {
 	config.Redis = redisclient.NewClient(singleClient)
 
 	// Test Redis connection
-	err = config.Redis.Ping(ctx).Err()
+	err := config.Redis.Ping(ctx).Err()
 	if err != nil {
 		t.Fatalf("Failed to connect to Redis: %v", err)
 	}
 
 	// Initialize config
-	database := client.Database("test_rmi_cf_lookup")
-	config.MongoDB = database
 	if config.AppConfig == nil {
 		config.AppConfig = &config.Config{}
 	}
@@ -75,7 +60,7 @@ func setupCFLookupTest(t *testing.T) (*CFLookupService, func()) {
 
 	// Create service (without MCP client for most tests)
 	logger := &logging.SafeLogger{}
-	service := NewCFLookupService(database, nil, logger)
+	service := NewCFLookupService(config.MongoDB, nil, logger)
 
 	// Return cleanup function
 	return service, func() {
@@ -84,9 +69,8 @@ func setupCFLookupTest(t *testing.T) (*CFLookupService, func()) {
 		if len(keys) > 0 {
 			config.Redis.Del(ctx, keys...)
 		}
-		// Drop test database
-		database.Drop(ctx)
-		client.Disconnect(ctx)
+		// Drop only test collection
+		config.MongoDB.Collection(config.AppConfig.CFLookupCollection).Drop(ctx)
 	}
 }
 

@@ -3,34 +3,20 @@ package services
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
-	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 )
 
 // setupAddressServiceTest initializes MongoDB and Redis for testing
 func setupAddressServiceTest(t *testing.T) (*AddressService, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping address service tests: MONGODB_URI not set")
-	}
-
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-
+	// Use the shared MongoDB and Redis from common_test.go TestMain
 	logging.InitLogger()
 
 	// Initialize config
@@ -41,38 +27,12 @@ func setupAddressServiceTest(t *testing.T) (*AddressService, func()) {
 	config.AppConfig.LogradouroCollection = "test_logradouros"
 	config.AppConfig.AddressCacheTTL = 5 * time.Minute
 
-	// MongoDB setup
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
+	database := config.MongoDB
 
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		t.Fatalf("Failed to ping MongoDB: %v", err)
-	}
-
-	database := client.Database("rmi_test")
-	config.MongoDB = database
-
-	// Redis setup
-	singleClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       0,
-	})
-	config.Redis = redisclient.NewClient(singleClient)
-
-	// Test Redis connection
-	err = config.Redis.Ping(ctx).Err()
-	if err != nil {
-		t.Fatalf("Failed to connect to Redis: %v", err)
-	}
-
-	// Create service
+	// Create service (pass nil for client since we use the shared connection)
 	logger := zap.L().Named("address_service_test")
-	service := NewAddressService(client, database, logger)
+	service := NewAddressService(nil, database, logger)
 
 	return service, func() {
 		// Clean up Redis
@@ -81,9 +41,10 @@ func setupAddressServiceTest(t *testing.T) (*AddressService, func()) {
 			config.Redis.Del(ctx, keys...)
 		}
 
-		// Clean up MongoDB
-		database.Drop(ctx)
-		client.Disconnect(ctx)
+		// Clean up MongoDB collections only
+		database.Collection(config.AppConfig.BairroCollection).Drop(ctx)
+		database.Collection(config.AppConfig.LogradouroCollection).Drop(ctx)
+		// DO NOT disconnect - client is shared across all tests
 	}
 }
 
@@ -573,22 +534,12 @@ func TestBuildAddress_NumberTypes(t *testing.T) {
 }
 
 func TestNewAddressService(t *testing.T) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping: MONGODB_URI not set")
-	}
-
-	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	require.NoError(t, err)
-	defer client.Disconnect(ctx)
-
-	database := client.Database("test")
+	// Use shared MongoDB connection
+	database := config.MongoDB
 	logger := zap.NewNop()
 
-	service := NewAddressService(client, database, logger)
+	service := NewAddressService(nil, database, logger)
 	assert.NotNil(t, service)
-	assert.Equal(t, client, service.mongoClient)
 	assert.Equal(t, database, service.database)
 	assert.Equal(t, logger, service.logger)
 }

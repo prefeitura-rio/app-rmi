@@ -7,62 +7,24 @@ import (
 	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// setupCacheServiceTest initializes MongoDB and Redis for testing
+// setupCacheServiceTest initializes test environment and returns service with cleanup function
 func setupCacheServiceTest(t *testing.T) (*CacheService, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping cache service tests: MONGODB_URI not set")
+	// Ensure test environment is set up (uses common_test.go)
+	setupTestEnvironment()
+
+	if config.MongoDB == nil {
+		t.Skip("Skipping cache service tests: MongoDB not available")
 	}
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
+	if config.Redis == nil {
+		t.Skip("Skipping cache service tests: Redis not available")
 	}
 
-	logging.InitLogger()
-
-	// Initialize config
-	if config.AppConfig == nil {
-		config.AppConfig = &config.Config{}
-	}
-	config.AppConfig.CitizenCollection = "test_citizens"
-	config.AppConfig.SelfDeclaredCollection = "test_self_declared"
-
-	// MongoDB setup
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
-
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		t.Fatalf("Failed to ping MongoDB: %v", err)
-	}
-
-	config.MongoDB = client.Database("rmi_test")
-
-	// Redis setup
-	singleClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       0,
-	})
-	config.Redis = redisclient.NewClient(singleClient)
-
-	// Test Redis connection
-	err = config.Redis.Ping(ctx).Err()
-	if err != nil {
-		t.Fatalf("Failed to connect to Redis: %v", err)
-	}
 
 	// Create service
 	service := NewCacheService()
@@ -89,9 +51,21 @@ func setupCacheServiceTest(t *testing.T) (*CacheService, func()) {
 			}
 		}
 
-		// Clean up MongoDB
-		config.MongoDB.Drop(ctx)
-		client.Disconnect(ctx)
+		// Clean up MongoDB - drop only test collections
+		collections := []string{
+			"test_citizens",
+			"test_self_declared",
+			"phone_mappings",
+			"user_configs",
+			"opt_in_history",
+			"beta_groups",
+			"phone_verifications",
+			"maintenance_requests",
+		}
+
+		for _, collName := range collections {
+			config.MongoDB.Collection(collName).Drop(ctx)
+		}
 	}
 }
 

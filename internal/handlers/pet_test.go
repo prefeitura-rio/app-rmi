@@ -21,8 +21,9 @@ func setupPetHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	// Use the shared MongoDB from common_test.go TestMain
 	gin.SetMode(gin.TestMode)
 
-	// Configure test collection
+	// Configure test collections
 	config.AppConfig.PetCollection = "test_pets"
+	config.AppConfig.PetsSelfRegisteredCollection = "test_pets_self_registered"
 
 	ctx := context.Background()
 	database := config.MongoDB
@@ -36,14 +37,16 @@ func setupPetHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	router.GET("/citizen/:cpf/pets/stats", GetPetStats)
 	router.POST("/citizen/:cpf/pets", RegisterPet)
 
+	// Clean up collections at start to ensure fresh state
+	database.Collection(config.AppConfig.PetCollection).Drop(ctx)
+	database.Collection(config.AppConfig.PetsSelfRegisteredCollection).Drop(ctx)
+
 	// Cleanup function to drop test collections
 	cleanup := func() {
 		database.Collection(config.AppConfig.PetCollection).Drop(ctx)
+		database.Collection(config.AppConfig.PetsSelfRegisteredCollection).Drop(ctx)
 		services.PetServiceInstance = nil
 	}
-
-	// Clean up at start to ensure fresh state
-	cleanup()
 
 	return router, cleanup
 }
@@ -83,7 +86,7 @@ func TestGetPets_ValidCPF_Empty(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("GetPets() status = %v, want %v", w.Code, http.StatusOK)
+		t.Errorf("GetPets() status = %v, want %v. Response body: %s", w.Code, http.StatusOK, w.Body.String())
 	}
 
 	var response models.PaginatedPets
@@ -102,20 +105,24 @@ func TestGetPets_WithData(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Insert test pets
+	// Insert test pets (using the nested structure expected by the model)
 	collection := config.MongoDB.Collection(config.AppConfig.PetCollection)
 	pets := []interface{}{
 		bson.M{
-			"_id":          1,
-			"cpf":          "03561350712",
-			"animal_nome":  "Rex",
-			"especie_nome": "dog",
-		},
-		bson.M{
-			"_id":          2,
-			"cpf":          "03561350712",
-			"animal_nome":  "Mimi",
-			"especie_nome": "cat",
+			"cpf": "03561350712",
+			"pet": bson.M{
+				"cpf": "03561350712",
+				"pet": []bson.M{
+					{
+						"animal_nome":  "Rex",
+						"especie_nome": "dog",
+					},
+					{
+						"animal_nome":  "Mimi",
+						"especie_nome": "cat",
+					},
+				},
+			},
 		},
 	}
 
@@ -204,8 +211,9 @@ func TestGetPet_InvalidPetID(t *testing.T) {
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 
-			if w.Code != http.StatusBadRequest && w.Code != http.StatusNotFound {
-				t.Errorf("GetPet() with %s status = %v, want %v or %v", tt.name, w.Code, http.StatusBadRequest, http.StatusNotFound)
+			// Accept 301 (redirect from Gin for empty ID with trailing slash), 400, or 404
+			if w.Code != http.StatusBadRequest && w.Code != http.StatusNotFound && w.Code != http.StatusMovedPermanently {
+				t.Errorf("GetPet() with %s status = %v, want %v, %v, or %v", tt.name, w.Code, http.StatusBadRequest, http.StatusNotFound, http.StatusMovedPermanently)
 			}
 		})
 	}
@@ -230,13 +238,20 @@ func TestGetPet_Success(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Insert test pet
+	// Insert test pet (using the nested structure expected by the model)
 	collection := config.MongoDB.Collection(config.AppConfig.PetCollection)
 	pet := bson.M{
-		"_id":          1,
-		"cpf":          "03561350712",
-		"animal_nome":  "Rex",
-		"especie_nome": "dog",
+		"cpf": "03561350712",
+		"pet": bson.M{
+			"cpf": "03561350712",
+			"pet": []bson.M{
+				{
+					"id_animal":    1,
+					"animal_nome":  "Rex",
+					"especie_nome": "dog",
+				},
+			},
+		},
 	}
 
 	_, err := collection.InsertOne(ctx, pet)

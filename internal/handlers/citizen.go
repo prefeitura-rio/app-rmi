@@ -1002,6 +1002,20 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 	}
 	cpfSpan.End()
 
+	// Validate email format
+	ctx, emailSpan := utils.TraceInputValidation(ctx, "email_format", "email")
+	validationResult := utils.ValidateEmail(input)
+	if !validationResult.IsValid {
+		utils.RecordErrorInSpan(emailSpan, fmt.Errorf("invalid email format"), map[string]interface{}{
+			"email":  input.Valor,
+			"errors": validationResult.Errors,
+		})
+		emailSpan.End()
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid email format"})
+		return
+	}
+	emailSpan.End()
+
 	// Get current email data for comparison with tracing (optimized to fetch only email field)
 	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.SelfDeclaredCollection, "cpf")
 	current, err := getCurrentEmailData(ctx, cpf)
@@ -1858,8 +1872,9 @@ func GetOptIn(c *gin.Context) {
 
 			// Serialize response with tracing (with nil category_opt_ins for backward compatibility)
 			_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+			defaultOptIn := true
 			c.JSON(http.StatusOK, models.UserConfigOptInResponse{
-				OptIn:          true,
+				OptIn:          &defaultOptIn,
 				CategoryOptIns: nil, // Empty for users without config
 			})
 			responseSpan.End()
@@ -1890,8 +1905,9 @@ func GetOptIn(c *gin.Context) {
 
 	// Serialize response with tracing
 	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	optInValue := userConfig.OptIn
 	c.JSON(http.StatusOK, models.UserConfigOptInResponse{
-		OptIn:          userConfig.OptIn,
+		OptIn:          &optInValue,
 		CategoryOptIns: userConfig.CategoryOptIns,
 	})
 	responseSpan.End()
@@ -1963,14 +1979,14 @@ func UpdateOptIn(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid request body: " + err.Error()})
 		return
 	}
-	utils.AddSpanAttribute(inputSpan, "input.opt_in", input.OptIn)
+	utils.AddSpanAttribute(inputSpan, "input.opt_in", *input.OptIn)
 	inputSpan.End()
 
 	// Build user config object with tracing
 	ctx, buildSpan := utils.TraceBusinessLogic(ctx, "build_user_config_object")
 	userConfig := &models.UserConfig{
 		CPF:       cpf,
-		OptIn:     input.OptIn,
+		OptIn:     *input.OptIn,
 		UpdatedAt: time.Now(),
 	}
 	buildSpan.End()
@@ -2014,7 +2030,7 @@ func UpdateOptIn(c *gin.Context) {
 		RequestID: c.GetString("RequestID"),
 	}
 
-	err = utils.LogUserConfigUpdate(ctx, auditCtx, "opt_in", !input.OptIn, input.OptIn)
+	err = utils.LogUserConfigUpdate(ctx, auditCtx, "opt_in", !*input.OptIn, *input.OptIn)
 	if err != nil {
 		utils.RecordErrorInSpan(auditSpan, err, map[string]interface{}{
 			"audit.action":   "update",
@@ -2034,7 +2050,7 @@ func UpdateOptIn(c *gin.Context) {
 	logger.Debug("UpdateOptIn completed",
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
-		zap.Bool("new_opt_in_status", input.OptIn),
+		zap.Bool("new_opt_in_status", *input.OptIn),
 		zap.String("status", "success"))
 }
 

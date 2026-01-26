@@ -12,17 +12,10 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // setupCitizenCacheTest initializes MongoDB and Redis for testing
 func setupCitizenCacheTest(t *testing.T) (*CitizenCacheService, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping citizen cache service tests: MONGODB_URI not set")
-	}
-
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
@@ -35,19 +28,12 @@ func setupCitizenCacheTest(t *testing.T) (*CitizenCacheService, func()) {
 		config.AppConfig = &config.Config{}
 	}
 
-	// MongoDB setup
+	// MongoDB setup - use shared connection
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
+	if config.MongoDB == nil {
+		t.Skip("Skipping citizen cache service tests: config.MongoDB not initialized")
 	}
 
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		t.Fatalf("Failed to ping MongoDB: %v", err)
-	}
-
-	config.MongoDB = client.Database("rmi_test")
 	config.AppConfig.CitizenCollection = "test_citizens"
 
 	// Redis setup
@@ -59,7 +45,7 @@ func setupCitizenCacheTest(t *testing.T) (*CitizenCacheService, func()) {
 	config.Redis = redisclient.NewClient(singleClient)
 
 	// Test Redis connection
-	err = config.Redis.Ping(ctx).Err()
+	err := config.Redis.Ping(ctx).Err()
 	if err != nil {
 		t.Fatalf("Failed to connect to Redis: %v", err)
 	}
@@ -74,9 +60,8 @@ func setupCitizenCacheTest(t *testing.T) (*CitizenCacheService, func()) {
 			config.Redis.Del(ctx, keys...)
 		}
 
-		// Clean up MongoDB
-		config.MongoDB.Drop(ctx)
-		client.Disconnect(ctx)
+		// Clean up MongoDB - drop only test collections
+		config.MongoDB.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
 	}
 }
 

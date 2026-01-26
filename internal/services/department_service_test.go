@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -10,14 +9,11 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func setupDepartmentServiceTest(t *testing.T) (*DepartmentService, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping department service tests: MONGODB_URI not set")
+	if config.MongoDB == nil {
+		t.Skip("Skipping department service tests: MongoDB not initialized")
 	}
 
 	logging.InitLogger()
@@ -27,35 +23,20 @@ func setupDepartmentServiceTest(t *testing.T) (*DepartmentService, func()) {
 	}
 	config.AppConfig.DepartmentCollection = "test_departments"
 
-	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
-
-	database := client.Database("rmi_test")
-	config.MongoDB = database
-
-	service := NewDepartmentService(database, logging.Logger)
+	service := NewDepartmentService(config.MongoDB, logging.Logger)
 
 	return service, func() {
-		database.Drop(ctx)
-		client.Disconnect(ctx)
+		ctx := context.Background()
+		config.MongoDB.Collection(config.AppConfig.DepartmentCollection).Drop(ctx)
 	}
 }
 
 func TestNewDepartmentService(t *testing.T) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping: MONGODB_URI not set")
+	if config.MongoDB == nil {
+		t.Skip("Skipping: MongoDB not initialized")
 	}
 
-	ctx := context.Background()
-	client, _ := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	defer client.Disconnect(ctx)
-
-	database := client.Database("test")
-	service := NewDepartmentService(database, logging.Logger)
+	service := NewDepartmentService(config.MongoDB, logging.Logger)
 
 	if service == nil {
 		t.Error("NewDepartmentService() returned nil")

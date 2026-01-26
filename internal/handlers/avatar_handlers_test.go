@@ -33,6 +33,15 @@ func setupAvatarHandlersTest(t *testing.T) (*AvatarHandlers, *gin.Engine, func()
 	ctx := context.Background()
 	database := config.MongoDB
 
+	// Clean up Redis cache BEFORE test starts
+	patterns := []string{"avatar:*", "avatars:*", "user_config:*"}
+	for _, pattern := range patterns {
+		keys, _ := config.Redis.Keys(ctx, pattern).Result()
+		if len(keys) > 0 {
+			config.Redis.Del(ctx, keys...)
+		}
+	}
+
 	// Clean collections before test
 	database.Collection(config.AppConfig.AvatarsCollection).Drop(ctx)
 	database.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
@@ -53,7 +62,7 @@ func setupAvatarHandlersTest(t *testing.T) (*AvatarHandlers, *gin.Engine, func()
 
 	return handlers, router, func() {
 		// Clean up Redis
-		patterns := []string{"avatar:*", "user_config:*"}
+		patterns := []string{"avatar:*", "avatars:*", "user_config:*"}
 		for _, pattern := range patterns {
 			keys, _ := config.Redis.Keys(ctx, pattern).Result()
 			if len(keys) > 0 {
@@ -61,7 +70,9 @@ func setupAvatarHandlersTest(t *testing.T) (*AvatarHandlers, *gin.Engine, func()
 			}
 		}
 
-		database.Drop(ctx)
+		// Drop only test collections, not the entire database
+		database.Collection(config.AppConfig.AvatarsCollection).Drop(ctx)
+		database.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
 		services.AvatarServiceInstance = nil
 	}
 }

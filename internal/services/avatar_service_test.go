@@ -2,34 +2,19 @@ package services
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
-	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 )
 
 // setupAvatarServiceTest initializes MongoDB and Redis for testing
 func setupAvatarServiceTest(t *testing.T) (*AvatarService, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping avatar service tests: MONGODB_URI not set")
-	}
-
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-
 	logging.InitLogger()
 
 	// Initialize config
@@ -39,66 +24,39 @@ func setupAvatarServiceTest(t *testing.T) (*AvatarService, func()) {
 	config.AppConfig.AvatarsCollection = "test_avatars"
 	config.AppConfig.AvatarCacheTTL = 5 * time.Minute
 
-	// MongoDB setup
+	// Use shared MongoDB connection
+	if config.MongoDB == nil {
+		t.Skip("Skipping avatar service tests: MongoDB not initialized")
+	}
+
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
 
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		t.Fatalf("Failed to ping MongoDB: %v", err)
-	}
-
-	database := client.Database("rmi_test")
-	config.MongoDB = database
-
-	// Redis setup
-	singleClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       0,
-	})
-	config.Redis = redisclient.NewClient(singleClient)
-
-	// Test Redis connection
-	err = config.Redis.Ping(ctx).Err()
-	if err != nil {
-		t.Fatalf("Failed to connect to Redis: %v", err)
-	}
-
-	// Create service
+	// Create service with nil client (uses shared connection)
 	logger := zap.L().Named("avatar_service_test")
-	service := NewAvatarService(client, database, logger)
+	service := NewAvatarService(nil, config.MongoDB, logger)
 
 	return service, func() {
 		// Clean up Redis
-		keys, _ := config.Redis.Keys(ctx, "avatar*").Result()
-		if len(keys) > 0 {
-			config.Redis.Del(ctx, keys...)
+		if config.Redis != nil {
+			keys, _ := config.Redis.Keys(ctx, "avatar*").Result()
+			if len(keys) > 0 {
+				config.Redis.Del(ctx, keys...)
+			}
 		}
 
-		// Clean up MongoDB
-		database.Drop(ctx)
-		client.Disconnect(ctx)
+		// Clean up only test_avatars collection
+		config.MongoDB.Collection("test_avatars").Drop(ctx)
 	}
 }
 
 func TestNewAvatarService(t *testing.T) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping: MONGODB_URI not set")
+	if config.MongoDB == nil {
+		t.Skip("Skipping: MongoDB not initialized")
 	}
 
-	ctx := context.Background()
-	client, _ := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	defer client.Disconnect(ctx)
-
-	database := client.Database("test")
 	logger := zap.NewNop()
 
-	service := NewAvatarService(client, database, logger)
+	service := NewAvatarService(nil, config.MongoDB, logger)
 	if service == nil {
 		t.Error("NewAvatarService() returned nil")
 	}

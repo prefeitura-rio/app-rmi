@@ -46,7 +46,7 @@ func TestValidatePhoneVerification_InvalidCPF(t *testing.T) {
 		cpf            string
 		expectedStatus int
 	}{
-		{"empty CPF", "", http.StatusNotFound}, // Route won't match
+		{"empty CPF", "", http.StatusBadRequest}, // Empty CPF fails validation
 		{"short CPF", "123", http.StatusBadRequest},
 		{"letters in CPF", "abcdefghijk", http.StatusBadRequest},
 	}

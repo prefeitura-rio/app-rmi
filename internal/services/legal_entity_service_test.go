@@ -2,20 +2,16 @@ package services
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func setupLegalEntityServiceTest(t *testing.T) (*LegalEntityService, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping legal entity service tests: MONGODB_URI not set")
+	if config.MongoDB == nil {
+		t.Skip("Skipping legal entity service tests: MongoDB not initialized")
 	}
 
 	logging.InitLogger()
@@ -25,35 +21,21 @@ func setupLegalEntityServiceTest(t *testing.T) (*LegalEntityService, func()) {
 	}
 	config.AppConfig.LegalEntityCollection = "test_legal_entities"
 
-	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
-
-	database := client.Database("rmi_test")
-	config.MongoDB = database
-
-	service := NewLegalEntityService(database, logging.Logger)
+	service := NewLegalEntityService(config.MongoDB, logging.Logger)
 
 	return service, func() {
-		database.Drop(ctx)
-		client.Disconnect(ctx)
+		ctx := context.Background()
+		collection := config.MongoDB.Collection(config.AppConfig.LegalEntityCollection)
+		collection.Drop(ctx)
 	}
 }
 
 func TestNewLegalEntityService(t *testing.T) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping: MONGODB_URI not set")
+	if config.MongoDB == nil {
+		t.Skip("Skipping: MongoDB not initialized")
 	}
 
-	ctx := context.Background()
-	client, _ := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	defer client.Disconnect(ctx)
-
-	database := client.Database("test")
-	service := NewLegalEntityService(database, logging.Logger)
+	service := NewLegalEntityService(config.MongoDB, logging.Logger)
 
 	if service == nil {
 		t.Error("NewLegalEntityService() returned nil")

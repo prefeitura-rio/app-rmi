@@ -2,31 +2,18 @@ package services
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
-	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func setupNotificationCategoryServiceTest(t *testing.T) (*NotificationCategoryService, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping notification category service tests: MONGODB_URI not set")
-	}
-
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-
+	// Use the shared MongoDB and Redis from common_test.go TestMain
+	// Don't create new connections - use the global ones
 	logging.InitLogger()
 
 	if config.AppConfig == nil {
@@ -36,21 +23,7 @@ func setupNotificationCategoryServiceTest(t *testing.T) (*NotificationCategorySe
 	config.AppConfig.NotificationCategoryCacheTTL = 5 * time.Minute
 
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
-
-	database := client.Database("rmi_test")
-	config.MongoDB = database
-
-	// Redis setup
-	singleClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       0,
-	})
-	config.Redis = redisclient.NewClient(singleClient)
+	database := config.MongoDB
 
 	service := NewNotificationCategoryService(logging.Logger)
 
@@ -64,8 +37,9 @@ func setupNotificationCategoryServiceTest(t *testing.T) (*NotificationCategorySe
 			}
 		}
 
-		database.Drop(ctx)
-		client.Disconnect(ctx)
+		// Drop only the test collection, not the entire database
+		database.Collection(config.AppConfig.NotificationCategoryCollection).Drop(ctx)
+		// DO NOT disconnect the client - it's shared across all tests
 	}
 }
 

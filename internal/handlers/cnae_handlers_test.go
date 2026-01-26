@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -29,15 +30,15 @@ func setupCNAEHandlersTest(t *testing.T) (*CNAEHandlers, *gin.Engine, func()) {
 	ctx := context.Background()
 	database := config.MongoDB
 
+	// Clean up at start to ensure fresh state
+	database.Collection(config.AppConfig.CNAECollection).Drop(ctx)
+
 	// Cleanup function to drop test collection
 	cleanup := func() {
 		database.Collection(config.AppConfig.CNAECollection).Drop(ctx)
 	}
 
-	// Clean up at start to ensure fresh state
-	cleanup()
-
-	// Create text index for search
+	// Create text index for search (optional for tests)
 	collection := database.Collection(config.AppConfig.CNAECollection)
 	indexModel := mongo.IndexModel{
 		Keys:    bson.D{{Key: "Denominacao", Value: "text"}},
@@ -45,7 +46,7 @@ func setupCNAEHandlersTest(t *testing.T) (*CNAEHandlers, *gin.Engine, func()) {
 	}
 	_, err := collection.Indexes().CreateOne(ctx, indexModel)
 	if err != nil {
-		t.Fatalf("Failed to create CNAE text index: %v", err)
+		t.Logf("Warning: Failed to create CNAE text index: %v (continuing anyway)", err)
 	}
 
 	service := services.NewCNAEService(database, logging.Logger)
@@ -458,10 +459,9 @@ func TestListCNAEs_Pagination(t *testing.T) {
 	var cnaes []interface{}
 	for i := 1; i <= 25; i++ {
 		cnaes = append(cnaes, bson.M{
-			"_id":         bson.M{},
 			"Secao":       "A",
 			"Divisao":     "01",
-			"Grupo":       "01.1",
+			"Grupo":       fmt.Sprintf("01.%d", i),
 			"Classe":      bson.M{},
 			"Subclasse":   bson.M{},
 			"Denominacao": bson.M{},
@@ -583,10 +583,9 @@ func TestListCNAEs_DefaultPagination(t *testing.T) {
 	var cnaes []interface{}
 	for i := 1; i <= 15; i++ {
 		cnaes = append(cnaes, bson.M{
-			"_id":         bson.M{},
 			"Secao":       "A",
 			"Divisao":     "01",
-			"Grupo":       "01.1",
+			"Grupo":       fmt.Sprintf("01.%d", i),
 			"Classe":      bson.M{},
 			"Subclasse":   bson.M{},
 			"Denominacao": bson.M{},

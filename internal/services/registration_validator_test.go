@@ -2,58 +2,41 @@ package services
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // setupValidatorTest initializes MongoDB for registration validator tests
 func setupValidatorTest(t *testing.T) (*BaseDataValidator, func()) {
-	mongoURI := getEnvOrDefault("MONGODB_URI", "mongodb://root:password@localhost:27017")
-	if mongoURI == "" {
-		t.Skip("Skipping registration validator tests: MONGODB_URI not set")
+	// Use shared MongoDB from TestMain
+	if config.MongoDB == nil {
+		t.Skip("Skipping registration validator tests: MongoDB not initialized")
 	}
 
 	// Initialize logging
 	logging.InitLogger()
 
-	// Connect to MongoDB
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
 
-	// Ping to verify connection
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		t.Fatalf("Failed to ping MongoDB: %v", err)
-	}
+	// Save original collection name
+	origCitizenCollection := config.AppConfig.CitizenCollection
 
-	// Initialize config
-	config.MongoDB = client.Database("test_rmi_validator")
-	if config.AppConfig == nil {
-		config.AppConfig = &config.Config{
-			CitizenCollection: "test_citizens",
-		}
-	} else {
-		config.AppConfig.CitizenCollection = "test_citizens"
-	}
+	// Set test collection
+	config.AppConfig.CitizenCollection = "test_validator_citizens"
 
 	// Create validator
 	validator := NewBaseDataValidator(logging.Logger)
 
 	// Return cleanup function
 	return validator, func() {
-		// Drop test database
-		config.MongoDB.Drop(ctx)
-		client.Disconnect(ctx)
+		// Clean up test collection only
+		config.MongoDB.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
+		// Restore original collection name
+		config.AppConfig.CitizenCollection = origCitizenCollection
 	}
 }
 
@@ -510,12 +493,4 @@ func TestMockValidator(t *testing.T) {
 			t.Errorf("ValidateRegistration() name = %s, want empty", name)
 		}
 	})
-}
-
-// getEnvOrDefault returns environment variable value or default if not set
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }

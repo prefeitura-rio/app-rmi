@@ -33,28 +33,56 @@ func InitMongoDB() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Detect test mode by checking if database name contains "test"
+	isTestMode := false
+	if len(AppConfig.MongoDatabase) > 0 {
+		dbLower := AppConfig.MongoDatabase
+		if len(dbLower) >= 4 && (dbLower[len(dbLower)-4:] == "test" || dbLower[:4] == "test" ||
+			(len(dbLower) > 4 && (dbLower[:5] == "test_" || dbLower[len(dbLower)-5:] == "_test"))) {
+			isTestMode = true
+		}
+	}
+
+	if isTestMode {
+		log.Printf("MongoDB: Detected test mode (database=%s), using simplified configuration", AppConfig.MongoDatabase)
+	} else {
+		log.Printf("MongoDB: Production mode (database=%s), using replica set configuration", AppConfig.MongoDatabase)
+	}
+
 	// Configure MongoDB with optimizations for load distribution
 	opts := options.Client().
 		ApplyURI(AppConfig.MongoURI).
-		SetMonitor(otelmongo.NewMonitor()).
-		// Load distribution optimizations (these OVERRIDE URI settings)
-		SetReadPreference(readpref.Nearest()). // Force reads from nearest node
-		// Connection pool optimization for high-write scenarios
-		SetMaxConnecting(100).                      // Increased for better concurrency
-		SetMaxConnIdleTime(2 * time.Minute).        // Reduced from 5min for faster rotation
-		SetMinPoolSize(50).                         // NEW: Warm up connections
-		SetMaxPoolSize(1000).                       // NEW: Large pool for high concurrency
-		SetRetryWrites(true).                       // Handle temporary failures gracefully
-		SetRetryReads(true).                        // Retry read operations on secondary nodes
-		SetServerSelectionTimeout(1 * time.Second). // Faster failover
-		SetSocketTimeout(15 * time.Second).         // Reduced from 25s
-		SetConnectTimeout(2 * time.Second).         // Reduced from 3s
-		// NEW: Compression optimization
-		SetCompressors([]string{"snappy"}). // Use snappy instead of zlib
-		// Write concern optimization - W=1 for better performance
-		SetWriteConcern(&writeconcern.WriteConcern{W: 1})
-		// Note: Connection pool and timeout settings are configured via URI parameters
-		// The code-level read preference will override URI settings
+		SetMonitor(otelmongo.NewMonitor())
+
+	// Only apply replica set configurations in production mode
+	if !isTestMode {
+		opts = opts.
+			// Load distribution optimizations (these OVERRIDE URI settings)
+			SetReadPreference(readpref.Nearest()). // Force reads from nearest node
+			// Connection pool optimization for high-write scenarios
+			SetMaxConnecting(100).                      // Increased for better concurrency
+			SetMaxConnIdleTime(2 * time.Minute).        // Reduced from 5min for faster rotation
+			SetMinPoolSize(50).                         // NEW: Warm up connections
+			SetMaxPoolSize(1000).                       // NEW: Large pool for high concurrency
+			SetRetryWrites(true).                       // Handle temporary failures gracefully
+			SetRetryReads(true).                        // Retry read operations on secondary nodes
+			SetServerSelectionTimeout(1 * time.Second). // Faster failover
+			SetSocketTimeout(15 * time.Second).         // Reduced from 25s
+			SetConnectTimeout(2 * time.Second).         // Reduced from 3s
+			// NEW: Compression optimization
+			SetCompressors([]string{"snappy"}). // Use snappy instead of zlib
+			// Write concern optimization - W=1 for better performance
+			SetWriteConcern(&writeconcern.WriteConcern{W: 1})
+	} else {
+		// Test mode: simpler configuration for single-node MongoDB
+		opts = opts.
+			SetDirect(true).                            // Direct connection, no replica set
+			SetServerSelectionTimeout(5 * time.Second). // More lenient timeout
+			SetConnectTimeout(5 * time.Second).         // More lenient timeout
+			SetSocketTimeout(30 * time.Second)          // More lenient timeout
+	}
+	// Note: Connection pool and timeout settings are configured via URI parameters
+	// The code-level read preference will override URI settings
 
 	// Add connection pool monitoring
 	// Pool monitoring disabled to reduce log verbosity

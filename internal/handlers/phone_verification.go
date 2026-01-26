@@ -54,6 +54,15 @@ func ValidatePhoneVerification(c *gin.Context) {
 	logger := observability.Logger().With(zap.String("cpf", cpf))
 	logger.Debug("ValidatePhoneVerification called", zap.String("cpf", cpf))
 
+	// Validate CPF format
+	if !utils.ValidateCPF(cpf) {
+		logger.Warn("invalid CPF format", zap.String("cpf", cpf))
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: "Invalid CPF format",
+		})
+		return
+	}
+
 	// Parse input with tracing
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "phone_verification_validate_request")
 	var req models.PhoneVerificationValidateRequest

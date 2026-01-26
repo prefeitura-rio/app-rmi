@@ -136,13 +136,22 @@ func insertTestCitizen(t *testing.T, cpf, name, birthDate string) {
 	ctx := context.Background()
 	collection := config.MongoDB.Collection(config.AppConfig.CitizenCollection)
 
+	// Parse birth date
+	parsedDate, err := time.Parse("2006-01-02", birthDate)
+	if err != nil {
+		t.Fatalf("Failed to parse birth date: %v", err)
+	}
+
 	citizen := bson.M{
 		"_id":  cpf,
 		"cpf":  cpf,
 		"nome": name,
+		"nascimento": bson.M{
+			"data": parsedDate,
+		},
 	}
 
-	_, err := collection.InsertOne(ctx, citizen)
+	_, err = collection.InsertOne(ctx, citizen)
 	if err != nil {
 		t.Fatalf("Failed to insert citizen: %v", err)
 	}
@@ -193,7 +202,7 @@ func TestGetPhoneStatus_Found(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.True(t, response.Found)
-	assert.Equal(t, "035***50712", response.CPF)     // Masked CPF
+	assert.Equal(t, "035***50712", response.CPF)    // Masked CPF
 	assert.Equal(t, "João d* Silva", response.Name) // Masked name (masks middle names)
 	assert.True(t, response.OptIn)
 	assert.False(t, response.Quarantined)
@@ -230,9 +239,9 @@ func TestGetCitizenByPhone_Success(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.True(t, response.Found)
-	assert.Equal(t, "035***50712", response.CPF)     // Masked CPF
-	assert.Equal(t, "João d* Silva", response.Name)  // Masked name
-	assert.Equal(t, "João", response.FirstName)       // First name is not masked
+	assert.Equal(t, "035***50712", response.CPF)    // Masked CPF
+	assert.Equal(t, "João d* Silva", response.Name) // Masked name
+	assert.Equal(t, "João", response.FirstName)     // First name is not masked
 }
 
 // TestGetCitizenByPhone_NotFound tests getting citizen for non-existent phone
@@ -527,14 +536,19 @@ func TestReleaseQuarantine_Success(t *testing.T) {
 	_, router, cleanup := setupPhoneHandlersTest(t)
 	defer cleanup()
 
-	// Insert test data with quarantine
+	// Insert test data with quarantine using storage format
 	ctx := context.Background()
 	collection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
 	quarantineUntil := time.Now().Add(24 * time.Hour)
 	now := time.Now()
 
+	// Convert phone number to storage format
+	components, err := utils.ParsePhoneNumber("+5521999887766")
+	assert.NoError(t, err)
+	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+
 	mapping := models.PhoneCPFMapping{
-		PhoneNumber:     "+5521999887766",
+		PhoneNumber:     storagePhone,
 		CPF:             "03561350712",
 		Status:          models.MappingStatusQuarantined,
 		OptIn:           false,
@@ -544,7 +558,7 @@ func TestReleaseQuarantine_Success(t *testing.T) {
 		UpdatedAt:       &now,
 	}
 
-	_, err := collection.InsertOne(ctx, mapping)
+	_, err = collection.InsertOne(ctx, mapping)
 	assert.NoError(t, err)
 
 	req, _ := http.NewRequest("DELETE", "/phone/+5521999887766/quarantine", nil)

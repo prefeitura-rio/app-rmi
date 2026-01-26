@@ -593,14 +593,14 @@ func TestValidateEmailAddress_EdgeCases(t *testing.T) {
 			description:   "Maximum valid local part length",
 		},
 		{
-			name:          "email with maximum domain length (253 chars)",
-			email:         "user@" + strings.Repeat("a", 240) + ".example.com",
+			name:          "email with maximum domain length (252 chars)",
+			email:         "a@" + strings.Repeat("a", 247) + ".com",
 			expectedValid: true,
-			description:   "Maximum valid domain length",
+			description:   "Maximum valid domain length given 254 char email limit",
 		},
 		{
 			name:          "email with maximum total length (254 chars)",
-			email:         strings.Repeat("a", 64) + "@" + strings.Repeat("b", 180) + ".example.com",
+			email:         strings.Repeat("a", 64) + "@" + strings.Repeat("b", 177) + ".example.com",
 			expectedValid: true,
 			description:   "Maximum valid total length",
 		},

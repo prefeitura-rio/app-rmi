@@ -17,16 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // setupSyncWorkerTest initializes MongoDB and Redis for testing
 func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping sync worker tests: MONGODB_URI not set")
-	}
-
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
@@ -42,20 +36,12 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 	config.AppConfig.SelfDeclaredCollection = "test_self_declared"
 	config.AppConfig.UserConfigCollection = "test_user_config"
 
-	// MongoDB setup
+	// Use shared MongoDB connection
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
+	if config.MongoDB == nil {
+		t.Skip("Skipping sync worker tests: MongoDB not initialized")
 	}
-
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		t.Fatalf("Failed to ping MongoDB: %v", err)
-	}
-
-	db := client.Database("rmi_test_sync_worker")
-	config.MongoDB = db
+	db := config.MongoDB
 
 	// Redis setup
 	singleClient := redis.NewClient(&redis.Options{
@@ -67,7 +53,7 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 	config.Redis = redisClient
 
 	// Test Redis connection
-	err = redisClient.Ping(ctx).Err()
+	err := redisClient.Ping(ctx).Err()
 	if err != nil {
 		t.Fatalf("Failed to connect to Redis: %v", err)
 	}
@@ -102,9 +88,16 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 			}
 		}
 
-		// Clean up MongoDB
-		db.Drop(ctx)
-		client.Disconnect(ctx)
+		// Clean up MongoDB - drop only test collections
+		db.Collection("test_citizens").Drop(ctx)
+		db.Collection("test_self_declared").Drop(ctx)
+		db.Collection("test_user_config").Drop(ctx)
+		db.Collection("phone_cpf_mappings").Drop(ctx)
+		db.Collection("self_declared").Drop(ctx)
+		db.Collection("opt_in_histories").Drop(ctx)
+		db.Collection("beta_groups").Drop(ctx)
+		db.Collection("phone_verifications").Drop(ctx)
+		db.Collection("maintenance_requests").Drop(ctx)
 	}
 }
 
@@ -1306,11 +1299,6 @@ func TestSyncWorker_EmptyDataHandling(t *testing.T) {
 
 // TestSyncWorker_MultipleWorkers tests multiple workers processing concurrently
 func TestSyncWorker_MultipleWorkers(t *testing.T) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping test: MONGODB_URI not set")
-	}
-
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
@@ -1326,12 +1314,10 @@ func TestSyncWorker_MultipleWorkers(t *testing.T) {
 	config.AppConfig.UserConfigCollection = "test_user_config"
 
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	require.NoError(t, err)
-
-	db := client.Database("rmi_test_multi_worker")
-	defer db.Drop(ctx)
-	defer client.Disconnect(ctx)
+	if config.MongoDB == nil {
+		t.Skip("Skipping test: MongoDB not initialized")
+	}
+	db := config.MongoDB
 
 	singleClient := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
@@ -1405,6 +1391,9 @@ func TestSyncWorker_MultipleWorkers(t *testing.T) {
 			redisClient.Del(ctx, keys...)
 		}
 	}
+
+	// Clean up MongoDB - drop only test collections
+	db.Collection("test_citizens").Drop(ctx)
 }
 
 // TestSyncWorker_AllCollectionTypes tests all collection types

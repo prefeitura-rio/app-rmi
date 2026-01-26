@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -10,59 +9,50 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // setupPhoneMappingTest initializes MongoDB for phone mapping service tests
 func setupPhoneMappingTest(t *testing.T) (*PhoneMappingService, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping phone mapping service tests: MONGODB_URI not set")
+	// Ensure test environment is initialized
+	setupTestEnvironment()
+
+	if config.MongoDB == nil {
+		t.Skip("Skipping phone mapping service tests: MongoDB not available")
 	}
 
-	// Initialize logging
-	logging.InitLogger()
-
-	// Connect to MongoDB
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
 
-	// Ping to verify connection
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		t.Fatalf("Failed to ping MongoDB: %v", err)
-	}
+	// Store original collection names to restore later
+	originalCitizenCollection := config.AppConfig.CitizenCollection
+	originalPhoneMappingCollection := config.AppConfig.PhoneMappingCollection
+	originalOptInHistoryCollection := config.AppConfig.OptInHistoryCollection
+	originalBetaGroupCollection := config.AppConfig.BetaGroupCollection
+	originalPhoneQuarantineTTL := config.AppConfig.PhoneQuarantineTTL
 
-	// Initialize config
-	config.MongoDB = client.Database("test_rmi_phone_mapping")
-	if config.AppConfig == nil {
-		config.AppConfig = &config.Config{
-			CitizenCollection:      "test_citizens",
-			PhoneMappingCollection: "test_phone_mappings",
-			OptInHistoryCollection: "test_opt_in_history",
-			BetaGroupCollection:    "test_beta_groups",
-			PhoneQuarantineTTL:     6 * 30 * 24 * time.Hour, // 6 months
-		}
-	} else {
-		config.AppConfig.CitizenCollection = "test_citizens"
-		config.AppConfig.PhoneMappingCollection = "test_phone_mappings"
-		config.AppConfig.OptInHistoryCollection = "test_opt_in_history"
-		config.AppConfig.BetaGroupCollection = "test_beta_groups"
-		config.AppConfig.PhoneQuarantineTTL = 6 * 30 * 24 * time.Hour
-	}
+	// Use test collection names
+	config.AppConfig.CitizenCollection = "test_citizens"
+	config.AppConfig.PhoneMappingCollection = "test_phone_mappings"
+	config.AppConfig.OptInHistoryCollection = "test_opt_in_history"
+	config.AppConfig.BetaGroupCollection = "test_beta_groups"
+	config.AppConfig.PhoneQuarantineTTL = 6 * 30 * 24 * time.Hour
 
 	// Create service
 	service := NewPhoneMappingService(logging.Logger)
 
 	// Return cleanup function
 	return service, func() {
-		// Drop test database
-		config.MongoDB.Drop(ctx)
-		client.Disconnect(ctx)
+		// Drop only test collections
+		config.MongoDB.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
+		config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
+		config.MongoDB.Collection(config.AppConfig.OptInHistoryCollection).Drop(ctx)
+		config.MongoDB.Collection(config.AppConfig.BetaGroupCollection).Drop(ctx)
+
+		// Restore original collection names
+		config.AppConfig.CitizenCollection = originalCitizenCollection
+		config.AppConfig.PhoneMappingCollection = originalPhoneMappingCollection
+		config.AppConfig.OptInHistoryCollection = originalOptInHistoryCollection
+		config.AppConfig.BetaGroupCollection = originalBetaGroupCollection
+		config.AppConfig.PhoneQuarantineTTL = originalPhoneQuarantineTTL
 	}
 }
 

@@ -3,69 +3,36 @@ package services
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
-	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // setupBetaGroupTest initializes MongoDB and Redis for beta group service tests
 func setupBetaGroupTest(t *testing.T) (*BetaGroupService, func()) {
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		t.Skip("Skipping beta group service tests: MONGODB_URI not set")
-	}
-
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
+	// Use shared MongoDB connection from common_test.go
+	if config.MongoDB == nil {
+		t.Fatal("MongoDB not initialized - ensure TestMain has run")
 	}
 
 	// Initialize logging
 	logging.InitLogger()
 
-	// Connect to MongoDB
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
 
-	// Ping to verify connection
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		t.Fatalf("Failed to ping MongoDB: %v", err)
-	}
+	// Save original collection names
+	originalBetaGroupCollection := config.AppConfig.BetaGroupCollection
+	originalPhoneMappingCollection := config.AppConfig.PhoneMappingCollection
 
-	// Initialize Redis
-	singleClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       0,
-	})
-	config.Redis = redisclient.NewClient(singleClient)
+	// Set test collection names
+	config.AppConfig.BetaGroupCollection = "test_beta_groups"
+	config.AppConfig.PhoneMappingCollection = "test_phone_mappings"
 
-	// Initialize config
-	config.MongoDB = client.Database("test_rmi_beta_groups")
-	if config.AppConfig == nil {
-		config.AppConfig = &config.Config{
-			BetaGroupCollection:    "test_beta_groups",
-			PhoneMappingCollection: "test_phone_mappings",
-		}
-	} else {
-		config.AppConfig.BetaGroupCollection = "test_beta_groups"
-		config.AppConfig.PhoneMappingCollection = "test_phone_mappings"
-	}
-
-	// Create service
+	// Create service with nil client (uses config.MongoDB)
 	service := NewBetaGroupService(logging.Logger)
 
 	// Return cleanup function
@@ -75,13 +42,24 @@ func setupBetaGroupTest(t *testing.T) (*BetaGroupService, func()) {
 		if len(keys) > 0 {
 			config.Redis.Del(ctx, keys...)
 		}
-		// Drop test database
-		config.MongoDB.Drop(ctx)
-		client.Disconnect(ctx)
+
+		// Drop only test collections, not entire database
+		config.MongoDB.Collection(config.AppConfig.BetaGroupCollection).Drop(ctx)
+		config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
+
+		// Restore original collection names
+		config.AppConfig.BetaGroupCollection = originalBetaGroupCollection
+		config.AppConfig.PhoneMappingCollection = originalPhoneMappingCollection
 	}
 }
 
 func TestNewBetaGroupService(t *testing.T) {
+	// Use shared MongoDB connection from common_test.go
+	if config.MongoDB == nil {
+		t.Fatal("MongoDB not initialized - ensure TestMain has run")
+	}
+
+	logging.InitLogger()
 	service := NewBetaGroupService(logging.Logger)
 	if service == nil {
 		t.Error("NewBetaGroupService() returned nil")

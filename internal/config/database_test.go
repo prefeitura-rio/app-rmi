@@ -55,6 +55,218 @@ func TestMaskMongoURI(t *testing.T) {
 	}
 }
 
+func TestGetLoadDistributionStatus(t *testing.T) {
+	tests := []struct {
+		name                  string
+		primaryLoadPercentage float64
+		expectedStatus        string
+	}{
+		{
+			name:                  "excellent load distribution",
+			primaryLoadPercentage: 30.0,
+			expectedStatus:        "excellent",
+		},
+		{
+			name:                  "good load distribution",
+			primaryLoadPercentage: 55.0,
+			expectedStatus:        "good",
+		},
+		{
+			name:                  "fair load distribution",
+			primaryLoadPercentage: 65.0,
+			expectedStatus:        "fair",
+		},
+		{
+			name:                  "poor load distribution",
+			primaryLoadPercentage: 75.0,
+			expectedStatus:        "poor",
+		},
+		{
+			name:                  "critical load distribution",
+			primaryLoadPercentage: 85.0,
+			expectedStatus:        "critical",
+		},
+		{
+			name:                  "boundary excellent/good",
+			primaryLoadPercentage: 49.9,
+			expectedStatus:        "excellent",
+		},
+		{
+			name:                  "boundary good/fair",
+			primaryLoadPercentage: 59.9,
+			expectedStatus:        "good",
+		},
+		{
+			name:                  "boundary fair/poor",
+			primaryLoadPercentage: 69.9,
+			expectedStatus:        "fair",
+		},
+		{
+			name:                  "boundary poor/critical",
+			primaryLoadPercentage: 79.9,
+			expectedStatus:        "poor",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getLoadDistributionStatus(tt.primaryLoadPercentage)
+			assert.Equal(t, tt.expectedStatus, result)
+		})
+	}
+}
+
+func TestGetDatabasePerformanceStatus(t *testing.T) {
+	tests := []struct {
+		name               string
+		sessionsInProgress int
+		expectedStatus     string
+	}{
+		{
+			name:               "excellent performance",
+			sessionsInProgress: 100,
+			expectedStatus:     "excellent",
+		},
+		{
+			name:               "good performance",
+			sessionsInProgress: 600,
+			expectedStatus:     "good",
+		},
+		{
+			name:               "fair performance",
+			sessionsInProgress: 750,
+			expectedStatus:     "fair",
+		},
+		{
+			name:               "poor performance",
+			sessionsInProgress: 850,
+			expectedStatus:     "poor",
+		},
+		{
+			name:               "critical performance",
+			sessionsInProgress: 950,
+			expectedStatus:     "critical",
+		},
+		{
+			name:               "boundary excellent/good",
+			sessionsInProgress: 499,
+			expectedStatus:     "excellent",
+		},
+		{
+			name:               "boundary good/fair",
+			sessionsInProgress: 699,
+			expectedStatus:     "good",
+		},
+		{
+			name:               "boundary fair/poor",
+			sessionsInProgress: 799,
+			expectedStatus:     "fair",
+		},
+		{
+			name:               "boundary poor/critical",
+			sessionsInProgress: 899,
+			expectedStatus:     "poor",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getDatabasePerformanceStatus(tt.sessionsInProgress)
+			assert.Equal(t, tt.expectedStatus, result)
+		})
+	}
+}
+
+func TestGetReplicaSetRecommendation(t *testing.T) {
+	tests := []struct {
+		name             string
+		primaryHealthy   bool
+		secondaryHealthy bool
+		expectedContains string
+	}{
+		{
+			name:             "all nodes healthy",
+			primaryHealthy:   true,
+			secondaryHealthy: true,
+			expectedContains: "GOOD",
+		},
+		{
+			name:             "primary unhealthy",
+			primaryHealthy:   false,
+			secondaryHealthy: true,
+			expectedContains: "CRITICAL",
+		},
+		{
+			name:             "secondary unhealthy",
+			primaryHealthy:   true,
+			secondaryHealthy: false,
+			expectedContains: "WARNING",
+		},
+		{
+			name:             "both unhealthy",
+			primaryHealthy:   false,
+			secondaryHealthy: false,
+			expectedContains: "CRITICAL",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getReplicaSetRecommendation(tt.primaryHealthy, tt.secondaryHealthy)
+			assert.Contains(t, result, tt.expectedContains)
+		})
+	}
+}
+
+func TestCheckNodeHealth(t *testing.T) {
+	tests := []struct {
+		name     string
+		nodeType string
+		expected bool
+	}{
+		{
+			name:     "primary node",
+			nodeType: "primary",
+			expected: true,
+		},
+		{
+			name:     "secondary node",
+			nodeType: "secondary",
+			expected: true,
+		},
+		{
+			name:     "unknown node",
+			nodeType: "unknown",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Using background context since checkNodeHealth doesn't actually use it
+			// in the current simplified implementation
+			result := checkNodeHealth(nil, tt.nodeType)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGetPrimaryNodeConnections(t *testing.T) {
+	// This function requires MongoDB to be initialized,
+	// which we can't do in unit tests. Skip this test for now.
+	// In a real environment with MongoDB initialized, it would return
+	// an estimate based on connection pool stats.
+	t.Skip("Requires MongoDB initialization")
+}
+
+func TestGetSecondaryNodeConnections(t *testing.T) {
+	// This function requires MongoDB to be initialized,
+	// which we can't do in unit tests. Skip this test for now.
+	// In a real environment with MongoDB initialized, it would return
+	// an estimate based on connection pool stats.
+	t.Skip("Requires MongoDB initialization")
+}
+
 func TestMaskMongoURI_PreservesHostAndParams(t *testing.T) {
 	uri := "mongodb://user:pass@host1:27017,host2:27017/db?ssl=true"
 	result := maskMongoURI(uri)
