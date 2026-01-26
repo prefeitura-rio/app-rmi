@@ -91,9 +91,9 @@ func setupPhoneHandlersTest(t *testing.T) (*PhoneHandlers, *gin.Engine, func()) 
 	// Cleanup function to drop test collections
 	cleanup := func() {
 		// Drop test collections used by this test file
-		database.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
-		database.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
-		database.Collection(config.AppConfig.OptInHistoryCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.OptInHistoryCollection).Drop(ctx)
 	}
 
 	// Clean up at start to ensure fresh state

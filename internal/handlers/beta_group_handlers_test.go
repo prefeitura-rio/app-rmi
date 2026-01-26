@@ -297,6 +297,8 @@ func TestDeleteGroup_Success(t *testing.T) {
 }
 
 // Helper function
+//
+//nolint:unused // Keeping for potential future use
 func boolPtr(b bool) *bool {
 	return &b
 }

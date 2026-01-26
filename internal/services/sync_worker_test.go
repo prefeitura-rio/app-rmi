@@ -89,15 +89,15 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 		}
 
 		// Clean up MongoDB - drop only test collections
-		db.Collection("test_citizens").Drop(ctx)
-		db.Collection("test_self_declared").Drop(ctx)
-		db.Collection("test_user_config").Drop(ctx)
-		db.Collection("phone_cpf_mappings").Drop(ctx)
-		db.Collection("self_declared").Drop(ctx)
-		db.Collection("opt_in_histories").Drop(ctx)
-		db.Collection("beta_groups").Drop(ctx)
-		db.Collection("phone_verifications").Drop(ctx)
-		db.Collection("maintenance_requests").Drop(ctx)
+		_ = db.Collection("test_citizens").Drop(ctx)
+		_ = db.Collection("test_self_declared").Drop(ctx)
+		_ = db.Collection("test_user_config").Drop(ctx)
+		_ = db.Collection("phone_cpf_mappings").Drop(ctx)
+		_ = db.Collection("self_declared").Drop(ctx)
+		_ = db.Collection("opt_in_histories").Drop(ctx)
+		_ = db.Collection("beta_groups").Drop(ctx)
+		_ = db.Collection("phone_verifications").Drop(ctx)
+		_ = db.Collection("maintenance_requests").Drop(ctx)
 	}
 }
 
@@ -1407,7 +1407,7 @@ func TestSyncWorker_MultipleWorkers(t *testing.T) {
 	}
 
 	// Clean up MongoDB - drop only test collections
-	db.Collection("test_citizens").Drop(ctx)
+	_ = db.Collection("test_citizens").Drop(ctx)
 }
 
 // TestSyncWorker_AllCollectionTypes tests all collection types

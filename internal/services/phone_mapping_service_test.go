@@ -42,10 +42,10 @@ func setupPhoneMappingTest(t *testing.T) (*PhoneMappingService, func()) {
 	// Return cleanup function
 	return service, func() {
 		// Drop only test collections
-		config.MongoDB.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
-		config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
-		config.MongoDB.Collection(config.AppConfig.OptInHistoryCollection).Drop(ctx)
-		config.MongoDB.Collection(config.AppConfig.BetaGroupCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.OptInHistoryCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.BetaGroupCollection).Drop(ctx)
 
 		// Restore original collection names
 		config.AppConfig.CitizenCollection = originalCitizenCollection

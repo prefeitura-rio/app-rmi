@@ -11,6 +11,8 @@ import (
 )
 
 // createTestJWT creates a fake JWT token for testing
+//
+//nolint:unused // Keeping for potential future use
 func createTestJWT(claims models.JWTClaims) string {
 	claimsJSON, _ := json.Marshal(claims)
 	claimsB64 := base64.RawURLEncoding.EncodeToString(claimsJSON)
@@ -20,6 +22,8 @@ func createTestJWT(claims models.JWTClaims) string {
 }
 
 // createTestRequest creates an HTTP request with optional JWT authentication
+//
+//nolint:unused // Keeping for potential future use
 func createTestRequest(method, url string, body string, claims *models.JWTClaims) *http.Request {
 	req, _ := http.NewRequest(method, url, nil)
 	if body != "" {
@@ -36,6 +40,8 @@ func createTestRequest(method, url string, body string, claims *models.JWTClaims
 }
 
 // createAdminClaims creates JWT claims with admin role
+//
+//nolint:unused // Keeping for potential future use
 func createAdminClaims(cpf string) models.JWTClaims {
 	claims := models.JWTClaims{
 		SUB:               "admin-user",
@@ -47,6 +53,8 @@ func createAdminClaims(cpf string) models.JWTClaims {
 }
 
 // createUserClaims creates JWT claims for a regular user
+//
+//nolint:unused // Keeping for potential future use
 func createUserClaims(cpf string) models.JWTClaims {
 	return models.JWTClaims{
 		SUB:               "user-" + cpf,
@@ -56,6 +64,8 @@ func createUserClaims(cpf string) models.JWTClaims {
 }
 
 // setupTestRouter creates a test router with auth middleware
+//
+//nolint:unused // Keeping for potential future use
 func setupTestRouter(withAuth bool, isAdmin bool) *gin.Engine {
 	router := gin.New()
 
@@ -81,6 +91,8 @@ func setupTestRouter(withAuth bool, isAdmin bool) *gin.Engine {
 }
 
 // executeRequest executes a request and returns the response recorder
+//
+//nolint:unused // Keeping for potential future use
 func executeRequest(router *gin.Engine, req *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)

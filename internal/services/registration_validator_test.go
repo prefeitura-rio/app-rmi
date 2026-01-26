@@ -34,7 +34,7 @@ func setupValidatorTest(t *testing.T) (*BaseDataValidator, func()) {
 	// Return cleanup function
 	return validator, func() {
 		// Clean up test collection only
-		config.MongoDB.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
 		// Restore original collection name
 		config.AppConfig.CitizenCollection = origCitizenCollection
 	}

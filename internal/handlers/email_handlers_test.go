@@ -16,7 +16,7 @@ import (
 )
 
 func setupEmailHandlersTest(t *testing.T) (*gin.Engine, func()) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()

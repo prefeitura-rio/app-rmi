@@ -76,9 +76,9 @@ func setupSyncServiceTest(t *testing.T) (*SyncService, *redisclient.Client, *mon
 		}
 
 		// Clean up MongoDB test collections
-		db.Collection("test_citizens").Drop(ctx)
-		db.Collection("test_self_declared").Drop(ctx)
-		db.Collection("test_user_config").Drop(ctx)
+		_ = db.Collection("test_citizens").Drop(ctx)
+		_ = db.Collection("test_self_declared").Drop(ctx)
+		_ = db.Collection("test_user_config").Drop(ctx)
 	}
 }
 
@@ -478,7 +478,7 @@ func TestSyncService_MultipleWorkersProcessJobs(t *testing.T) {
 	assert.Greater(t, count, int64(10), "Multiple workers should have processed many jobs")
 
 	// Clean up test collection
-	db.Collection("test_citizens").Drop(ctx)
+	_ = db.Collection("test_citizens").Drop(ctx)
 
 	// Clean up Redis
 	patterns := []string{"citizen:*", "sync:queue:*", "sync:dlq:*"}

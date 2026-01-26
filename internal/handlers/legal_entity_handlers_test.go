@@ -68,6 +68,8 @@ func userMiddleware(cpf string) gin.HandlerFunc {
 }
 
 // Helper function to create test legal entity
+//
+//nolint:unused // Keeping for potential future use
 func createTestLegalEntity(cnpj, companyName, responsibleCPF string, partners []string) bson.M {
 	entity := bson.M{
 		"cnpj":            cnpj,
