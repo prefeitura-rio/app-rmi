@@ -15,7 +15,7 @@ import (
 func setupCNAEServiceTest(t *testing.T) (*CNAEService, func()) {
 	setupTestEnvironment()
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	if config.AppConfig == nil {
 		config.AppConfig = &config.Config{}
@@ -34,14 +34,14 @@ func setupCNAEServiceTest(t *testing.T) (*CNAEService, func()) {
 	service := NewCNAEService(config.MongoDB, logging.Logger)
 
 	return service, func() {
-		collection.Drop(ctx)
+		_ = collection.Drop(ctx)
 	}
 }
 
 func TestNewCNAEService(t *testing.T) {
 	setupTestEnvironment()
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	service := NewCNAEService(config.MongoDB, logging.Logger)
 

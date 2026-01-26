@@ -36,7 +36,7 @@ func setupDepartmentHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	router.GET("/departments/:cd_ua", GetDepartment)
 
 	return router, func() {
-		database.Drop(ctx)
+		_ = database.Drop(ctx)
 		services.DepartmentServiceInstance = nil
 	}
 }

@@ -28,7 +28,7 @@ func setupMongoDBUtilsTest(t *testing.T) (*mongo.Database, *mongo.Collection, fu
 	// Ping to verify connection
 	err = client.Ping(ctx, nil)
 	if err != nil {
-		client.Disconnect(ctx)
+		_ = client.Disconnect(ctx)
 		t.Skipf("MongoDB not available or authentication failed: %v", err)
 	}
 
@@ -37,12 +37,12 @@ func setupMongoDBUtilsTest(t *testing.T) (*mongo.Database, *mongo.Collection, fu
 	collection := db.Collection("test_mongodb_utils")
 
 	// Cleanup existing data
-	collection.Drop(ctx)
+	_ = collection.Drop(ctx)
 
 	// Return cleanup function
 	cleanup := func() {
-		collection.Drop(ctx)
-		client.Disconnect(ctx)
+		_ = collection.Drop(ctx)
+		_ = client.Disconnect(ctx)
 	}
 
 	return db, collection, cleanup
@@ -78,7 +78,7 @@ func TestFindOneWithTimeout(t *testing.T) {
 	t.Run("WithTimeout", func(t *testing.T) {
 		// Insert document
 		testDoc := bson.M{"_id": "timeout_test", "data": "value"}
-		collection.InsertOne(ctx, testDoc)
+		_, _ = collection.InsertOne(ctx, testDoc)
 
 		// Test with reasonable timeout
 		var result bson.M
@@ -126,7 +126,7 @@ func TestFindOneWithProjectionAndTimeout(t *testing.T) {
 			"password": "secret123",
 			"salt":     "random",
 		}
-		collection.InsertOne(ctx, testDoc)
+		_, _ = collection.InsertOne(ctx, testDoc)
 
 		// Test with exclusion projection
 		var result bson.M

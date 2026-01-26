@@ -38,13 +38,13 @@ func setupPetHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	router.POST("/citizen/:cpf/pets", RegisterPet)
 
 	// Clean up collections at start to ensure fresh state
-	database.Collection(config.AppConfig.PetCollection).Drop(ctx)
-	database.Collection(config.AppConfig.PetsSelfRegisteredCollection).Drop(ctx)
+	_ = database.Collection(config.AppConfig.PetCollection).Drop(ctx)
+	_ = database.Collection(config.AppConfig.PetsSelfRegisteredCollection).Drop(ctx)
 
 	// Cleanup function to drop test collections
 	cleanup := func() {
-		database.Collection(config.AppConfig.PetCollection).Drop(ctx)
-		database.Collection(config.AppConfig.PetsSelfRegisteredCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.PetCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.PetsSelfRegisteredCollection).Drop(ctx)
 		services.PetServiceInstance = nil
 	}
 

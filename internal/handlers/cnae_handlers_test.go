@@ -31,11 +31,11 @@ func setupCNAEHandlersTest(t *testing.T) (*CNAEHandlers, *gin.Engine, func()) {
 	database := config.MongoDB
 
 	// Clean up at start to ensure fresh state
-	database.Collection(config.AppConfig.CNAECollection).Drop(ctx)
+	_ = database.Collection(config.AppConfig.CNAECollection).Drop(ctx)
 
 	// Cleanup function to drop test collection
 	cleanup := func() {
-		database.Collection(config.AppConfig.CNAECollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.CNAECollection).Drop(ctx)
 	}
 
 	// Create text index for search (optional for tests)

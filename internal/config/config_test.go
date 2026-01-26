@@ -786,6 +786,7 @@ func TestLoadConfig_InvalidNotificationCategoryCacheTTL(t *testing.T) {
 func TestLoadConfig_CFLookupEnabledWithoutMCPServer(t *testing.T) {
 	setupMinimalEnv(t)
 	os.Setenv("CF_LOOKUP_ENABLED", "true")
+	os.Unsetenv("MCP_SERVER_URL") // Ensure MCP_SERVER_URL is not set from CI env
 	defer os.Unsetenv("CF_LOOKUP_ENABLED")
 
 	err := LoadConfig()

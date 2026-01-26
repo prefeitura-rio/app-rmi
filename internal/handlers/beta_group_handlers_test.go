@@ -56,7 +56,7 @@ func setupBetaGroupHandlersTest(t *testing.T) (*BetaGroupHandlers, *gin.Engine, 
 	router.GET("/admin/beta/groups/:group_id/whitelist", handlers.ListWhitelistedPhones)
 
 	return handlers, router, func() {
-		database.Drop(ctx)
+		_ = database.Drop(ctx)
 	}
 }
 
@@ -64,6 +64,7 @@ func TestNewBetaGroupHandlers(t *testing.T) {
 	handlers := NewBetaGroupHandlers(logging.Logger, nil)
 	if handlers == nil {
 		t.Error("NewBetaGroupHandlers() returned nil")
+		return
 	}
 
 	if handlers.logger == nil {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -245,7 +246,7 @@ func TestCheckNodeHealth(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Using background context since checkNodeHealth doesn't actually use it
 			// in the current simplified implementation
-			result := checkNodeHealth(nil, tt.nodeType)
+			result := checkNodeHealth(context.TODO(), tt.nodeType)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

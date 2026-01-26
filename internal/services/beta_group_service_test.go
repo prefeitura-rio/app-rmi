@@ -20,7 +20,7 @@ func setupBetaGroupTest(t *testing.T) (*BetaGroupService, func()) {
 	}
 
 	// Initialize logging
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	ctx := context.Background()
 
@@ -44,8 +44,8 @@ func setupBetaGroupTest(t *testing.T) (*BetaGroupService, func()) {
 		}
 
 		// Drop only test collections, not entire database
-		config.MongoDB.Collection(config.AppConfig.BetaGroupCollection).Drop(ctx)
-		config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.BetaGroupCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
 
 		// Restore original collection names
 		config.AppConfig.BetaGroupCollection = originalBetaGroupCollection
@@ -59,10 +59,11 @@ func TestNewBetaGroupService(t *testing.T) {
 		t.Fatal("MongoDB not initialized - ensure TestMain has run")
 	}
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	service := NewBetaGroupService(logging.Logger)
 	if service == nil {
 		t.Error("NewBetaGroupService() returned nil")
+		return
 	}
 	if service.logger == nil {
 		t.Error("service.logger is nil")
@@ -467,7 +468,7 @@ func TestRemoveFromWhitelist_Success(t *testing.T) {
 
 	// Create a group and add a phone
 	group, _ := service.CreateGroup(ctx, "Remove Test")
-	service.AddToWhitelist(ctx, "+5521987654323", group.ID)
+	_, _ = service.AddToWhitelist(ctx, "+5521987654323", group.ID)
 
 	// Remove phone from whitelist
 	err := service.RemoveFromWhitelist(ctx, "+5521987654323")
@@ -510,9 +511,9 @@ func TestListWhitelistedPhones(t *testing.T) {
 
 	// Create a group and add multiple phones
 	group, _ := service.CreateGroup(ctx, "Whitelist List Test")
-	service.AddToWhitelist(ctx, "+5521987651111", group.ID)
-	service.AddToWhitelist(ctx, "+5521987652222", group.ID)
-	service.AddToWhitelist(ctx, "+5521987653333", group.ID)
+	_, _ = service.AddToWhitelist(ctx, "+5521987651111", group.ID)
+	_, _ = service.AddToWhitelist(ctx, "+5521987652222", group.ID)
+	_, _ = service.AddToWhitelist(ctx, "+5521987653333", group.ID)
 
 	// List whitelisted phones
 	phones, err := service.ListWhitelistedPhones(ctx, 1, 10, group.ID)

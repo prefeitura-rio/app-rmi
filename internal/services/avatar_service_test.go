@@ -15,7 +15,7 @@ import (
 
 // setupAvatarServiceTest initializes MongoDB and Redis for testing
 func setupAvatarServiceTest(t *testing.T) (*AvatarService, func()) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	// Initialize config
 	if config.AppConfig == nil {
@@ -45,7 +45,7 @@ func setupAvatarServiceTest(t *testing.T) (*AvatarService, func()) {
 		}
 
 		// Clean up only test_avatars collection
-		config.MongoDB.Collection("test_avatars").Drop(ctx)
+		_ = config.MongoDB.Collection("test_avatars").Drop(ctx)
 	}
 }
 
@@ -226,7 +226,7 @@ func TestListAvatars_FromCache(t *testing.T) {
 	}
 
 	// Delete from MongoDB
-	collection.DeleteOne(ctx, bson.M{"_id": avatar.ID})
+	_, _ = collection.DeleteOne(ctx, bson.M{"_id": avatar.ID})
 
 	// Second call - should use cache
 	response, err := service.ListAvatars(ctx, 1, 20)
@@ -340,7 +340,7 @@ func TestGetAvatarByID_FromCache(t *testing.T) {
 	}
 
 	// Delete from MongoDB
-	collection.DeleteOne(ctx, bson.M{"_id": avatar.ID})
+	_, _ = collection.DeleteOne(ctx, bson.M{"_id": avatar.ID})
 
 	// Second call - should use cache
 	result, err := service.GetAvatarByID(ctx, avatar.ID.Hex())

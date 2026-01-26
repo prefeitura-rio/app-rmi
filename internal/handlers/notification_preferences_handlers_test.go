@@ -85,7 +85,7 @@ func setupNotificationPreferencesHandlersTest(t *testing.T) (*NotificationPrefer
 			}
 		}
 
-		database.Drop(ctx)
+		_ = database.Drop(ctx)
 	}
 }
 

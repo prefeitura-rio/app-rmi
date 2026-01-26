@@ -128,15 +128,15 @@ func SetupTestContainers(t *testing.T) *TestContainers {
 		// Disconnect MongoDB
 		if mongoClient != nil {
 			ctx := context.Background()
-			mongoClient.Disconnect(ctx)
+			_ = mongoClient.Disconnect(ctx)
 		}
 
 		// Terminate containers
 		if mongoContainer != nil {
-			mongoContainer.Terminate(ctx)
+			_ = mongoContainer.Terminate(ctx)
 		}
 		if redisContainer != nil {
-			redisContainer.Terminate(ctx)
+			_ = redisContainer.Terminate(ctx)
 		}
 	}
 

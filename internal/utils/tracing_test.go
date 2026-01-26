@@ -37,10 +37,9 @@ func TestTraceOperation(t *testing.T) {
 	// Execute cleanup
 	cleanup()
 
-	// Verify span ended
-	if !span.IsRecording() {
-		// Span is no longer recording, which is expected after cleanup
-	}
+	// Verify span behavior after cleanup - we just ensure it doesn't panic
+	// The span may or may not be recording depending on the tracer implementation
+	_ = span.IsRecording()
 }
 
 func TestTraceOperation_EmptyAttributes(t *testing.T) {
@@ -500,11 +499,9 @@ func TestTraceOperation_WithCleanup(t *testing.T) {
 	// Cleanup should add timing
 	cleanup()
 
-	// Span should no longer be recording after cleanup
-	if span.IsRecording() {
-		// Note: depending on the tracer implementation, this might still be recording
-		// This is fine - we just verify it doesn't panic
-	}
+	// Verify span behavior after cleanup - we just ensure it doesn't panic
+	// The span may or may not be recording depending on the tracer implementation
+	_ = span.IsRecording()
 }
 
 func TestTraceOperation_MultipleTypes(t *testing.T) {

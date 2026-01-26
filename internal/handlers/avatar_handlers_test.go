@@ -43,8 +43,8 @@ func setupAvatarHandlersTest(t *testing.T) (*AvatarHandlers, *gin.Engine, func()
 	}
 
 	// Clean collections before test
-	database.Collection(config.AppConfig.AvatarsCollection).Drop(ctx)
-	database.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
+	_ = database.Collection(config.AppConfig.AvatarsCollection).Drop(ctx)
+	_ = database.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
 
 	// Initialize services
 	cacheService := services.NewCacheService()
@@ -71,8 +71,8 @@ func setupAvatarHandlersTest(t *testing.T) (*AvatarHandlers, *gin.Engine, func()
 		}
 
 		// Drop only test collections, not the entire database
-		database.Collection(config.AppConfig.AvatarsCollection).Drop(ctx)
-		database.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.AvatarsCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
 		services.AvatarServiceInstance = nil
 	}
 }

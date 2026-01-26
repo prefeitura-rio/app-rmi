@@ -18,7 +18,7 @@ func setupValidatorTest(t *testing.T) (*BaseDataValidator, func()) {
 	}
 
 	// Initialize logging
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	ctx := context.Background()
 
@@ -44,6 +44,7 @@ func TestNewBaseDataValidator(t *testing.T) {
 	validator := NewBaseDataValidator(logging.Logger)
 	if validator == nil {
 		t.Error("NewBaseDataValidator() returned nil")
+		return
 	}
 	if validator.logger == nil {
 		t.Error("validator.logger is nil")

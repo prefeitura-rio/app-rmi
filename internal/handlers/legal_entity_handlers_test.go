@@ -38,7 +38,7 @@ func setupLegalEntityHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
 
 	return router, func() {
-		database.Drop(ctx)
+		_ = database.Drop(ctx)
 		services.LegalEntityServiceInstance = nil
 	}
 }

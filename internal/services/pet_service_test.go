@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewPetService(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	service := NewPetService(nil, logging.Logger)
 
@@ -25,7 +25,7 @@ func TestNewPetService_WithNilLogger(t *testing.T) {
 }
 
 func TestPetService_Structure(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	service := &PetService{
 		database: nil,

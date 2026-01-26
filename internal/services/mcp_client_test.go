@@ -18,7 +18,7 @@ import (
 
 // setupMCPTest creates a test MCP client with a custom HTTP client
 func setupMCPTest(t *testing.T, handler http.HandlerFunc) (*MCPClient, *httptest.Server) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	server := httptest.NewServer(handler)
 
@@ -42,7 +42,7 @@ func TestDefaultRetryConfig(t *testing.T) {
 }
 
 func TestNewMCPClient(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	cfg := &config.Config{
 		MCPServerURL: "https://test.example.com",
@@ -61,7 +61,7 @@ func TestNewMCPClient(t *testing.T) {
 }
 
 func TestIsRetryableError(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger:      logging.Logger,
 		retryConfig: DefaultRetryConfig(),
@@ -138,7 +138,7 @@ func TestIsRetryableError(t *testing.T) {
 }
 
 func TestWithRetry_Success(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger:      logging.Logger,
 		retryConfig: DefaultRetryConfig(),
@@ -157,7 +157,7 @@ func TestWithRetry_Success(t *testing.T) {
 }
 
 func TestWithRetry_SuccessAfterRetries(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 		retryConfig: RetryConfig{
@@ -184,7 +184,7 @@ func TestWithRetry_SuccessAfterRetries(t *testing.T) {
 }
 
 func TestWithRetry_NonRetryableError(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 		retryConfig: RetryConfig{
@@ -209,7 +209,7 @@ func TestWithRetry_NonRetryableError(t *testing.T) {
 }
 
 func TestWithRetry_ExhaustedRetries(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 		retryConfig: RetryConfig{
@@ -234,7 +234,7 @@ func TestWithRetry_ExhaustedRetries(t *testing.T) {
 }
 
 func TestWithRetry_ContextCancellation(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 		retryConfig: RetryConfig{
@@ -349,7 +349,7 @@ func TestMakeRequest_Success(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 
 	client, server := setupMCPTest(t, handler)
@@ -378,7 +378,7 @@ data: {"result":{"status":"success","data":"sse data"}}
 `
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(response))
+		_, _ = w.Write([]byte(response))
 	}
 
 	client, server := setupMCPTest(t, handler)
@@ -501,7 +501,7 @@ func TestInitializeSession_Success(t *testing.T) {
 				},
 			}
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 		} else if callCount == 2 {
 			// Notification request
 			w.WriteHeader(http.StatusAccepted)
@@ -527,7 +527,7 @@ func TestInitializeSession_InitializeError(t *testing.T) {
 			},
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 
 	client, server := setupMCPTest(t, handler)
@@ -548,7 +548,7 @@ func TestLoadEquipmentInstructions_Success(t *testing.T) {
 			},
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 
 	client, server := setupMCPTest(t, handler)
@@ -569,7 +569,7 @@ func TestLoadEquipmentInstructions_Error(t *testing.T) {
 			},
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}
 
 	client, server := setupMCPTest(t, handler)
@@ -583,7 +583,7 @@ func TestLoadEquipmentInstructions_Error(t *testing.T) {
 }
 
 func TestParseProfessionalsFromText(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 	}
@@ -649,7 +649,7 @@ ENFERMEIROS:
 }
 
 func TestParseEquipeSaudeData(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 	}
@@ -724,7 +724,7 @@ func TestParseEquipeSaudeData(t *testing.T) {
 }
 
 func TestParseHealthServicesResponse_Success(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 	}
@@ -777,7 +777,7 @@ func TestParseHealthServicesResponse_Success(t *testing.T) {
 }
 
 func TestParseHealthServicesResponse_IsError(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 	}
@@ -796,7 +796,7 @@ func TestParseHealthServicesResponse_IsError(t *testing.T) {
 }
 
 func TestParseHealthServicesResponse_NoEquipment(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 	}
@@ -817,7 +817,7 @@ func TestParseHealthServicesResponse_NoEquipment(t *testing.T) {
 }
 
 func TestParseHealthServicesResponse_InvalidFormat(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 	}
@@ -864,7 +864,7 @@ func TestParseHealthServicesResponse_InvalidFormat(t *testing.T) {
 }
 
 func TestParseHealthServicesResponse_EquipmentWithError(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 	}
@@ -904,7 +904,7 @@ func TestFindNearestCF_Integration(t *testing.T) {
 		case r.Method == "POST":
 			// Read the request body to determine which request this is
 			var req MCPRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			_ = json.NewDecoder(r.Body).Decode(&req)
 
 			if req.Method == "initialize" {
 				// Initialize session
@@ -913,7 +913,7 @@ func TestFindNearestCF_Integration(t *testing.T) {
 						"protocolVersion": "2024-11-05",
 					},
 				}
-				json.NewEncoder(w).Encode(response)
+				_ = json.NewEncoder(w).Encode(response)
 
 			} else if req.Method == "notifications/initialized" {
 				// Notification
@@ -930,7 +930,7 @@ func TestFindNearestCF_Integration(t *testing.T) {
 							"content": "Instructions loaded",
 						},
 					}
-					json.NewEncoder(w).Encode(response)
+					_ = json.NewEncoder(w).Encode(response)
 
 				} else if toolName == "equipments_by_address" {
 					// CF lookup
@@ -955,7 +955,7 @@ func TestFindNearestCF_Integration(t *testing.T) {
 							},
 						},
 					}
-					json.NewEncoder(w).Encode(response)
+					_ = json.NewEncoder(w).Encode(response)
 				}
 			}
 		}
@@ -1065,7 +1065,7 @@ func TestMCPError_JSONUnmarshaling(t *testing.T) {
 }
 
 func TestParseHealthServicesResponse_CMSCategory(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 	}
@@ -1101,7 +1101,7 @@ func TestParseHealthServicesResponse_CMSCategory(t *testing.T) {
 }
 
 func TestWithRetry_BackoffCalculation(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 		retryConfig: RetryConfig{
@@ -1140,7 +1140,7 @@ func TestMakeRequest_InvalidJSON(t *testing.T) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("invalid json {"))
+		_, _ = w.Write([]byte("invalid json {"))
 	}
 
 	client, server := setupMCPTest(t, handler)
@@ -1163,7 +1163,7 @@ func TestMakeRequest_InvalidJSON(t *testing.T) {
 }
 
 func TestParseHealthServicesResponse_UnknownCategory(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	client := &MCPClient{
 		logger: logging.Logger,
 	}

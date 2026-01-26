@@ -60,6 +60,7 @@ func TestNewPhoneMappingService(t *testing.T) {
 	service := NewPhoneMappingService(logging.Logger)
 	if service == nil {
 		t.Error("NewPhoneMappingService() returned nil")
+		return
 	}
 	if service.logger == nil {
 		t.Error("service.logger is nil")
@@ -104,7 +105,7 @@ func TestGetPhoneStatus_Active(t *testing.T) {
 		CPF:  testCPF,
 		Nome: &testName,
 	}
-	config.MongoDB.Collection(config.AppConfig.CitizenCollection).InsertOne(ctx, citizen)
+	_, _ = config.MongoDB.Collection(config.AppConfig.CitizenCollection).InsertOne(ctx, citizen)
 
 	// Insert active phone mapping
 	now := time.Now()
@@ -115,7 +116,7 @@ func TestGetPhoneStatus_Active(t *testing.T) {
 		CreatedAt:   &now,
 		UpdatedAt:   &now,
 	}
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 
 	// Test
 	status, err := service.GetPhoneStatus(ctx, "+5521987654321")
@@ -152,7 +153,7 @@ func TestGetPhoneStatus_Quarantined(t *testing.T) {
 		CreatedAt:       &now,
 		UpdatedAt:       &now,
 	}
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 
 	// Test
 	status, err := service.GetPhoneStatus(ctx, "+5521987654322")
@@ -181,7 +182,7 @@ func TestGetPhoneStatus_OptedOut(t *testing.T) {
 		CreatedAt:   &now,
 		UpdatedAt:   &now,
 	}
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 
 	// Test
 	status, err := service.GetPhoneStatus(ctx, "+5521987654323")
@@ -250,7 +251,7 @@ func TestQuarantinePhone_ExtendExisting(t *testing.T) {
 		CreatedAt: &now,
 		UpdatedAt: &now,
 	}
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 
 	// Extend quarantine
 	response, err := service.QuarantinePhone(ctx, "+5521999887767")
@@ -301,7 +302,7 @@ func TestReleaseQuarantine_WithCPF(t *testing.T) {
 		CreatedAt: &now,
 		UpdatedAt: &now,
 	}
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 
 	// Release quarantine
 	response, err := service.ReleaseQuarantine(ctx, "+5521988776655")
@@ -345,7 +346,7 @@ func TestReleaseQuarantine_WithoutCPF(t *testing.T) {
 		CreatedAt:       &now,
 		UpdatedAt:       &now,
 	}
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 
 	// Release quarantine
 	response, err := service.ReleaseQuarantine(ctx, "+5521988776656")
@@ -422,7 +423,7 @@ func TestOptIn_AlreadyOptedIn(t *testing.T) {
 		CreatedAt:   &now,
 		UpdatedAt:   &now,
 	}
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 
 	// Try to opt-in again with same CPF
 	response, err := service.OptIn(ctx, "+5521987651235", "03561350712", "whatsapp")
@@ -449,7 +450,7 @@ func TestOptOut_ExistingPhone(t *testing.T) {
 		CreatedAt:   &now,
 		UpdatedAt:   &now,
 	}
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 
 	// Opt out
 	response, err := service.OptOut(ctx, "+5521987651236", "Mensagem era engano", "whatsapp")
@@ -528,7 +529,7 @@ func TestFindCPFByPhone_Found(t *testing.T) {
 		CPF:  testCPF,
 		Nome: &testName,
 	}
-	config.MongoDB.Collection(config.AppConfig.CitizenCollection).InsertOne(ctx, citizen)
+	_, _ = config.MongoDB.Collection(config.AppConfig.CitizenCollection).InsertOne(ctx, citizen)
 
 	// Insert phone mapping
 	now := time.Now()
@@ -539,7 +540,7 @@ func TestFindCPFByPhone_Found(t *testing.T) {
 		CreatedAt:   &now,
 		UpdatedAt:   &now,
 	}
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 
 	// Find CPF by phone
 	response, err := service.FindCPFByPhone(ctx, "+5521987654400")
@@ -574,7 +575,7 @@ func TestFindCPFByPhone_Quarantined(t *testing.T) {
 		CreatedAt:       &now,
 		UpdatedAt:       &now,
 	}
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 
 	// Find CPF by phone - should not find quarantined phones
 	response, err := service.FindCPFByPhone(ctx, "+5521987654401")
@@ -597,7 +598,7 @@ func TestGetQuarantineStats(t *testing.T) {
 
 	// Active quarantine with CPF
 	futureQuarantine := now.Add(24 * time.Hour)
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, models.PhoneCPFMapping{
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, models.PhoneCPFMapping{
 		PhoneNumber:     "5521999000001",
 		CPF:             "03561350712",
 		Status:          models.MappingStatusQuarantined,
@@ -606,7 +607,7 @@ func TestGetQuarantineStats(t *testing.T) {
 
 	// Expired quarantine without CPF
 	pastQuarantine := now.Add(-24 * time.Hour)
-	config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, models.PhoneCPFMapping{
+	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, models.PhoneCPFMapping{
 		PhoneNumber:     "5521999000002",
 		Status:          models.MappingStatusQuarantined,
 		QuarantineUntil: &pastQuarantine,

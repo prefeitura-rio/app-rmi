@@ -27,7 +27,7 @@ func setupDatabaseUtilsTest(t *testing.T) (*mongo.Collection, func()) {
 		t.Skip("Skipping database utils tests: MONGODB_URI not set")
 	}
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	// Initialize config
 	if config.AppConfig == nil {
@@ -45,7 +45,7 @@ func setupDatabaseUtilsTest(t *testing.T) (*mongo.Collection, func()) {
 
 	err = client.Ping(ctx, nil)
 	if err != nil {
-		client.Disconnect(ctx)
+		_ = client.Disconnect(ctx)
 		t.Skipf("MongoDB not available or authentication failed: %v", err)
 	}
 
@@ -53,12 +53,12 @@ func setupDatabaseUtilsTest(t *testing.T) (*mongo.Collection, func()) {
 	testCollection := config.MongoDB.Collection("test_operations")
 
 	// Clean up existing data
-	testCollection.Drop(ctx)
+	_ = testCollection.Drop(ctx)
 
 	return testCollection, func() {
 		// Clean up MongoDB
-		config.MongoDB.Drop(ctx)
-		client.Disconnect(ctx)
+		_ = config.MongoDB.Drop(ctx)
+		_ = client.Disconnect(ctx)
 	}
 }
 
@@ -1548,6 +1548,9 @@ func setupRedisForDatabaseTest(t *testing.T) func() {
 }
 
 // setupDatabaseWithRedisTest sets up both MongoDB and Redis
+// UNUSED: Commented out to fix linting errors - function is not called anywhere
+// nolint:unused
+/*
 func setupDatabaseWithRedisTest(t *testing.T) (*mongo.Collection, func()) {
 	mongoURI := os.Getenv("MONGODB_URI")
 	if mongoURI == "" {
@@ -1578,7 +1581,7 @@ func setupDatabaseWithRedisTest(t *testing.T) (*mongo.Collection, func()) {
 
 	err = client.Ping(ctx, nil)
 	if err != nil {
-		client.Disconnect(ctx)
+		_ = client.Disconnect(ctx)
 		t.Skipf("MongoDB not available or authentication failed: %v", err)
 	}
 
@@ -1586,7 +1589,7 @@ func setupDatabaseWithRedisTest(t *testing.T) (*mongo.Collection, func()) {
 	testCollection := config.MongoDB.Collection("test_operations")
 
 	// Clean up existing data
-	testCollection.Drop(ctx)
+	_ = testCollection.Drop(ctx)
 
 	// Redis setup
 	singleClient := redis.NewClient(&redis.Options{
@@ -1599,8 +1602,8 @@ func setupDatabaseWithRedisTest(t *testing.T) (*mongo.Collection, func()) {
 
 	err = config.Redis.Ping(ctx).Err()
 	if err != nil {
-		config.MongoDB.Drop(ctx)
-		client.Disconnect(ctx)
+		_ = config.MongoDB.Drop(ctx)
+		_ = client.Disconnect(ctx)
 		t.Skipf("Redis not available: %v", err)
 	}
 
@@ -1620,10 +1623,11 @@ func setupDatabaseWithRedisTest(t *testing.T) (*mongo.Collection, func()) {
 		}
 
 		// Clean up MongoDB
-		config.MongoDB.Drop(ctx)
-		client.Disconnect(ctx)
+		_ = config.MongoDB.Drop(ctx)
+		_ = client.Disconnect(ctx)
 	}
 }
+*/
 
 // TestUpdateSelfDeclaredPendingPhone tests updating pending phone in self-declared collection
 func TestUpdateSelfDeclaredPendingPhone_Success(t *testing.T) {

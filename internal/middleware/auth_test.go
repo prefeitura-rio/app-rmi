@@ -14,7 +14,7 @@ import (
 )
 
 func init() {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	gin.SetMode(gin.TestMode)
 
 	if config.AppConfig == nil {

@@ -64,7 +64,7 @@ func setupCacheServiceTest(t *testing.T) (*CacheService, func()) {
 		}
 
 		for _, collName := range collections {
-			config.MongoDB.Collection(collName).Drop(ctx)
+			_ = config.MongoDB.Collection(collName).Drop(ctx)
 		}
 	}
 }
@@ -73,6 +73,7 @@ func TestNewCacheService(t *testing.T) {
 	service := NewCacheService()
 	if service == nil {
 		t.Error("NewCacheService() returned nil")
+		return
 	}
 
 	if service.citizenService == nil {

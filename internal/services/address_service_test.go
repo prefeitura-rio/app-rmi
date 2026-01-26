@@ -17,7 +17,7 @@ import (
 // setupAddressServiceTest initializes MongoDB and Redis for testing
 func setupAddressServiceTest(t *testing.T) (*AddressService, func()) {
 	// Use the shared MongoDB and Redis from common_test.go TestMain
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	// Initialize config
 	if config.AppConfig == nil {
@@ -42,8 +42,8 @@ func setupAddressServiceTest(t *testing.T) (*AddressService, func()) {
 		}
 
 		// Clean up MongoDB collections only
-		database.Collection(config.AppConfig.BairroCollection).Drop(ctx)
-		database.Collection(config.AppConfig.LogradouroCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.BairroCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.LogradouroCollection).Drop(ctx)
 		// DO NOT disconnect - client is shared across all tests
 	}
 }
@@ -463,8 +463,8 @@ func TestBuildAddress_FromCache(t *testing.T) {
 	}
 
 	// Delete from MongoDB
-	bairroCollection.DeleteOne(ctx, bson.M{"id_bairro": "1234"})
-	logradouroCollection.DeleteOne(ctx, bson.M{"id_logradouro": "5678"})
+	_, _ = bairroCollection.DeleteOne(ctx, bson.M{"id_bairro": "1234"})
+	_, _ = logradouroCollection.DeleteOne(ctx, bson.M{"id_logradouro": "5678"})
 
 	// Second call - should use cache
 	address, err := service.BuildAddress(ctx, "1234", "5678", "1500")

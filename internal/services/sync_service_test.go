@@ -30,7 +30,7 @@ func setupSyncServiceTest(t *testing.T) (*SyncService, *redisclient.Client, *mon
 		redisAddr = "localhost:6379"
 	}
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	// Override test collections
 	config.AppConfig.CitizenCollection = "test_citizens"
@@ -121,7 +121,7 @@ func TestNewSyncService_DifferentWorkerCounts(t *testing.T) {
 				redisAddr = "localhost:6379"
 			}
 
-			logging.InitLogger()
+			_ = logging.InitLogger()
 
 			db := config.MongoDB
 
@@ -423,7 +423,7 @@ func TestSyncService_MultipleWorkersProcessJobs(t *testing.T) {
 		redisAddr = "localhost:6379"
 	}
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	config.AppConfig.CitizenCollection = "test_citizens"
 
@@ -644,7 +644,7 @@ func TestSyncService_WorkerCountZero(t *testing.T) {
 		redisAddr = "localhost:6379"
 	}
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	db := config.MongoDB
 

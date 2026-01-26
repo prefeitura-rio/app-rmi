@@ -92,7 +92,7 @@ func WaitForHealthy(t *testing.T, client *APIClient, maxAttempts int) error {
 			resp, _ := client.Get("/health")
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			json.Unmarshal(body, &healthResp)
+			_ = json.Unmarshal(body, &healthResp)
 
 			if status, ok := healthResp["status"].(string); ok && status == "healthy" {
 				t.Logf("Service healthy after %d attempts", i+1)

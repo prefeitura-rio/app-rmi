@@ -26,7 +26,7 @@ func setupAdminHandlersTest(t *testing.T) (*gin.Engine, func()) {
 		redisAddr = "localhost:6380"
 	}
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	gin.SetMode(gin.TestMode)
 
 	if config.AppConfig == nil {
@@ -76,7 +76,7 @@ func setupAdminHandlersTestWithAuth(t *testing.T, isAdmin bool) (*gin.Engine, fu
 		redisAddr = "localhost:6380"
 	}
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	gin.SetMode(gin.TestMode)
 
 	if config.AppConfig == nil {
@@ -130,7 +130,7 @@ func setupAdminHandlersTestNoAuth(t *testing.T) (*gin.Engine, func()) {
 		redisAddr = "localhost:6380"
 	}
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	gin.SetMode(gin.TestMode)
 
 	if config.AppConfig == nil {
@@ -801,7 +801,7 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 			redisAddr = "localhost:6380"
 		}
 
-		logging.InitLogger()
+		_ = logging.InitLogger()
 		gin.SetMode(gin.TestMode)
 
 		if config.AppConfig == nil {
@@ -918,7 +918,7 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 			redisAddr = "localhost:6380"
 		}
 
-		logging.InitLogger()
+		_ = logging.InitLogger()
 		gin.SetMode(gin.TestMode)
 
 		if config.AppConfig == nil {
@@ -1019,7 +1019,7 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 			redisAddr = "localhost:6380"
 		}
 
-		logging.InitLogger()
+		_ = logging.InitLogger()
 		gin.SetMode(gin.TestMode)
 
 		if config.AppConfig == nil {

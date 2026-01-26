@@ -47,7 +47,7 @@ func setupNotificationCategoryHandlersTest(t *testing.T) (*NotificationCategoryH
 			}
 		}
 
-		database.Drop(ctx)
+		_ = database.Drop(ctx)
 	}
 }
 
@@ -55,6 +55,7 @@ func TestNewNotificationCategoryHandlers(t *testing.T) {
 	handlers := NewNotificationCategoryHandlers(logging.Logger)
 	if handlers == nil {
 		t.Error("NewNotificationCategoryHandlers() returned nil")
+		return
 	}
 
 	if handlers.service == nil {
@@ -866,8 +867,8 @@ func TestListCategories_CacheHit(t *testing.T) {
 	}
 
 	var response1, response2 models.NotificationCategoriesResponse
-	json.Unmarshal(w1.Body.Bytes(), &response1)
-	json.Unmarshal(w2.Body.Bytes(), &response2)
+	_ = json.Unmarshal(w1.Body.Bytes(), &response1)
+	_ = json.Unmarshal(w2.Body.Bytes(), &response2)
 
 	if len(response1.Categories) != len(response2.Categories) {
 		t.Errorf("Cache responses differ: %v vs %v", len(response1.Categories), len(response2.Categories))
@@ -904,7 +905,7 @@ func TestDeleteCategory_InvalidatesCache(t *testing.T) {
 	router.ServeHTTP(w1, req1)
 
 	var response1 models.NotificationCategoriesResponse
-	json.Unmarshal(w1.Body.Bytes(), &response1)
+	_ = json.Unmarshal(w1.Body.Bytes(), &response1)
 
 	if len(response1.Categories) != 1 {
 		t.Fatalf("Expected 1 category before delete, got %v", len(response1.Categories))
@@ -925,7 +926,7 @@ func TestDeleteCategory_InvalidatesCache(t *testing.T) {
 	router.ServeHTTP(w2, req2)
 
 	var response2 models.NotificationCategoriesResponse
-	json.Unmarshal(w2.Body.Bytes(), &response2)
+	_ = json.Unmarshal(w2.Body.Bytes(), &response2)
 
 	if len(response2.Categories) != 0 {
 		t.Errorf("Expected 0 categories after delete (soft delete sets active=false), got %v", len(response2.Categories))
@@ -942,7 +943,7 @@ func TestCreateCategory_InvalidatesCache(t *testing.T) {
 	router.ServeHTTP(w1, req1)
 
 	var response1 models.NotificationCategoriesResponse
-	json.Unmarshal(w1.Body.Bytes(), &response1)
+	_ = json.Unmarshal(w1.Body.Bytes(), &response1)
 
 	if len(response1.Categories) != 0 {
 		t.Fatalf("Expected 0 categories initially, got %v", len(response1.Categories))
@@ -974,7 +975,7 @@ func TestCreateCategory_InvalidatesCache(t *testing.T) {
 	router.ServeHTTP(w2, req2)
 
 	var response2 models.NotificationCategoriesResponse
-	json.Unmarshal(w2.Body.Bytes(), &response2)
+	_ = json.Unmarshal(w2.Body.Bytes(), &response2)
 
 	if len(response2.Categories) != 1 {
 		t.Errorf("Expected 1 category after create, got %v", len(response2.Categories))
@@ -1011,7 +1012,7 @@ func TestUpdateCategory_InvalidatesCache(t *testing.T) {
 	router.ServeHTTP(w1, req1)
 
 	var response1 models.NotificationCategoriesResponse
-	json.Unmarshal(w1.Body.Bytes(), &response1)
+	_ = json.Unmarshal(w1.Body.Bytes(), &response1)
 
 	if response1.Categories[0].Description != "Original" {
 		t.Fatalf("Expected 'Original' description, got %v", response1.Categories[0].Description)
@@ -1039,7 +1040,7 @@ func TestUpdateCategory_InvalidatesCache(t *testing.T) {
 	router.ServeHTTP(w2, req2)
 
 	var response2 models.NotificationCategoriesResponse
-	json.Unmarshal(w2.Body.Bytes(), &response2)
+	_ = json.Unmarshal(w2.Body.Bytes(), &response2)
 
 	if response2.Categories[0].Description != "Updated" {
 		t.Errorf("Expected 'Updated' description after update, got %v", response2.Categories[0].Description)

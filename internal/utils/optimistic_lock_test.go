@@ -24,7 +24,7 @@ func setupOptimisticLockTest(t *testing.T) func() {
 		t.Skip("Skipping optimistic lock tests: MONGODB_URI not set")
 	}
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	// Initialize config
 	if config.AppConfig == nil {
@@ -45,8 +45,8 @@ func setupOptimisticLockTest(t *testing.T) func() {
 
 	return func() {
 		// Clean up MongoDB
-		config.MongoDB.Drop(ctx)
-		client.Disconnect(ctx)
+		_ = config.MongoDB.Drop(ctx)
+		_ = client.Disconnect(ctx)
 	}
 }
 

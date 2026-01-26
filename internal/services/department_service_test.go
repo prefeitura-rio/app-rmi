@@ -16,7 +16,7 @@ func setupDepartmentServiceTest(t *testing.T) (*DepartmentService, func()) {
 		t.Skip("Skipping department service tests: MongoDB not initialized")
 	}
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	if config.AppConfig == nil {
 		config.AppConfig = &config.Config{}
@@ -27,7 +27,7 @@ func setupDepartmentServiceTest(t *testing.T) (*DepartmentService, func()) {
 
 	return service, func() {
 		ctx := context.Background()
-		config.MongoDB.Collection(config.AppConfig.DepartmentCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.DepartmentCollection).Drop(ctx)
 	}
 }
 

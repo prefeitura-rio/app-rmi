@@ -903,8 +903,7 @@ func TestValidateEmailAddress_ConcurrentRequests(t *testing.T) {
 	defer cleanup()
 
 	// Test that the handler can handle concurrent requests
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
+	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	numRequests := 10

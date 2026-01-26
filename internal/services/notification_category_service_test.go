@@ -14,7 +14,7 @@ import (
 func setupNotificationCategoryServiceTest(t *testing.T) (*NotificationCategoryService, func()) {
 	// Use the shared MongoDB and Redis from common_test.go TestMain
 	// Don't create new connections - use the global ones
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	if config.AppConfig == nil {
 		config.AppConfig = &config.Config{}
@@ -38,7 +38,7 @@ func setupNotificationCategoryServiceTest(t *testing.T) (*NotificationCategorySe
 		}
 
 		// Drop only the test collection, not the entire database
-		database.Collection(config.AppConfig.NotificationCategoryCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.NotificationCategoryCollection).Drop(ctx)
 		// DO NOT disconnect the client - it's shared across all tests
 	}
 }
@@ -491,7 +491,7 @@ func TestInvalidateCache(t *testing.T) {
 	service.InvalidateCache(ctx)
 
 	// Update MongoDB
-	collection.UpdateOne(ctx, bson.M{"_id": "health"}, bson.M{"$set": bson.M{"name": "Updated"}})
+	_, _ = collection.UpdateOne(ctx, bson.M{"_id": "health"}, bson.M{"$set": bson.M{"name": "Updated"}})
 
 	// Next call should fetch from MongoDB (not cache)
 	result, err := service.ListActive(ctx)

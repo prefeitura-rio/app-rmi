@@ -21,7 +21,7 @@ func setupCitizenCacheTest(t *testing.T) (*CitizenCacheService, func()) {
 		redisAddr = "localhost:6379"
 	}
 
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	// Initialize config
 	if config.AppConfig == nil {
@@ -61,7 +61,7 @@ func setupCitizenCacheTest(t *testing.T) (*CitizenCacheService, func()) {
 		}
 
 		// Clean up MongoDB - drop only test collections
-		config.MongoDB.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
 	}
 }
 

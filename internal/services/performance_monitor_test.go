@@ -12,7 +12,7 @@ import (
 )
 
 func TestNewPerformanceMonitor(t *testing.T) {
-	logging.InitLogger()
+	_ = logging.InitLogger()
 	pm := NewPerformanceMonitor()
 	require.NotNil(t, pm)
 	assert.NotNil(t, pm.metrics)

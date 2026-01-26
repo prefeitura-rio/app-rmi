@@ -55,10 +55,7 @@ func setupRedisClusterForTest(t *testing.T) (*Client, func()) {
 	}
 
 	// Parse cluster addresses
-	addrs := []string{}
-	for _, addr := range parseCommaSeparated(redisAddrs) {
-		addrs = append(addrs, addr)
-	}
+	addrs := parseCommaSeparated(redisAddrs)
 
 	// Initialize Redis cluster client
 	clusterClient := redis.NewClusterClient(&redis.ClusterOptions{

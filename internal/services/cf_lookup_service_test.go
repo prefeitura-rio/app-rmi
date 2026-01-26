@@ -27,7 +27,7 @@ func setupCFLookupTest(t *testing.T) (*CFLookupService, func()) {
 	}
 
 	// Initialize logging
-	logging.InitLogger()
+	_ = logging.InitLogger()
 
 	// Check if MongoDB is initialized (via TestMain in common_test.go)
 	ctx := context.Background()
@@ -70,7 +70,7 @@ func setupCFLookupTest(t *testing.T) (*CFLookupService, func()) {
 			config.Redis.Del(ctx, keys...)
 		}
 		// Drop only test collection
-		config.MongoDB.Collection(config.AppConfig.CFLookupCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.CFLookupCollection).Drop(ctx)
 	}
 }
 
