@@ -130,7 +130,6 @@ func TestEnqueue_QueueFull(t *testing.T) {
 
 	// Create queue with size 2
 	vq := NewVerificationQueue(1, 2)
-	defer vq.Stop()
 
 	// Fill the queue
 	for i := 0; i < 2; i++ {
@@ -155,6 +154,9 @@ func TestEnqueue_QueueFull(t *testing.T) {
 	if err == nil {
 		t.Error("Enqueue() should return error when queue is full")
 	}
+
+	// Stop queue before cleanup to avoid "client is disconnected" errors
+	vq.Stop()
 }
 
 func TestBulkEnqueueJobs(t *testing.T) {
