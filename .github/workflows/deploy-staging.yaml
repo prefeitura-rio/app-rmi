@@ -119,15 +119,50 @@ jobs:
       - name: Configure kubectl for GKE
         run: gcloud container clusters get-credentials application --zone=us-central1 --project="${{ vars.GCP_PROJECT_ID }}"
 
-      - name: Trigger Blue-Green Rollout
+      - name: Update image in Git for ArgoCD
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
         run: |
-          echo "Triggering blue-green rollout to preview service..."
+          echo "Updating image in k8s/staging/resources.yaml..."
 
-          # Update rollout image (creates preview version)
-          kubectl argo rollouts set image rmi rmi=$IMAGE_NAME:$COMMIT_HASH@$DIGEST -n rmi
+          # Update the image in the YAML file
+          sed -i "s|image: ghcr.io/prefeitura-rio/app-rmi:.*|image: $IMAGE_NAME:$COMMIT_HASH@$DIGEST|g" k8s/staging/resources.yaml
 
-          # Wait for preview to be ready
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Commit and push to staging branch
+          git add k8s/staging/resources.yaml
+          git commit -m "chore(staging): update image to $COMMIT_HASH
+
+          Automated image update from GitHub Actions deployment
+          Image: $IMAGE_NAME:$COMMIT_HASH@$DIGEST
+
+          Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+
+          git push origin HEAD:staging
+
+      - name: Wait for ArgoCD to sync
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: |
+          echo "Waiting for ArgoCD to sync the new image..."
+
+          # Wait up to 2 minutes for ArgoCD to sync
+          for i in {1..24}; do
+            SYNC_STATUS=$(kubectl get application rmi -n argocd -o jsonpath='{.status.sync.status}')
+            if [ "$SYNC_STATUS" == "Synced" ]; then
+              echo "ArgoCD synced successfully"
+              break
+            fi
+            if [ $i -eq 24 ]; then
+              echo "Timeout waiting for ArgoCD sync"
+              exit 1
+            fi
+            echo "Waiting for ArgoCD sync... (attempt $i/24)"
+            sleep 5
+          done
+
+          # Wait for rollout to create preview
           kubectl argo rollouts status rmi -n rmi --timeout=5m
 
       - name: Set up port forward to preview service
