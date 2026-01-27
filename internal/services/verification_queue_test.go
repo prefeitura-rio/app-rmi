@@ -11,8 +11,6 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // setupVerificationQueueTest initializes test environment
@@ -24,36 +22,22 @@ func setupVerificationQueueTest(t *testing.T) func() {
 
 	_ = logging.InitLogger()
 
-	// MongoDB setup
-	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
-
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		t.Fatalf("Failed to ping MongoDB: %v", err)
-	}
-
-	config.MongoDB = client.Database("test_verification_queue")
-	if config.AppConfig == nil {
-		config.AppConfig = &config.Config{
-			PhoneVerificationCollection: "test_phone_verification",
-			PhoneMappingCollection:      "test_phone_mapping",
-		}
-	} else {
-		config.AppConfig.PhoneVerificationCollection = "test_phone_verification"
-		config.AppConfig.PhoneMappingCollection = "test_phone_mapping"
-	}
+	// Use shared MongoDB connection from common_test.go
+	// config.AppConfig is already initialized by TestMain via config.LoadConfig()
+	// We rely on the actual collection names from the config
 
 	// Redis setup (minimal for cache invalidation)
-	_ = os.Getenv("REDIS_ADDR")
-	config.InitRedis()
+	if config.Redis == nil {
+		config.InitRedis()
+	}
 
 	return func() {
-		_ = config.MongoDB.Drop(ctx)
-		_ = client.Disconnect(ctx)
+		// Cleanup: drop collections used by tests
+		ctx := context.Background()
+		if config.AppConfig != nil {
+			_ = config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection).Drop(ctx)
+			_ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
+		}
 	}
 }
 

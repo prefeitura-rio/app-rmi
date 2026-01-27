@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // setupDatabaseUtilsTest initializes MongoDB for database utility testing
@@ -29,36 +28,21 @@ func setupDatabaseUtilsTest(t *testing.T) (*mongo.Collection, func()) {
 
 	_ = logging.InitLogger()
 
-	// Initialize config
-	if config.AppConfig == nil {
-		config.AppConfig = &config.Config{}
-	}
-	config.AppConfig.CitizenCollection = "test_db_utils_citizens"
-	config.AppConfig.SelfDeclaredCollection = "test_db_utils_self_declared"
-
-	// MongoDB setup
-	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	if err != nil {
-		t.Fatalf("Failed to connect to MongoDB: %v", err)
+	// Use shared MongoDB connection
+	// config.MongoDB and config.AppConfig are already initialized via config.LoadConfig()
+	if config.MongoDB == nil {
+		t.Skip("MongoDB not initialized")
 	}
 
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		_ = client.Disconnect(ctx)
-		t.Skipf("MongoDB not available or authentication failed: %v", err)
-	}
-
-	config.MongoDB = client.Database("rmi_test_db_utils")
 	testCollection := config.MongoDB.Collection("test_operations")
 
 	// Clean up existing data
+	ctx := context.Background()
 	_ = testCollection.Drop(ctx)
 
 	return testCollection, func() {
-		// Clean up MongoDB
-		_ = config.MongoDB.Drop(ctx)
-		_ = client.Disconnect(ctx)
+		// Clean up test collection only
+		_ = testCollection.Drop(ctx)
 	}
 }
 
