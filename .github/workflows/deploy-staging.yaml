@@ -124,45 +124,72 @@ jobs:
         run: |
           echo "Updating image in k8s/staging/resources.yaml..."
 
+          # Checkout staging branch
+          git fetch origin staging
+          git checkout staging
+
           # Update the image in the YAML file
           sed -i "s|image: ghcr.io/prefeitura-rio/app-rmi:.*|image: $IMAGE_NAME:$COMMIT_HASH@$DIGEST|g" k8s/staging/resources.yaml
 
-          # Configure git
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Check if there are actually changes
+          if ! git diff --quiet k8s/staging/resources.yaml; then
+            echo "Image changed, committing update..."
 
-          # Commit and push to staging branch
-          git add k8s/staging/resources.yaml
-          git commit -m "chore(staging): update image to $COMMIT_HASH
+            # Configure git
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+
+            # Commit and push to staging branch
+            git add k8s/staging/resources.yaml
+            git commit -m "chore(staging): update image to $COMMIT_HASH
 
           Automated image update from GitHub Actions deployment
           Image: $IMAGE_NAME:$COMMIT_HASH@$DIGEST
 
           Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
 
-          git push origin HEAD:staging
+            git push origin staging
+          else
+            echo "No image changes detected"
+          fi
 
       - name: Wait for ArgoCD to sync
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
         run: |
           echo "Waiting for ArgoCD to sync the new image..."
 
-          # Wait up to 2 minutes for ArgoCD to sync
-          for i in {1..24}; do
+          # Get the expected revision (latest commit on staging branch)
+          EXPECTED_REVISION=$(git ls-remote origin staging | cut -f1)
+          echo "Expected ArgoCD revision: $EXPECTED_REVISION"
+
+          # Wait up to 3 minutes for ArgoCD to sync to the new revision
+          for i in {1..36}; do
             SYNC_STATUS=$(kubectl get application rmi -n argocd -o jsonpath='{.status.sync.status}')
-            if [ "$SYNC_STATUS" == "Synced" ]; then
-              echo "ArgoCD synced successfully"
+            CURRENT_REVISION=$(kubectl get application rmi -n argocd -o jsonpath='{.status.sync.revision}')
+
+            echo "Attempt $i/36: Sync status=$SYNC_STATUS, Current revision=${CURRENT_REVISION:0:7}, Expected=${EXPECTED_REVISION:0:7}"
+
+            if [ "$SYNC_STATUS" == "Synced" ] && [ "$CURRENT_REVISION" == "$EXPECTED_REVISION" ]; then
+              echo "✅ ArgoCD synced successfully to new revision"
               break
             fi
-            if [ $i -eq 24 ]; then
-              echo "Timeout waiting for ArgoCD sync"
+
+            if [ $i -eq 36 ]; then
+              echo "❌ Timeout waiting for ArgoCD sync"
+              echo "Expected revision: $EXPECTED_REVISION"
+              echo "Current revision: $CURRENT_REVISION"
+              echo "Sync status: $SYNC_STATUS"
               exit 1
             fi
-            echo "Waiting for ArgoCD sync... (attempt $i/24)"
+
             sleep 5
           done
 
-          # Wait for rollout to create preview
+          # Wait for rollout to detect the change and create preview
+          echo "Waiting for Argo Rollouts to detect image change..."
+          sleep 5
+
+          # Check if a new replicaset was created
           kubectl argo rollouts status rmi -n rmi --timeout=5m
 
       - name: Set up port forward to preview service
