@@ -138,37 +138,34 @@ jobs:
           echo "Waiting for ArgoCD to sync and create blue-green preview..."
           echo "Expected image: $IMAGE_NAME:$COMMIT_HASH@$DIGEST"
 
-          # Wait for ArgoCD to sync the change
-          for i in {1..30}; do
+          # Wait for the rollout spec to be updated with the new image
+          # This is more reliable than checking ArgoCD sync status
+          for i in {1..60}; do
+            CURRENT_IMAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.spec.template.spec.containers[0].image}')
             SYNC_STATUS=$(kubectl get application rmi -n argocd -o jsonpath='{.status.sync.status}')
-            HEALTH_STATUS=$(kubectl get application rmi -n argocd -o jsonpath='{.status.health.status}')
 
-            echo "Attempt $i/30: Sync=$SYNC_STATUS, Health=$HEALTH_STATUS"
+            echo "Attempt $i/60: Image=$CURRENT_IMAGE, ArgoCD Sync=$SYNC_STATUS"
 
-            if [ "$SYNC_STATUS" = "Synced" ]; then
-              echo "✅ ArgoCD synced successfully"
+            if [[ "$CURRENT_IMAGE" == "$IMAGE_NAME:$COMMIT_HASH@$DIGEST" ]]; then
+              echo "✅ Rollout spec updated with new image!"
               break
             fi
 
-            if [ $i -eq 30 ]; then
-              echo "❌ Timeout waiting for ArgoCD sync"
+            if [ $i -eq 60 ]; then
+              echo "❌ Timeout waiting for rollout image update"
+              echo "Expected: $IMAGE_NAME:$COMMIT_HASH@$DIGEST"
+              echo "Got: $CURRENT_IMAGE"
+              echo ""
+              echo "ArgoCD Application status:"
               kubectl get application rmi -n argocd -o yaml
+              echo ""
+              echo "Rollout status:"
+              kubectl get rollout rmi -n rmi -o yaml
               exit 1
             fi
 
-            sleep 10
+            sleep 5
           done
-
-          # Verify the rollout has the correct image
-          CURRENT_IMAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.spec.template.spec.containers[0].image}')
-          echo "Rollout spec image: $CURRENT_IMAGE"
-
-          if [[ "$CURRENT_IMAGE" != "$IMAGE_NAME:$COMMIT_HASH@$DIGEST" ]]; then
-            echo "❌ Rollout image doesn't match expected image!"
-            echo "Expected: $IMAGE_NAME:$COMMIT_HASH@$DIGEST"
-            echo "Got: $CURRENT_IMAGE"
-            exit 1
-          fi
 
           # Wait for Argo Rollouts to create the preview
           echo "Waiting for blue-green preview to be created..."
