@@ -41,13 +41,11 @@ func setupDatabaseUtilsTest(t *testing.T) (*mongo.Collection, func()) {
 	_ = testCollection.Drop(ctx)
 
 	return testCollection, func() {
-		// Clean up all test collections
+		// Clean up only the collections created by database_test.go tests
 		_ = testCollection.Drop(ctx)
 		_ = config.MongoDB.Collection("unknown_collection").Drop(ctx)
-		if config.AppConfig != nil {
-			_ = config.MongoDB.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
-			_ = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).Drop(ctx)
-		}
+		// Note: We don't drop citizen/self_declared collections here because
+		// optimistic_lock_test.go uses them and tests run in parallel
 	}
 }
 
@@ -1437,6 +1435,11 @@ func TestExecuteWriteWithCollectionOptimization_CitizenCollection(t *testing.T) 
 
 	ctx := context.Background()
 
+	// Clean up test document
+	defer func() {
+		_, _ = config.MongoDB.Collection(config.AppConfig.CitizenCollection).DeleteOne(ctx, bson.M{"_id": "citizen_test"})
+	}()
+
 	// Use the citizen collection configured in setup
 	err := ExecuteWriteWithCollectionOptimization(ctx, config.AppConfig.CitizenCollection, "user_data", func(coll *mongo.Collection) error {
 		_, err := coll.InsertOne(ctx, bson.M{"_id": "citizen_test", "cpf": "12345678901"})
@@ -1452,6 +1455,8 @@ func TestExecuteWriteWithCollectionOptimization_DefaultCollection(t *testing.T) 
 	defer cleanup()
 
 	ctx := context.Background()
+
+	// Clean up test document (already handled by cleanup dropping unknown_collection)
 
 	err := ExecuteWriteWithCollectionOptimization(ctx, "unknown_collection", "user_data", func(coll *mongo.Collection) error {
 		_, err := coll.InsertOne(ctx, bson.M{"_id": "default_test", "value": 333})
