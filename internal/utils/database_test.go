@@ -41,8 +41,13 @@ func setupDatabaseUtilsTest(t *testing.T) (*mongo.Collection, func()) {
 	_ = testCollection.Drop(ctx)
 
 	return testCollection, func() {
-		// Clean up test collection only
+		// Clean up all test collections
 		_ = testCollection.Drop(ctx)
+		_ = config.MongoDB.Collection("unknown_collection").Drop(ctx)
+		if config.AppConfig != nil {
+			_ = config.MongoDB.Collection(config.AppConfig.CitizenCollection).Drop(ctx)
+			_ = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).Drop(ctx)
+		}
 	}
 }
 

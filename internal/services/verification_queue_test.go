@@ -112,8 +112,8 @@ func TestEnqueue_QueueFull(t *testing.T) {
 	cleanup := setupVerificationQueueTest(t)
 	defer cleanup()
 
-	// Create queue with size 2
-	vq := NewVerificationQueue(1, 2)
+	// Create queue with size 2 and 0 workers to prevent processing
+	vq := NewVerificationQueue(0, 2)
 
 	// Fill the queue
 	for i := 0; i < 2; i++ {
@@ -126,7 +126,7 @@ func TestEnqueue_QueueFull(t *testing.T) {
 		_ = vq.Enqueue(job)
 	}
 
-	// This should fail because queue is full
+	// This should fail because queue is full (no workers to process jobs)
 	job := VerificationJob{
 		PhoneNumber: "+5521987654399",
 		Code:        "123456",
