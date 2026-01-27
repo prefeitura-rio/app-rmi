@@ -81,7 +81,7 @@ jobs:
           WHATSAPP_CAMPAIGN_NAME: test
           WHATSAPP_COST_CENTER_ID: "1"
           WHATSAPP_HSM_ID: "1"
-        run: go test -coverprofile=coverage.out -timeout=5m ./...
+        run: go test -race -coverprofile=coverage.out -timeout=5m ./...
 
       - name: Extract coverage percentage
         id: coverage
