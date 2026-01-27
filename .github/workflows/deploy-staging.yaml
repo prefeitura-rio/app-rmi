@@ -118,11 +118,11 @@ jobs:
         run: |
           echo "Triggering blue-green rollout to preview service..."
 
-          # Update preview service image
-          kubectl set image deployment/rmi-preview rmi=$IMAGE_NAME:$COMMIT_HASH@$DIGEST -n rmi
+          # Update rollout image (creates preview version)
+          kubectl argo rollouts set image rmi rmi=$IMAGE_NAME:$COMMIT_HASH@$DIGEST -n rmi
 
-          # Wait for preview deployment to be ready
-          kubectl rollout status deployment/rmi-preview -n rmi --timeout=5m
+          # Wait for preview to be ready
+          kubectl argo rollouts status rmi -n rmi --timeout=5m
 
       - name: Run E2E Tests Against Preview
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
@@ -143,21 +143,21 @@ jobs:
         run: |
           echo "✅ Tests passed! Promoting to stable..."
 
-          # Update stable service image
-          kubectl set image rollout/rmi rmi=$IMAGE_NAME:$COMMIT_HASH@$DIGEST -n rmi
+          # Promote preview to active (stable)
+          kubectl argo rollouts promote rmi -n rmi
 
-          # Monitor rollout (canary deployment handles gradual rollout)
-          kubectl argo rollouts get rollout rmi -n rmi --watch
+          # Wait for promotion to complete
+          kubectl argo rollouts status rmi -n rmi --timeout=5m
 
       - name: Rollback on Failure
         if: steps.check-k8s-only.outputs.k8s_only != 'true' && failure()
         run: |
-          echo "❌ Tests failed! Rolling back preview deployment..."
+          echo "❌ Tests failed! Aborting rollout..."
 
-          # Rollback preview deployment
-          kubectl rollout undo deployment/rmi-preview -n rmi
+          # Abort the rollout (keeps stable service unchanged)
+          kubectl argo rollouts abort rmi -n rmi
 
-          echo "Preview deployment rolled back. Stable service unchanged."
+          echo "Rollout aborted. Preview discarded. Stable service unchanged."
           exit 1
 
       - name: Create deployment summary
@@ -172,13 +172,13 @@ jobs:
           if [ "${{ job.status }}" = "success" ]; then
             echo "### ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
             echo "- Preview tests passed" >> $GITHUB_STEP_SUMMARY
-            echo "- Promoted to stable service" >> $GITHUB_STEP_SUMMARY
-            echo "- Canary rollout in progress" >> $GITHUB_STEP_SUMMARY
+            echo "- Promoted to active service" >> $GITHUB_STEP_SUMMARY
+            echo "- Blue-green rollout complete" >> $GITHUB_STEP_SUMMARY
           else
             echo "### ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
             echo "- E2E tests failed" >> $GITHUB_STEP_SUMMARY
-            echo "- Preview rolled back" >> $GITHUB_STEP_SUMMARY
-            echo "- Stable service unchanged" >> $GITHUB_STEP_SUMMARY
+            echo "- Rollout aborted" >> $GITHUB_STEP_SUMMARY
+            echo "- Active service unchanged" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Comment on PR if exists
@@ -196,8 +196,8 @@ jobs:
             - **Image**: \`${{ env.IMAGE_NAME }}:${{ env.COMMIT_HASH }}@${{ env.DIGEST }}\`
 
             ${status === '✅' ?
-              '- Preview tests passed\n- Promoted to stable\n- Canary rollout in progress' :
-              '- E2E tests failed\n- Preview rolled back\n- Stable unchanged'}
+              '- Preview tests passed\n- Promoted to active\n- Blue-green rollout complete' :
+              '- E2E tests failed\n- Rollout aborted\n- Active unchanged'}
             `;
 
             await github.rest.issues.createComment({
@@ -227,12 +227,12 @@ jobs:
             STATUS_EMOJI="✅"
             STATUS_TEXT="Succeeded"
             COLOR="3066993"  # Green
-            DESCRIPTION="Preview tests passed and deployment promoted to stable service. Canary rollout in progress."
+            DESCRIPTION="Preview tests passed and deployment promoted to active service. Blue-green rollout complete."
           else
             STATUS_EMOJI="❌"
             STATUS_TEXT="Failed"
             COLOR="15158332"  # Red
-            DESCRIPTION="E2E tests failed. Preview deployment rolled back. Stable service unchanged."
+            DESCRIPTION="E2E tests failed. Rollout aborted. Active service unchanged."
           fi
 
           # Create Discord embed
