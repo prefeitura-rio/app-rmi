@@ -130,10 +130,35 @@ jobs:
           # Wait for preview to be ready
           kubectl argo rollouts status rmi -n rmi --timeout=5m
 
+      - name: Set up port forward to preview service
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: |
+          echo "Setting up port forward to preview service..."
+          # Start port-forward in background
+          kubectl port-forward -n rmi service/rmi-preview 8080:80 &
+          PORT_FORWARD_PID=$!
+          echo "PORT_FORWARD_PID=$PORT_FORWARD_PID" >> $GITHUB_ENV
+
+          # Wait for port-forward to be ready
+          echo "Waiting for port-forward to be ready..."
+          for i in {1..30}; do
+            if curl -s http://localhost:8080/v1/health > /dev/null 2>&1; then
+              echo "Port-forward is ready!"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Port-forward failed to become ready"
+              kill $PORT_FORWARD_PID 2>/dev/null || true
+              exit 1
+            fi
+            echo "Attempt $i/30: Waiting for port-forward..."
+            sleep 2
+          done
+
       - name: Run E2E Tests Against Preview
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
         env:
-          TEST_BASE_URL: "https://services.staging.app.dados.rio/rmi-preview/v1"
+          TEST_BASE_URL: "http://localhost:8080/v1"
           TEST_KEYCLOAK_URL: ${{ secrets.TEST_KEYCLOAK_URL }}
           TEST_KEYCLOAK_REALM: ${{ secrets.TEST_KEYCLOAK_REALM }}
           TEST_KEYCLOAK_CLIENT_ID: ${{ secrets.TEST_KEYCLOAK_CLIENT_ID }}
@@ -141,8 +166,14 @@ jobs:
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
           TEST_CPF: ${{ secrets.TEST_CPF }}
         run: |
-          echo "Running E2E tests against preview service..."
+          echo "Running E2E tests against preview service via port-forward..."
           go test -v ./tests/e2e/... -timeout 15m
+
+      - name: Clean up port forward
+        if: steps.check-k8s-only.outputs.k8s_only != 'true' && always()
+        run: |
+          echo "Cleaning up port-forward..."
+          kill $PORT_FORWARD_PID 2>/dev/null || true
 
       - name: Promote to Stable
         if: steps.check-k8s-only.outputs.k8s_only != 'true' && success()
