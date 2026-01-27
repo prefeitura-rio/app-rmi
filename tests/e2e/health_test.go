@@ -28,9 +28,9 @@ func TestHealth(t *testing.T) {
 		t.Fatalf("Failed to decode health response: %v", err)
 	}
 
-	status, ok := health["status"].(string)
-	if !ok || status != "healthy" {
-		t.Errorf("Expected status 'healthy', got %v", health["status"])
+	status, ok := health["status"].(bool)
+	if !ok || !status {
+		t.Errorf("Expected status true, got %v", health["status"])
 	}
 }
 
