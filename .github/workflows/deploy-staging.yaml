@@ -119,49 +119,62 @@ jobs:
       - name: Configure kubectl for GKE
         run: gcloud container clusters get-credentials application --zone=us-central1 --project="${{ vars.GCP_PROJECT_ID }}"
 
-      - name: Update staging Rollout image
+      - name: Update ArgoCD Application image override
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
         run: |
-          echo "Updating image in k8s/staging/resources.yaml..."
+          echo "Updating ArgoCD Application image override..."
+          echo "Image: $IMAGE_NAME:$COMMIT_HASH@$DIGEST"
 
-          # Update the image tag with digest for immutable deployments
-          sed -i "s|image: ghcr.io/prefeitura-rio/app-rmi:.*|image: ghcr.io/prefeitura-rio/app-rmi:$COMMIT_HASH@$DIGEST|g" k8s/staging/resources.yaml
+          # Update the Kustomize image override in ArgoCD Application
+          kubectl patch application rmi -n argocd --type=json \
+            -p="[{\"op\": \"replace\", \"path\": \"/spec/source/kustomize/images/0\", \"value\": \"$IMAGE_NAME:$COMMIT_HASH@$DIGEST\"}]"
 
-          # Configure git
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Commit and push (ArgoCD watches main branch)
-          git add k8s/staging/resources.yaml
-          git commit -m "chore(staging): update image to $COMMIT_HASH@${DIGEST:0:12}"
-          git push
+          echo "✅ ArgoCD Application updated with new image override"
 
       - name: Wait for ArgoCD sync and blue-green preview
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
         timeout-minutes: 5
         run: |
-          echo "Waiting for ArgoCD to sync and rollout to create preview..."
+          echo "Waiting for ArgoCD to sync and create blue-green preview..."
           echo "Expected image: $IMAGE_NAME:$COMMIT_HASH@$DIGEST"
 
-          # Wait for ArgoCD to update the rollout spec
-          while true; do
-            CURRENT_IMAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.spec.template.spec.containers[0].image}')
-            echo "Current rollout spec image: $CURRENT_IMAGE"
+          # Wait for ArgoCD to sync the change
+          for i in {1..30}; do
+            SYNC_STATUS=$(kubectl get application rmi -n argocd -o jsonpath='{.status.sync.status}')
+            HEALTH_STATUS=$(kubectl get application rmi -n argocd -o jsonpath='{.status.health.status}')
 
-            if [[ "$CURRENT_IMAGE" == "$IMAGE_NAME:$COMMIT_HASH@$DIGEST" ]]; then
-              echo "✅ Rollout spec updated with new image!"
+            echo "Attempt $i/30: Sync=$SYNC_STATUS, Health=$HEALTH_STATUS"
+
+            if [ "$SYNC_STATUS" = "Synced" ]; then
+              echo "✅ ArgoCD synced successfully"
               break
             fi
 
-            echo "Waiting 10s for ArgoCD to sync..."
+            if [ $i -eq 30 ]; then
+              echo "❌ Timeout waiting for ArgoCD sync"
+              kubectl get application rmi -n argocd -o yaml
+              exit 1
+            fi
+
             sleep 10
           done
 
-          # Wait for Argo Rollouts to create the preview replicaset
+          # Verify the rollout has the correct image
+          CURRENT_IMAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "Rollout spec image: $CURRENT_IMAGE"
+
+          if [[ "$CURRENT_IMAGE" != "$IMAGE_NAME:$COMMIT_HASH@$DIGEST" ]]; then
+            echo "❌ Rollout image doesn't match expected image!"
+            echo "Expected: $IMAGE_NAME:$COMMIT_HASH@$DIGEST"
+            echo "Got: $CURRENT_IMAGE"
+            exit 1
+          fi
+
+          # Wait for Argo Rollouts to create the preview
           echo "Waiting for blue-green preview to be created..."
           sleep 5
 
-          # Check rollout status - it should be paused at preview
+          # Check rollout status
           kubectl argo rollouts get rollout rmi -n rmi
 
       - name: Set up port forward to preview service
