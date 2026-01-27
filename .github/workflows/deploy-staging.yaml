@@ -130,6 +130,13 @@ jobs:
           # Wait for preview to be ready
           kubectl argo rollouts status rmi -n rmi --timeout=5m
 
+          # Verify we're in preview mode (not auto-promoted)
+          CURRENT_STEP=$(kubectl argo rollouts status rmi -n rmi | grep -o "Step [0-9]*/[0-9]*" | head -1 || echo "unknown")
+          echo "Current rollout step: $CURRENT_STEP"
+
+          # Ensure rollout is paused and waiting for promotion
+          kubectl argo rollouts get rollout rmi -n rmi
+
       - name: Set up port forward to preview service
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
         run: |
@@ -189,12 +196,30 @@ jobs:
       - name: Rollback on Failure
         if: steps.check-k8s-only.outputs.k8s_only != 'true' && failure()
         run: |
-          echo "❌ Tests failed! Aborting rollout..."
+          echo "❌ Tests failed! Aborting and reverting rollout..."
 
-          # Abort the rollout (keeps stable service unchanged)
+          # Get current active revision before abort
+          ACTIVE_REVISION=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.currentPodHash}')
+          echo "Current active revision: $ACTIVE_REVISION"
+
+          # Abort the rollout (discards preview, keeps active service)
           kubectl argo rollouts abort rmi -n rmi
 
-          echo "Rollout aborted. Preview discarded. Stable service unchanged."
+          # Wait for abort to take effect
+          sleep 2
+
+          # CRITICAL: Undo the rollout to ensure we go back to stable
+          echo "Undoing rollout to previous stable version..."
+          kubectl argo rollouts undo rmi -n rmi
+
+          # Wait for undo to complete
+          kubectl argo rollouts status rmi -n rmi --timeout=5m
+
+          # Verify rollout status
+          echo "Final rollout status:"
+          kubectl argo rollouts get rollout rmi -n rmi
+
+          echo "❌ Rollout aborted and reverted. Active service restored to previous version."
           exit 1
 
       - name: Create deployment summary
