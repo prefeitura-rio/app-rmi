@@ -1,0 +1,921 @@
+package handlers
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/services"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+func setupAvatarHandlersTest(t *testing.T) (*AvatarHandlers, *gin.Engine, func()) {
+	// Use the shared MongoDB and Redis from common_test.go TestMain
+	// Don't create new connections - use the global ones
+	gin.SetMode(gin.TestMode)
+
+	// Configure test collections (these are test-specific)
+	config.AppConfig.AvatarsCollection = "test_avatars"
+	config.AppConfig.UserConfigCollection = "test_user_configs"
+	config.AppConfig.AvatarCacheTTL = 5 * time.Minute
+
+	ctx := context.Background()
+	database := config.MongoDB
+
+	// Clean up Redis cache BEFORE test starts
+	patterns := []string{"avatar:*", "avatars:*", "user_config:*"}
+	for _, pattern := range patterns {
+		keys, _ := config.Redis.Keys(ctx, pattern).Result()
+		if len(keys) > 0 {
+			config.Redis.Del(ctx, keys...)
+		}
+	}
+
+	// Clean collections before test
+	_ = database.Collection(config.AppConfig.AvatarsCollection).Drop(ctx)
+	_ = database.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
+
+	// Initialize services
+	cacheService := services.NewCacheService()
+	// Pass nil for mongoClient in tests since we only use database
+	services.AvatarServiceInstance = services.NewAvatarService(nil, database, logging.Logger.Unwrap())
+
+	handlers := NewAvatarHandlers(logging.Logger, cacheService)
+
+	router := gin.New()
+	router.GET("/avatars", handlers.ListAvatars)
+	router.POST("/avatars", handlers.CreateAvatar)
+	router.DELETE("/avatars/:id", handlers.DeleteAvatar)
+	router.GET("/citizen/:cpf/avatar", handlers.GetUserAvatar)
+	router.PUT("/citizen/:cpf/avatar", handlers.UpdateUserAvatar)
+
+	return handlers, router, func() {
+		// Clean up Redis
+		patterns := []string{"avatar:*", "avatars:*", "user_config:*"}
+		for _, pattern := range patterns {
+			keys, _ := config.Redis.Keys(ctx, pattern).Result()
+			if len(keys) > 0 {
+				config.Redis.Del(ctx, keys...)
+			}
+		}
+
+		// Drop only test collections, not the entire database
+		_ = database.Collection(config.AppConfig.AvatarsCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
+		services.AvatarServiceInstance = nil
+	}
+}
+
+func TestNewAvatarHandlers(t *testing.T) {
+	handlers := NewAvatarHandlers(logging.Logger, nil)
+	assert.NotNil(t, handlers, "NewAvatarHandlers() returned nil")
+	assert.NotNil(t, handlers.logger, "NewAvatarHandlers() logger is nil")
+}
+
+func TestListAvatars_Empty(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	req, _ := http.NewRequest("GET", "/avatars?page=1&per_page=20", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "ListAvatars() empty list status code mismatch")
+
+	var response models.AvatarsListResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err, "Failed to unmarshal response")
+
+	assert.Equal(t, int64(0), response.Total, "ListAvatars() empty total should be 0")
+	assert.Len(t, response.Data, 0, "ListAvatars() empty data should have length 0")
+}
+
+func TestListAvatars_WithData(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Insert test avatars
+	collection := config.MongoDB.Collection(config.AppConfig.AvatarsCollection)
+	avatars := []interface{}{
+		bson.M{
+			"_id":        primitive.NewObjectID(),
+			"name":       "Avatar 1",
+			"url":        "https://example.com/avatar1.png",
+			"is_active":  true,
+			"created_at": time.Now(),
+		},
+		bson.M{
+			"_id":        primitive.NewObjectID(),
+			"name":       "Avatar 2",
+			"url":        "https://example.com/avatar2.png",
+			"is_active":  true,
+			"created_at": time.Now(),
+		},
+		bson.M{
+			"_id":        primitive.NewObjectID(),
+			"name":       "Inactive Avatar",
+			"url":        "https://example.com/inactive.png",
+			"is_active":  false,
+			"created_at": time.Now(),
+		},
+	}
+
+	_, err := collection.InsertMany(ctx, avatars)
+	if err != nil {
+		t.Fatalf("Failed to insert avatars: %v", err)
+	}
+
+	req, _ := http.NewRequest("GET", "/avatars?page=1&per_page=20", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("ListAvatars() status = %v, want %v", w.Code, http.StatusOK)
+	}
+
+	var response models.AvatarsListResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	// Should only return active avatars
+	if response.Total != 2 {
+		t.Errorf("ListAvatars() Total = %v, want 2", response.Total)
+	}
+}
+
+func TestListAvatars_InvalidPagination(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	tests := []struct {
+		name    string
+		page    string
+		perPage string
+	}{
+		{"page zero", "0", "20"},
+		{"per_page zero", "1", "0"},
+		{"per_page too large", "1", "101"},
+		{"negative page", "-1", "20"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", "/avatars?page="+tt.page+"&per_page="+tt.perPage, nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("ListAvatars() with %s status = %v, want %v", tt.name, w.Code, http.StatusBadRequest)
+			}
+		})
+	}
+}
+
+func TestCreateAvatar_Success(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	reqBody := models.AvatarRequest{
+		Name: "New Avatar",
+		URL:  "https://example.com/new-avatar.png",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("POST", "/avatars", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("CreateAvatar() status = %v, want %v (body: %s)", w.Code, http.StatusCreated, w.Body.String())
+	}
+
+	var response models.AvatarResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if response.Name != "New Avatar" {
+		t.Errorf("CreateAvatar() Name = %v, want 'New Avatar'", response.Name)
+	}
+
+	if response.URL != "https://example.com/new-avatar.png" {
+		t.Errorf("CreateAvatar() URL = %v, want expected URL", response.URL)
+	}
+}
+
+func TestCreateAvatar_InvalidRequest(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	tests := []struct {
+		name string
+		body map[string]interface{}
+	}{
+		{"empty name", map[string]interface{}{"name": "", "url": "https://example.com/avatar.png"}},
+		{"missing URL", map[string]interface{}{"name": "Avatar"}},
+		{"name too long", map[string]interface{}{"name": string(make([]byte, 101)), "url": "https://example.com/avatar.png"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _ := json.Marshal(tt.body)
+			req, _ := http.NewRequest("POST", "/avatars", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("CreateAvatar() with %s status = %v, want %v", tt.name, w.Code, http.StatusBadRequest)
+			}
+		})
+	}
+}
+
+func TestDeleteAvatar_Success(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Insert test avatar
+	collection := config.MongoDB.Collection(config.AppConfig.AvatarsCollection)
+	avatarID := primitive.NewObjectID()
+	avatar := bson.M{
+		"_id":        avatarID,
+		"name":       "Test Avatar",
+		"url":        "https://example.com/test.png",
+		"is_active":  true,
+		"created_at": time.Now(),
+	}
+
+	_, err := collection.InsertOne(ctx, avatar)
+	if err != nil {
+		t.Fatalf("Failed to insert avatar: %v", err)
+	}
+
+	req, _ := http.NewRequest("DELETE", "/avatars/"+avatarID.Hex(), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("DeleteAvatar() status = %v, want %v", w.Code, http.StatusNoContent)
+	}
+
+	// Verify soft delete
+	var result bson.M
+	err = collection.FindOne(ctx, bson.M{"_id": avatarID}).Decode(&result)
+	if err != nil {
+		t.Fatalf("Failed to find avatar after delete: %v", err)
+	}
+
+	if result["is_active"].(bool) {
+		t.Error("DeleteAvatar() should set is_active to false (soft delete)")
+	}
+}
+
+func TestDeleteAvatar_NotFound(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	nonexistentID := primitive.NewObjectID()
+	req, _ := http.NewRequest("DELETE", "/avatars/"+nonexistentID.Hex(), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("DeleteAvatar() not found status = %v, want %v", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestGetUserAvatar_InvalidCPF(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	req, _ := http.NewRequest("GET", "/citizen/12345/avatar", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("GetUserAvatar() with invalid CPF status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetUserAvatar_NoConfig(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	req, _ := http.NewRequest("GET", "/citizen/03561350712/avatar", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("GetUserAvatar() status = %v, want %v", w.Code, http.StatusOK)
+	}
+
+	var response models.UserAvatarResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if response.AvatarID != nil {
+		t.Error("GetUserAvatar() AvatarID should be nil for user without config")
+	}
+}
+
+func TestUpdateUserAvatar_InvalidCPF(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	avatarID := "test-avatar-id"
+	reqBody := models.UserAvatarRequest{
+		AvatarID: &avatarID,
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/12345/avatar", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("UpdateUserAvatar() with invalid CPF status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateUserAvatar_InvalidJSON(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	req, _ := http.NewRequest("PUT", "/citizen/03561350712/avatar", bytes.NewBuffer([]byte("invalid json")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("UpdateUserAvatar() with invalid JSON status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateUserAvatar_InvalidAvatarID(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	invalidID := "invalid-avatar-id"
+	reqBody := models.UserAvatarRequest{
+		AvatarID: &invalidID,
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/03561350712/avatar", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("UpdateUserAvatar() with invalid avatar ID status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateUserAvatar_Success(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Insert test avatar
+	collection := config.MongoDB.Collection(config.AppConfig.AvatarsCollection)
+	avatarID := primitive.NewObjectID()
+	avatar := bson.M{
+		"_id":        avatarID,
+		"name":       "Test Avatar",
+		"url":        "https://example.com/test.png",
+		"is_active":  true,
+		"created_at": time.Now(),
+	}
+
+	_, err := collection.InsertOne(ctx, avatar)
+	if err != nil {
+		t.Fatalf("Failed to insert avatar: %v", err)
+	}
+
+	avatarIDStr := avatarID.Hex()
+	reqBody := models.UserAvatarRequest{
+		AvatarID: &avatarIDStr,
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/03561350712/avatar", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("UpdateUserAvatar() status = %v, want %v (body: %s)", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var response models.UserAvatarResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to unmarshal response: %v", err)
+	}
+
+	if response.AvatarID == nil || *response.AvatarID != avatarIDStr {
+		t.Errorf("UpdateUserAvatar() AvatarID = %v, want %v", response.AvatarID, avatarIDStr)
+	}
+}
+
+// Additional comprehensive tests following beta_group_handlers_test.go pattern
+
+func TestGetUserAvatar_WithAvatar(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	cpf := "03561350712"
+
+	// Create avatar
+	avatarsCollection := config.MongoDB.Collection(config.AppConfig.AvatarsCollection)
+	avatarID := primitive.NewObjectID()
+	avatar := bson.M{
+		"_id":        avatarID,
+		"name":       "Test Avatar",
+		"url":        "https://example.com/test.png",
+		"is_active":  true,
+		"created_at": time.Now(),
+		"updated_at": time.Now(),
+	}
+
+	_, err := avatarsCollection.InsertOne(ctx, avatar)
+	require.NoError(t, err, "Failed to insert test avatar")
+
+	// Create user config with avatar
+	configCollection := config.MongoDB.Collection(config.AppConfig.UserConfigCollection)
+	avatarIDStr := avatarID.Hex()
+	userConfig := bson.M{
+		"cpf":         cpf,
+		"first_login": false,
+		"opt_in":      true,
+		"avatar_id":   avatarIDStr,
+		"updated_at":  time.Now(),
+	}
+
+	_, err = configCollection.InsertOne(ctx, userConfig)
+	require.NoError(t, err, "Failed to insert user config")
+
+	req, _ := http.NewRequest("GET", "/citizen/"+cpf+"/avatar", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "GetUserAvatar() status code mismatch")
+
+	var response models.UserAvatarResponse
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err, "Failed to unmarshal response")
+
+	assert.NotNil(t, response.AvatarID, "GetUserAvatar() avatarID should not be nil")
+	assert.Equal(t, avatarIDStr, *response.AvatarID, "GetUserAvatar() avatarID mismatch")
+	assert.NotNil(t, response.Avatar, "GetUserAvatar() avatar should not be nil")
+	assert.Equal(t, "Test Avatar", response.Avatar.Name, "GetUserAvatar() avatar name mismatch")
+}
+
+func TestUpdateUserAvatar_ClearAvatar(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	cpf := "03561350712"
+
+	// Create user config with an existing avatar
+	configCollection := config.MongoDB.Collection(config.AppConfig.UserConfigCollection)
+	existingAvatarID := primitive.NewObjectID().Hex()
+	userConfig := bson.M{
+		"cpf":         cpf,
+		"first_login": false,
+		"opt_in":      true,
+		"avatar_id":   existingAvatarID,
+		"updated_at":  time.Now(),
+	}
+
+	_, err := configCollection.InsertOne(ctx, userConfig)
+	require.NoError(t, err, "Failed to insert user config")
+
+	// Clear avatar by setting to nil
+	reqBody := models.UserAvatarRequest{
+		AvatarID: nil,
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/"+cpf+"/avatar", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "UpdateUserAvatar() clear avatar status code mismatch")
+
+	var response models.UserAvatarResponse
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err, "Failed to unmarshal response")
+
+	assert.Nil(t, response.AvatarID, "UpdateUserAvatar() cleared avatarID should be nil")
+	assert.Nil(t, response.Avatar, "UpdateUserAvatar() cleared avatar should be nil")
+}
+
+func TestUpdateUserAvatar_NonExistentAvatar(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	cpf := "03561350712"
+	nonExistentID := primitive.NewObjectID().Hex()
+
+	reqBody := models.UserAvatarRequest{
+		AvatarID: &nonExistentID,
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/"+cpf+"/avatar", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code, "UpdateUserAvatar() non-existent avatar should return 400")
+}
+
+func TestUpdateUserAvatar_InactiveAvatar(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	cpf := "03561350712"
+
+	// Create inactive avatar
+	avatarsCollection := config.MongoDB.Collection(config.AppConfig.AvatarsCollection)
+	avatarID := primitive.NewObjectID()
+	avatar := bson.M{
+		"_id":        avatarID,
+		"name":       "Inactive Avatar",
+		"url":        "https://example.com/inactive.png",
+		"is_active":  false, // Inactive
+		"created_at": time.Now(),
+		"updated_at": time.Now(),
+	}
+
+	_, err := avatarsCollection.InsertOne(ctx, avatar)
+	require.NoError(t, err, "Failed to insert test avatar")
+
+	avatarIDStr := avatarID.Hex()
+	reqBody := models.UserAvatarRequest{
+		AvatarID: &avatarIDStr,
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/"+cpf+"/avatar", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code, "UpdateUserAvatar() inactive avatar should return 400")
+}
+
+func TestUpdateUserAvatar_CreatesConfigIfNotExists(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	cpf := "03561350712"
+
+	// Create avatar
+	avatarsCollection := config.MongoDB.Collection(config.AppConfig.AvatarsCollection)
+	avatarID := primitive.NewObjectID()
+	avatar := bson.M{
+		"_id":        avatarID,
+		"name":       "First Avatar",
+		"url":        "https://example.com/first.png",
+		"is_active":  true,
+		"created_at": time.Now(),
+		"updated_at": time.Now(),
+	}
+
+	_, err := avatarsCollection.InsertOne(ctx, avatar)
+	require.NoError(t, err, "Failed to insert test avatar")
+
+	// Update user avatar (should create config)
+	avatarIDStr := avatarID.Hex()
+	reqBody := models.UserAvatarRequest{
+		AvatarID: &avatarIDStr,
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/"+cpf+"/avatar", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "UpdateUserAvatar() should create config if not exists")
+
+	var response models.UserAvatarResponse
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err, "Failed to unmarshal response")
+
+	assert.NotNil(t, response.AvatarID, "UpdateUserAvatar() avatarID should not be nil")
+	assert.Equal(t, avatarIDStr, *response.AvatarID, "UpdateUserAvatar() avatarID mismatch")
+}
+
+func TestListAvatars_CacheHit(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Insert test avatar
+	collection := config.MongoDB.Collection(config.AppConfig.AvatarsCollection)
+	avatar := bson.M{
+		"_id":        primitive.NewObjectID(),
+		"name":       "Cached Avatar",
+		"url":        "https://example.com/cached.png",
+		"is_active":  true,
+		"created_at": time.Now(),
+		"updated_at": time.Now(),
+	}
+
+	_, err := collection.InsertOne(ctx, avatar)
+	require.NoError(t, err, "Failed to insert test avatar")
+
+	// First request - populates cache
+	req1, _ := http.NewRequest("GET", "/avatars?page=1&per_page=20", nil)
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+
+	assert.Equal(t, http.StatusOK, w1.Code, "First request should succeed")
+
+	// Second request - should hit cache
+	req2, _ := http.NewRequest("GET", "/avatars?page=1&per_page=20", nil)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	assert.Equal(t, http.StatusOK, w2.Code, "Second request should succeed")
+	assert.Equal(t, w1.Body.String(), w2.Body.String(), "Cached response should match")
+}
+
+func TestDeleteAvatar_CacheInvalidation(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create avatar
+	avatarsCollection := config.MongoDB.Collection(config.AppConfig.AvatarsCollection)
+	avatarID := primitive.NewObjectID()
+	avatar := bson.M{
+		"_id":        avatarID,
+		"name":       "Delete Cache Test",
+		"url":        "https://example.com/delete-cache.png",
+		"is_active":  true,
+		"created_at": time.Now(),
+		"updated_at": time.Now(),
+	}
+
+	_, err := avatarsCollection.InsertOne(ctx, avatar)
+	require.NoError(t, err, "Failed to insert test avatar")
+
+	// First list request - populates cache
+	req1, _ := http.NewRequest("GET", "/avatars?page=1&per_page=20", nil)
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code, "First list should succeed")
+
+	var listResponse1 models.AvatarsListResponse
+	err = json.Unmarshal(w1.Body.Bytes(), &listResponse1)
+	require.NoError(t, err, "Failed to unmarshal first list response")
+	assert.Equal(t, int64(1), listResponse1.Total, "Should have 1 avatar before deletion")
+
+	// Delete avatar
+	req2, _ := http.NewRequest("DELETE", "/avatars/"+avatarID.Hex(), nil)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	assert.Equal(t, http.StatusNoContent, w2.Code, "Delete should succeed")
+
+	// Second list request - should get updated list (inactive avatar excluded)
+	req3, _ := http.NewRequest("GET", "/avatars?page=1&per_page=20", nil)
+	w3 := httptest.NewRecorder()
+	router.ServeHTTP(w3, req3)
+	assert.Equal(t, http.StatusOK, w3.Code, "Second list should succeed")
+
+	var listResponse2 models.AvatarsListResponse
+	err = json.Unmarshal(w3.Body.Bytes(), &listResponse2)
+	require.NoError(t, err, "Failed to unmarshal second list response")
+	assert.Equal(t, int64(0), listResponse2.Total, "Should have 0 active avatars after deletion")
+}
+
+func TestCreateAvatar_MissingURL(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	reqBody := models.AvatarRequest{
+		Name: "Avatar",
+		URL:  "",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("POST", "/avatars", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code, "CreateAvatar() missing URL should return 400")
+}
+
+func TestCreateAvatar_NameTooLong(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	// Create name longer than 100 characters
+	longName := make([]byte, 101)
+	for i := range longName {
+		longName[i] = 'a'
+	}
+
+	reqBody := models.AvatarRequest{
+		Name: string(longName),
+		URL:  "https://example.com/avatar.png",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("POST", "/avatars", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code, "CreateAvatar() name too long should return 400")
+}
+
+func TestDeleteAvatar_InvalidID(t *testing.T) {
+	_, router, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	req, _ := http.NewRequest("DELETE", "/avatars/invalid-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code, "DeleteAvatar() invalid ID should return 500")
+}
+
+func TestLegacyHandlers_ListAvatars(t *testing.T) {
+	_, _, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Insert test avatar
+	collection := config.MongoDB.Collection(config.AppConfig.AvatarsCollection)
+	avatar := bson.M{
+		"_id":        primitive.NewObjectID(),
+		"name":       "Legacy Test Avatar",
+		"url":        "https://example.com/legacy.png",
+		"is_active":  true,
+		"created_at": time.Now(),
+		"updated_at": time.Now(),
+	}
+
+	_, err := collection.InsertOne(ctx, avatar)
+	require.NoError(t, err, "Failed to insert test avatar")
+
+	// Setup legacy route
+	legacyRouter := gin.New()
+	legacyRouter.GET("/avatars", ListAvatars)
+
+	req, _ := http.NewRequest("GET", "/avatars?page=1&per_page=10", nil)
+	w := httptest.NewRecorder()
+	legacyRouter.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "Legacy ListAvatars() status code mismatch")
+}
+
+func TestLegacyHandlers_CreateAvatar(t *testing.T) {
+	_, _, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	// Setup legacy route
+	legacyRouter := gin.New()
+	legacyRouter.POST("/avatars", CreateAvatar)
+
+	reqBody := models.AvatarRequest{
+		Name: "Legacy Created Avatar",
+		URL:  "https://example.com/legacy-create.png",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("POST", "/avatars", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	legacyRouter.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code, "Legacy CreateAvatar() status code mismatch")
+}
+
+func TestLegacyHandlers_DeleteAvatar(t *testing.T) {
+	_, _, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Insert test avatar
+	collection := config.MongoDB.Collection(config.AppConfig.AvatarsCollection)
+	avatarID := primitive.NewObjectID()
+	avatar := bson.M{
+		"_id":        avatarID,
+		"name":       "Legacy Delete Avatar",
+		"url":        "https://example.com/legacy-delete.png",
+		"is_active":  true,
+		"created_at": time.Now(),
+		"updated_at": time.Now(),
+	}
+
+	_, err := collection.InsertOne(ctx, avatar)
+	require.NoError(t, err, "Failed to insert test avatar")
+
+	// Setup legacy route
+	legacyRouter := gin.New()
+	legacyRouter.DELETE("/avatars/:id", DeleteAvatar)
+
+	req, _ := http.NewRequest("DELETE", "/avatars/"+avatarID.Hex(), nil)
+	w := httptest.NewRecorder()
+	legacyRouter.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code, "Legacy DeleteAvatar() status code mismatch")
+}
+
+func TestLegacyHandlers_GetUserAvatar(t *testing.T) {
+	_, _, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	cpf := "03561350712"
+
+	// Setup legacy route
+	legacyRouter := gin.New()
+	legacyRouter.GET("/citizen/:cpf/avatar", GetUserAvatar)
+
+	req, _ := http.NewRequest("GET", "/citizen/"+cpf+"/avatar", nil)
+	w := httptest.NewRecorder()
+	legacyRouter.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "Legacy GetUserAvatar() status code mismatch")
+}
+
+func TestLegacyHandlers_UpdateUserAvatar(t *testing.T) {
+	_, _, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	cpf := "03561350712"
+
+	// Create avatar
+	avatarsCollection := config.MongoDB.Collection(config.AppConfig.AvatarsCollection)
+	avatarID := primitive.NewObjectID()
+	avatar := bson.M{
+		"_id":        avatarID,
+		"name":       "Legacy Update Avatar",
+		"url":        "https://example.com/legacy-update.png",
+		"is_active":  true,
+		"created_at": time.Now(),
+		"updated_at": time.Now(),
+	}
+
+	_, err := avatarsCollection.InsertOne(ctx, avatar)
+	require.NoError(t, err, "Failed to insert test avatar")
+
+	// Setup legacy route
+	legacyRouter := gin.New()
+	userMiddleware := func(c *gin.Context) {
+		c.Set("user_id", "user-"+cpf)
+		c.Next()
+	}
+	legacyRouter.Use(userMiddleware)
+	legacyRouter.PUT("/citizen/:cpf/avatar", UpdateUserAvatar)
+
+	avatarIDStr := avatarID.Hex()
+	reqBody := models.UserAvatarRequest{
+		AvatarID: &avatarIDStr,
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/"+cpf+"/avatar", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	legacyRouter.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "Legacy UpdateUserAvatar() status code mismatch")
+}

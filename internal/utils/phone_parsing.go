@@ -21,6 +21,14 @@ func ParsePhoneNumber(phoneString string) (*PhoneComponents, error) {
 	// Clean the phone string
 	cleanPhone := strings.TrimSpace(phoneString)
 
+	// Validate that the phone string only contains digits, spaces, and + at the start
+	// Remove + and spaces for validation
+	digitsOnly := strings.TrimPrefix(cleanPhone, "+")
+	digitsOnly = strings.ReplaceAll(digitsOnly, " ", "")
+	if !regexp.MustCompile(`^[0-9]+$`).MatchString(digitsOnly) {
+		return nil, fmt.Errorf("invalid phone number format: contains non-numeric characters")
+	}
+
 	// If it doesn't start with +, try to add it
 	if !strings.HasPrefix(cleanPhone, "+") {
 		// If it starts with 55 (Brazil), add +
@@ -62,16 +70,27 @@ func ParsePhoneNumber(phoneString string) (*PhoneComponents, error) {
 		} else {
 			components.Valor = nationalNumber
 		}
+	} else if countryCode == 1 { // US/Canada - 3 digit area code
+		if len(nationalNumber) >= 3 {
+			components.DDD = nationalNumber[:3]
+			components.Valor = nationalNumber[3:]
+		} else {
+			components.Valor = nationalNumber
+		}
 	} else {
-		// For international numbers, DDD might be 1-4 digits
-		// We'll try to extract it intelligently
+		// For other international numbers, extract area code intelligently
+		// UK uses variable length area codes (2-5 digits), most countries use 2-4
 		if len(nationalNumber) >= 4 {
-			// Assume first 2-4 digits are area code
+			// Try to use the national destination code from libphonenumber if available
+			// For now, use a reasonable heuristic:
+			// - 10+ digit numbers: use 4 digit area code
+			// - 8-9 digit numbers: use 3 digit area code
+			// - 6-7 digit numbers: use 2 digit area code
 			areaCodeLength := 2
-			if len(nationalNumber) >= 6 {
+			if len(nationalNumber) >= 8 {
 				areaCodeLength = 3
 			}
-			if len(nationalNumber) >= 8 {
+			if len(nationalNumber) >= 10 {
 				areaCodeLength = 4
 			}
 			components.DDD = nationalNumber[:areaCodeLength]

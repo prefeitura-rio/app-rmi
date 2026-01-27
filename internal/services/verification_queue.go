@@ -166,6 +166,13 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Normalize phone number for database lookup
+	components, err := utils.ParsePhoneNumber(job.PhoneNumber)
+	if err != nil {
+		return fmt.Errorf("invalid phone number format: %w", err)
+	}
+	normalizedPhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+
 	// Find the verification code in the database
 	collection := config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection)
 
@@ -175,8 +182,8 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 		Used      bool      `bson:"used"`
 	}
 
-	err := collection.FindOne(ctx, bson.M{
-		"phone_number": job.PhoneNumber,
+	err = collection.FindOne(ctx, bson.M{
+		"phone_number": normalizedPhone,
 		"code":         job.Code,
 		"used":         false,
 		"expires_at":   bson.M{"$gt": time.Now()},
@@ -191,7 +198,7 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 
 	// Mark code as used
 	_, err = collection.UpdateOne(ctx,
-		bson.M{"phone_number": job.PhoneNumber, "code": job.Code},
+		bson.M{"phone_number": normalizedPhone, "code": job.Code},
 		bson.M{"$set": bson.M{"used": true, "used_at": time.Now()}},
 	)
 	if err != nil {
@@ -201,7 +208,7 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 	// Update phone mapping to verified
 	phoneCollection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
 	_, err = phoneCollection.UpdateOne(ctx,
-		bson.M{"phone_number": job.PhoneNumber},
+		bson.M{"phone_number": normalizedPhone},
 		bson.M{"$set": bson.M{
 			"verified":    true,
 			"verified_at": time.Now(),
@@ -397,10 +404,10 @@ func (vq *VerificationQueue) GetStats() ProcessingStats {
 
 // Stop gracefully stops the verification queue
 func (vq *VerificationQueue) Stop() {
-	vq.cancel()
-	close(vq.queue)
-	close(vq.results)
-	vq.wg.Wait()
+	vq.cancel()       // Signal workers to stop via context
+	close(vq.queue)   // Close queue to unblock workers waiting on queue
+	vq.wg.Wait()      // Wait for all workers to finish (they might still be sending on results)
+	close(vq.results) // Now safe to close results channel
 }
 
 // IsHealthy checks if the queue is healthy

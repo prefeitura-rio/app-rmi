@@ -92,7 +92,33 @@ func ExecuteWriteOperation(ctx context.Context, collection string, operationType
 func ExecuteWithWriteConcern(ctx context.Context, operationType string, operation func(mongo.SessionContext) error) error {
 	logger := logging.Logger.With(zap.String("operation", "write_concern_operation"))
 
-	// Start a session
+	wc := GetWriteConcernForOperation(operationType)
+
+	// For unacknowledged writes (W=0), execute without transaction
+	// Transactions don't support unacknowledged write concerns
+	if wc.W == 0 {
+		// Create a dummy session context for compatibility
+		session, err := config.MongoDB.Client().StartSession()
+		if err != nil {
+			logger.Error("failed to start database session", zap.Error(err))
+			return fmt.Errorf("failed to start database session: %w", err)
+		}
+		defer session.EndSession(ctx)
+
+		sessCtx := mongo.NewSessionContext(ctx, session)
+		if err := operation(sessCtx); err != nil {
+			logger.Error("operation failed with write concern",
+				zap.String("operation_type", operationType),
+				zap.Error(err))
+			return fmt.Errorf("operation failed with write concern: %w", err)
+		}
+
+		logger.Info("operation completed successfully with write concern",
+			zap.String("operation_type", operationType))
+		return nil
+	}
+
+	// For acknowledged writes, use transaction
 	session, err := config.MongoDB.Client().StartSession()
 	if err != nil {
 		logger.Error("failed to start database session", zap.Error(err))
@@ -100,11 +126,11 @@ func ExecuteWithWriteConcern(ctx context.Context, operationType string, operatio
 	}
 	defer session.EndSession(ctx)
 
-	// Execute operation with session
+	// Execute operation with session and transaction
 	_, err = session.WithTransaction(ctx, func(sessCtx mongo.SessionContext) (interface{}, error) {
 		return nil, operation(sessCtx)
 	}, &options.TransactionOptions{
-		WriteConcern: GetWriteConcernForOperation(operationType),
+		WriteConcern: wc,
 	})
 
 	if err != nil {
@@ -293,6 +319,12 @@ func BulkWriteWithWriteConcern(ctx context.Context, collection string, operation
 		zap.Int("operations_count", len(operations)),
 	)
 
+	// MongoDB requires at least one operation for bulk write
+	if len(operations) == 0 {
+		logger.Info("no operations to perform in bulk write")
+		return &mongo.BulkWriteResult{}, nil
+	}
+
 	// Configure bulk write options with appropriate write concern
 	opts := options.BulkWrite().
 		SetOrdered(false). // Allow parallel execution for better performance
@@ -422,6 +454,22 @@ func ExecuteWithLoadDistribution(ctx context.Context, operationType string, oper
 	}
 	defer session.EndSession(ctx)
 
+	// For audit operations (W=0), execute without transaction
+	// Transactions don't support unacknowledged write concerns
+	if operationType == "audit" {
+		sessCtx := mongo.NewSessionContext(ctx, session)
+		if err := operation(sessCtx); err != nil {
+			logger.Error("operation failed with load distribution",
+				zap.String("operation_type", operationType),
+				zap.Error(err))
+			return fmt.Errorf("operation failed with load distribution: %w", err)
+		}
+
+		logger.Info("operation completed successfully with load distribution",
+			zap.String("operation_type", operationType))
+		return nil
+	}
+
 	// Configure session based on operation type
 	var sessionOpts *options.SessionOptions
 	switch operationType {
@@ -433,11 +481,6 @@ func ExecuteWithLoadDistribution(ctx context.Context, operationType string, oper
 		sessionOpts = options.Session().
 			SetDefaultReadPreference(readpref.Primary()).
 			SetDefaultWriteConcern(&writeconcern.WriteConcern{W: 1})
-	case "audit":
-		// For audit logs, use fire-and-forget
-		sessionOpts = options.Session().
-			SetDefaultReadPreference(readpref.Primary()).
-			SetDefaultWriteConcern(&writeconcern.WriteConcern{W: 0})
 	default:
 		// Default to balanced approach
 		sessionOpts = options.Session().SetDefaultReadPreference(readpref.Nearest())

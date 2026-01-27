@@ -6,33 +6,17 @@ import (
 	"flag"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"go.uber.org/zap"
+	"github.com/stretchr/testify/assert"
 )
 
-var cpfTest string
+var cpfTest = "03561350712"
 
-func TestMain(m *testing.M) {
-	// Parse flags before running tests
+func init() {
+	// Parse flags for CPF test value
 	flag.StringVar(&cpfTest, "cpf", "03561350712", "CPF to use for testing")
-	flag.Parse()
-
-	// Initialize configuration and connections
-	if err := config.LoadConfig(); err != nil {
-		panic(err)
-	}
-	config.InitMongoDB()
-	config.InitRedis()
-
-	// Log the CPF being used
-	zap.L().Info("Running tests with CPF", zap.String("cpf", cpfTest))
-
-	// Run tests
-	os.Exit(m.Run())
 }
 
 func setupRouter() *gin.Engine {
@@ -58,9 +42,7 @@ func TestGetCitizenData(t *testing.T) {
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/v1/citizen/"+cpfTest, nil)
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusNotFound {
-		t.Errorf("expected 200 or 404, got %d", w.Code)
-	}
+	assert.Contains(t, []int{http.StatusOK, http.StatusNotFound}, w.Code, "Expected 200 or 404")
 }
 
 func TestGetCitizenWallet(t *testing.T) {
@@ -68,9 +50,7 @@ func TestGetCitizenWallet(t *testing.T) {
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/v1/citizen/"+cpfTest+"/wallet", nil)
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusNotFound {
-		t.Errorf("expected 200 or 404, got %d", w.Code)
-	}
+	assert.Contains(t, []int{http.StatusOK, http.StatusNotFound}, w.Code, "Expected 200 or 404")
 }
 
 func TestGetMaintenanceRequests(t *testing.T) {
@@ -78,9 +58,7 @@ func TestGetMaintenanceRequests(t *testing.T) {
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/v1/citizen/"+cpfTest+"/maintenance-request", nil)
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusNotFound {
-		t.Errorf("expected 200 or 404, got %d", w.Code)
-	}
+	assert.Contains(t, []int{http.StatusOK, http.StatusNotFound}, w.Code, "Expected 200 or 404")
 }
 
 func TestUpdateSelfDeclaredAddress(t *testing.T) {
@@ -98,9 +76,7 @@ func TestUpdateSelfDeclaredAddress(t *testing.T) {
 	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/address", bytes.NewBuffer(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusConflict && w.Code != http.StatusBadRequest {
-		t.Errorf("expected 200, 409, or 400, got %d", w.Code)
-	}
+	assert.Contains(t, []int{http.StatusOK, http.StatusConflict, http.StatusBadRequest}, w.Code, "Expected 200, 409, or 400")
 }
 
 func TestUpdateSelfDeclaredPhone(t *testing.T) {
@@ -115,9 +91,7 @@ func TestUpdateSelfDeclaredPhone(t *testing.T) {
 	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/phone", bytes.NewBuffer(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusConflict && w.Code != http.StatusBadRequest {
-		t.Errorf("expected 200, 409, or 400, got %d", w.Code)
-	}
+	assert.Contains(t, []int{http.StatusOK, http.StatusConflict, http.StatusBadRequest}, w.Code, "Expected 200, 409, or 400")
 }
 
 func TestUpdateSelfDeclaredEmail(t *testing.T) {
@@ -130,9 +104,7 @@ func TestUpdateSelfDeclaredEmail(t *testing.T) {
 	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/email", bytes.NewBuffer(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusConflict && w.Code != http.StatusBadRequest {
-		t.Errorf("expected 200, 409, or 400, got %d", w.Code)
-	}
+	assert.Contains(t, []int{http.StatusOK, http.StatusConflict, http.StatusBadRequest}, w.Code, "Expected 200, 409, or 400")
 }
 
 func TestUpdateSelfDeclaredRaca(t *testing.T) {
@@ -153,9 +125,7 @@ func TestUpdateSelfDeclaredRaca(t *testing.T) {
 		t.Logf("Response body: %s", w.Body.String())
 	}
 
-	if w.Code != http.StatusOK && w.Code != http.StatusConflict && w.Code != http.StatusBadRequest {
-		t.Errorf("expected 200, 409, or 400, got %d", w.Code)
-	}
+	assert.Contains(t, []int{http.StatusOK, http.StatusConflict, http.StatusBadRequest}, w.Code, "Expected 200, 409, or 400")
 }
 
 func TestHealthCheck(t *testing.T) {
@@ -163,9 +133,7 @@ func TestHealthCheck(t *testing.T) {
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/v1/health", nil)
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusServiceUnavailable {
-		t.Errorf("expected 200 or 503, got %d", w.Code)
-	}
+	assert.Contains(t, []int{http.StatusOK, http.StatusServiceUnavailable}, w.Code, "Expected 200 or 503")
 }
 
 func TestGetFirstLogin(t *testing.T) {
@@ -173,9 +141,7 @@ func TestGetFirstLogin(t *testing.T) {
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/v1/citizen/"+cpfTest+"/firstlogin", nil)
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
-	}
+	assert.Equal(t, http.StatusOK, w.Code, "Expected 200 OK")
 }
 
 func TestUpdateFirstLogin(t *testing.T) {
@@ -183,9 +149,7 @@ func TestUpdateFirstLogin(t *testing.T) {
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/firstlogin", nil)
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
-	}
+	assert.Equal(t, http.StatusOK, w.Code, "Expected 200 OK")
 }
 
 func TestGetOptIn(t *testing.T) {
@@ -193,9 +157,7 @@ func TestGetOptIn(t *testing.T) {
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/v1/citizen/"+cpfTest+"/optin", nil)
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
-	}
+	assert.Equal(t, http.StatusOK, w.Code, "Expected 200 OK")
 }
 
 func TestUpdateOptIn(t *testing.T) {
@@ -208,7 +170,558 @@ func TestUpdateOptIn(t *testing.T) {
 	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/optin", bytes.NewBuffer(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK && w.Code != http.StatusBadRequest {
-		t.Errorf("expected 200 or 400, got %d", w.Code)
+	assert.Contains(t, []int{http.StatusOK, http.StatusBadRequest}, w.Code, "Expected 200 or 400")
+}
+
+// Edge case tests
+
+func TestGetCitizenData_InvalidCPF(t *testing.T) {
+	r := setupRouter()
+
+	tests := []struct {
+		name         string
+		cpf          string
+		expectedCode int
+	}{
+		{"empty CPF", "", http.StatusNotFound},      // Empty CPF = route not found
+		{"short CPF", "123", http.StatusBadRequest}, // Invalid format
+		{"letters in CPF", "abcdefghijk", http.StatusBadRequest},
+		{"special characters", "123@456#789", http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", "/v1/citizen/"+tt.cpf, nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, tt.expectedCode, w.Code, "Expected %d for %s", tt.expectedCode, tt.name)
+		})
+	}
+}
+
+func TestUpdateSelfDeclaredAddress_MalformedJSON(t *testing.T) {
+	r := setupRouter()
+
+	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/address", bytes.NewBufferString("invalid json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code, "Expected 400 for malformed JSON")
+}
+
+func TestUpdateSelfDeclaredAddress_MissingFields(t *testing.T) {
+	r := setupRouter()
+
+	tests := []struct {
+		name string
+		body map[string]interface{}
+	}{
+		{"missing CEP", map[string]interface{}{
+			"Bairro":     "Centro",
+			"Estado":     "RJ",
+			"Logradouro": "Rua Teste",
+			"Municipio":  "Rio de Janeiro",
+			"Numero":     "123",
+		}},
+		{"missing Estado", map[string]interface{}{
+			"Bairro":     "Centro",
+			"CEP":        "20000000",
+			"Logradouro": "Rua Teste",
+			"Municipio":  "Rio de Janeiro",
+			"Numero":     "123",
+		}},
+		{"missing Logradouro", map[string]interface{}{
+			"Bairro":    "Centro",
+			"CEP":       "20000000",
+			"Estado":    "RJ",
+			"Municipio": "Rio de Janeiro",
+			"Numero":    "123",
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonBody, _ := json.Marshal(tt.body)
+			req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/address", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusBadRequest, w.Code, "Expected 400 for missing fields")
+		})
+	}
+}
+
+func TestUpdateSelfDeclaredPhone_MalformedJSON(t *testing.T) {
+	r := setupRouter()
+
+	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/phone", bytes.NewBufferString("invalid json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code, "Expected 400 for malformed JSON")
+}
+
+func TestUpdateSelfDeclaredPhone_MissingFields(t *testing.T) {
+	r := setupRouter()
+
+	tests := []struct {
+		name string
+		body map[string]interface{}
+	}{
+		{"missing DDI", map[string]interface{}{
+			"DDD":   "21",
+			"Valor": "999999999",
+		}},
+		{"missing DDD", map[string]interface{}{
+			"DDI":   "55",
+			"Valor": "999999999",
+		}},
+		{"missing Valor", map[string]interface{}{
+			"DDI": "55",
+			"DDD": "21",
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonBody, _ := json.Marshal(tt.body)
+			req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/phone", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusBadRequest, w.Code, "Expected 400 for missing fields")
+		})
+	}
+}
+
+func TestUpdateSelfDeclaredEmail_MalformedJSON(t *testing.T) {
+	r := setupRouter()
+
+	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/email", bytes.NewBufferString("invalid json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code, "Expected 400 for malformed JSON")
+}
+
+func TestUpdateSelfDeclaredEmail_InvalidEmail(t *testing.T) {
+	r := setupRouter()
+
+	tests := []struct {
+		name  string
+		email string
+	}{
+		{"missing @", "testexample.com"},
+		{"missing domain", "test@"},
+		{"missing local part", "@example.com"},
+		{"empty email", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := map[string]interface{}{
+				"Valor": tt.email,
+			}
+			jsonBody, _ := json.Marshal(body)
+			req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/email", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusBadRequest, w.Code, "Expected 400 for invalid email")
+		})
+	}
+}
+
+func TestUpdateSelfDeclaredRaca_MalformedJSON(t *testing.T) {
+	r := setupRouter()
+
+	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/ethnicity", bytes.NewBufferString("invalid json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code, "Expected 400 for malformed JSON")
+}
+
+func TestUpdateSelfDeclaredRaca_InvalidValues(t *testing.T) {
+	r := setupRouter()
+
+	tests := []struct {
+		name  string
+		valor string
+	}{
+		{"empty value", ""},
+		{"invalid race", "invalid_race"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := map[string]interface{}{
+				"Valor": tt.valor,
+			}
+			jsonBody, _ := json.Marshal(body)
+			req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/ethnicity", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusBadRequest, w.Code, "Expected 400 for invalid race value")
+		})
+	}
+}
+
+func TestUpdateOptIn_MalformedJSON(t *testing.T) {
+	r := setupRouter()
+
+	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/optin", bytes.NewBufferString("invalid json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code, "Expected 400 for malformed JSON")
+}
+
+func TestUpdateOptIn_MissingOptInField(t *testing.T) {
+	r := setupRouter()
+
+	body := map[string]interface{}{}
+	jsonBody, _ := json.Marshal(body)
+	req, _ := http.NewRequest("PUT", "/v1/citizen/"+cpfTest+"/optin", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code, "Expected 400 for missing OptIn field")
+}
+
+// Test helper functions and options functions
+
+func TestGetEthnicityOptions(t *testing.T) {
+	r := gin.New()
+	r.GET("/v1/ethnicity-options", GetEthnicityOptions)
+
+	req, _ := http.NewRequest("GET", "/v1/ethnicity-options", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "Expected 200 OK")
+
+	var response []string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err, "Response should be valid JSON array")
+	assert.Greater(t, len(response), 0, "Response should contain options")
+	assert.Contains(t, response, "branca", "Options should contain 'branca'")
+}
+
+func TestGetGenderOptions(t *testing.T) {
+	r := gin.New()
+	r.GET("/v1/gender-options", GetGenderOptions)
+
+	req, _ := http.NewRequest("GET", "/v1/gender-options", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "Expected 200 OK")
+
+	var response []string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err, "Response should be valid JSON")
+	assert.Greater(t, len(response), 0, "Response should contain options")
+}
+
+func TestGetFamilyIncomeOptions(t *testing.T) {
+	r := gin.New()
+	r.GET("/v1/family-income-options", GetFamilyIncomeOptions)
+
+	req, _ := http.NewRequest("GET", "/v1/family-income-options", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "Expected 200 OK")
+
+	var response []string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err, "Response should be valid JSON")
+	assert.Greater(t, len(response), 0, "Response should contain options")
+}
+
+func TestGetEducationOptions(t *testing.T) {
+	r := gin.New()
+	r.GET("/v1/education-options", GetEducationOptions)
+
+	req, _ := http.NewRequest("GET", "/v1/education-options", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "Expected 200 OK")
+
+	var response []string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err, "Response should be valid JSON")
+	assert.Greater(t, len(response), 0, "Response should contain options")
+}
+
+func TestGetDisabilityOptions(t *testing.T) {
+	r := gin.New()
+	r.GET("/v1/disability-options", GetDisabilityOptions)
+
+	req, _ := http.NewRequest("GET", "/v1/disability-options", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "Expected 200 OK")
+
+	var response []string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err, "Response should be valid JSON")
+	assert.Greater(t, len(response), 0, "Response should contain options")
+}
+
+func TestMetricsHandler(t *testing.T) {
+	r := gin.New()
+	r.GET("/metrics", MetricsHandler)
+
+	req, _ := http.NewRequest("GET", "/metrics", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "Expected 200 OK")
+	// Prometheus metrics should be in text format
+	assert.Contains(t, w.Header().Get("Content-Type"), "text/plain", "Should return Prometheus text format")
+}
+
+// Test new self-declared update endpoints
+
+func TestUpdateSelfDeclaredGenero(t *testing.T) {
+	r := gin.New()
+	r.PUT("/v1/citizen/:cpf/gender", UpdateSelfDeclaredGenero)
+
+	tests := []struct {
+		name           string
+		cpf            string
+		body           map[string]interface{}
+		expectedStatus int
+	}{
+		{
+			name: "valid gender update",
+			cpf:  cpfTest,
+			body: map[string]interface{}{
+				"Valor": "Homem cisgênero",
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "invalid CPF",
+			cpf:  "invalid",
+			body: map[string]interface{}{
+				"Valor": "Homem cisgênero",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "missing valor",
+			cpf:            cpfTest,
+			body:           map[string]interface{}{},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonBody, _ := json.Marshal(tt.body)
+			req, _ := http.NewRequest("PUT", "/v1/citizen/"+tt.cpf+"/gender", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, tt.expectedStatus, w.Code)
+		})
+	}
+}
+
+func TestUpdateSelfDeclaredRendaFamiliar(t *testing.T) {
+	r := gin.New()
+	r.PUT("/v1/citizen/:cpf/family-income", UpdateSelfDeclaredRendaFamiliar)
+
+	tests := []struct {
+		name           string
+		cpf            string
+		body           map[string]interface{}
+		expectedStatus int
+	}{
+		{
+			name: "valid family income update",
+			cpf:  cpfTest,
+			body: map[string]interface{}{
+				"Valor": "Menos de 1 salário mínimo",
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "invalid CPF",
+			cpf:  "invalid",
+			body: map[string]interface{}{
+				"Valor": "Menos de 1 salário mínimo",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "missing valor",
+			cpf:            cpfTest,
+			body:           map[string]interface{}{},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonBody, _ := json.Marshal(tt.body)
+			req, _ := http.NewRequest("PUT", "/v1/citizen/"+tt.cpf+"/family-income", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, tt.expectedStatus, w.Code)
+		})
+	}
+}
+
+func TestUpdateSelfDeclaredEscolaridade(t *testing.T) {
+	r := gin.New()
+	r.PUT("/v1/citizen/:cpf/education", UpdateSelfDeclaredEscolaridade)
+
+	tests := []struct {
+		name           string
+		cpf            string
+		body           map[string]interface{}
+		expectedStatus int
+	}{
+		{
+			name: "valid education update",
+			cpf:  cpfTest,
+			body: map[string]interface{}{
+				"Valor": "Médio completo",
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "invalid CPF",
+			cpf:  "invalid",
+			body: map[string]interface{}{
+				"Valor": "Médio completo",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "missing valor",
+			cpf:            cpfTest,
+			body:           map[string]interface{}{},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonBody, _ := json.Marshal(tt.body)
+			req, _ := http.NewRequest("PUT", "/v1/citizen/"+tt.cpf+"/education", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, tt.expectedStatus, w.Code)
+		})
+	}
+}
+
+func TestUpdateSelfDeclaredDeficiencia(t *testing.T) {
+	r := gin.New()
+	r.PUT("/v1/citizen/:cpf/disability", UpdateSelfDeclaredDeficiencia)
+
+	tests := []struct {
+		name           string
+		cpf            string
+		body           map[string]interface{}
+		expectedStatus int
+	}{
+		{
+			name: "valid disability update",
+			cpf:  cpfTest,
+			body: map[string]interface{}{
+				"Valor": "Física",
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "invalid CPF",
+			cpf:  "invalid",
+			body: map[string]interface{}{
+				"Valor": "Física",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "missing valor",
+			cpf:            cpfTest,
+			body:           map[string]interface{}{},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonBody, _ := json.Marshal(tt.body)
+			req, _ := http.NewRequest("PUT", "/v1/citizen/"+tt.cpf+"/disability", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, tt.expectedStatus, w.Code)
+		})
+	}
+}
+
+func TestUpdateSelfDeclaredNomeExibicao(t *testing.T) {
+	r := gin.New()
+	r.PUT("/v1/citizen/:cpf/display-name", UpdateSelfDeclaredNomeExibicao)
+
+	tests := []struct {
+		name           string
+		cpf            string
+		body           map[string]interface{}
+		expectedStatus int
+	}{
+		{
+			name: "valid display name update",
+			cpf:  cpfTest,
+			body: map[string]interface{}{
+				"Valor": "João da Silva",
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "invalid CPF",
+			cpf:  "invalid",
+			body: map[string]interface{}{
+				"Valor": "João da Silva",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "missing valor",
+			cpf:            cpfTest,
+			body:           map[string]interface{}{},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "empty display name",
+			cpf:  cpfTest,
+			body: map[string]interface{}{
+				"Valor": "",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonBody, _ := json.Marshal(tt.body)
+			req, _ := http.NewRequest("PUT", "/v1/citizen/"+tt.cpf+"/display-name", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, tt.expectedStatus, w.Code)
+		})
 	}
 }

@@ -67,9 +67,17 @@ func UpdateWithOptimisticLock(ctx context.Context, collection string, filter bso
 
 	// Check if document was modified
 	if result.ModifiedCount == 0 {
+		// Build filter without version to check if document exists
+		checkFilter := bson.M{}
+		for k, v := range filter {
+			if k != "version" {
+				checkFilter[k] = v
+			}
+		}
+
 		// Check if document exists with different version
 		var existingDoc bson.M
-		err := config.MongoDB.Collection(collection).FindOne(ctx, bson.M{"_id": filter["_id"]}).Decode(&existingDoc)
+		err := config.MongoDB.Collection(collection).FindOne(ctx, checkFilter).Decode(&existingDoc)
 		if err == mongo.ErrNoDocuments {
 			return nil, fmt.Errorf("document not found")
 		}

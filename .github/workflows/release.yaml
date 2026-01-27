@@ -198,3 +198,99 @@ jobs:
             echo "### ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
             echo "The rollout did not complete successfully. Check the logs above for details." >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Send Discord notification
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "Discord webhook not configured, skipping notification"
+            exit 0
+          fi
+
+          # Get commit info
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s' ${{ github.sha }})
+          COMMIT_AUTHOR=$(git log -1 --pretty=format:'%an' ${{ github.sha }})
+          COMMIT_URL="https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/$VERSION"
+
+          # Get rollout status
+          PHASE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+
+          # Determine status and color
+          if [ "$PHASE" = "Healthy" ]; then
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="Successful"
+            COLOR="3066993"  # Green
+            DESCRIPTION="Canary deployment completed successfully. New version is serving 100% traffic in production."
+          elif [ "$PHASE" = "Aborted" ]; then
+            STATUS_EMOJI="🛑"
+            STATUS_TEXT="Aborted"
+            COLOR="15105570"  # Orange
+            DESCRIPTION="Rollout was aborted due to failed analysis metrics. Deployment rolled back to stable version."
+          elif [ "$PHASE" = "Degraded" ]; then
+            STATUS_EMOJI="❌"
+            STATUS_TEXT="Failed"
+            COLOR="15158332"  # Red
+            DESCRIPTION="Rollout entered degraded state. Check logs for details."
+          else
+            STATUS_EMOJI="⚠️"
+            STATUS_TEXT="Unknown"
+            COLOR="16776960"  # Yellow
+            DESCRIPTION="Rollout status could not be determined. Manual investigation required."
+          fi
+
+          # Create Discord embed
+          DISCORD_PAYLOAD=$(cat <<EOF
+          {
+            "content": "<@&903644455582695494>",
+            "embeds": [{
+              "title": "${STATUS_EMOJI} Production Release ${STATUS_TEXT}",
+              "description": "${DESCRIPTION}",
+              "color": ${COLOR},
+              "fields": [
+                {
+                  "name": "🏷️ Version",
+                  "value": "[${VERSION}](${RELEASE_URL})",
+                  "inline": true
+                },
+                {
+                  "name": "📊 Status",
+                  "value": "\`${PHASE}\`",
+                  "inline": true
+                },
+                {
+                  "name": "📝 Commit",
+                  "value": "[${COMMIT_MSG:0:50}](${COMMIT_URL})",
+                  "inline": false
+                },
+                {
+                  "name": "👤 Author",
+                  "value": "${COMMIT_AUTHOR}",
+                  "inline": true
+                },
+                {
+                  "name": "🔖 Hash",
+                  "value": "\`${COMMIT_HASH}\`",
+                  "inline": true
+                },
+                {
+                  "name": "🐳 Image",
+                  "value": "\`${IMAGE_NAME}:${VERSION}\`",
+                  "inline": false
+                }
+              ],
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+              "footer": {
+                "text": "GitHub Actions"
+              }
+            }]
+          }
+          EOF
+          )
+
+          # Send to Discord
+          curl -H "Content-Type: application/json" \
+               -d "$DISCORD_PAYLOAD" \
+               "$DISCORD_WEBHOOK"
