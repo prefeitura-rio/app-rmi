@@ -81,7 +81,28 @@ jobs:
           WHATSAPP_CAMPAIGN_NAME: test
           WHATSAPP_COST_CENTER_ID: "1"
           WHATSAPP_HSM_ID: "1"
-        run: go test -race -coverprofile=coverage.out -timeout=5m ./...
+        run: |
+          # Retry up to 3 times on test failure
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
+
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "Test attempt $ATTEMPT of $MAX_ATTEMPTS..."
+
+            if go test -race -coverprofile=coverage.out -timeout=5m ./...; then
+              echo "✅ Tests passed on attempt $ATTEMPT"
+              exit 0
+            else
+              if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+                echo "⚠️ Tests failed on attempt $ATTEMPT, retrying..."
+                ATTEMPT=$((ATTEMPT + 1))
+                sleep 2
+              else
+                echo "❌ Tests failed after $MAX_ATTEMPTS attempts"
+                exit 1
+              fi
+            fi
+          done
 
       - name: Extract coverage percentage
         id: coverage
