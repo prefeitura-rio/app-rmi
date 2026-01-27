@@ -31,7 +31,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: rmi
-          image: ghcr.io/prefeitura-rio/app-rmi:latest
+          image: ghcr.io/prefeitura-rio/app-rmi:25723821ba296ff289c62a3e65d4926d055b8c42@sha256:100ae55dd0972743008f89daf4ee8fb3e8660c386609955cadfea6e3f9f0f1c2
           command: ["./api"]
           envFrom:
             - secretRef:
@@ -92,7 +92,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: rmi-sync
-          image: ghcr.io/prefeitura-rio/app-rmi:latest
+          image: ghcr.io/prefeitura-rio/app-rmi:25723821ba296ff289c62a3e65d4926d055b8c42@sha256:100ae55dd0972743008f89daf4ee8fb3e8660c386609955cadfea6e3f9f0f1c2
           command: ["./sync"]
           envFrom:
             - secretRef:
