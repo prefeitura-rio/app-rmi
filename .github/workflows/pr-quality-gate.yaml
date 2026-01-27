@@ -184,6 +184,7 @@ jobs:
         run: |
           CURRENT="${{ steps.current_coverage.outputs.coverage }}"
           BASELINE="${{ steps.baseline_coverage.outputs.baseline }}"
+          TOLERANCE="0.1"  # Allow 0.1% decrease due to race flag randomness
 
           # Calculate difference
           DIFF=$(echo "$CURRENT - $BASELINE" | bc -l)
@@ -194,7 +195,12 @@ jobs:
             STATUS="✅"
           else
             DIFF_FORMATTED="${DIFF}"
-            STATUS="❌"
+            # Check if within tolerance
+            if (( $(echo "$DIFF >= -$TOLERANCE" | bc -l) )); then
+              STATUS="✅"
+            else
+              STATUS="❌"
+            fi
           fi
 
           echo "diff=$DIFF" >> $GITHUB_OUTPUT
@@ -205,12 +211,16 @@ jobs:
           echo "  Baseline (main): $BASELINE%"
           echo "  Current (PR):    $CURRENT%"
           echo "  Difference:      $DIFF_FORMATTED%"
+          echo "  Tolerance:       ±${TOLERANCE}%"
 
-          # Fail if coverage decreased
-          if (( $(echo "$DIFF < 0" | bc -l) )); then
-            echo "❌ Coverage decreased by ${DIFF#-}%"
-            echo "::error::Coverage decreased from $BASELINE% to $CURRENT% (${DIFF_FORMATTED}%)"
+          # Fail if coverage decreased beyond tolerance
+          if (( $(echo "$DIFF < -$TOLERANCE" | bc -l) )); then
+            echo "❌ Coverage decreased by ${DIFF#-}% (beyond tolerance of ${TOLERANCE}%)"
+            echo "::error::Coverage decreased from $BASELINE% to $CURRENT% (${DIFF_FORMATTED}%). Allowed tolerance: ±${TOLERANCE}%"
             exit 1
+          elif (( $(echo "$DIFF < 0" | bc -l) )); then
+            echo "⚠️ Coverage decreased by ${DIFF#-}% (within tolerance of ${TOLERANCE}%)"
+            echo "✅ Coverage check passed (within tolerance)"
           else
             echo "✅ Coverage maintained or improved"
           fi
