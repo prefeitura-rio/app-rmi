@@ -110,24 +110,99 @@ jobs:
         with:
           version: latest
 
+      - name: Install Argo Rollouts kubectl plugin
+        run: |
+          curl -fLO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+          chmod +x ./kubectl-argo-rollouts-linux-amd64
+          sudo mv ./kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+
       - name: Configure kubectl for GKE
         run: gcloud container clusters get-credentials application --zone=us-central1 --project="${{ vars.GCP_PROJECT_ID }}"
 
-      - name: Trigger Blue-Green Rollout
+      - name: Update ArgoCD Application image override
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
         run: |
-          echo "Triggering blue-green rollout to preview service..."
+          echo "Updating ArgoCD Application image override..."
+          echo "Image: $IMAGE_NAME:$COMMIT_HASH@$DIGEST"
 
-          # Update preview service image
-          kubectl set image deployment/rmi-preview rmi=$IMAGE_NAME:$COMMIT_HASH@$DIGEST -n rmi
+          # Update the Kustomize image override in ArgoCD Application
+          kubectl patch application rmi -n argocd --type=json \
+            -p="[{\"op\": \"replace\", \"path\": \"/spec/source/kustomize/images/0\", \"value\": \"$IMAGE_NAME:$COMMIT_HASH@$DIGEST\"}]"
 
-          # Wait for preview deployment to be ready
-          kubectl rollout status deployment/rmi-preview -n rmi --timeout=5m
+          echo "✅ ArgoCD Application updated with new image override"
+
+      - name: Wait for ArgoCD sync and blue-green preview
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        timeout-minutes: 5
+        run: |
+          echo "Waiting for ArgoCD to sync and create blue-green preview..."
+          echo "Expected image: $IMAGE_NAME:$COMMIT_HASH@$DIGEST"
+
+          # Wait for the rollout spec to be updated with the new image
+          # This is more reliable than checking ArgoCD sync status
+          for i in {1..60}; do
+            CURRENT_IMAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.spec.template.spec.containers[0].image}')
+            SYNC_STATUS=$(kubectl get application rmi -n argocd -o jsonpath='{.status.sync.status}')
+
+            echo "Attempt $i/60: Image=$CURRENT_IMAGE, ArgoCD Sync=$SYNC_STATUS"
+
+            if [[ "$CURRENT_IMAGE" == "$IMAGE_NAME:$COMMIT_HASH@$DIGEST" ]]; then
+              echo "✅ Rollout spec updated with new image!"
+              break
+            fi
+
+            if [ $i -eq 60 ]; then
+              echo "❌ Timeout waiting for rollout image update"
+              echo "Expected: $IMAGE_NAME:$COMMIT_HASH@$DIGEST"
+              echo "Got: $CURRENT_IMAGE"
+              echo ""
+              echo "ArgoCD Application status:"
+              kubectl get application rmi -n argocd -o yaml
+              echo ""
+              echo "Rollout status:"
+              kubectl get rollout rmi -n rmi -o yaml
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          # Wait for Argo Rollouts to create the preview
+          echo "Waiting for blue-green preview to be created..."
+          sleep 5
+
+          # Check rollout status
+          kubectl argo rollouts get rollout rmi -n rmi
+
+      - name: Set up port forward to preview service
+        if: steps.check-k8s-only.outputs.k8s_only != 'true'
+        run: |
+          echo "Setting up port forward to preview service..."
+          # Start port-forward in background
+          kubectl port-forward -n rmi service/rmi-preview 8080:80 &
+          PORT_FORWARD_PID=$!
+          echo "PORT_FORWARD_PID=$PORT_FORWARD_PID" >> $GITHUB_ENV
+
+          # Wait for port-forward to be ready
+          echo "Waiting for port-forward to be ready..."
+          for i in {1..30}; do
+            if curl -s http://localhost:8080/v1/health > /dev/null 2>&1; then
+              echo "Port-forward is ready!"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Port-forward failed to become ready"
+              kill $PORT_FORWARD_PID 2>/dev/null || true
+              exit 1
+            fi
+            echo "Attempt $i/30: Waiting for port-forward..."
+            sleep 2
+          done
 
       - name: Run E2E Tests Against Preview
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
         env:
-          TEST_BASE_URL: "https://services.staging.app.dados.rio/rmi-preview/v1"
+          TEST_BASE_URL: "http://localhost:8080/v1"
           TEST_KEYCLOAK_URL: ${{ secrets.TEST_KEYCLOAK_URL }}
           TEST_KEYCLOAK_REALM: ${{ secrets.TEST_KEYCLOAK_REALM }}
           TEST_KEYCLOAK_CLIENT_ID: ${{ secrets.TEST_KEYCLOAK_CLIENT_ID }}
@@ -135,29 +210,35 @@ jobs:
           TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
           TEST_CPF: ${{ secrets.TEST_CPF }}
         run: |
-          echo "Running E2E tests against preview service..."
+          echo "Running E2E tests against preview service via port-forward..."
           go test -v ./tests/e2e/... -timeout 15m
+
+      - name: Clean up port forward
+        if: steps.check-k8s-only.outputs.k8s_only != 'true' && always()
+        run: |
+          echo "Cleaning up port-forward..."
+          kill $PORT_FORWARD_PID 2>/dev/null || true
 
       - name: Promote to Stable
         if: steps.check-k8s-only.outputs.k8s_only != 'true' && success()
         run: |
           echo "✅ Tests passed! Promoting to stable..."
 
-          # Update stable service image
-          kubectl set image rollout/rmi rmi=$IMAGE_NAME:$COMMIT_HASH@$DIGEST -n rmi
+          # Promote preview to active (stable)
+          kubectl argo rollouts promote rmi -n rmi
 
-          # Monitor rollout (canary deployment handles gradual rollout)
-          kubectl argo rollouts get rollout rmi -n rmi --watch
+          # Wait for promotion to complete
+          kubectl argo rollouts status rmi -n rmi --timeout=5m
 
       - name: Rollback on Failure
         if: steps.check-k8s-only.outputs.k8s_only != 'true' && failure()
         run: |
-          echo "❌ Tests failed! Rolling back preview deployment..."
+          echo "❌ Tests failed! Aborting rollout..."
 
-          # Rollback preview deployment
-          kubectl rollout undo deployment/rmi-preview -n rmi
+          # Abort the rollout (keeps stable service unchanged)
+          kubectl argo rollouts abort rmi -n rmi
 
-          echo "Preview deployment rolled back. Stable service unchanged."
+          echo "Rollout aborted. Preview discarded. Stable service unchanged."
           exit 1
 
       - name: Create deployment summary
@@ -172,13 +253,13 @@ jobs:
           if [ "${{ job.status }}" = "success" ]; then
             echo "### ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
             echo "- Preview tests passed" >> $GITHUB_STEP_SUMMARY
-            echo "- Promoted to stable service" >> $GITHUB_STEP_SUMMARY
-            echo "- Canary rollout in progress" >> $GITHUB_STEP_SUMMARY
+            echo "- Promoted to active service" >> $GITHUB_STEP_SUMMARY
+            echo "- Blue-green rollout complete" >> $GITHUB_STEP_SUMMARY
           else
             echo "### ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
             echo "- E2E tests failed" >> $GITHUB_STEP_SUMMARY
-            echo "- Preview rolled back" >> $GITHUB_STEP_SUMMARY
-            echo "- Stable service unchanged" >> $GITHUB_STEP_SUMMARY
+            echo "- Rollout aborted" >> $GITHUB_STEP_SUMMARY
+            echo "- Active service unchanged" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Comment on PR if exists
@@ -196,8 +277,8 @@ jobs:
             - **Image**: \`${{ env.IMAGE_NAME }}:${{ env.COMMIT_HASH }}@${{ env.DIGEST }}\`
 
             ${status === '✅' ?
-              '- Preview tests passed\n- Promoted to stable\n- Canary rollout in progress' :
-              '- E2E tests failed\n- Preview rolled back\n- Stable unchanged'}
+              '- Preview tests passed\n- Promoted to active\n- Blue-green rollout complete' :
+              '- E2E tests failed\n- Rollout aborted\n- Active unchanged'}
             `;
 
             await github.rest.issues.createComment({
@@ -227,12 +308,12 @@ jobs:
             STATUS_EMOJI="✅"
             STATUS_TEXT="Succeeded"
             COLOR="3066993"  # Green
-            DESCRIPTION="Preview tests passed and deployment promoted to stable service. Canary rollout in progress."
+            DESCRIPTION="Preview tests passed and deployment promoted to active service. Blue-green rollout complete."
           else
             STATUS_EMOJI="❌"
             STATUS_TEXT="Failed"
             COLOR="15158332"  # Red
-            DESCRIPTION="E2E tests failed. Preview deployment rolled back. Stable service unchanged."
+            DESCRIPTION="E2E tests failed. Rollout aborted. Active service unchanged."
           fi
 
           # Create Discord embed
