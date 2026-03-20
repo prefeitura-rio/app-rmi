@@ -86,11 +86,13 @@ func WithExponentialBackoff(ctx context.Context, config Config, operation func()
 				zap.Duration("backoff", backoff),
 				zap.Error(lastErr))
 
-			// Wait with context cancellation support
+			// Wait with context cancellation support using timer to prevent leaks
+			timer := time.NewTimer(backoff)
 			select {
-			case <-time.After(backoff):
+			case <-timer.C:
 				// Continue with retry
 			case <-ctx.Done():
+				timer.Stop()
 				return ctx.Err()
 			}
 		}
@@ -161,11 +163,13 @@ func WithExponentialBackoffValue[T any](ctx context.Context, config Config, oper
 				zap.Duration("backoff", backoff),
 				zap.Error(lastErr))
 
-			// Wait with context cancellation support
+			// Wait with context cancellation support using timer to prevent leaks
+			timer := time.NewTimer(backoff)
 			select {
-			case <-time.After(backoff):
+			case <-timer.C:
 				// Continue with retry
 			case <-ctx.Done():
+				timer.Stop()
 				return result, ctx.Err()
 			}
 		}
