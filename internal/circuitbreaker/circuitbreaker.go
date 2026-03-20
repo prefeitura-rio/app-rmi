@@ -89,6 +89,11 @@ type CircuitBreaker struct {
 
 // NewCircuitBreaker returns a new CircuitBreaker configured with the given Settings.
 func NewCircuitBreaker(name string, settings Settings, logger *zap.Logger) *CircuitBreaker {
+	// Default to no-op logger if nil is provided
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
 	cb := &CircuitBreaker{
 		name:          name,
 		maxRequests:   settings.MaxRequests,
@@ -125,6 +130,11 @@ func defaultReadyToTrip(counts Counts) bool {
 // Execute returns an error instantly if the circuit breaker rejects the request.
 // Otherwise, Execute returns the result of the request.
 func (cb *CircuitBreaker) Execute(ctx context.Context, req func() (interface{}, error)) (interface{}, error) {
+	// Fast-path: return immediately if context is already canceled/exceeded
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	generation, err := cb.beforeRequest()
 	if err != nil {
 		return nil, err
@@ -181,10 +191,12 @@ func (cb *CircuitBreaker) onSuccess(state State, now time.Time) {
 	cb.counts.ConsecutiveSuccesses++
 	cb.counts.ConsecutiveFailures = 0
 
-	if state == StateHalfOpen {
+	if state == StateHalfOpen && cb.counts.ConsecutiveSuccesses >= cb.maxRequests {
+		// Only close after maxRequests consecutive successes in half-open state
 		cb.logger.Info("circuit breaker transitioning to closed",
 			zap.String("name", cb.name),
-			zap.Uint32("consecutive_successes", cb.counts.ConsecutiveSuccesses))
+			zap.Uint32("consecutive_successes", cb.counts.ConsecutiveSuccesses),
+			zap.Uint32("max_requests", cb.maxRequests))
 		cb.setState(StateClosed, now)
 	}
 }
@@ -194,7 +206,12 @@ func (cb *CircuitBreaker) onFailure(state State, now time.Time) {
 	cb.counts.ConsecutiveFailures++
 	cb.counts.ConsecutiveSuccesses = 0
 
-	if cb.readyToTrip(cb.counts) {
+	if state == StateHalfOpen {
+		// In half-open state, any failure immediately reopens the circuit
+		cb.logger.Warn("circuit breaker reopening due to failure in half-open state",
+			zap.String("name", cb.name))
+		cb.setState(StateOpen, now)
+	} else if cb.readyToTrip(cb.counts) {
 		cb.logger.Warn("circuit breaker opening due to failures",
 			zap.String("name", cb.name),
 			zap.Uint32("consecutive_failures", cb.counts.ConsecutiveFailures),

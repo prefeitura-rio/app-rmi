@@ -26,6 +26,11 @@ type Config struct {
 
 // DefaultConfig returns a default retry configuration
 func DefaultConfig(logger *zap.Logger) Config {
+	// Default to no-op logger if nil is provided
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
 	return Config{
 		MaxRetries:     3,
 		InitialBackoff: 100 * time.Millisecond,
@@ -41,19 +46,18 @@ func IsRetryable(err error) bool {
 		return false
 	}
 
+	// Context cancellation/deadline is not retryable - check first
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
 	// MongoDB network errors and timeouts are retryable
 	if mongo.IsNetworkError(err) || mongo.IsTimeout(err) {
 		return true
 	}
 
-	// Context cancellation is not retryable
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
-	}
-
-	// Check for specific MongoDB errors that are retryable
-	switch err {
-	case mongo.ErrClientDisconnected:
+	// Check for specific MongoDB errors that are retryable (using errors.Is for wrapped errors)
+	if errors.Is(err, mongo.ErrClientDisconnected) {
 		return true
 	}
 

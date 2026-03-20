@@ -214,13 +214,21 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 	})
 
 	if err != nil {
-		// Check for circuit breaker errors
-		if err == circuitbreaker.ErrCircuitOpen {
+		// Check for circuit breaker errors using errors.Is for wrapped error support
+		if errors.Is(err, circuitbreaker.ErrCircuitOpen) {
 			dm.logger.Error("MongoDB circuit breaker is open",
 				zap.String("type", dataType),
 				zap.String("key", key),
 				zap.String("collection", collection))
 			return fmt.Errorf("database temporarily unavailable: %w", err)
+		}
+
+		if errors.Is(err, circuitbreaker.ErrTooManyRequests) {
+			dm.logger.Warn("MongoDB circuit breaker limiting requests in half-open state",
+				zap.String("type", dataType),
+				zap.String("key", key),
+				zap.String("collection", collection))
+			return fmt.Errorf("database temporarily unavailable (too many requests): %w", err)
 		}
 
 		if err == mongo.ErrNoDocuments {
