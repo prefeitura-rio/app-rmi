@@ -3,6 +3,7 @@ package circuitbreaker
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,6 +38,7 @@ func TestNewCircuitBreaker(t *testing.T) {
 func TestCircuitBreakerStateTransitions(t *testing.T) {
 	logger := zap.NewNop()
 
+	var mu sync.Mutex
 	stateChanges := []struct {
 		from State
 		to   State
@@ -49,6 +51,8 @@ func TestCircuitBreakerStateTransitions(t *testing.T) {
 			return counts.ConsecutiveFailures >= 3
 		},
 		OnStateChange: func(name string, from State, to State) {
+			mu.Lock()
+			defer mu.Unlock()
 			stateChanges = append(stateChanges, struct {
 				from State
 				to   State
@@ -108,10 +112,16 @@ func TestCircuitBreakerStateTransitions(t *testing.T) {
 		t.Errorf("Expected state Closed after successes, got %v", cb.State())
 	}
 
+	// Give async state change callbacks time to complete
+	time.Sleep(10 * time.Millisecond)
+
 	// Verify state transitions
+	mu.Lock()
 	expectedTransitions := 2 // Open -> HalfOpen, HalfOpen -> Closed
-	if len(stateChanges) < expectedTransitions {
-		t.Errorf("Expected at least %d state transitions, got %d", expectedTransitions, len(stateChanges))
+	actualTransitions := len(stateChanges)
+	mu.Unlock()
+	if actualTransitions < expectedTransitions {
+		t.Errorf("Expected at least %d state transitions, got %d", expectedTransitions, actualTransitions)
 	}
 }
 
