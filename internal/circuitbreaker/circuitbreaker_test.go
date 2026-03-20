@@ -210,8 +210,7 @@ func TestCircuitBreakerMaxRequests(t *testing.T) {
 
 	// After maxRequests successes in half-open, circuit should be closed
 	if cb.State() != StateClosed {
-		t.Logf("After %d successful requests in half-open state, circuit should be closed", successCount)
-		// This is expected behavior - circuit closes after successful requests
+		t.Errorf("After %d successful requests in half-open state, circuit should be closed, got %v", successCount, cb.State())
 	}
 }
 

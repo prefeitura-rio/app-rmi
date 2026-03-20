@@ -246,8 +246,11 @@ func (cb *CircuitBreaker) setState(state State, now time.Time) {
 
 	cb.toNewGeneration(now)
 
+	// Invoke callback asynchronously to avoid holding the mutex during callback execution
+	// This prevents potential deadlocks if the callback tries to access circuit breaker state
 	if cb.onStateChange != nil {
-		cb.onStateChange(cb.name, prev, state)
+		name := cb.name
+		go cb.onStateChange(name, prev, state)
 	}
 }
 

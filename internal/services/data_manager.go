@@ -41,8 +41,11 @@ type DataManager struct {
 
 // NewDataManager creates a new data manager instance
 func NewDataManager(redis *redisclient.Client, mongo *mongo.Database, logger *logging.SafeLogger) *DataManager {
-	// Get the underlying zap logger
-	zapLogger := zap.L()
+	// Get the underlying zap logger from SafeLogger, fallback to no-op if nil
+	var zapLogger *zap.Logger
+	if logger != nil {
+		zapLogger = logger.Unwrap()
+	}
 	if zapLogger == nil {
 		zapLogger = zap.NewNop()
 	}
@@ -53,8 +56,12 @@ func NewDataManager(redis *redisclient.Client, mongo *mongo.Database, logger *lo
 		Interval:    30 * time.Second,
 		Timeout:     10 * time.Second,
 		ReadyToTrip: func(counts circuitbreaker.Counts) bool {
+			// Guard against division by zero
+			if counts.Requests < 10 {
+				return false
+			}
 			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
-			return counts.Requests >= 10 && failureRatio >= 0.6
+			return failureRatio >= 0.6
 		},
 		OnStateChange: func(name string, from circuitbreaker.State, to circuitbreaker.State) {
 			logger.Warn("circuit breaker state changed",
