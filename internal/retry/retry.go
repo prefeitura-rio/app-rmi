@@ -66,6 +66,11 @@ func IsRetryable(err error) bool {
 
 // WithExponentialBackoff executes a function with exponential backoff retry logic
 func WithExponentialBackoff(ctx context.Context, config Config, operation func() error) error {
+	// Ensure logger is non-nil to prevent panics
+	if config.Logger == nil {
+		config.Logger = zap.NewNop()
+	}
+
 	var lastErr error
 
 	for attempt := 0; attempt <= config.MaxRetries; attempt++ {
@@ -114,11 +119,13 @@ func WithExponentialBackoff(ctx context.Context, config Config, operation func()
 			return ctx.Err()
 		}
 
-		// Log retry attempt
-		config.Logger.Warn("operation failed, will retry",
-			zap.Int("attempt", attempt+1),
-			zap.Int("max_retries", config.MaxRetries),
-			zap.Error(err))
+		// Log retry attempt only if another retry will occur
+		if attempt < config.MaxRetries {
+			config.Logger.Warn("operation failed, will retry",
+				zap.Int("attempt", attempt+1),
+				zap.Int("max_retries", config.MaxRetries),
+				zap.Error(err))
+		}
 	}
 
 	// All retries exhausted
@@ -131,6 +138,11 @@ func WithExponentialBackoff(ctx context.Context, config Config, operation func()
 
 // WithExponentialBackoffValue executes a function with exponential backoff retry logic and returns a value
 func WithExponentialBackoffValue[T any](ctx context.Context, config Config, operation func() (T, error)) (T, error) {
+	// Ensure logger is non-nil to prevent panics
+	if config.Logger == nil {
+		config.Logger = zap.NewNop()
+	}
+
 	var (
 		result  T
 		lastErr error
@@ -182,11 +194,13 @@ func WithExponentialBackoffValue[T any](ctx context.Context, config Config, oper
 			return result, ctx.Err()
 		}
 
-		// Log retry attempt
-		config.Logger.Warn("operation failed, will retry",
-			zap.Int("attempt", attempt+1),
-			zap.Int("max_retries", config.MaxRetries),
-			zap.Error(err))
+		// Log retry attempt only if another retry will occur
+		if attempt < config.MaxRetries {
+			config.Logger.Warn("operation failed, will retry",
+				zap.Int("attempt", attempt+1),
+				zap.Int("max_retries", config.MaxRetries),
+				zap.Error(err))
+		}
 	}
 
 	// All retries exhausted
