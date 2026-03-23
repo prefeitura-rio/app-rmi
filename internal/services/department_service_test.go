@@ -97,19 +97,24 @@ func TestGetDepartmentByID_NotFound(t *testing.T) {
 }
 
 func TestGetDepartmentByID_CacheHit(t *testing.T) {
+	t.Parallel() // Run in parallel but use unique cd_ua to avoid conflicts
+
 	service, cleanup := setupDepartmentServiceTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
 
+	// Use unique cd_ua for parallel test execution
+	uniqueCdUA := "cache_test_1000"
+
 	// Insert test department with updated_at field
 	collection := config.MongoDB.Collection(config.AppConfig.DepartmentCollection)
 	now := time.Now().UTC()
 	dept := bson.M{
-		"cd_ua":      "1000",
+		"cd_ua":      uniqueCdUA,
 		"sigla_ua":   "PCRJ",
 		"nome_ua":    "Prefeitura da Cidade do Rio de Janeiro",
-		"nivel":      "1",
+		"nivel":      1,
 		"updated_at": primitive.NewDateTimeFromTime(now),
 	}
 
@@ -117,9 +122,10 @@ func TestGetDepartmentByID_CacheHit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to insert department: %v", err)
 	}
+	defer collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueCdUA})
 
 	// First call - populates cache from MongoDB
-	result1, err := service.GetDepartmentByID(ctx, "1000")
+	result1, err := service.GetDepartmentByID(ctx, uniqueCdUA)
 	if err != nil {
 		t.Fatalf("First GetDepartmentByID() error = %v", err)
 	}
@@ -128,25 +134,25 @@ func TestGetDepartmentByID_CacheHit(t *testing.T) {
 		t.Fatal("First GetDepartmentByID() returned nil")
 	}
 
-	if result1.CdUA != "1000" {
-		t.Errorf("First GetDepartmentByID() CdUA = %v, want 1000", result1.CdUA)
+	if result1.CdUA != uniqueCdUA {
+		t.Errorf("First GetDepartmentByID() CdUA = %v, want %s", result1.CdUA, uniqueCdUA)
 	}
 
 	// Delete the document from MongoDB (cache should still have it)
-	_, err = collection.DeleteOne(ctx, bson.M{"cd_ua": "1000"})
+	_, err = collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueCdUA})
 	if err != nil {
 		t.Fatalf("Failed to delete department from MongoDB: %v", err)
 	}
 
 	// Verify document is gone from MongoDB
 	var checkDoc bson.M
-	err = collection.FindOne(ctx, bson.M{"cd_ua": "1000"}).Decode(&checkDoc)
+	err = collection.FindOne(ctx, bson.M{"cd_ua": uniqueCdUA}).Decode(&checkDoc)
 	if err == nil {
 		t.Fatal("Document should have been deleted from MongoDB")
 	}
 
 	// Second call - should return from cache even though MongoDB document is gone
-	result2, err := service.GetDepartmentByID(ctx, "1000")
+	result2, err := service.GetDepartmentByID(ctx, uniqueCdUA)
 	if err != nil {
 		t.Fatalf("Second GetDepartmentByID() error = %v (should return from cache)", err)
 	}
@@ -155,8 +161,8 @@ func TestGetDepartmentByID_CacheHit(t *testing.T) {
 		t.Fatal("Second GetDepartmentByID() returned nil (should return from cache)")
 	}
 
-	if result2.CdUA != "1000" {
-		t.Errorf("Second GetDepartmentByID() CdUA = %v, want 1000 (from cache)", result2.CdUA)
+	if result2.CdUA != uniqueCdUA {
+		t.Errorf("Second GetDepartmentByID() CdUA = %v, want %s (from cache)", result2.CdUA, uniqueCdUA)
 	}
 
 	if result2.SiglaUA != "PCRJ" {
@@ -668,26 +674,32 @@ func TestConvertRawToDepartment_TimeTime(t *testing.T) {
 }
 
 func TestListDepartments_CacheHit(t *testing.T) {
+	t.Parallel() // Run in parallel but use unique cd_ua values to avoid conflicts
+
 	service, cleanup := setupDepartmentServiceTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
 
+	// Use unique cd_ua values for parallel test execution
+	uniqueID1 := "cache_list_1000"
+	uniqueID2 := "cache_list_2000"
+
 	// Insert test departments
 	collection := config.MongoDB.Collection(config.AppConfig.DepartmentCollection)
 	departments := []interface{}{
 		bson.M{
-			"cd_ua":    "1000",
+			"cd_ua":    uniqueID1,
 			"sigla_ua": "PCRJ",
 			"nome_ua":  "Prefeitura",
 			"nivel":    1,
 		},
 		bson.M{
-			"cd_ua":     "2000",
+			"cd_ua":     uniqueID2,
 			"sigla_ua":  "SMF",
 			"nome_ua":   "Secretaria Municipal de Fazenda",
 			"nivel":     2,
-			"cd_ua_pai": "1000",
+			"cd_ua_pai": uniqueID1,
 		},
 	}
 
@@ -695,10 +707,16 @@ func TestListDepartments_CacheHit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to insert departments: %v", err)
 	}
+	defer func() {
+		collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueID1})
+		collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueID2})
+	}()
 
+	// Use a filter that matches only our test departments
 	filters := DepartmentFilters{
-		Page:    1,
-		PerPage: 10,
+		ParentID: uniqueID1,
+		Page:     1,
+		PerPage:  10,
 	}
 
 	// First call - populates cache from MongoDB
@@ -707,43 +725,43 @@ func TestListDepartments_CacheHit(t *testing.T) {
 		t.Fatalf("First ListDepartments() error = %v", err)
 	}
 
-	if result1.Pagination.Total != 2 {
-		t.Errorf("First ListDepartments() Total = %v, want 2", result1.Pagination.Total)
+	if result1.Pagination.Total != 1 {
+		t.Errorf("First ListDepartments() Total = %v, want 1", result1.Pagination.Total)
 	}
 
-	// Drop the entire collection (cache should still have the data)
-	err = collection.Drop(ctx)
+	// Delete the child department from MongoDB (cache should still have it)
+	_, err = collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueID2})
 	if err != nil {
-		t.Fatalf("Failed to drop collection: %v", err)
+		t.Fatalf("Failed to delete department from MongoDB: %v", err)
 	}
 
-	// Verify collection is empty
-	count, err := collection.CountDocuments(ctx, bson.M{})
+	// Verify document is gone from MongoDB
+	count, err := collection.CountDocuments(ctx, bson.M{"cd_ua": uniqueID2})
 	if err != nil {
 		t.Fatalf("Failed to count documents: %v", err)
 	}
 	if count != 0 {
-		t.Fatal("Collection should be empty after drop")
+		t.Fatal("Document should have been deleted from MongoDB")
 	}
 
-	// Second call - should return from cache even though collection is empty
+	// Second call - should return from cache even though MongoDB document is gone
 	result2, err := service.ListDepartments(ctx, filters)
 	if err != nil {
 		t.Fatalf("Second ListDepartments() error = %v (should return from cache)", err)
 	}
 
-	if result2.Pagination.Total != 2 {
-		t.Errorf("Second ListDepartments() Total = %v, want 2 (from cache)", result2.Pagination.Total)
+	if result2.Pagination.Total != 1 {
+		t.Errorf("Second ListDepartments() Total = %v, want 1 (from cache)", result2.Pagination.Total)
 	}
 
-	if len(result2.Departments) != 2 {
-		t.Errorf("Second ListDepartments() len(Departments) = %v, want 2 (from cache)", len(result2.Departments))
+	if len(result2.Departments) != 1 {
+		t.Errorf("Second ListDepartments() len(Departments) = %v, want 1 (from cache)", len(result2.Departments))
 	}
 
 	// Verify nivel field was preserved through cache round-trip (float64 handling)
 	for _, dept := range result2.Departments {
 		if dept.Nivel == 0 {
-			t.Errorf("Second ListDepartments() department has Nivel = 0 (should be 1 or 2 from cache)")
+			t.Errorf("Second ListDepartments() department has Nivel = 0 (should be 2 from cache)")
 		}
 	}
 }
