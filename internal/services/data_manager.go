@@ -202,6 +202,8 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 		filter = bson.M{"phone": key}
 	case config.AppConfig.MaintenanceRequestCollection:
 		filter = bson.M{"cpf": key}
+	case config.AppConfig.DepartmentCollection:
+		filter = bson.M{"cd_ua": key}
 	default:
 		// Default to _id for other collections
 		filter = bson.M{"_id": key}

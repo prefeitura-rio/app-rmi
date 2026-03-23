@@ -18,15 +18,17 @@ import (
 
 // DepartmentService handles department business logic
 type DepartmentService struct {
-	database *mongo.Database
-	logger   *logging.SafeLogger
+	database    *mongo.Database
+	dataManager *DataManager
+	logger      *logging.SafeLogger
 }
 
 // NewDepartmentService creates a new department service instance
-func NewDepartmentService(database *mongo.Database, logger *logging.SafeLogger) *DepartmentService {
+func NewDepartmentService(database *mongo.Database, dataManager *DataManager, logger *logging.SafeLogger) *DepartmentService {
 	return &DepartmentService{
-		database: database,
-		logger:   logger,
+		database:    database,
+		dataManager: dataManager,
+		logger:      logger,
 	}
 }
 
@@ -37,9 +39,12 @@ var DepartmentServiceInstance *DepartmentService
 func InitDepartmentService() {
 	logger := zap.L().Named("department_service")
 
-	DepartmentServiceInstance = NewDepartmentService(config.MongoDB, &logging.SafeLogger{})
+	// Create DataManager for cache-aware operations
+	dataManager := NewDataManager(config.Redis, config.MongoDB, &logging.SafeLogger{})
 
-	logger.Info("department service initialized successfully")
+	DepartmentServiceInstance = NewDepartmentService(config.MongoDB, dataManager, &logging.SafeLogger{})
+
+	logger.Info("department service initialized successfully with DataManager caching")
 	logger.Info("indexes will be managed by global database maintenance system")
 }
 
@@ -55,16 +60,14 @@ type DepartmentFilters struct {
 	PerPage    int
 }
 
-// GetDepartmentByID retrieves a department by its cd_ua
+// GetDepartmentByID retrieves a department by its cd_ua with DataManager caching
 func (s *DepartmentService) GetDepartmentByID(ctx context.Context, cdUA string) (*models.Department, error) {
-	collection := s.database.Collection(config.AppConfig.DepartmentCollection)
-
-	filter := bson.M{"cd_ua": cdUA}
-
+	// Use DataManager for cache-aware read
+	// DataManager.Read signature: Read(ctx, key, collection, dataType, result)
 	var rawDoc bson.M
-	err := collection.FindOne(ctx, filter).Decode(&rawDoc)
+	err := s.dataManager.Read(ctx, cdUA, config.AppConfig.DepartmentCollection, "department", &rawDoc)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if err == mongo.ErrNoDocuments || err == ErrDocumentNotFound {
 			return nil, fmt.Errorf("department not found with cd_ua: %s", cdUA)
 		}
 		s.logger.Error("failed to get department by ID",
@@ -73,7 +76,7 @@ func (s *DepartmentService) GetDepartmentByID(ctx context.Context, cdUA string) 
 		return nil, fmt.Errorf("failed to get department: %w", err)
 	}
 
-	// Convert to Department model with type handling
+	// Convert raw BSON to Department model with type handling
 	department := s.convertRawToDepartment(rawDoc)
 	return &department, nil
 }

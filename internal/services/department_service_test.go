@@ -12,8 +12,8 @@ import (
 )
 
 func setupDepartmentServiceTest(t *testing.T) (*DepartmentService, func()) {
-	if config.MongoDB == nil {
-		t.Skip("Skipping department service tests: MongoDB not initialized")
+	if config.MongoDB == nil || config.Redis == nil {
+		t.Skip("Skipping department service tests: MongoDB or Redis not initialized")
 	}
 
 	_ = logging.InitLogger()
@@ -23,7 +23,9 @@ func setupDepartmentServiceTest(t *testing.T) (*DepartmentService, func()) {
 	}
 	config.AppConfig.DepartmentCollection = "test_departments"
 
-	service := NewDepartmentService(config.MongoDB, logging.Logger)
+	// Create DataManager for cache-aware operations
+	dataManager := NewDataManager(config.Redis, config.MongoDB, logging.Logger)
+	service := NewDepartmentService(config.MongoDB, dataManager, logging.Logger)
 
 	return service, func() {
 		ctx := context.Background()
@@ -32,11 +34,12 @@ func setupDepartmentServiceTest(t *testing.T) (*DepartmentService, func()) {
 }
 
 func TestNewDepartmentService(t *testing.T) {
-	if config.MongoDB == nil {
-		t.Skip("Skipping: MongoDB not initialized")
+	if config.MongoDB == nil || config.Redis == nil {
+		t.Skip("Skipping: MongoDB or Redis not initialized")
 	}
 
-	service := NewDepartmentService(config.MongoDB, logging.Logger)
+	dataManager := NewDataManager(config.Redis, config.MongoDB, logging.Logger)
+	service := NewDepartmentService(config.MongoDB, dataManager, logging.Logger)
 
 	if service == nil {
 		t.Error("NewDepartmentService() returned nil")
