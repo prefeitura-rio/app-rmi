@@ -122,7 +122,9 @@ func TestGetDepartmentByID_CacheHit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to insert department: %v", err)
 	}
-	defer collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueCdUA})
+	defer func() {
+		_, _ = collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueCdUA})
+	}()
 
 	// First call - populates cache from MongoDB
 	result1, err := service.GetDepartmentByID(ctx, uniqueCdUA)
@@ -708,8 +710,8 @@ func TestListDepartments_CacheHit(t *testing.T) {
 		t.Fatalf("Failed to insert departments: %v", err)
 	}
 	defer func() {
-		collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueID1})
-		collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueID2})
+		_, _ = collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueID1})
+		_, _ = collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueID2})
 	}()
 
 	// Use a filter that matches only our test departments
