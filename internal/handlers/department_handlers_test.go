@@ -19,7 +19,11 @@ import (
 )
 
 func setupDepartmentHandlersTest(t *testing.T) (*gin.Engine, func()) {
-	// Use the shared MongoDB from common_test.go TestMain
+	// Use the shared MongoDB and Redis from common_test.go TestMain
+	if config.MongoDB == nil || config.Redis == nil {
+		t.Skip("Skipping department handler tests: MongoDB or Redis not initialized")
+	}
+
 	gin.SetMode(gin.TestMode)
 
 	// Configure test collection
