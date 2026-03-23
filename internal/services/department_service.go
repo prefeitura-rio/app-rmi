@@ -39,12 +39,17 @@ var DepartmentServiceInstance *DepartmentService
 func InitDepartmentService() {
 	logger := zap.L().Named("department_service")
 
-	// Create DataManager for cache-aware operations
-	dataManager := NewDataManager(config.Redis, config.MongoDB, &logging.SafeLogger{})
+	// Create DataManager for cache-aware operations if Redis is available
+	var dataManager *DataManager
+	if config.Redis != nil {
+		dataManager = NewDataManager(config.Redis, config.MongoDB, &logging.SafeLogger{})
+		logger.Info("department service initialized successfully with DataManager caching")
+	} else {
+		logger.Warn("Redis not available, department service will operate without caching")
+	}
 
 	DepartmentServiceInstance = NewDepartmentService(config.MongoDB, dataManager, &logging.SafeLogger{})
 
-	logger.Info("department service initialized successfully with DataManager caching")
 	logger.Info("indexes will be managed by global database maintenance system")
 }
 
@@ -62,6 +67,13 @@ type DepartmentFilters struct {
 
 // GetDepartmentByID retrieves a department by its cd_ua with DataManager caching
 func (s *DepartmentService) GetDepartmentByID(ctx context.Context, cdUA string) (*models.Department, error) {
+	// If DataManager is not available (Redis is down), fall back to direct MongoDB query
+	if s.dataManager == nil {
+		s.logger.Debug("DataManager not available, querying MongoDB directly",
+			zap.String("cd_ua", cdUA))
+		return s.getDepartmentFromMongoDB(ctx, cdUA)
+	}
+
 	// Use DataManager for cache-aware read
 	// DataManager.Read signature: Read(ctx, key, collection, dataType, result)
 	var rawDoc bson.M
@@ -77,6 +89,28 @@ func (s *DepartmentService) GetDepartmentByID(ctx context.Context, cdUA string) 
 	}
 
 	// Convert raw BSON to Department model with type handling
+	department := s.convertRawToDepartment(rawDoc)
+	return &department, nil
+}
+
+// getDepartmentFromMongoDB queries MongoDB directly without caching (fallback when Redis unavailable)
+func (s *DepartmentService) getDepartmentFromMongoDB(ctx context.Context, cdUA string) (*models.Department, error) {
+	collection := s.database.Collection(config.AppConfig.DepartmentCollection)
+	filter := bson.M{"cd_ua": cdUA}
+
+	var rawDoc bson.M
+	err := collection.FindOne(ctx, filter).Decode(&rawDoc)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("department not found with cd_ua: %s", cdUA)
+		}
+		s.logger.Error("failed to get department by ID from MongoDB",
+			zap.String("cd_ua", cdUA),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to get department: %w", err)
+	}
+
+	// Convert to Department model with type handling
 	department := s.convertRawToDepartment(rawDoc)
 	return &department, nil
 }
@@ -198,13 +232,18 @@ func (s *DepartmentService) ListDepartments(ctx context.Context, filters Departm
 func (s *DepartmentService) convertRawToDepartment(rawDoc bson.M) models.Department {
 	dept := models.Department{}
 
-	// Handle _id field
+	// Handle _id field (can be ObjectID, string, or map from JSON)
 	if id, ok := rawDoc["_id"]; ok {
 		switch v := id.(type) {
 		case string:
 			dept.ID = v
 		case primitive.ObjectID:
 			dept.ID = v.Hex()
+		case map[string]interface{}:
+			// JSON representation of ObjectID: {"$oid": "hex_string"}
+			if oid, ok := v["$oid"].(string); ok {
+				dept.ID = oid
+			}
 		}
 	}
 
@@ -253,7 +292,7 @@ func (s *DepartmentService) convertRawToDepartment(rawDoc bson.M) models.Departm
 		dept.Msg = &msg
 	}
 
-	// Handle optional updated_at field
+	// Handle optional updated_at field (can be primitive.DateTime, time.Time, string, or map from JSON)
 	if updatedAt, ok := rawDoc["updated_at"]; ok {
 		switch v := updatedAt.(type) {
 		case primitive.DateTime:
@@ -261,6 +300,33 @@ func (s *DepartmentService) convertRawToDepartment(rawDoc bson.M) models.Departm
 			dept.UpdatedAt = &t
 		case time.Time:
 			dept.UpdatedAt = &v
+		case string:
+			// JSON representation of time: ISO 8601 string
+			if t, err := time.Parse(time.RFC3339, v); err == nil {
+				dept.UpdatedAt = &t
+			} else if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+				dept.UpdatedAt = &t
+			}
+		case map[string]interface{}:
+			// JSON representation of DateTime: {"$date": "iso_string"} or {"$date": {"$numberLong": "ms"}}
+			if dateVal, ok := v["$date"]; ok {
+				switch dv := dateVal.(type) {
+				case string:
+					if t, err := time.Parse(time.RFC3339, dv); err == nil {
+						dept.UpdatedAt = &t
+					}
+				case map[string]interface{}:
+					if ms, ok := dv["$numberLong"].(string); ok {
+						if msInt, err := strconv.ParseInt(ms, 10, 64); err == nil {
+							t := time.Unix(0, msInt*int64(time.Millisecond))
+							dept.UpdatedAt = &t
+						}
+					}
+				case float64:
+					t := time.Unix(0, int64(dv)*int64(time.Millisecond))
+					dept.UpdatedAt = &t
+				}
+			}
 		}
 	}
 

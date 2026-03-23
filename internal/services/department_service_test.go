@@ -96,6 +96,85 @@ func TestGetDepartmentByID_NotFound(t *testing.T) {
 	}
 }
 
+func TestGetDepartmentByID_CacheHit(t *testing.T) {
+	service, cleanup := setupDepartmentServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Insert test department with updated_at field
+	collection := config.MongoDB.Collection(config.AppConfig.DepartmentCollection)
+	now := time.Now().UTC()
+	dept := bson.M{
+		"cd_ua":      "1000",
+		"sigla_ua":   "PCRJ",
+		"nome_ua":    "Prefeitura da Cidade do Rio de Janeiro",
+		"nivel":      "1",
+		"updated_at": primitive.NewDateTimeFromTime(now),
+	}
+
+	_, err := collection.InsertOne(ctx, dept)
+	if err != nil {
+		t.Fatalf("Failed to insert department: %v", err)
+	}
+
+	// First call - populates cache from MongoDB
+	result1, err := service.GetDepartmentByID(ctx, "1000")
+	if err != nil {
+		t.Fatalf("First GetDepartmentByID() error = %v", err)
+	}
+
+	if result1 == nil {
+		t.Fatal("First GetDepartmentByID() returned nil")
+	}
+
+	if result1.CdUA != "1000" {
+		t.Errorf("First GetDepartmentByID() CdUA = %v, want 1000", result1.CdUA)
+	}
+
+	// Delete the document from MongoDB (cache should still have it)
+	_, err = collection.DeleteOne(ctx, bson.M{"cd_ua": "1000"})
+	if err != nil {
+		t.Fatalf("Failed to delete department from MongoDB: %v", err)
+	}
+
+	// Verify document is gone from MongoDB
+	var checkDoc bson.M
+	err = collection.FindOne(ctx, bson.M{"cd_ua": "1000"}).Decode(&checkDoc)
+	if err == nil {
+		t.Fatal("Document should have been deleted from MongoDB")
+	}
+
+	// Second call - should return from cache even though MongoDB document is gone
+	result2, err := service.GetDepartmentByID(ctx, "1000")
+	if err != nil {
+		t.Fatalf("Second GetDepartmentByID() error = %v (should return from cache)", err)
+	}
+
+	if result2 == nil {
+		t.Fatal("Second GetDepartmentByID() returned nil (should return from cache)")
+	}
+
+	if result2.CdUA != "1000" {
+		t.Errorf("Second GetDepartmentByID() CdUA = %v, want 1000 (from cache)", result2.CdUA)
+	}
+
+	if result2.SiglaUA != "PCRJ" {
+		t.Errorf("Second GetDepartmentByID() SiglaUA = %v, want PCRJ (from cache)", result2.SiglaUA)
+	}
+
+	// Verify updated_at field was preserved through cache round-trip
+	if result2.UpdatedAt == nil {
+		t.Error("Second GetDepartmentByID() UpdatedAt = nil (should be preserved from cache)")
+	} else {
+		// Allow for slight time precision differences due to JSON serialization
+		diff := result2.UpdatedAt.Sub(now).Abs()
+		if diff > time.Second {
+			t.Errorf("Second GetDepartmentByID() UpdatedAt time diff = %v, want < 1s (from cache)", diff)
+		}
+	}
+}
+
 func TestListDepartments_Empty(t *testing.T) {
 	service, cleanup := setupDepartmentServiceTest(t)
 	defer cleanup()
