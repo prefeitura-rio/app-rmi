@@ -163,6 +163,11 @@ func TestGetDepartmentByID_CacheHit(t *testing.T) {
 		t.Errorf("Second GetDepartmentByID() SiglaUA = %v, want PCRJ (from cache)", result2.SiglaUA)
 	}
 
+	// Verify nivel field was preserved through cache round-trip (critical: JSON deserializes numbers as float64)
+	if result2.Nivel != 1 {
+		t.Errorf("Second GetDepartmentByID() Nivel = %v, want 1 (from cache, must handle float64)", result2.Nivel)
+	}
+
 	// Verify updated_at field was preserved through cache round-trip
 	if result2.UpdatedAt == nil {
 		t.Error("Second GetDepartmentByID() UpdatedAt = nil (should be preserved from cache)")

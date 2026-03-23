@@ -270,7 +270,7 @@ func (s *DepartmentService) convertRawToDepartment(rawDoc bson.M) models.Departm
 		dept.OrdemRelativa = ordemRelativa
 	}
 
-	// Handle nivel field (can be int or string)
+	// Handle nivel field (can be int, string, or float64 after JSON round-trip)
 	if nivel, ok := rawDoc["nivel"]; ok {
 		switch v := nivel.(type) {
 		case int:
@@ -278,6 +278,8 @@ func (s *DepartmentService) convertRawToDepartment(rawDoc bson.M) models.Departm
 		case int32:
 			dept.Nivel = int(v)
 		case int64:
+			dept.Nivel = int(v)
+		case float64:
 			dept.Nivel = int(v)
 		case string:
 			// Try to parse string to int
