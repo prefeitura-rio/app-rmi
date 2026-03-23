@@ -27,9 +27,21 @@ func setupDepartmentServiceTest(t *testing.T) (*DepartmentService, func()) {
 	dataManager := NewDataManager(config.Redis, config.MongoDB, logging.Logger)
 	service := NewDepartmentService(config.MongoDB, dataManager, logging.Logger)
 
+	// Clear Redis cache before test
+	ctx := context.Background()
+	keys, err := config.Redis.Keys(ctx, "department:*").Result()
+	if err == nil && len(keys) > 0 {
+		_ = config.Redis.Del(ctx, keys...).Err()
+	}
+
 	return service, func() {
 		ctx := context.Background()
 		_ = config.MongoDB.Collection(config.AppConfig.DepartmentCollection).Drop(ctx)
+		// Clear Redis cache after test
+		keys, err := config.Redis.Keys(ctx, "department:*").Result()
+		if err == nil && len(keys) > 0 {
+			_ = config.Redis.Del(ctx, keys...).Err()
+		}
 	}
 }
 

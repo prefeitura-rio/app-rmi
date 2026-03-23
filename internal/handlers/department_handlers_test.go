@@ -32,6 +32,12 @@ func setupDepartmentHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	ctx := context.Background()
 	database := config.MongoDB
 
+	// Clear Redis cache before test
+	keys, err := config.Redis.Keys(ctx, "department:*").Result()
+	if err == nil && len(keys) > 0 {
+		_ = config.Redis.Del(ctx, keys...).Err()
+	}
+
 	// Initialize global department service instance with DataManager
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, logging.Logger)
 	services.DepartmentServiceInstance = services.NewDepartmentService(database, dataManager, logging.Logger)
@@ -43,6 +49,11 @@ func setupDepartmentHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	return router, func() {
 		_ = database.Drop(ctx)
 		services.DepartmentServiceInstance = nil
+		// Clear Redis cache after test
+		keys, err := config.Redis.Keys(ctx, "department:*").Result()
+		if err == nil && len(keys) > 0 {
+			_ = config.Redis.Del(ctx, keys...).Err()
+		}
 	}
 }
 
