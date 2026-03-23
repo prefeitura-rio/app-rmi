@@ -109,7 +109,8 @@ func TestGetDepartmentByID_NotFound(t *testing.T) {
 }
 
 func TestGetDepartmentByID_CacheHit(t *testing.T) {
-	t.Parallel() // Run in parallel but use unique cd_ua to avoid conflicts
+	// Note: NOT running in parallel because cache cleanup from other tests
+	// would interfere with this test's cache verification
 
 	service, cleanup := setupDepartmentServiceTest(t)
 	defer cleanup()
@@ -688,7 +689,8 @@ func TestConvertRawToDepartment_TimeTime(t *testing.T) {
 }
 
 func TestListDepartments_CacheHit(t *testing.T) {
-	t.Parallel() // Run in parallel but use unique cd_ua values to avoid conflicts
+	// Note: NOT running in parallel because cache cleanup from other tests
+	// would interfere with this test's cache verification
 
 	service, cleanup := setupDepartmentServiceTest(t)
 	defer cleanup()
