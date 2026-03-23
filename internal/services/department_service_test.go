@@ -666,3 +666,84 @@ func TestConvertRawToDepartment_TimeTime(t *testing.T) {
 		t.Errorf("convertRawToDepartment() UpdatedAt = %v, want %v", *dept.UpdatedAt, now)
 	}
 }
+
+func TestListDepartments_CacheHit(t *testing.T) {
+	service, cleanup := setupDepartmentServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Insert test departments
+	collection := config.MongoDB.Collection(config.AppConfig.DepartmentCollection)
+	departments := []interface{}{
+		bson.M{
+			"cd_ua":    "1000",
+			"sigla_ua": "PCRJ",
+			"nome_ua":  "Prefeitura",
+			"nivel":    1,
+		},
+		bson.M{
+			"cd_ua":     "2000",
+			"sigla_ua":  "SMF",
+			"nome_ua":   "Secretaria Municipal de Fazenda",
+			"nivel":     2,
+			"cd_ua_pai": "1000",
+		},
+	}
+
+	_, err := collection.InsertMany(ctx, departments)
+	if err != nil {
+		t.Fatalf("Failed to insert departments: %v", err)
+	}
+
+	filters := DepartmentFilters{
+		Page:    1,
+		PerPage: 10,
+	}
+
+	// First call - populates cache from MongoDB
+	result1, err := service.ListDepartments(ctx, filters)
+	if err != nil {
+		t.Fatalf("First ListDepartments() error = %v", err)
+	}
+
+	if result1.Pagination.Total != 2 {
+		t.Errorf("First ListDepartments() Total = %v, want 2", result1.Pagination.Total)
+	}
+
+	// Drop the entire collection (cache should still have the data)
+	err = collection.Drop(ctx)
+	if err != nil {
+		t.Fatalf("Failed to drop collection: %v", err)
+	}
+
+	// Verify collection is empty
+	count, err := collection.CountDocuments(ctx, bson.M{})
+	if err != nil {
+		t.Fatalf("Failed to count documents: %v", err)
+	}
+	if count != 0 {
+		t.Fatal("Collection should be empty after drop")
+	}
+
+	// Second call - should return from cache even though collection is empty
+	result2, err := service.ListDepartments(ctx, filters)
+	if err != nil {
+		t.Fatalf("Second ListDepartments() error = %v (should return from cache)", err)
+	}
+
+	if result2.Pagination.Total != 2 {
+		t.Errorf("Second ListDepartments() Total = %v, want 2 (from cache)", result2.Pagination.Total)
+	}
+
+	if len(result2.Departments) != 2 {
+		t.Errorf("Second ListDepartments() len(Departments) = %v, want 2 (from cache)", len(result2.Departments))
+	}
+
+	// Verify nivel field was preserved through cache round-trip (float64 handling)
+	for _, dept := range result2.Departments {
+		if dept.Nivel == 0 {
+			t.Errorf("Second ListDepartments() department has Nivel = 0 (should be 1 or 2 from cache)")
+		}
+	}
+}

@@ -2,6 +2,9 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -117,6 +120,22 @@ func (s *DepartmentService) getDepartmentFromMongoDB(ctx context.Context, cdUA s
 
 // ListDepartments retrieves a paginated list of departments with optional filters
 func (s *DepartmentService) ListDepartments(ctx context.Context, filters DepartmentFilters) (*models.DepartmentListResponse, error) {
+	// Try to get from cache if DataManager is available
+	if s.dataManager != nil {
+		cacheKey := s.buildListCacheKey(filters)
+		var cachedResponse models.DepartmentListResponse
+
+		// Try to read from cache
+		cacheKeyFull := fmt.Sprintf("department:list:%s", cacheKey)
+		if data, err := s.dataManager.redis.Get(ctx, cacheKeyFull).Result(); err == nil {
+			if err := json.Unmarshal([]byte(data), &cachedResponse); err == nil {
+				s.logger.Debug("department list read from cache",
+					zap.String("cache_key", cacheKey))
+				return &cachedResponse, nil
+			}
+		}
+	}
+
 	collection := s.database.Collection(config.AppConfig.DepartmentCollection)
 
 	// Build filter query
@@ -216,7 +235,7 @@ func (s *DepartmentService) ListDepartments(ctx context.Context, filters Departm
 		totalPages++
 	}
 
-	return &models.DepartmentListResponse{
+	response := &models.DepartmentListResponse{
 		Departments: departmentResponses,
 		Pagination: models.PaginationInfo{
 			Page:       filters.Page,
@@ -225,7 +244,21 @@ func (s *DepartmentService) ListDepartments(ctx context.Context, filters Departm
 			TotalPages: totalPages,
 		},
 		TotalCount: totalCount,
-	}, nil
+	}
+
+	// Cache the response if DataManager is available
+	if s.dataManager != nil {
+		cacheKey := s.buildListCacheKey(filters)
+		cacheKeyFull := fmt.Sprintf("department:list:%s", cacheKey)
+		if responseBytes, err := json.Marshal(response); err == nil {
+			// Cache for 3 hours (same as individual department TTL)
+			s.dataManager.redis.Set(ctx, cacheKeyFull, string(responseBytes), 3*time.Hour)
+			s.logger.Debug("department list cached",
+				zap.String("cache_key", cacheKey))
+		}
+	}
+
+	return response, nil
 }
 
 // convertRawToDepartment converts a raw BSON document to a Department model with type handling
@@ -333,4 +366,35 @@ func (s *DepartmentService) convertRawToDepartment(rawDoc bson.M) models.Departm
 	}
 
 	return dept
+}
+
+// buildListCacheKey creates a deterministic cache key from filter parameters
+func (s *DepartmentService) buildListCacheKey(filters DepartmentFilters) string {
+	// Create a structured representation of filters for hashing
+	keyData := struct {
+		ParentID   string
+		MinLevel   *int
+		MaxLevel   *int
+		ExactLevel *int
+		SiglaUA    string
+		Search     string
+		Page       int
+		PerPage    int
+	}{
+		ParentID:   filters.ParentID,
+		MinLevel:   filters.MinLevel,
+		MaxLevel:   filters.MaxLevel,
+		ExactLevel: filters.ExactLevel,
+		SiglaUA:    filters.SiglaUA,
+		Search:     filters.Search,
+		Page:       filters.Page,
+		PerPage:    filters.PerPage,
+	}
+
+	// Marshal to JSON for consistent representation
+	jsonBytes, _ := json.Marshal(keyData)
+
+	// Hash the JSON to create a shorter, deterministic key
+	hash := sha256.Sum256(jsonBytes)
+	return hex.EncodeToString(hash[:])
 }
