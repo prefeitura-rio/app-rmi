@@ -89,6 +89,39 @@ func (c *Client) Set(ctx context.Context, key string, value interface{}, expirat
 	return cmd
 }
 
+// SetNX wraps Redis SetNX with comprehensive tracing
+func (c *Client) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.BoolCmd {
+	start := time.Now()
+	ctx, span := otel.Tracer("redis").Start(ctx, "redis.setnx",
+		trace.WithAttributes(
+			attribute.String("redis.key", key),
+			attribute.String("redis.operation", "setnx"),
+			attribute.String("redis.expiration", expiration.String()),
+			attribute.String("redis.client", "app-rmi"),
+			attribute.String("redis.type", "string"),
+		),
+	)
+	defer func() {
+		duration := time.Since(start)
+		span.SetAttributes(
+			attribute.Int64("redis.duration_ms", duration.Milliseconds()),
+			attribute.String("redis.duration", duration.String()),
+		)
+		span.End()
+	}()
+
+	cmd := c.cmdable.SetNX(ctx, key, value, expiration)
+	if err := cmd.Err(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("redis.error", err.Error()))
+	} else {
+		span.SetStatus(codes.Ok, "success")
+		span.SetAttributes(attribute.Bool("redis.acquired", cmd.Val()))
+	}
+	return cmd
+}
+
 // Del wraps Redis Del with comprehensive tracing
 func (c *Client) Del(ctx context.Context, keys ...string) *redis.IntCmd {
 	start := time.Now()

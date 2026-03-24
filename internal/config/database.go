@@ -297,6 +297,36 @@ func ensureIndexes() error {
 		return nil
 	}
 
+	// Try to acquire distributed lock for index creation (only if Redis is available)
+	// This prevents multiple pods from trying to create indexes simultaneously
+	if Redis != nil {
+		lockKey := "rmi:index_creation_lock"
+		lockTTL := 5 * time.Minute // Long enough for index creation, but expires if pod crashes
+
+		// Try to acquire lock using SETNX (Set if Not eXists)
+		acquired, err := Redis.SetNX(ctx, lockKey, "1", lockTTL).Result()
+		if err != nil {
+			logger.Warn("failed to acquire index creation lock via Redis, proceeding anyway",
+				zap.Error(err))
+			// Continue without lock - better to try than skip
+		} else if !acquired {
+			logger.Info("another instance is already creating indexes, skipping this cycle")
+			return nil
+		} else {
+			// We acquired the lock, ensure it's released when done
+			defer func() {
+				releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer releaseCancel()
+				if err := Redis.Del(releaseCtx, lockKey).Err(); err != nil {
+					logger.Warn("failed to release index creation lock", zap.Error(err))
+				} else {
+					logger.Debug("released index creation lock")
+				}
+			}()
+			logger.Info("acquired distributed lock for index creation")
+		}
+	}
+
 	// Ensure citizen collection index
 	if err := ensureCitizenIndex(ctx, logger); err != nil {
 		return err
@@ -416,7 +446,7 @@ func checkWriteAccess(ctx context.Context, logger *zap.Logger) error {
 func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.CitizenCollection)
 
-	// Check if index already exists
+	// Check if index already exists or is being built
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
 		logger.Error("failed to list indexes", zap.Error(err))
@@ -441,6 +471,13 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 		return nil
 	}
 
+	// Check if index build is already in progress
+	if isIndexBuildInProgress(ctx, AppConfig.CitizenCollection, "cpf_1", logger) {
+		logger.Info("citizen index build already in progress, skipping",
+			zap.String("collection", AppConfig.CitizenCollection))
+		return nil
+	}
+
 	// Create unique index on cpf
 	indexModel := mongo.IndexModel{
 		Keys: bson.D{{Key: "cpf", Value: 1}},
@@ -454,6 +491,12 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 		// Check if it's a duplicate key error (another instance created it)
 		if mongo.IsDuplicateKeyError(err) {
 			logger.Info("citizen index already exists (created by another instance)",
+				zap.String("collection", AppConfig.CitizenCollection))
+			return nil
+		}
+		// Check if it's an IndexBuildAlreadyInProgress error
+		if isIndexBuildAlreadyInProgressError(err) {
+			logger.Info("citizen index build already in progress (detected via error)",
 				zap.String("collection", AppConfig.CitizenCollection))
 			return nil
 		}
@@ -2141,4 +2184,78 @@ func ensureCNAEIndex(ctx context.Context, logger *zap.Logger) error {
 	}
 
 	return nil
+}
+
+// isIndexBuildInProgress checks if an index build is currently running for a specific collection and index
+func isIndexBuildInProgress(ctx context.Context, collectionName string, indexName string, logger *zap.Logger) bool {
+	// Query MongoDB's currentOp to check for in-progress index builds
+	adminDB := MongoDB.Client().Database("admin")
+
+	// Run currentOp command to get all current operations
+	var result bson.M
+	err := adminDB.RunCommand(ctx, bson.D{
+		{Key: "currentOp", Value: 1},
+		{Key: "op", Value: "command"},
+		{Key: "ns", Value: bson.D{{Key: "$regex", Value: collectionName}}},
+	}).Decode(&result)
+
+	if err != nil {
+		logger.Warn("failed to check for in-progress index builds, assuming none",
+			zap.Error(err))
+		return false
+	}
+
+	// Parse operations
+	inprog, ok := result["inprog"].(bson.A)
+	if !ok {
+		return false
+	}
+
+	// Check if any operation is building the specified index
+	for _, op := range inprog {
+		opDoc, ok := op.(bson.M)
+		if !ok {
+			continue
+		}
+
+		// Check if this is an index build operation
+		if command, ok := opDoc["command"].(bson.M); ok {
+			if createIndexes, ok := command["createIndexes"].(string); ok {
+				if createIndexes == collectionName {
+					// Check if it's building our specific index
+					if indexes, ok := command["indexes"].(bson.A); ok {
+						for _, idx := range indexes {
+							if idxDoc, ok := idx.(bson.M); ok {
+								if name, ok := idxDoc["name"].(string); ok && name == indexName {
+									logger.Info("detected in-progress index build",
+										zap.String("collection", collectionName),
+										zap.String("index", indexName))
+									return true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// isIndexBuildAlreadyInProgressError checks if an error is an IndexBuildAlreadyInProgress error
+func isIndexBuildAlreadyInProgressError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// MongoDB error code 117 is IndexBuildAlreadyInProgress
+	// Check for this specific error code
+	if cmdErr, ok := err.(mongo.CommandError); ok {
+		return cmdErr.Code == 117
+	}
+	// Also check error message as fallback
+	errMsg := err.Error()
+	return errMsg == "IndexBuildAlreadyInProgress" ||
+		errMsg == "Index build already in progress" ||
+		errMsg == "index build already in progress"
 }
