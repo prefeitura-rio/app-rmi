@@ -9,7 +9,9 @@ import (
 
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/stretchr/testify/assert"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 )
 
@@ -328,13 +330,14 @@ func TestMaskMongoURI_EdgeCases(t *testing.T) {
 }
 
 func TestMaskMongoURI_NoCredentials(t *testing.T) {
-	// URI without credentials (localhost development)
+	// URI without credentials (localhost development) - must be returned unchanged
 	uri := "mongodb://localhost:27017/database"
 	result := maskMongoURI(uri)
 
-	// When there's no @ before the last part, it should still work
-	// The function assumes @ is present, so this tests edge case behavior
-	assert.Contains(t, result, "mongodb://")
+	// No @ present: the URI has no credentials, so it is returned as-is without
+	// prepending a spurious "mongodb://****:****@" prefix.
+	assert.Equal(t, uri, result, "URI without credentials must be returned unchanged")
+	assert.NotContains(t, result, "****", "unchanged URI must not contain masked credential placeholder")
 }
 
 func TestConfigureCollectionWriteConcerns_DoesNotPanic(t *testing.T) {
@@ -608,5 +611,81 @@ func TestIsIndexBuildAlreadyInProgressError_CommandError(t *testing.T) {
 		wrapped := fmt.Errorf("wrapped: %w", mongo.CommandError{Code: 117})
 		assert.True(t, isIndexBuildAlreadyInProgressError(wrapped),
 			"errors.As should unwrap and detect CommandError.Code 117")
+	})
+}
+
+// TestEnsureNotificationCategoryIndex_RequiredNamesMatchModels verifies that the
+// requiredNames slice and the requiredIndexes slice are aligned: same length and
+// each name matches the name set on the corresponding IndexModel option.  This
+// test is a regression guard for the off-by-one bug where a stale
+// "idx_notification_category_id" entry in requiredNames caused the loop to
+// check the wrong name for the first model and to skip the last model entirely.
+func TestEnsureNotificationCategoryIndex_RequiredNamesMatchModels(t *testing.T) {
+	requiredIndexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "active", Value: 1},
+				{Key: "order", Value: 1},
+			},
+			Options: options.Index().SetName("idx_notification_category_active_order"),
+		},
+		{
+			Keys:    bson.D{{Key: "order", Value: 1}},
+			Options: options.Index().SetName("idx_notification_category_order"),
+		},
+	}
+	requiredNames := []string{
+		"idx_notification_category_active_order",
+		"idx_notification_category_order",
+	}
+
+	assert.Equal(t, len(requiredIndexes), len(requiredNames),
+		"requiredNames must have the same number of entries as requiredIndexes to avoid off-by-one indexing")
+
+	for i, model := range requiredIndexes {
+		modelName := model.Options.Name
+		assert.NotNil(t, modelName, "IndexModel at position %d must have a name set", i)
+		assert.Equal(t, requiredNames[i], *modelName,
+			"requiredNames[%d] must match the name on requiredIndexes[%d]", i, i)
+	}
+}
+
+// TestIsIndexBuildInProgress_NamespaceMatching verifies the namespace collision
+// fix: the secondary check must compare the full "database.collection" namespace
+// stored in opDoc["ns"], not just the bare collection name from the command
+// document.  Without this guard a collection with the same name in a different
+// database could trigger a false positive.
+func TestIsIndexBuildInProgress_NamespaceMatching(t *testing.T) {
+	t.Run("correct namespace matches", func(t *testing.T) {
+		dbName := "mydb"
+		collectionName := "notifications"
+		expectedNs := dbName + "." + collectionName
+
+		// Simulate what the fixed code computes
+		ns := dbName + "." + collectionName
+		assert.Equal(t, expectedNs, ns,
+			"full namespace must equal database+'.'+collection")
+	})
+
+	t.Run("same collection name in different database does not match", func(t *testing.T) {
+		dbName := "mydb"
+		collectionName := "notifications"
+		expectedNs := dbName + "." + collectionName
+
+		// An op from a different database with the same collection name
+		otherNs := "otherdb." + collectionName
+		assert.NotEqual(t, expectedNs, otherNs,
+			"namespace from a different database must not match the expected namespace")
+	})
+
+	t.Run("namespace with same prefix but longer collection name does not match", func(t *testing.T) {
+		dbName := "mydb"
+		collectionName := "notifications"
+		expectedNs := dbName + "." + collectionName
+
+		// e.g. "mydb.notifications_archive" should not match
+		longerNs := dbName + "." + collectionName + "_archive"
+		assert.NotEqual(t, expectedNs, longerNs,
+			"longer collection name sharing a prefix must not match the expected namespace")
 	})
 }

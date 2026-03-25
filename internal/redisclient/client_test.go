@@ -992,9 +992,10 @@ func TestClient_SetNX_ErrorPath(t *testing.T) {
 		cancel() // cancel before the call
 
 		cmd := client.SetNX(cancelCtx, "test:setnx:errpath", "val", 5*time.Second)
-		// The command may or may not error depending on timing; either way the
-		// code path is exercised and the race detector will flag any issues.
-		_ = cmd.Err()
+		assert.NotNil(t, cmd, "SetNX must return a non-nil command even on error")
+		// A pre-cancelled context must produce an error from the Redis client.
+		err := cmd.Err()
+		assert.Error(t, err, "SetNX with cancelled context must return an error")
 	})
 }
 
@@ -1018,8 +1019,9 @@ func TestClient_Eval_ErrorPath(t *testing.T) {
 		cancel()
 
 		cmd := client.Eval(cancelCtx, "return 1", []string{})
-		// The command may or may not error depending on timing; either way the
-		// code path is exercised.
-		_ = cmd.Err()
+		assert.NotNil(t, cmd, "Eval must return a non-nil command even on error")
+		// A pre-cancelled context must produce an error from the Redis client.
+		err := cmd.Err()
+		assert.Error(t, err, "Eval with cancelled context must return an error")
 	})
 }
