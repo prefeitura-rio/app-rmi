@@ -21,7 +21,7 @@ func setupLegalEntityServiceTest(t *testing.T) (*LegalEntityService, func()) {
 	}
 	config.AppConfig.LegalEntityCollection = "test_legal_entities"
 
-	service := NewLegalEntityService(config.MongoDB, logging.Logger)
+	service := NewLegalEntityService(config.MongoDB, logging.GetLogger())
 
 	return service, func() {
 		ctx := context.Background()
@@ -35,7 +35,7 @@ func TestNewLegalEntityService(t *testing.T) {
 		t.Skip("Skipping: MongoDB not initialized")
 	}
 
-	service := NewLegalEntityService(config.MongoDB, logging.Logger)
+	service := NewLegalEntityService(config.MongoDB, logging.GetLogger())
 
 	if service == nil {
 		t.Error("NewLegalEntityService() returned nil")

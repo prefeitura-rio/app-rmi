@@ -22,12 +22,12 @@ func NewCitizenCacheService() *CitizenCacheService {
 	dataManager := NewDataManager(
 		config.Redis,
 		config.MongoDB,
-		logging.Logger,
+		logging.GetLogger(),
 	)
 
 	return &CitizenCacheService{
 		dataManager: dataManager,
-		logger:      logging.Logger,
+		logger:      logging.GetLogger(),
 	}
 }
 

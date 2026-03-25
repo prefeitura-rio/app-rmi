@@ -31,7 +31,7 @@ func setupLegalEntityHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	database := config.MongoDB
 
 	// Initialize global legal entity service instance
-	services.LegalEntityServiceInstance = services.NewLegalEntityService(database, logging.Logger)
+	services.LegalEntityServiceInstance = services.NewLegalEntityService(database, logging.GetLogger())
 
 	router := gin.New()
 	router.GET("/citizen/:cpf/legal-entities", GetLegalEntities)

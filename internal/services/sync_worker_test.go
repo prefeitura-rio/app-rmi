@@ -60,7 +60,7 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 
 	// Create services
 	metrics := NewMetrics()
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	degradedMode := NewDegradedMode(redisClient, db, metrics)
 
 	worker := NewSyncWorker(redisClient, db, 1, logger, metrics, degradedMode)
@@ -1345,7 +1345,7 @@ func TestSyncWorker_MultipleWorkers(t *testing.T) {
 	redisClient := redisclient.NewClient(singleClient)
 
 	metrics := NewMetrics()
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	degradedMode := NewDegradedMode(redisClient, db, metrics)
 
 	// Create 3 workers

@@ -37,7 +37,7 @@ func (rp *RedisPipeline) BatchDelete(keys []string) error {
 	// Execute pipeline
 	cmds, err := pipe.Exec(rp.ctx)
 	if err != nil {
-		logging.Logger.Error("failed to execute Redis pipeline",
+		logging.GetLogger().Error("failed to execute Redis pipeline",
 			zap.Error(err),
 			zap.Int("key_count", len(keys)))
 		return err
@@ -45,7 +45,7 @@ func (rp *RedisPipeline) BatchDelete(keys []string) error {
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Debug("Redis pipeline batch delete completed",
+	logging.GetLogger().Debug("Redis pipeline batch delete completed",
 		zap.Int("key_count", len(keys)),
 		zap.Int("command_count", len(cmds)),
 		zap.Duration("duration", duration))
@@ -70,7 +70,7 @@ func (rp *RedisPipeline) BatchSet(keyValues map[string]interface{}, ttl time.Dur
 	// Execute pipeline
 	cmds, err := pipe.Exec(rp.ctx)
 	if err != nil {
-		logging.Logger.Error("failed to execute Redis pipeline",
+		logging.GetLogger().Error("failed to execute Redis pipeline",
 			zap.Error(err),
 			zap.Int("key_count", len(keyValues)))
 		return err
@@ -78,7 +78,7 @@ func (rp *RedisPipeline) BatchSet(keyValues map[string]interface{}, ttl time.Dur
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Debug("Redis pipeline batch set completed",
+	logging.GetLogger().Debug("Redis pipeline batch set completed",
 		zap.Int("key_count", len(keyValues)),
 		zap.Int("command_count", len(cmds)),
 		zap.Duration("duration", duration))
@@ -104,7 +104,7 @@ func (rp *RedisPipeline) BatchGet(keys []string) (map[string]interface{}, error)
 	// Execute pipeline
 	_, err := pipe.Exec(rp.ctx)
 	if err != nil && err != redis.Nil {
-		logging.Logger.Error("failed to execute Redis pipeline",
+		logging.GetLogger().Error("failed to execute Redis pipeline",
 			zap.Error(err),
 			zap.Int("key_count", len(keys)))
 		return nil, err
@@ -118,7 +118,7 @@ func (rp *RedisPipeline) BatchGet(keys []string) (map[string]interface{}, error)
 			results[keys[i]] = val
 		} else if err != redis.Nil {
 			// Log non-nil errors but don't fail the whole operation
-			logging.Logger.Warn("failed to get key in batch",
+			logging.GetLogger().Warn("failed to get key in batch",
 				zap.String("key", keys[i]),
 				zap.Error(err))
 		}
@@ -127,7 +127,7 @@ func (rp *RedisPipeline) BatchGet(keys []string) (map[string]interface{}, error)
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Debug("Redis pipeline batch get completed",
+	logging.GetLogger().Debug("Redis pipeline batch get completed",
 		zap.Int("key_count", len(keys)),
 		zap.Int("result_count", len(results)),
 		zap.Duration("duration", duration))
@@ -152,7 +152,7 @@ func (rp *RedisPipeline) BatchExpire(keys []string, ttl time.Duration) error {
 	// Execute pipeline
 	cmds, err := pipe.Exec(rp.ctx)
 	if err != nil {
-		logging.Logger.Error("failed to execute Redis pipeline",
+		logging.GetLogger().Error("failed to execute Redis pipeline",
 			zap.Error(err),
 			zap.Int("key_count", len(keys)))
 		return err
@@ -160,7 +160,7 @@ func (rp *RedisPipeline) BatchExpire(keys []string, ttl time.Duration) error {
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Debug("Redis pipeline batch expire completed",
+	logging.GetLogger().Debug("Redis pipeline batch expire completed",
 		zap.Int("key_count", len(keys)),
 		zap.Int("command_count", len(cmds)),
 		zap.Duration("duration", duration))
@@ -186,7 +186,7 @@ func (rp *RedisPipeline) BatchExists(keys []string) (map[string]bool, error) {
 	// Execute pipeline
 	_, err := pipe.Exec(rp.ctx)
 	if err != nil {
-		logging.Logger.Error("failed to execute Redis pipeline",
+		logging.GetLogger().Error("failed to execute Redis pipeline",
 			zap.Error(err),
 			zap.Int("key_count", len(keys)))
 		return nil, err
@@ -202,7 +202,7 @@ func (rp *RedisPipeline) BatchExists(keys []string) (map[string]bool, error) {
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Debug("Redis pipeline batch exists completed",
+	logging.GetLogger().Debug("Redis pipeline batch exists completed",
 		zap.Int("key_count", len(keys)),
 		zap.Int("result_count", len(results)),
 		zap.Duration("duration", duration))
@@ -228,7 +228,7 @@ func (rp *RedisPipeline) BatchIncr(keys []string) (map[string]int64, error) {
 	// Execute pipeline
 	_, err := pipe.Exec(rp.ctx)
 	if err != nil {
-		logging.Logger.Error("failed to execute Redis pipeline",
+		logging.GetLogger().Error("failed to execute Redis pipeline",
 			zap.Error(err),
 			zap.Int("key_count", len(keys)))
 		return nil, err
@@ -244,7 +244,7 @@ func (rp *RedisPipeline) BatchIncr(keys []string) (map[string]int64, error) {
 
 	// Log performance metrics
 	duration := time.Since(start)
-	logging.Logger.Debug("Redis pipeline batch incr completed",
+	logging.GetLogger().Debug("Redis pipeline batch incr completed",
 		zap.Int("key_count", len(keys)),
 		zap.Int("result_count", len(results)),
 		zap.Duration("duration", duration))

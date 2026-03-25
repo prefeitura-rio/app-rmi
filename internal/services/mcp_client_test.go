@@ -27,7 +27,7 @@ func setupMCPTest(t *testing.T, handler http.HandlerFunc) (*MCPClient, *httptest
 		MCPAuthToken: "test-token",
 	}
 
-	client := NewMCPClient(cfg, logging.Logger)
+	client := NewMCPClient(cfg, logging.GetLogger())
 
 	return client, server
 }
@@ -49,7 +49,7 @@ func TestNewMCPClient(t *testing.T) {
 		MCPAuthToken: "test-token",
 	}
 
-	client := NewMCPClient(cfg, logging.Logger)
+	client := NewMCPClient(cfg, logging.GetLogger())
 
 	require.NotNil(t, client)
 	assert.Equal(t, "https://test.example.com", client.baseURL)
@@ -63,7 +63,7 @@ func TestNewMCPClient(t *testing.T) {
 func TestIsRetryableError(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger:      logging.Logger,
+		logger:      logging.GetLogger(),
 		retryConfig: DefaultRetryConfig(),
 	}
 
@@ -140,7 +140,7 @@ func TestIsRetryableError(t *testing.T) {
 func TestWithRetry_Success(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger:      logging.Logger,
+		logger:      logging.GetLogger(),
 		retryConfig: DefaultRetryConfig(),
 	}
 
@@ -159,7 +159,7 @@ func TestWithRetry_Success(t *testing.T) {
 func TestWithRetry_SuccessAfterRetries(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 		retryConfig: RetryConfig{
 			MaxRetries:    3,
 			BaseDelay:     10 * time.Millisecond, // Short delay for testing
@@ -186,7 +186,7 @@ func TestWithRetry_SuccessAfterRetries(t *testing.T) {
 func TestWithRetry_NonRetryableError(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 		retryConfig: RetryConfig{
 			MaxRetries:    3,
 			BaseDelay:     10 * time.Millisecond,
@@ -211,7 +211,7 @@ func TestWithRetry_NonRetryableError(t *testing.T) {
 func TestWithRetry_ExhaustedRetries(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 		retryConfig: RetryConfig{
 			MaxRetries:    2,
 			BaseDelay:     10 * time.Millisecond,
@@ -236,7 +236,7 @@ func TestWithRetry_ExhaustedRetries(t *testing.T) {
 func TestWithRetry_ContextCancellation(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 		retryConfig: RetryConfig{
 			MaxRetries:    5,
 			BaseDelay:     100 * time.Millisecond,
@@ -585,7 +585,7 @@ func TestLoadEquipmentInstructions_Error(t *testing.T) {
 func TestParseProfessionalsFromText(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	tests := []struct {
@@ -651,7 +651,7 @@ ENFERMEIROS:
 func TestParseEquipeSaudeData(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	tests := []struct {
@@ -726,7 +726,7 @@ func TestParseEquipeSaudeData(t *testing.T) {
 func TestParseHealthServicesResponse_Success(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	idEquip := "cf-123"
@@ -779,7 +779,7 @@ func TestParseHealthServicesResponse_Success(t *testing.T) {
 func TestParseHealthServicesResponse_IsError(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	response := map[string]interface{}{
@@ -798,7 +798,7 @@ func TestParseHealthServicesResponse_IsError(t *testing.T) {
 func TestParseHealthServicesResponse_NoEquipment(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	response := map[string]interface{}{
@@ -819,7 +819,7 @@ func TestParseHealthServicesResponse_NoEquipment(t *testing.T) {
 func TestParseHealthServicesResponse_InvalidFormat(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	tests := []struct {
@@ -866,7 +866,7 @@ func TestParseHealthServicesResponse_InvalidFormat(t *testing.T) {
 func TestParseHealthServicesResponse_EquipmentWithError(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	response := map[string]interface{}{
@@ -1067,7 +1067,7 @@ func TestMCPError_JSONUnmarshaling(t *testing.T) {
 func TestParseHealthServicesResponse_CMSCategory(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	idEquip := "cms-456"
@@ -1103,7 +1103,7 @@ func TestParseHealthServicesResponse_CMSCategory(t *testing.T) {
 func TestWithRetry_BackoffCalculation(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 		retryConfig: RetryConfig{
 			MaxRetries:    3,
 			BaseDelay:     100 * time.Millisecond,
@@ -1165,7 +1165,7 @@ func TestMakeRequest_InvalidJSON(t *testing.T) {
 func TestParseHealthServicesResponse_UnknownCategory(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	response := map[string]interface{}{

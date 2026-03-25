@@ -49,7 +49,7 @@ func setupSyncServiceTest(t *testing.T) (*SyncService, *redisclient.Client, *mon
 	redisClient := redisclient.NewClient(singleClient)
 	config.Redis = redisClient
 
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	syncService := NewSyncService(redisClient, db, 3, logger)
 
 	return syncService, redisClient, db, func() {
@@ -132,7 +132,7 @@ func TestNewSyncService_DifferentWorkerCounts(t *testing.T) {
 			})
 			redisClient := redisclient.NewClient(singleClient)
 
-			logger := logging.Logger
+			logger := logging.GetLogger()
 			service := NewSyncService(redisClient, db, tc.workerCount, logger)
 
 			assert.NotNil(t, service)
@@ -437,7 +437,7 @@ func TestSyncService_MultipleWorkersProcessJobs(t *testing.T) {
 	})
 	redisClient := redisclient.NewClient(singleClient)
 
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	service := NewSyncService(redisClient, db, 5, logger)
 
 	// Add many jobs
@@ -655,7 +655,7 @@ func TestSyncService_WorkerCountZero(t *testing.T) {
 	})
 	redisClient := redisclient.NewClient(singleClient)
 
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	service := NewSyncService(redisClient, db, 0, logger)
 
 	// Start the service with zero workers

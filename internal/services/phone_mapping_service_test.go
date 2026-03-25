@@ -37,7 +37,7 @@ func setupPhoneMappingTest(t *testing.T) (*PhoneMappingService, func()) {
 	config.AppConfig.PhoneQuarantineTTL = 6 * 30 * 24 * time.Hour
 
 	// Create service
-	service := NewPhoneMappingService(logging.Logger)
+	service := NewPhoneMappingService(logging.GetLogger())
 
 	// Return cleanup function
 	return service, func() {
@@ -57,7 +57,7 @@ func setupPhoneMappingTest(t *testing.T) (*PhoneMappingService, func()) {
 }
 
 func TestNewPhoneMappingService(t *testing.T) {
-	service := NewPhoneMappingService(logging.Logger)
+	service := NewPhoneMappingService(logging.GetLogger())
 	if service == nil {
 		t.Error("NewPhoneMappingService() returned nil")
 		return

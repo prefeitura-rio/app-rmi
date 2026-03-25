@@ -24,8 +24,8 @@ func setupDepartmentServiceTest(t *testing.T) (*DepartmentService, func()) {
 	config.AppConfig.DepartmentCollection = "test_departments"
 
 	// Create DataManager for cache-aware operations
-	dataManager := NewDataManager(config.Redis, config.MongoDB, logging.Logger)
-	service := NewDepartmentService(config.MongoDB, dataManager, logging.Logger)
+	dataManager := NewDataManager(config.Redis, config.MongoDB, logging.GetLogger())
+	service := NewDepartmentService(config.MongoDB, dataManager, logging.GetLogger())
 
 	// Clear Redis cache before test
 	ctx := context.Background()
@@ -50,8 +50,8 @@ func TestNewDepartmentService(t *testing.T) {
 		t.Skip("Skipping: MongoDB or Redis not initialized")
 	}
 
-	dataManager := NewDataManager(config.Redis, config.MongoDB, logging.Logger)
-	service := NewDepartmentService(config.MongoDB, dataManager, logging.Logger)
+	dataManager := NewDataManager(config.Redis, config.MongoDB, logging.GetLogger())
+	service := NewDepartmentService(config.MongoDB, dataManager, logging.GetLogger())
 
 	if service == nil {
 		t.Error("NewDepartmentService() returned nil")
