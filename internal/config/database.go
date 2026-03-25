@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,8 +28,37 @@ var (
 	// MongoDB client
 	MongoDB *mongo.Database
 	// Redis client
+	// Use getRedis/setRedis within this file to avoid data races between
+	// InitRedis (writer) and background goroutines that read the variable.
 	Redis *redisclient.Client
+
+	// redisMu protects the Redis package variable from concurrent reads/writes
+	// that occur between InitRedis and the background goroutines started by
+	// InitMongoDB (startIndexMaintenance, monitorRedisConnectionPool).
+	redisMu sync.RWMutex
 )
+
+// getRedis returns the Redis client in a race-safe manner.
+func getRedis() *redisclient.Client {
+	redisMu.RLock()
+	defer redisMu.RUnlock()
+	return Redis
+}
+
+// setRedis stores the Redis client in a race-safe manner.
+func setRedis(c *redisclient.Client) {
+	redisMu.Lock()
+	defer redisMu.Unlock()
+	Redis = c
+}
+
+// SetRedis is the exported, race-safe setter for the Redis client.
+// Use this in tests and any code that needs to update the Redis client after
+// InitRedis has been called, to avoid data races with the background goroutines
+// started by InitMongoDB (startIndexMaintenance, monitorRedisConnectionPool).
+func SetRedis(c *redisclient.Client) {
+	setRedis(c)
+}
 
 // InitMongoDB initializes the MongoDB connection
 func InitMongoDB() {
@@ -213,7 +243,7 @@ func InitRedis() {
 		})
 
 		// Wrap with traced client using cluster client
-		Redis = redisclient.NewClusterClient(clusterClient)
+		setRedis(redisclient.NewClusterClient(clusterClient))
 	} else {
 		// Use single Redis instance (development/testing)
 		logging.GetLogger().Info("initializing Redis with single instance",
@@ -243,14 +273,14 @@ func InitRedis() {
 		})
 
 		// Wrap with traced client using single client
-		Redis = redisclient.NewClient(singleClient)
+		setRedis(redisclient.NewClient(singleClient))
 	}
 
 	// Test Redis connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := Redis.Ping(ctx).Err(); err != nil {
+	if err := getRedis().Ping(ctx).Err(); err != nil {
 		if AppConfig.RedisClusterEnabled {
 			logging.GetLogger().Error("failed to connect to Redis Cluster",
 				zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs),
@@ -305,13 +335,16 @@ func ensureIndexes() error {
 	// Correctness: we store a unique token as the lock value and release it with a
 	// Lua compare-and-delete script so that only the holder can release the lock,
 	// even if the TTL has already expired and another instance re-acquired it.
-	if Redis != nil {
+	// Capture the Redis client once under the read lock so that concurrent calls
+	// to InitRedis (which holds the write lock) do not race with reads here.
+	redisClient := getRedis()
+	if redisClient != nil {
 		lockKey := "rmi:index_creation_lock"
 		lockTTL := 5 * time.Minute // Long enough for index creation, but expires if pod crashes
 		lockToken := uuid.New().String()
 
 		// Try to acquire lock using SETNX (Set if Not eXists)
-		acquired, err := Redis.SetNX(ctx, lockKey, lockToken, lockTTL).Result()
+		acquired, err := redisClient.SetNX(ctx, lockKey, lockToken, lockTTL).Result()
 		if err != nil {
 			logger.Warn("failed to acquire index creation lock via Redis, proceeding anyway",
 				zap.Error(err))
@@ -332,7 +365,7 @@ func ensureIndexes() error {
 			defer func() {
 				releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer releaseCancel()
-				if err := Redis.Eval(releaseCtx, releaseScript, []string{lockKey}, lockToken).Err(); err != nil && !errors.Is(err, redis.Nil) {
+				if err := redisClient.Eval(releaseCtx, releaseScript, []string{lockKey}, lockToken).Err(); err != nil && !errors.Is(err, redis.Nil) {
 					logger.Warn("failed to release index creation lock", zap.Error(err))
 				} else {
 					logger.Debug("released index creation lock")
@@ -1637,12 +1670,13 @@ func monitorRedisConnectionPool() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if Redis == nil {
+		redisClient := getRedis()
+		if redisClient == nil {
 			continue
 		}
 
 		// Get Redis pool stats
-		poolStats := Redis.PoolStats()
+		poolStats := redisClient.PoolStats()
 
 		// Determine Redis type for logging
 		redisType := "single"

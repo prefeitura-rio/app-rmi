@@ -1513,7 +1513,7 @@ func setupRedisForDatabaseTest(t *testing.T) func() {
 	})
 
 	// Wrap with traced client
-	config.Redis = redisclient.NewClient(singleClient)
+	config.SetRedis(redisclient.NewClient(singleClient))
 
 	// Test connection
 	ctx := context.Background()
@@ -1592,7 +1592,7 @@ func setupDatabaseWithRedisTest(t *testing.T) (*mongo.Collection, func()) {
 		DB:       0,
 	})
 
-	config.Redis = redisclient.NewClient(singleClient)
+	config.SetRedis(redisclient.NewClient(singleClient))
 
 	err = config.Redis.Ping(ctx).Err()
 	if err != nil {

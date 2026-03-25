@@ -47,7 +47,7 @@ func setupSyncServiceTest(t *testing.T) (*SyncService, *redisclient.Client, *mon
 		DB:       0,
 	})
 	redisClient := redisclient.NewClient(singleClient)
-	config.Redis = redisClient
+	config.SetRedis(redisClient)
 
 	logger := logging.GetLogger()
 	syncService := NewSyncService(redisClient, db, 3, logger)
