@@ -311,8 +311,12 @@ func InitRedis() {
 
 // maskMongoURI masks sensitive information in MongoDB URI
 func maskMongoURI(uri string) string {
-	// Implementation to mask username/password in URI
-	return "mongodb://****:****@" + uri[strings.LastIndex(uri, "@")+1:]
+	atIndex := strings.LastIndex(uri, "@")
+	if atIndex == -1 {
+		// No credentials in URI, return as-is
+		return uri
+	}
+	return "mongodb://****:****@" + uri[atIndex+1:]
 }
 
 // ensureIndexes creates required indexes if they don't exist
@@ -2112,7 +2116,6 @@ func ensureNotificationCategoryIndex(ctx context.Context, logger *zap.Logger) er
 	// Create missing indexes
 	indexesToCreate := []mongo.IndexModel{}
 	requiredNames := []string{
-		"idx_notification_category_id",
 		"idx_notification_category_active_order",
 		"idx_notification_category_order",
 	}
@@ -2275,7 +2278,9 @@ func isIndexBuildInProgress(ctx context.Context, collectionName string, indexNam
 		// Check if this is an index build operation
 		if command, ok := opDoc["command"].(bson.M); ok {
 			if createIndexes, ok := command["createIndexes"].(string); ok {
-				if createIndexes == collectionName {
+				ns, _ := opDoc["ns"].(string)
+				expectedNs := MongoDB.Name() + "." + collectionName
+				if createIndexes == collectionName && ns == expectedNs {
 					// Check if it's building our specific index
 					if indexes, ok := command["indexes"].(bson.A); ok {
 						for _, idx := range indexes {
