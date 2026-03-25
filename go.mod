@@ -6,7 +6,7 @@ toolchain go1.24.2
 
 require (
 	github.com/gin-gonic/gin v1.10.0
-	github.com/nyaruka/phonenumbers v1.0.65
+	github.com/nyaruka/phonenumbers v1.2.2
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.3
@@ -96,7 +96,6 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.26.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
-	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
