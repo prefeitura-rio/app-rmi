@@ -178,6 +178,12 @@ func configureCollectionWriteConcerns() {
 	// Configure collections with write concerns based on their criticality
 	collections := map[string]*writeconcern.WriteConcern{
 		// High-performance collections (W=0 for maximum speed)
+		// DURABILITY WARNING: W=0 is fire-and-forget - writes return immediately without waiting
+		// for acknowledgement. If the MongoDB primary crashes before replication, data can be
+		// silently lost with no error returned to the caller. This tradeoff prioritizes
+		// performance over durability. These collections are either frequently synced from
+		// external sources (CitizenCollection) or have Redis-based write buffers (PhoneMappingCollection)
+		// that provide eventual consistency recovery paths.
 		AppConfig.CitizenCollection:            &writeconcern.WriteConcern{W: 0},
 		AppConfig.UserConfigCollection:         &writeconcern.WriteConcern{W: 0},
 		AppConfig.PhoneMappingCollection:       &writeconcern.WriteConcern{W: 0},
@@ -352,7 +358,12 @@ func ensureIndexes() error {
 		if err != nil {
 			logger.Warn("failed to acquire index creation lock via Redis, proceeding anyway",
 				zap.Error(err))
-			// Continue without lock - better to try than skip
+			// IMPORTANT: When Redis is unavailable, we fall through without the lock rather than
+			// skipping index creation entirely. This is a fail-open pattern that accepts the risk
+			// of concurrent index builds (which MongoDB will handle via duplicate key errors and
+			// in-progress detection) rather than leaving indexes uncreated. The defer for lock
+			// release is registered only in the else branch below, so we won't attempt to release
+			// a lock we never acquired.
 		} else if !acquired {
 			logger.Info("another instance is already creating indexes, skipping this cycle")
 			return nil
