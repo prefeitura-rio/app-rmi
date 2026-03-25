@@ -35,12 +35,13 @@ func setupTestEnvironment() {
 			return
 		}
 
-		// Initialize MongoDB/Redis if not already initialized
-		if config.MongoDB == nil {
-			config.InitMongoDB()
-		}
+		// Initialize Redis before MongoDB so that the distributed index-creation
+		// lock in ensureIndexes (called by InitMongoDB) can be exercised in tests.
 		if config.Redis == nil {
 			config.InitRedis()
+		}
+		if config.MongoDB == nil {
+			config.InitMongoDB()
 		}
 
 		zap.L().Info("Test environment initialized for services package")

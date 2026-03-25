@@ -78,8 +78,10 @@ func setupTestEnvironment() {
 			testInitError = err
 			return
 		}
-		config.InitMongoDB()
+		// Initialize Redis before MongoDB so that the distributed index-creation
+		// lock in ensureIndexes (called by InitMongoDB) can be exercised in tests.
 		config.InitRedis()
+		config.InitMongoDB()
 
 		zap.L().Info("Test environment initialized for handlers package")
 	})
