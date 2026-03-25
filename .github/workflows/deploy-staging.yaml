@@ -133,7 +133,7 @@ jobs:
 
       - name: Wait for ArgoCD sync and blue-green preview
         if: steps.check-k8s-only.outputs.k8s_only != 'true'
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
           echo "Waiting for ArgoCD to sync and create blue-green preview..."
           echo "Expected image: $IMAGE_NAME:$COMMIT_HASH@$DIGEST"
@@ -167,9 +167,23 @@ jobs:
             sleep 5
           done
 
-          # Wait for Argo Rollouts to create the preview
-          echo "Waiting for blue-green preview to be created..."
-          sleep 5
+          # Wait for Argo Rollouts to create the preview pod and reach Running state
+          echo "Waiting for blue-green preview pod to reach Running state..."
+          for i in {1..60}; do
+            PREVIEW_POD=$(kubectl get pods -n rmi -l app=rmi --field-selector=status.phase=Running \
+              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+            if [ -n "$PREVIEW_POD" ]; then
+              echo "Preview pod $PREVIEW_POD is Running"
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "Timeout waiting for preview pod to reach Running state"
+              kubectl get pods -n rmi -l app=rmi
+              exit 1
+            fi
+            echo "Attempt $i/60: No Running preview pod yet, waiting 3s..."
+            sleep 3
+          done
 
           # Check rollout status
           kubectl argo rollouts get rollout rmi -n rmi
