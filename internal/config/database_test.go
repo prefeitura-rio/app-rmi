@@ -3,8 +3,10 @@ package config
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -472,3 +474,82 @@ func TestMaskMongoURI_MultipleMasks(t *testing.T) {
 		assert.NotContains(t, result, "key")
 	}
 }
+
+// TestSetRedis_GetRedis verifies that the mutex-protected Redis accessors are consistent.
+func TestSetRedis_GetRedis(t *testing.T) {
+	// Save and restore original Redis value to avoid polluting other tests
+	original := Redis
+	defer func() { Redis = original }()
+
+	t.Run("setRedis stores value readable by getRedis", func(t *testing.T) {
+		// nil sentinel
+		setRedis(nil)
+		assert.Nil(t, getRedis(), "getRedis should return nil after setRedis(nil)")
+
+		// Use a typed nil *redisclient.Client pointer to exercise the non-nil path
+		// without requiring a live Redis connection.
+		var c *redisclient.Client
+		setRedis(c)
+		assert.Equal(t, c, getRedis(), "getRedis should return the value stored by setRedis")
+	})
+
+	t.Run("SetRedis (exported) stores value readable by getRedis", func(t *testing.T) {
+		SetRedis(nil)
+		assert.Nil(t, getRedis(), "getRedis should return nil after SetRedis(nil)")
+	})
+
+	t.Run("concurrent SetRedis and getRedis do not race", func(t *testing.T) {
+		// The Go race detector will flag unsynchronised concurrent accesses.
+		// This test verifies that our mutex prevents such races.
+		const goroutines = 50
+		var wg sync.WaitGroup
+		wg.Add(goroutines * 2)
+
+		for i := 0; i < goroutines; i++ {
+			go func() {
+				defer wg.Done()
+				SetRedis(nil)
+			}()
+			go func() {
+				defer wg.Done()
+				_ = getRedis()
+			}()
+		}
+
+		wg.Wait()
+	})
+}
+
+// TestIsIndexBuildAlreadyInProgressError verifies the error detection helper.
+func TestIsIndexBuildAlreadyInProgressError(t *testing.T) {
+	t.Run("nil error returns false", func(t *testing.T) {
+		assert.False(t, isIndexBuildAlreadyInProgressError(nil))
+	})
+
+	t.Run("unrelated error returns false", func(t *testing.T) {
+		assert.False(t, isIndexBuildAlreadyInProgressError(context.DeadlineExceeded))
+	})
+
+	t.Run("error message fallback - exact phrase IndexBuildAlreadyInProgress", func(t *testing.T) {
+		assert.True(t, isIndexBuildAlreadyInProgressError(
+			simpleError("IndexBuildAlreadyInProgress"),
+		))
+	})
+
+	t.Run("error message fallback - Index build already in progress phrase", func(t *testing.T) {
+		assert.True(t, isIndexBuildAlreadyInProgressError(
+			simpleError("Index build already in progress for collection foo"),
+		))
+	})
+
+	t.Run("error message fallback - lowercase phrase", func(t *testing.T) {
+		assert.True(t, isIndexBuildAlreadyInProgressError(
+			simpleError("index build already in progress"),
+		))
+	})
+}
+
+// simpleError is a trivial error implementation used in tests.
+type simpleError string
+
+func (e simpleError) Error() string { return string(e) }

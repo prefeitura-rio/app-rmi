@@ -885,6 +885,78 @@ func TestClient_SetNX(t *testing.T) {
 	})
 }
 
+// TestClient_Eval verifies the traced Eval wrapper behaviour using a simple Lua script.
+func TestClient_Eval(t *testing.T) {
+	client, cleanup := setupRedisForTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("returns script result on success", func(t *testing.T) {
+		// A trivial Lua script that returns the first key (KEYS[1])
+		script := "return KEYS[1]"
+		cmd := client.Eval(ctx, script, []string{"test:eval:mykey"})
+		require.NoError(t, cmd.Err())
+		result, err := cmd.Text()
+		require.NoError(t, err)
+		assert.Equal(t, "test:eval:mykey", result)
+	})
+
+	t.Run("compare-and-delete Lua script works correctly", func(t *testing.T) {
+		lockKey := "test:eval:lock"
+		lockToken := "unique-token-123"
+
+		// Set the lock
+		err := client.Set(ctx, lockKey, lockToken, 30*time.Second).Err()
+		require.NoError(t, err)
+		defer client.Del(ctx, lockKey)
+
+		const releaseScript = `
+			if redis.call("get", KEYS[1]) == ARGV[1] then
+				return redis.call("del", KEYS[1])
+			else
+				return 0
+			end`
+		cmd := client.Eval(ctx, releaseScript, []string{lockKey}, lockToken)
+		require.NoError(t, cmd.Err())
+		deleted, err := cmd.Int()
+		require.NoError(t, err)
+		assert.Equal(t, 1, deleted, "should have deleted the key")
+
+		// Key should no longer exist
+		_, err = client.Get(ctx, lockKey).Result()
+		assert.ErrorIs(t, err, redis.Nil, "key should be gone after CAS delete")
+	})
+
+	t.Run("compare-and-delete does not delete with wrong token", func(t *testing.T) {
+		lockKey := "test:eval:lock2"
+		lockToken := "correct-token"
+		wrongToken := "wrong-token"
+
+		// Set the lock
+		err := client.Set(ctx, lockKey, lockToken, 30*time.Second).Err()
+		require.NoError(t, err)
+		defer client.Del(ctx, lockKey)
+
+		const releaseScript = `
+			if redis.call("get", KEYS[1]) == ARGV[1] then
+				return redis.call("del", KEYS[1])
+			else
+				return 0
+			end`
+		cmd := client.Eval(ctx, releaseScript, []string{lockKey}, wrongToken)
+		require.NoError(t, cmd.Err())
+		deleted, err := cmd.Int()
+		require.NoError(t, err)
+		assert.Equal(t, 0, deleted, "should not delete with wrong token")
+
+		// Key should still exist
+		val, err := client.Get(ctx, lockKey).Result()
+		require.NoError(t, err)
+		assert.Equal(t, lockToken, val, "key should still have the original token")
+	})
+}
+
 // Helper function to verify that errors are properly wrapped and traced
 func TestClient_ErrorTracing(t *testing.T) {
 	client, cleanup := setupRedisForTest(t)
