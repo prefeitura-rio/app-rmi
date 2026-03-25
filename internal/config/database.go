@@ -2,11 +2,14 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/redis/go-redis/v9"
@@ -25,8 +28,37 @@ var (
 	// MongoDB client
 	MongoDB *mongo.Database
 	// Redis client
+	// Use getRedis/setRedis within this file to avoid data races between
+	// InitRedis (writer) and background goroutines that read the variable.
 	Redis *redisclient.Client
+
+	// redisMu protects the Redis package variable from concurrent reads/writes
+	// that occur between InitRedis and the background goroutines started by
+	// InitMongoDB (startIndexMaintenance, monitorRedisConnectionPool).
+	redisMu sync.RWMutex
 )
+
+// getRedis returns the Redis client in a race-safe manner.
+func getRedis() *redisclient.Client {
+	redisMu.RLock()
+	defer redisMu.RUnlock()
+	return Redis
+}
+
+// setRedis stores the Redis client in a race-safe manner.
+func setRedis(c *redisclient.Client) {
+	redisMu.Lock()
+	defer redisMu.Unlock()
+	Redis = c
+}
+
+// SetRedis is the exported, race-safe setter for the Redis client.
+// Use this in tests and any code that needs to update the Redis client after
+// InitRedis has been called, to avoid data races with the background goroutines
+// started by InitMongoDB (startIndexMaintenance, monitorRedisConnectionPool).
+func SetRedis(c *redisclient.Client) {
+	setRedis(c)
+}
 
 // InitMongoDB initializes the MongoDB connection
 func InitMongoDB() {
@@ -146,6 +178,12 @@ func configureCollectionWriteConcerns() {
 	// Configure collections with write concerns based on their criticality
 	collections := map[string]*writeconcern.WriteConcern{
 		// High-performance collections (W=0 for maximum speed)
+		// DURABILITY WARNING: W=0 is fire-and-forget - writes return immediately without waiting
+		// for acknowledgement. If the MongoDB primary crashes before replication, data can be
+		// silently lost with no error returned to the caller. This tradeoff prioritizes
+		// performance over durability. These collections are either frequently synced from
+		// external sources (CitizenCollection) or have Redis-based write buffers (PhoneMappingCollection)
+		// that provide eventual consistency recovery paths.
 		AppConfig.CitizenCollection:            &writeconcern.WriteConcern{W: 0},
 		AppConfig.UserConfigCollection:         &writeconcern.WriteConcern{W: 0},
 		AppConfig.PhoneMappingCollection:       &writeconcern.WriteConcern{W: 0},
@@ -211,7 +249,7 @@ func InitRedis() {
 		})
 
 		// Wrap with traced client using cluster client
-		Redis = redisclient.NewClusterClient(clusterClient)
+		setRedis(redisclient.NewClusterClient(clusterClient))
 	} else {
 		// Use single Redis instance (development/testing)
 		logging.GetLogger().Info("initializing Redis with single instance",
@@ -241,14 +279,14 @@ func InitRedis() {
 		})
 
 		// Wrap with traced client using single client
-		Redis = redisclient.NewClient(singleClient)
+		setRedis(redisclient.NewClient(singleClient))
 	}
 
 	// Test Redis connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := Redis.Ping(ctx).Err(); err != nil {
+	if err := getRedis().Ping(ctx).Err(); err != nil {
 		if AppConfig.RedisClusterEnabled {
 			logging.GetLogger().Error("failed to connect to Redis Cluster",
 				zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs),
@@ -279,8 +317,12 @@ func InitRedis() {
 
 // maskMongoURI masks sensitive information in MongoDB URI
 func maskMongoURI(uri string) string {
-	// Implementation to mask username/password in URI
-	return "mongodb://****:****@" + uri[strings.LastIndex(uri, "@")+1:]
+	atIndex := strings.LastIndex(uri, "@")
+	if atIndex == -1 {
+		// No credentials in URI, return as-is
+		return uri
+	}
+	return "mongodb://****:****@" + uri[atIndex+1:]
 }
 
 // ensureIndexes creates required indexes if they don't exist
@@ -295,6 +337,57 @@ func ensureIndexes() error {
 	if err := checkWriteAccess(ctx, logger); err != nil {
 		logger.Warn("cannot write to database, skipping index creation", zap.Error(err))
 		return nil
+	}
+
+	// Try to acquire distributed lock for index creation (only if Redis is available).
+	// This prevents multiple pods from trying to create indexes simultaneously.
+	//
+	// Correctness: we store a unique token as the lock value and release it with a
+	// Lua compare-and-delete script so that only the holder can release the lock,
+	// even if the TTL has already expired and another instance re-acquired it.
+	// Capture the Redis client once under the read lock so that concurrent calls
+	// to InitRedis (which holds the write lock) do not race with reads here.
+	redisClient := getRedis()
+	if redisClient != nil {
+		lockKey := "rmi:index_creation_lock"
+		lockTTL := 5 * time.Minute // Long enough for index creation, but expires if pod crashes
+		lockToken := uuid.New().String()
+
+		// Try to acquire lock using SETNX (Set if Not eXists)
+		acquired, err := redisClient.SetNX(ctx, lockKey, lockToken, lockTTL).Result()
+		if err != nil {
+			logger.Warn("failed to acquire index creation lock via Redis, proceeding anyway",
+				zap.Error(err))
+			// IMPORTANT: When Redis is unavailable, we fall through without the lock rather than
+			// skipping index creation entirely. This is a fail-open pattern that accepts the risk
+			// of concurrent index builds (which MongoDB will handle via duplicate key errors and
+			// in-progress detection) rather than leaving indexes uncreated. The defer for lock
+			// release is registered only in the else branch below, so we won't attempt to release
+			// a lock we never acquired.
+		} else if !acquired {
+			logger.Info("another instance is already creating indexes, skipping this cycle")
+			return nil
+		} else {
+			// We acquired the lock. Release it with a Lua compare-and-delete so that
+			// we never delete a lock token that belongs to a different holder (which
+			// can happen if our TTL expired mid-way and another pod acquired the lock).
+			const releaseScript = `
+				if redis.call("get", KEYS[1]) == ARGV[1] then
+					return redis.call("del", KEYS[1])
+				else
+					return 0
+				end`
+			defer func() {
+				releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer releaseCancel()
+				if err := redisClient.Eval(releaseCtx, releaseScript, []string{lockKey}, lockToken).Err(); err != nil && !errors.Is(err, redis.Nil) {
+					logger.Warn("failed to release index creation lock", zap.Error(err))
+				} else {
+					logger.Debug("released index creation lock")
+				}
+			}()
+			logger.Info("acquired distributed lock for index creation")
+		}
 	}
 
 	// Ensure citizen collection index
@@ -416,7 +509,7 @@ func checkWriteAccess(ctx context.Context, logger *zap.Logger) error {
 func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.CitizenCollection)
 
-	// Check if index already exists
+	// Check if index already exists or is being built
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
 		logger.Error("failed to list indexes", zap.Error(err))
@@ -441,6 +534,13 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 		return nil
 	}
 
+	// Check if index build is already in progress
+	if isIndexBuildInProgress(ctx, AppConfig.CitizenCollection, "cpf_1", logger) {
+		logger.Info("citizen index build already in progress, skipping",
+			zap.String("collection", AppConfig.CitizenCollection))
+		return nil
+	}
+
 	// Create unique index on cpf
 	indexModel := mongo.IndexModel{
 		Keys: bson.D{{Key: "cpf", Value: 1}},
@@ -454,6 +554,12 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 		// Check if it's a duplicate key error (another instance created it)
 		if mongo.IsDuplicateKeyError(err) {
 			logger.Info("citizen index already exists (created by another instance)",
+				zap.String("collection", AppConfig.CitizenCollection))
+			return nil
+		}
+		// Check if it's an IndexBuildAlreadyInProgress error
+		if isIndexBuildAlreadyInProgressError(err) {
+			logger.Info("citizen index build already in progress (detected via error)",
 				zap.String("collection", AppConfig.CitizenCollection))
 			return nil
 		}
@@ -1579,12 +1685,13 @@ func monitorRedisConnectionPool() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if Redis == nil {
+		redisClient := getRedis()
+		if redisClient == nil {
 			continue
 		}
 
 		// Get Redis pool stats
-		poolStats := Redis.PoolStats()
+		poolStats := redisClient.PoolStats()
 
 		// Determine Redis type for logging
 		redisType := "single"
@@ -2020,7 +2127,6 @@ func ensureNotificationCategoryIndex(ctx context.Context, logger *zap.Logger) er
 	// Create missing indexes
 	indexesToCreate := []mongo.IndexModel{}
 	requiredNames := []string{
-		"idx_notification_category_id",
 		"idx_notification_category_active_order",
 		"idx_notification_category_order",
 	}
@@ -2141,4 +2247,87 @@ func ensureCNAEIndex(ctx context.Context, logger *zap.Logger) error {
 	}
 
 	return nil
+}
+
+// isIndexBuildInProgress checks if an index build is currently running for a specific collection and index
+func isIndexBuildInProgress(ctx context.Context, collectionName string, indexName string, logger *zap.Logger) bool {
+	// Query MongoDB's currentOp to check for in-progress index builds
+	adminDB := MongoDB.Client().Database("admin")
+
+	// Build the fully-qualified namespace pattern (db.collection) anchored at both
+	// ends to prevent matching collections with similar names in other databases.
+	dbName := MongoDB.Name()
+	nsPattern := "^" + dbName + "\\." + collectionName + "$"
+
+	// Run currentOp command to get all current operations
+	var result bson.M
+	err := adminDB.RunCommand(ctx, bson.D{
+		{Key: "currentOp", Value: 1},
+		{Key: "op", Value: "command"},
+		{Key: "ns", Value: bson.D{{Key: "$regex", Value: nsPattern}}},
+	}).Decode(&result)
+
+	if err != nil {
+		logger.Warn("failed to check for in-progress index builds, assuming none",
+			zap.Error(err))
+		return false
+	}
+
+	// Parse operations
+	inprog, ok := result["inprog"].(bson.A)
+	if !ok {
+		return false
+	}
+
+	// Check if any operation is building the specified index
+	for _, op := range inprog {
+		opDoc, ok := op.(bson.M)
+		if !ok {
+			continue
+		}
+
+		// Check if this is an index build operation
+		if command, ok := opDoc["command"].(bson.M); ok {
+			if createIndexes, ok := command["createIndexes"].(string); ok {
+				ns, _ := opDoc["ns"].(string)
+				expectedNs := MongoDB.Name() + "." + collectionName
+				if createIndexes == collectionName && ns == expectedNs {
+					// Check if it's building our specific index
+					if indexes, ok := command["indexes"].(bson.A); ok {
+						for _, idx := range indexes {
+							if idxDoc, ok := idx.(bson.M); ok {
+								if name, ok := idxDoc["name"].(string); ok && name == indexName {
+									logger.Info("detected in-progress index build",
+										zap.String("collection", collectionName),
+										zap.String("index", indexName))
+									return true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// isIndexBuildAlreadyInProgressError checks if an error is an IndexBuildAlreadyInProgress error
+// (MongoDB error code 117). It uses errors.As so that wrapped errors are handled correctly.
+func isIndexBuildAlreadyInProgressError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// MongoDB error code 117 is IndexBuildAlreadyInProgress.
+	// Use errors.As so that wrapped error types (e.g. from the driver's enrichment) are matched.
+	var cmdErr mongo.CommandError
+	if errors.As(err, &cmdErr) {
+		return cmdErr.Code == 117
+	}
+	// Also check error message as fallback for cases the driver surfaces as plain errors.
+	errMsg := err.Error()
+	return strings.Contains(errMsg, "IndexBuildAlreadyInProgress") ||
+		strings.Contains(errMsg, "Index build already in progress") ||
+		strings.Contains(errMsg, "index build already in progress")
 }

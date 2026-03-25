@@ -50,7 +50,7 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 		DB:       0,
 	})
 	redisClient := redisclient.NewClient(singleClient)
-	config.Redis = redisClient
+	config.SetRedis(redisClient)
 
 	// Test Redis connection
 	err := redisClient.Ping(ctx).Err()

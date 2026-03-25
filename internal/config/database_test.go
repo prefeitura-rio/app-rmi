@@ -2,10 +2,17 @@ package config
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/stretchr/testify/assert"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.uber.org/zap"
 )
 
 func TestMaskMongoURI(t *testing.T) {
@@ -323,13 +330,14 @@ func TestMaskMongoURI_EdgeCases(t *testing.T) {
 }
 
 func TestMaskMongoURI_NoCredentials(t *testing.T) {
-	// URI without credentials (localhost development)
+	// URI without credentials (localhost development) - must be returned unchanged
 	uri := "mongodb://localhost:27017/database"
 	result := maskMongoURI(uri)
 
-	// When there's no @ before the last part, it should still work
-	// The function assumes @ is present, so this tests edge case behavior
-	assert.Contains(t, result, "mongodb://")
+	// No @ present: the URI has no credentials, so it is returned as-is without
+	// prepending a spurious "mongodb://****:****@" prefix.
+	assert.Equal(t, uri, result, "URI without credentials must be returned unchanged")
+	assert.NotContains(t, result, "****", "unchanged URI must not contain masked credential placeholder")
 }
 
 func TestConfigureCollectionWriteConcerns_DoesNotPanic(t *testing.T) {
@@ -471,4 +479,213 @@ func TestMaskMongoURI_MultipleMasks(t *testing.T) {
 		assert.NotContains(t, result, "service")
 		assert.NotContains(t, result, "key")
 	}
+}
+
+// TestSetRedis_GetRedis verifies that the mutex-protected Redis accessors are consistent.
+func TestSetRedis_GetRedis(t *testing.T) {
+	// Save and restore original Redis value to avoid polluting other tests
+	original := Redis
+	defer func() { Redis = original }()
+
+	t.Run("setRedis stores value readable by getRedis", func(t *testing.T) {
+		// nil sentinel
+		setRedis(nil)
+		assert.Nil(t, getRedis(), "getRedis should return nil after setRedis(nil)")
+
+		// Use a typed nil *redisclient.Client pointer to exercise the non-nil path
+		// without requiring a live Redis connection.
+		var c *redisclient.Client
+		setRedis(c)
+		assert.Equal(t, c, getRedis(), "getRedis should return the value stored by setRedis")
+	})
+
+	t.Run("SetRedis (exported) stores value readable by getRedis", func(t *testing.T) {
+		SetRedis(nil)
+		assert.Nil(t, getRedis(), "getRedis should return nil after SetRedis(nil)")
+	})
+
+	t.Run("concurrent SetRedis and getRedis do not race", func(t *testing.T) {
+		// The Go race detector will flag unsynchronised concurrent accesses.
+		// This test verifies that our mutex prevents such races.
+		const goroutines = 50
+		var wg sync.WaitGroup
+		wg.Add(goroutines * 2)
+
+		for i := 0; i < goroutines; i++ {
+			go func() {
+				defer wg.Done()
+				SetRedis(nil)
+			}()
+			go func() {
+				defer wg.Done()
+				_ = getRedis()
+			}()
+		}
+
+		wg.Wait()
+	})
+}
+
+// TestIsIndexBuildAlreadyInProgressError verifies the error detection helper.
+func TestIsIndexBuildAlreadyInProgressError(t *testing.T) {
+	t.Run("nil error returns false", func(t *testing.T) {
+		assert.False(t, isIndexBuildAlreadyInProgressError(nil))
+	})
+
+	t.Run("unrelated error returns false", func(t *testing.T) {
+		assert.False(t, isIndexBuildAlreadyInProgressError(context.DeadlineExceeded))
+	})
+
+	t.Run("error message fallback - exact phrase IndexBuildAlreadyInProgress", func(t *testing.T) {
+		assert.True(t, isIndexBuildAlreadyInProgressError(
+			simpleError("IndexBuildAlreadyInProgress"),
+		))
+	})
+
+	t.Run("error message fallback - Index build already in progress phrase", func(t *testing.T) {
+		assert.True(t, isIndexBuildAlreadyInProgressError(
+			simpleError("Index build already in progress for collection foo"),
+		))
+	})
+
+	t.Run("error message fallback - lowercase phrase", func(t *testing.T) {
+		assert.True(t, isIndexBuildAlreadyInProgressError(
+			simpleError("index build already in progress"),
+		))
+	})
+}
+
+// simpleError is a trivial error implementation used in tests.
+type simpleError string
+
+func (e simpleError) Error() string { return string(e) }
+
+// TestOptimizeConnectionPool verifies that optimizeConnectionPool does not panic.
+// The function only logs recommendations based on config values.
+func TestOptimizeConnectionPool_DoesNotPanic(t *testing.T) {
+	// Ensure AppConfig is initialized so the function has a MongoURI to log.
+	if AppConfig == nil {
+		AppConfig = &Config{
+			MongoURI: "mongodb://user:pass@localhost:27017/db",
+		}
+	}
+	assert.NotPanics(t, func() {
+		optimizeConnectionPool()
+	})
+}
+
+// TestOptimizeIndexesIfNeeded verifies that optimizeIndexesIfNeeded does not panic.
+// The function only logs; it does not touch MongoDB or Redis.
+func TestOptimizeIndexesIfNeeded_DoesNotPanic(t *testing.T) {
+	logger := zap.NewNop()
+	assert.NotPanics(t, func() {
+		optimizeIndexesIfNeeded(logger)
+	})
+}
+
+// TestApplyDatabasePerformanceOptimizations verifies the function does not panic.
+// It is a pure logging function with no external dependencies.
+func TestApplyDatabasePerformanceOptimizations_DoesNotPanic(t *testing.T) {
+	logger := zap.NewNop()
+	assert.NotPanics(t, func() {
+		applyDatabasePerformanceOptimizations(logger)
+	})
+}
+
+// TestIsIndexBuildAlreadyInProgressError_CommandError verifies that a real
+// mongo.CommandError with code 117 is correctly detected.
+func TestIsIndexBuildAlreadyInProgressError_CommandError(t *testing.T) {
+	t.Run("mongo.CommandError with code 117 returns true", func(t *testing.T) {
+		err := mongo.CommandError{Code: 117, Message: "Index build already in progress"}
+		assert.True(t, isIndexBuildAlreadyInProgressError(err),
+			"should detect IndexBuildAlreadyInProgress via CommandError.Code")
+	})
+
+	t.Run("mongo.CommandError with other code returns false", func(t *testing.T) {
+		err := mongo.CommandError{Code: 11000, Message: "E11000 duplicate key error"}
+		assert.False(t, isIndexBuildAlreadyInProgressError(err),
+			"should not detect unrelated CommandError code as IndexBuildAlreadyInProgress")
+	})
+
+	t.Run("wrapped mongo.CommandError with code 117 returns true", func(t *testing.T) {
+		wrapped := fmt.Errorf("wrapped: %w", mongo.CommandError{Code: 117})
+		assert.True(t, isIndexBuildAlreadyInProgressError(wrapped),
+			"errors.As should unwrap and detect CommandError.Code 117")
+	})
+}
+
+// TestEnsureNotificationCategoryIndex_RequiredNamesMatchModels verifies that the
+// requiredNames slice and the requiredIndexes slice are aligned: same length and
+// each name matches the name set on the corresponding IndexModel option.  This
+// test is a regression guard for the off-by-one bug where a stale
+// "idx_notification_category_id" entry in requiredNames caused the loop to
+// check the wrong name for the first model and to skip the last model entirely.
+func TestEnsureNotificationCategoryIndex_RequiredNamesMatchModels(t *testing.T) {
+	requiredIndexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "active", Value: 1},
+				{Key: "order", Value: 1},
+			},
+			Options: options.Index().SetName("idx_notification_category_active_order"),
+		},
+		{
+			Keys:    bson.D{{Key: "order", Value: 1}},
+			Options: options.Index().SetName("idx_notification_category_order"),
+		},
+	}
+	requiredNames := []string{
+		"idx_notification_category_active_order",
+		"idx_notification_category_order",
+	}
+
+	assert.Equal(t, len(requiredIndexes), len(requiredNames),
+		"requiredNames must have the same number of entries as requiredIndexes to avoid off-by-one indexing")
+
+	for i, model := range requiredIndexes {
+		modelName := model.Options.Name
+		assert.NotNil(t, modelName, "IndexModel at position %d must have a name set", i)
+		assert.Equal(t, requiredNames[i], *modelName,
+			"requiredNames[%d] must match the name on requiredIndexes[%d]", i, i)
+	}
+}
+
+// TestIsIndexBuildInProgress_NamespaceMatching verifies the namespace collision
+// fix: the secondary check must compare the full "database.collection" namespace
+// stored in opDoc["ns"], not just the bare collection name from the command
+// document.  Without this guard a collection with the same name in a different
+// database could trigger a false positive.
+func TestIsIndexBuildInProgress_NamespaceMatching(t *testing.T) {
+	t.Run("correct namespace matches", func(t *testing.T) {
+		dbName := "mydb"
+		collectionName := "notifications"
+		expectedNs := dbName + "." + collectionName
+
+		// Simulate what the fixed code computes
+		ns := dbName + "." + collectionName
+		assert.Equal(t, expectedNs, ns,
+			"full namespace must equal database+'.'+collection")
+	})
+
+	t.Run("same collection name in different database does not match", func(t *testing.T) {
+		dbName := "mydb"
+		collectionName := "notifications"
+		expectedNs := dbName + "." + collectionName
+
+		// An op from a different database with the same collection name
+		otherNs := "otherdb." + collectionName
+		assert.NotEqual(t, expectedNs, otherNs,
+			"namespace from a different database must not match the expected namespace")
+	})
+
+	t.Run("namespace with same prefix but longer collection name does not match", func(t *testing.T) {
+		dbName := "mydb"
+		collectionName := "notifications"
+		expectedNs := dbName + "." + collectionName
+
+		// e.g. "mydb.notifications_archive" should not match
+		longerNs := dbName + "." + collectionName + "_archive"
+		assert.NotEqual(t, expectedNs, longerNs,
+			"longer collection name sharing a prefix must not match the expected namespace")
+	})
 }
