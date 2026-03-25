@@ -839,6 +839,52 @@ func (m *mockCmdable) Pipeline() redis.Pipeliner {
 	return nil
 }
 
+// TestClient_SetNX verifies the traced SetNX wrapper behaviour
+func TestClient_SetNX(t *testing.T) {
+	client, cleanup := setupRedisForTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	key := "test:setnx:lock"
+
+	t.Run("first call acquires the key", func(t *testing.T) {
+		// Ensure the key does not already exist
+		client.Del(ctx, key)
+
+		acquired, err := client.SetNX(ctx, key, "token1", 30*time.Second).Result()
+		require.NoError(t, err, "SetNX should not return an error on first call")
+		assert.True(t, acquired, "SetNX should return true when key does not exist")
+	})
+
+	t.Run("second call with same key does not overwrite", func(t *testing.T) {
+		// key was set by the previous sub-test; try to acquire again
+		acquired, err := client.SetNX(ctx, key, "token2", 30*time.Second).Result()
+		require.NoError(t, err, "SetNX should not return an error on second call")
+		assert.False(t, acquired, "SetNX should return false when key already exists")
+
+		// Verify that the original value is still stored
+		val, err := client.Get(ctx, key).Result()
+		require.NoError(t, err)
+		assert.Equal(t, "token1", val, "original lock token should still be stored")
+	})
+
+	t.Run("key expires after TTL", func(t *testing.T) {
+		shortKey := "test:setnx:short"
+		client.Del(ctx, shortKey)
+
+		acquired, err := client.SetNX(ctx, shortKey, "ephemeral", 100*time.Millisecond).Result()
+		require.NoError(t, err)
+		assert.True(t, acquired, "SetNX should succeed for new short-lived key")
+
+		// Wait for expiry
+		time.Sleep(200 * time.Millisecond)
+
+		// Key should be gone
+		val, err := client.Get(ctx, shortKey).Result()
+		assert.ErrorIs(t, err, redis.Nil, "expired key should not exist, got value: %q", val)
+	})
+}
+
 // Helper function to verify that errors are properly wrapped and traced
 func TestClient_ErrorTracing(t *testing.T) {
 	client, cleanup := setupRedisForTest(t)

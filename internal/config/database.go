@@ -2,11 +2,13 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/redis/go-redis/v9"
@@ -297,14 +299,19 @@ func ensureIndexes() error {
 		return nil
 	}
 
-	// Try to acquire distributed lock for index creation (only if Redis is available)
-	// This prevents multiple pods from trying to create indexes simultaneously
+	// Try to acquire distributed lock for index creation (only if Redis is available).
+	// This prevents multiple pods from trying to create indexes simultaneously.
+	//
+	// Correctness: we store a unique token as the lock value and release it with a
+	// Lua compare-and-delete script so that only the holder can release the lock,
+	// even if the TTL has already expired and another instance re-acquired it.
 	if Redis != nil {
 		lockKey := "rmi:index_creation_lock"
 		lockTTL := 5 * time.Minute // Long enough for index creation, but expires if pod crashes
+		lockToken := uuid.New().String()
 
 		// Try to acquire lock using SETNX (Set if Not eXists)
-		acquired, err := Redis.SetNX(ctx, lockKey, "1", lockTTL).Result()
+		acquired, err := Redis.SetNX(ctx, lockKey, lockToken, lockTTL).Result()
 		if err != nil {
 			logger.Warn("failed to acquire index creation lock via Redis, proceeding anyway",
 				zap.Error(err))
@@ -313,11 +320,19 @@ func ensureIndexes() error {
 			logger.Info("another instance is already creating indexes, skipping this cycle")
 			return nil
 		} else {
-			// We acquired the lock, ensure it's released when done
+			// We acquired the lock. Release it with a Lua compare-and-delete so that
+			// we never delete a lock token that belongs to a different holder (which
+			// can happen if our TTL expired mid-way and another pod acquired the lock).
+			const releaseScript = `
+				if redis.call("get", KEYS[1]) == ARGV[1] then
+					return redis.call("del", KEYS[1])
+				else
+					return 0
+				end`
 			defer func() {
 				releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer releaseCancel()
-				if err := Redis.Del(releaseCtx, lockKey).Err(); err != nil {
+				if err := Redis.Eval(releaseCtx, releaseScript, []string{lockKey}, lockToken).Err(); err != nil && !errors.Is(err, redis.Nil) {
 					logger.Warn("failed to release index creation lock", zap.Error(err))
 				} else {
 					logger.Debug("released index creation lock")
@@ -2191,12 +2206,17 @@ func isIndexBuildInProgress(ctx context.Context, collectionName string, indexNam
 	// Query MongoDB's currentOp to check for in-progress index builds
 	adminDB := MongoDB.Client().Database("admin")
 
+	// Build the fully-qualified namespace pattern (db.collection) anchored at both
+	// ends to prevent matching collections with similar names in other databases.
+	dbName := MongoDB.Name()
+	nsPattern := "^" + dbName + "\\." + collectionName + "$"
+
 	// Run currentOp command to get all current operations
 	var result bson.M
 	err := adminDB.RunCommand(ctx, bson.D{
 		{Key: "currentOp", Value: 1},
 		{Key: "op", Value: "command"},
-		{Key: "ns", Value: bson.D{{Key: "$regex", Value: collectionName}}},
+		{Key: "ns", Value: bson.D{{Key: "$regex", Value: nsPattern}}},
 	}).Decode(&result)
 
 	if err != nil {
@@ -2244,18 +2264,20 @@ func isIndexBuildInProgress(ctx context.Context, collectionName string, indexNam
 }
 
 // isIndexBuildAlreadyInProgressError checks if an error is an IndexBuildAlreadyInProgress error
+// (MongoDB error code 117). It uses errors.As so that wrapped errors are handled correctly.
 func isIndexBuildAlreadyInProgressError(err error) bool {
 	if err == nil {
 		return false
 	}
-	// MongoDB error code 117 is IndexBuildAlreadyInProgress
-	// Check for this specific error code
-	if cmdErr, ok := err.(mongo.CommandError); ok {
+	// MongoDB error code 117 is IndexBuildAlreadyInProgress.
+	// Use errors.As so that wrapped error types (e.g. from the driver's enrichment) are matched.
+	var cmdErr mongo.CommandError
+	if errors.As(err, &cmdErr) {
 		return cmdErr.Code == 117
 	}
-	// Also check error message as fallback
+	// Also check error message as fallback for cases the driver surfaces as plain errors.
 	errMsg := err.Error()
-	return errMsg == "IndexBuildAlreadyInProgress" ||
-		errMsg == "Index build already in progress" ||
-		errMsg == "index build already in progress"
+	return strings.Contains(errMsg, "IndexBuildAlreadyInProgress") ||
+		strings.Contains(errMsg, "Index build already in progress") ||
+		strings.Contains(errMsg, "index build already in progress")
 }

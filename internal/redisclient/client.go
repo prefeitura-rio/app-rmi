@@ -353,6 +353,36 @@ func (c *Client) Pipeline() redis.Pipeliner {
 	return c.cmdable.Pipeline()
 }
 
+// Eval wraps Redis Eval with comprehensive tracing
+func (c *Client) Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd {
+	start := time.Now()
+	ctx, span := otel.Tracer("redis").Start(ctx, "redis.eval",
+		trace.WithAttributes(
+			attribute.Int("redis.key_count", len(keys)),
+			attribute.String("redis.operation", "eval"),
+			attribute.String("redis.client", "app-rmi"),
+		),
+	)
+	defer func() {
+		duration := time.Since(start)
+		span.SetAttributes(
+			attribute.Int64("redis.duration_ms", duration.Milliseconds()),
+			attribute.String("redis.duration", duration.String()),
+		)
+		span.End()
+	}()
+
+	cmd := c.cmdable.Eval(ctx, script, keys, args...)
+	if err := cmd.Err(); err != nil && err != redis.Nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("redis.error", err.Error()))
+	} else {
+		span.SetStatus(codes.Ok, "success")
+	}
+	return cmd
+}
+
 // LLen wraps Redis LLen with comprehensive tracing
 func (c *Client) LLen(ctx context.Context, key string) *redis.IntCmd {
 	start := time.Now()
