@@ -33,7 +33,7 @@ func setupNotificationPreferencesHandlersTest(t *testing.T) (*NotificationPrefer
 	ctx := context.Background()
 	database := config.MongoDB
 
-	handlers := NewNotificationPreferencesHandlers(logging.Logger)
+	handlers := NewNotificationPreferencesHandlers(logging.GetLogger())
 
 	router := gin.New()
 
@@ -162,7 +162,7 @@ func createTestPhoneMapping(t *testing.T, ctx context.Context, phoneNumber, cpf 
 }
 
 func TestNewNotificationPreferencesHandlers(t *testing.T) {
-	handlers := NewNotificationPreferencesHandlers(logging.Logger)
+	handlers := NewNotificationPreferencesHandlers(logging.GetLogger())
 	assert.NotNil(t, handlers)
 	assert.NotNil(t, handlers.logger)
 	assert.NotNil(t, handlers.categoryService)

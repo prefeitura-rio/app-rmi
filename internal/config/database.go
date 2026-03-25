@@ -91,10 +91,10 @@ func InitMongoDB() {
 		Event: func(evt *event.PoolEvent) {
 			switch evt.Type {
 			case event.GetFailed:
-				logging.Logger.Warn("MongoDB connection acquisition failed",
+				logging.GetLogger().Warn("MongoDB connection acquisition failed",
 					zap.Uint64("connection_id", evt.ConnectionID))
 			case event.PoolCleared:
-				logging.Logger.Warn("MongoDB connection pool cleared")
+				logging.GetLogger().Warn("MongoDB connection pool cleared")
 			}
 		},
 	})
@@ -117,11 +117,11 @@ func InitMongoDB() {
 
 	// Ensure indexes exist and start maintenance routine
 	if err := ensureIndexes(); err != nil {
-		logging.Logger.Error("failed to ensure indexes on startup", zap.Error(err))
+		logging.GetLogger().Error("failed to ensure indexes on startup", zap.Error(err))
 	}
 	startIndexMaintenance()
 
-	logging.Logger.Info("Connected to MongoDB with load distribution",
+	logging.GetLogger().Info("Connected to MongoDB with load distribution",
 		zap.String("uri", maskMongoURI(AppConfig.MongoURI)),
 		zap.String("database", AppConfig.MongoDatabase),
 		zap.String("read_preference", "nearest (forced)"),
@@ -165,7 +165,7 @@ func configureCollectionWriteConcerns() {
 	for collectionName, wc := range collections {
 		// Note: Write concerns are typically set at the collection level via options
 		// This is a reference for what should be configured
-		logging.Logger.Debug("Collection write concern configured",
+		logging.GetLogger().Debug("Collection write concern configured",
 			zap.String("collection", collectionName),
 			zap.String("write_concern", fmt.Sprintf("W(%d)", wc.W)),
 			zap.String("note", "Write concerns applied via URI and collection options"))
@@ -176,7 +176,7 @@ func configureCollectionWriteConcerns() {
 func InitRedis() {
 	if AppConfig.RedisClusterEnabled {
 		// Use Redis Cluster for distributed setup (production)
-		logging.Logger.Info("initializing Redis with Cluster for distributed setup",
+		logging.GetLogger().Info("initializing Redis with Cluster for distributed setup",
 			zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs))
 
 		clusterClient := redis.NewClusterClient(&redis.ClusterOptions{
@@ -214,7 +214,7 @@ func InitRedis() {
 		Redis = redisclient.NewClusterClient(clusterClient)
 	} else {
 		// Use single Redis instance (development/testing)
-		logging.Logger.Info("initializing Redis with single instance",
+		logging.GetLogger().Info("initializing Redis with single instance",
 			zap.String("addr", AppConfig.RedisURI))
 
 		singleClient := redis.NewClient(&redis.Options{
@@ -250,11 +250,11 @@ func InitRedis() {
 
 	if err := Redis.Ping(ctx).Err(); err != nil {
 		if AppConfig.RedisClusterEnabled {
-			logging.Logger.Error("failed to connect to Redis Cluster",
+			logging.GetLogger().Error("failed to connect to Redis Cluster",
 				zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs),
 				zap.Error(err))
 		} else {
-			logging.Logger.Error("failed to connect to Redis",
+			logging.GetLogger().Error("failed to connect to Redis",
 				zap.String("uri", AppConfig.RedisURI),
 				zap.Error(err))
 		}
@@ -262,12 +262,12 @@ func InitRedis() {
 	}
 
 	if AppConfig.RedisClusterEnabled {
-		logging.Logger.Info("connected to Redis Cluster",
+		logging.GetLogger().Info("connected to Redis Cluster",
 			zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs),
 			zap.Int("pool_size", AppConfig.RedisPoolSize),
 			zap.Int("min_idle_conns", AppConfig.RedisMinIdleConns))
 	} else {
-		logging.Logger.Info("connected to Redis",
+		logging.GetLogger().Info("connected to Redis",
 			zap.String("uri", AppConfig.RedisURI),
 			zap.Int("pool_size", AppConfig.RedisPoolSize),
 			zap.Int("min_idle_conns", AppConfig.RedisMinIdleConns))
@@ -1532,7 +1532,7 @@ func monitorConnectionPool() {
 		stats := MongoDB.Client().NumberSessionsInProgress()
 
 		// Log connection pool status
-		logging.Logger.Info("MongoDB connection pool status",
+		logging.GetLogger().Info("MongoDB connection pool status",
 			zap.Int("sessions_in_progress", stats),
 			zap.String("max_pool_size", "1000"),
 			zap.String("min_pool_size", "50"),
@@ -1540,14 +1540,14 @@ func monitorConnectionPool() {
 
 		// Alert if connection pool is under pressure
 		if stats > 800 { // 80% of maxPoolSize=1000
-			logging.Logger.Warn("MongoDB connection pool under pressure",
+			logging.GetLogger().Warn("MongoDB connection pool under pressure",
 				zap.Int("sessions_in_progress", stats),
 				zap.String("recommendation", "Consider increasing maxPoolSize or optimizing queries"))
 		}
 
 		// Dynamic connection pool optimization
 		if stats > 950 { // 95% of maxPoolSize=1000
-			logging.Logger.Error("MongoDB connection pool critical - immediate attention required",
+			logging.GetLogger().Error("MongoDB connection pool critical - immediate attention required",
 				zap.Int("sessions_in_progress", stats),
 				zap.String("action", "triggering connection pool optimization"))
 			optimizeConnectionPool()
@@ -1559,7 +1559,7 @@ func monitorConnectionPool() {
 func optimizeConnectionPool() {
 	// This function can be called during high load to dynamically adjust connection pool
 	// For now, it logs recommendations based on current usage patterns
-	logging.Logger.Info("Connection pool optimization recommendations",
+	logging.GetLogger().Info("Connection pool optimization recommendations",
 		zap.String("current_uri", maskMongoURI(AppConfig.MongoURI)),
 		zap.String("recommendation_1", "Current maxPoolSize=1000, minPoolSize=50 are optimal for high-write scenarios"),
 		zap.String("recommendation_2", "Using W=0 write concern for performance collections, W=1 for data integrity"),
@@ -1598,7 +1598,7 @@ func monitorRedisConnectionPool() {
 		totalUsagePercent := float64(poolStats.TotalConns) / float64(AppConfig.RedisPoolSize) * 100
 
 		// Log Redis connection pool status with enhanced metrics
-		logging.Logger.Info("Redis connection pool status",
+		logging.GetLogger().Info("Redis connection pool status",
 			zap.String("redis_type", redisType),
 			zap.Int("total_connections", int(poolStats.TotalConns)),
 			zap.Int("idle_connections", int(poolStats.IdleConns)),
@@ -1609,14 +1609,14 @@ func monitorRedisConnectionPool() {
 
 		// Progressive alerting based on connection usage
 		if totalUsagePercent > 90 {
-			logging.Logger.Error("Critical Redis connection usage - immediate action required",
+			logging.GetLogger().Error("Critical Redis connection usage - immediate action required",
 				zap.Float64("usage_percent", totalUsagePercent),
 				zap.Int("total_connections", int(poolStats.TotalConns)),
 				zap.Int("max_pool_size", AppConfig.RedisPoolSize),
 				zap.String("redis_type", redisType),
 				zap.String("action", "Increase REDIS_POOL_SIZE or investigate connection leaks"))
 		} else if totalUsagePercent > 80 {
-			logging.Logger.Warn("High Redis connection usage detected",
+			logging.GetLogger().Warn("High Redis connection usage detected",
 				zap.Float64("usage_percent", totalUsagePercent),
 				zap.Int("total_connections", int(poolStats.TotalConns)),
 				zap.Int("max_pool_size", AppConfig.RedisPoolSize),
@@ -1626,7 +1626,7 @@ func monitorRedisConnectionPool() {
 
 		// Alert if no idle connections available (potential bottleneck)
 		if poolStats.IdleConns == 0 && poolStats.TotalConns > 0 {
-			logging.Logger.Warn("No idle Redis connections available - potential bottleneck",
+			logging.GetLogger().Warn("No idle Redis connections available - potential bottleneck",
 				zap.Int("total_connections", int(poolStats.TotalConns)),
 				zap.String("redis_type", redisType),
 				zap.String("impact", "New requests may be queued or timeout"))
@@ -1635,7 +1635,7 @@ func monitorRedisConnectionPool() {
 		// Alert on high stale connections (connection issues)
 		stalePercent := float64(poolStats.StaleConns) / float64(poolStats.TotalConns) * 100
 		if poolStats.StaleConns > 0 && stalePercent > 20 {
-			logging.Logger.Warn("High number of stale Redis connections",
+			logging.GetLogger().Warn("High number of stale Redis connections",
 				zap.Int("stale_connections", int(poolStats.StaleConns)),
 				zap.Float64("stale_percent", stalePercent),
 				zap.String("redis_type", redisType),
@@ -1659,7 +1659,7 @@ func monitorPrimaryNodeLoad() {
 		if totalConnections > 0 {
 			primaryLoadPercentage := float64(primaryConnections) / float64(totalConnections) * 100
 
-			logging.Logger.Info("MongoDB load distribution status",
+			logging.GetLogger().Info("MongoDB load distribution status",
 				zap.Int("primary_connections", primaryConnections),
 				zap.Int("secondary_connections", secondaryConnections),
 				zap.Float64("primary_load_percentage", primaryLoadPercentage),
@@ -1667,7 +1667,7 @@ func monitorPrimaryNodeLoad() {
 
 			// Alert if primary node is under too much load
 			if primaryLoadPercentage > 70 {
-				logging.Logger.Warn("Primary node under high load - consider load distribution",
+				logging.GetLogger().Warn("Primary node under high load - consider load distribution",
 					zap.Float64("primary_load_percentage", primaryLoadPercentage),
 					zap.String("recommendation", "Verify readPreference=nearest is working, check secondary node health"))
 			}
@@ -1724,7 +1724,7 @@ func monitorReplicaSetHealth() {
 			primaryHealth := checkNodeHealth(ctx, "primary")
 			secondaryHealth := checkNodeHealth(ctx, "secondary")
 
-			logging.Logger.Info("Replica set health status",
+			logging.GetLogger().Info("Replica set health status",
 				zap.Bool("primary_healthy", primaryHealth),
 				zap.Bool("secondary_healthy", secondaryHealth),
 				zap.String("recommendation", getReplicaSetRecommendation(primaryHealth, secondaryHealth)))

@@ -29,8 +29,8 @@ func setupBetaGroupHandlersTest(t *testing.T) (*BetaGroupHandlers, *gin.Engine, 
 	database := config.MongoDB
 
 	// Initialize service
-	betaGroupService := services.NewBetaGroupService(logging.Logger)
-	handlers := NewBetaGroupHandlers(logging.Logger, betaGroupService)
+	betaGroupService := services.NewBetaGroupService(logging.GetLogger())
+	handlers := NewBetaGroupHandlers(logging.GetLogger(), betaGroupService)
 
 	router := gin.New()
 
@@ -61,7 +61,7 @@ func setupBetaGroupHandlersTest(t *testing.T) (*BetaGroupHandlers, *gin.Engine, 
 }
 
 func TestNewBetaGroupHandlers(t *testing.T) {
-	handlers := NewBetaGroupHandlers(logging.Logger, nil)
+	handlers := NewBetaGroupHandlers(logging.GetLogger(), nil)
 	if handlers == nil {
 		t.Error("NewBetaGroupHandlers() returned nil")
 		return

@@ -31,7 +31,7 @@ func setupCNAEServiceTest(t *testing.T) (*CNAEService, func()) {
 	}
 	_, _ = collection.Indexes().CreateOne(ctx, indexModel)
 
-	service := NewCNAEService(config.MongoDB, logging.Logger)
+	service := NewCNAEService(config.MongoDB, logging.GetLogger())
 
 	return service, func() {
 		_ = collection.Drop(ctx)
@@ -43,7 +43,7 @@ func TestNewCNAEService(t *testing.T) {
 
 	_ = logging.InitLogger()
 
-	service := NewCNAEService(config.MongoDB, logging.Logger)
+	service := NewCNAEService(config.MongoDB, logging.GetLogger())
 
 	if service == nil {
 		t.Error("NewCNAEService() returned nil")

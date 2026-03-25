@@ -33,7 +33,7 @@ func setupBetaGroupTest(t *testing.T) (*BetaGroupService, func()) {
 	config.AppConfig.PhoneMappingCollection = "test_phone_mappings"
 
 	// Create service with nil client (uses config.MongoDB)
-	service := NewBetaGroupService(logging.Logger)
+	service := NewBetaGroupService(logging.GetLogger())
 
 	// Return cleanup function
 	return service, func() {
@@ -60,7 +60,7 @@ func TestNewBetaGroupService(t *testing.T) {
 	}
 
 	_ = logging.InitLogger()
-	service := NewBetaGroupService(logging.Logger)
+	service := NewBetaGroupService(logging.GetLogger())
 	if service == nil {
 		t.Error("NewBetaGroupService() returned nil")
 		return

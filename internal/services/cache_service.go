@@ -20,7 +20,7 @@ type CacheService struct {
 func NewCacheService() *CacheService {
 	return &CacheService{
 		citizenService: NewCitizenCacheService(),
-		logger:         logging.Logger,
+		logger:         logging.GetLogger(),
 	}
 }
 

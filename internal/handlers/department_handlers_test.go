@@ -39,8 +39,8 @@ func setupDepartmentHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	}
 
 	// Initialize global department service instance with DataManager
-	dataManager := services.NewDataManager(config.Redis, config.MongoDB, logging.Logger)
-	services.DepartmentServiceInstance = services.NewDepartmentService(database, dataManager, logging.Logger)
+	dataManager := services.NewDataManager(config.Redis, config.MongoDB, logging.GetLogger())
+	services.DepartmentServiceInstance = services.NewDepartmentService(database, dataManager, logging.GetLogger())
 
 	router := gin.New()
 	router.GET("/departments", ListDepartments)
