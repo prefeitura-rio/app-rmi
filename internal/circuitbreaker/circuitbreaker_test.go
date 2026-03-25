@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
 
@@ -239,5 +240,46 @@ func TestStateString(t *testing.T) {
 		if got := tt.state.String(); got != tt.expected {
 			t.Errorf("State(%d).String() = %s, want %s", tt.state, got, tt.expected)
 		}
+	}
+}
+
+func TestDefaultReadyToTrip(t *testing.T) {
+	tests := []struct {
+		name   string
+		counts Counts
+		want   bool
+	}{
+		{
+			name:   "no failures",
+			counts: Counts{Requests: 10, TotalSuccesses: 10, TotalFailures: 0, ConsecutiveSuccesses: 10, ConsecutiveFailures: 0},
+			want:   false,
+		},
+		{
+			name:   "less than 5 consecutive failures",
+			counts: Counts{Requests: 10, TotalSuccesses: 6, TotalFailures: 4, ConsecutiveSuccesses: 0, ConsecutiveFailures: 4},
+			want:   false,
+		},
+		{
+			name:   "exactly 5 consecutive failures - should trip",
+			counts: Counts{Requests: 10, TotalSuccesses: 5, TotalFailures: 5, ConsecutiveSuccesses: 0, ConsecutiveFailures: 5},
+			want:   true,
+		},
+		{
+			name:   "more than 5 consecutive failures",
+			counts: Counts{Requests: 10, TotalSuccesses: 2, TotalFailures: 8, ConsecutiveSuccesses: 0, ConsecutiveFailures: 8},
+			want:   true,
+		},
+		{
+			name:   "mixed with recent successes",
+			counts: Counts{Requests: 10, TotalSuccesses: 8, TotalFailures: 2, ConsecutiveSuccesses: 3, ConsecutiveFailures: 0},
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := defaultReadyToTrip(tt.counts)
+			assert.Equal(t, tt.want, got, "defaultReadyToTrip() should return expected value")
+		})
 	}
 }

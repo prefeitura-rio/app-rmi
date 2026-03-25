@@ -28,6 +28,27 @@ func TestDefaultConfig(t *testing.T) {
 	}
 }
 
+func TestDefaultConfig_WithNilLogger(t *testing.T) {
+	// Test that DefaultConfig handles nil logger gracefully
+	config := DefaultConfig(nil)
+
+	if config.Logger == nil {
+		t.Error("Expected logger to be non-nil (should use no-op logger)")
+	}
+	if config.MaxRetries != 3 {
+		t.Errorf("Expected MaxRetries 3, got %d", config.MaxRetries)
+	}
+	if config.InitialBackoff != 100*time.Millisecond {
+		t.Errorf("Expected InitialBackoff 100ms, got %v", config.InitialBackoff)
+	}
+	if config.MaxBackoff != 5*time.Second {
+		t.Errorf("Expected MaxBackoff 5s, got %v", config.MaxBackoff)
+	}
+	if config.Multiplier != 2.0 {
+		t.Errorf("Expected Multiplier 2.0, got %v", config.Multiplier)
+	}
+}
+
 func TestIsRetryable(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -36,6 +57,7 @@ func TestIsRetryable(t *testing.T) {
 	}{
 		{"nil error", nil, false},
 		{"context canceled", context.Canceled, false},
+		{"context deadline exceeded", context.DeadlineExceeded, false},
 		{"client disconnected", mongo.ErrClientDisconnected, true},
 		{"generic error", errors.New("generic"), false},
 	}
