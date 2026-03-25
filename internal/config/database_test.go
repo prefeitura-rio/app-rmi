@@ -2,12 +2,15 @@ package config
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/stretchr/testify/assert"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.uber.org/zap"
 )
 
 func TestMaskMongoURI(t *testing.T) {
@@ -553,3 +556,57 @@ func TestIsIndexBuildAlreadyInProgressError(t *testing.T) {
 type simpleError string
 
 func (e simpleError) Error() string { return string(e) }
+
+// TestOptimizeConnectionPool verifies that optimizeConnectionPool does not panic.
+// The function only logs recommendations based on config values.
+func TestOptimizeConnectionPool_DoesNotPanic(t *testing.T) {
+	// Ensure AppConfig is initialized so the function has a MongoURI to log.
+	if AppConfig == nil {
+		AppConfig = &Config{
+			MongoURI: "mongodb://user:pass@localhost:27017/db",
+		}
+	}
+	assert.NotPanics(t, func() {
+		optimizeConnectionPool()
+	})
+}
+
+// TestOptimizeIndexesIfNeeded verifies that optimizeIndexesIfNeeded does not panic.
+// The function only logs; it does not touch MongoDB or Redis.
+func TestOptimizeIndexesIfNeeded_DoesNotPanic(t *testing.T) {
+	logger := zap.NewNop()
+	assert.NotPanics(t, func() {
+		optimizeIndexesIfNeeded(logger)
+	})
+}
+
+// TestApplyDatabasePerformanceOptimizations verifies the function does not panic.
+// It is a pure logging function with no external dependencies.
+func TestApplyDatabasePerformanceOptimizations_DoesNotPanic(t *testing.T) {
+	logger := zap.NewNop()
+	assert.NotPanics(t, func() {
+		applyDatabasePerformanceOptimizations(logger)
+	})
+}
+
+// TestIsIndexBuildAlreadyInProgressError_CommandError verifies that a real
+// mongo.CommandError with code 117 is correctly detected.
+func TestIsIndexBuildAlreadyInProgressError_CommandError(t *testing.T) {
+	t.Run("mongo.CommandError with code 117 returns true", func(t *testing.T) {
+		err := mongo.CommandError{Code: 117, Message: "Index build already in progress"}
+		assert.True(t, isIndexBuildAlreadyInProgressError(err),
+			"should detect IndexBuildAlreadyInProgress via CommandError.Code")
+	})
+
+	t.Run("mongo.CommandError with other code returns false", func(t *testing.T) {
+		err := mongo.CommandError{Code: 11000, Message: "E11000 duplicate key error"}
+		assert.False(t, isIndexBuildAlreadyInProgressError(err),
+			"should not detect unrelated CommandError code as IndexBuildAlreadyInProgress")
+	})
+
+	t.Run("wrapped mongo.CommandError with code 117 returns true", func(t *testing.T) {
+		wrapped := fmt.Errorf("wrapped: %w", mongo.CommandError{Code: 117})
+		assert.True(t, isIndexBuildAlreadyInProgressError(wrapped),
+			"errors.As should unwrap and detect CommandError.Code 117")
+	})
+}
