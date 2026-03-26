@@ -131,6 +131,10 @@ func main() {
 	cnaeService := services.NewCNAEService(config.MongoDB, observability.Logger())
 	cnaeHandlers := handlers.NewCNAEHandlers(cnaeService, observability.Logger())
 
+	// Initialize Bairro service and handlers
+	bairroService := services.NewBairroService(config.MongoDB, observability.Logger())
+	bairroHandlers := handlers.NewBairroHandlers(bairroService, observability.Logger())
+
 	// Set Gin mode to reduce verbose route logging
 	gin.SetMode(gin.ReleaseMode)
 
@@ -298,6 +302,12 @@ func main() {
 		cnaes := v1.Group("/cnaes")
 		{
 			cnaes.GET("", cnaeHandlers.ListCNAEs)
+		}
+
+		// Bairro routes (public)
+		bairros := v1.Group("/bairros")
+		{
+			bairros.GET("", bairroHandlers.ListBairros)
 		}
 
 		// Legal entity routes (protected)
