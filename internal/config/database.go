@@ -2,11 +2,14 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/redis/go-redis/v9"
@@ -25,36 +28,93 @@ var (
 	// MongoDB client
 	MongoDB *mongo.Database
 	// Redis client
+	// Use getRedis/setRedis within this file to avoid data races between
+	// InitRedis (writer) and background goroutines that read the variable.
 	Redis *redisclient.Client
+
+	// redisMu protects the Redis package variable from concurrent reads/writes
+	// that occur between InitRedis and the background goroutines started by
+	// InitMongoDB (startIndexMaintenance, monitorRedisConnectionPool).
+	redisMu sync.RWMutex
 )
+
+// getRedis returns the Redis client in a race-safe manner.
+func getRedis() *redisclient.Client {
+	redisMu.RLock()
+	defer redisMu.RUnlock()
+	return Redis
+}
+
+// setRedis stores the Redis client in a race-safe manner.
+func setRedis(c *redisclient.Client) {
+	redisMu.Lock()
+	defer redisMu.Unlock()
+	Redis = c
+}
+
+// SetRedis is the exported, race-safe setter for the Redis client.
+// Use this in tests and any code that needs to update the Redis client after
+// InitRedis has been called, to avoid data races with the background goroutines
+// started by InitMongoDB (startIndexMaintenance, monitorRedisConnectionPool).
+func SetRedis(c *redisclient.Client) {
+	setRedis(c)
+}
 
 // InitMongoDB initializes the MongoDB connection
 func InitMongoDB() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Detect test mode by checking if database name contains "test"
+	isTestMode := false
+	if len(AppConfig.MongoDatabase) > 0 {
+		dbLower := AppConfig.MongoDatabase
+		if len(dbLower) >= 4 && (dbLower[len(dbLower)-4:] == "test" || dbLower[:4] == "test" ||
+			(len(dbLower) > 4 && (dbLower[:5] == "test_" || dbLower[len(dbLower)-5:] == "_test"))) {
+			isTestMode = true
+		}
+	}
+
+	if isTestMode {
+		log.Printf("MongoDB: Detected test mode (database=%s), using simplified configuration", AppConfig.MongoDatabase)
+	} else {
+		log.Printf("MongoDB: Production mode (database=%s), using replica set configuration", AppConfig.MongoDatabase)
+	}
+
 	// Configure MongoDB with optimizations for load distribution
 	opts := options.Client().
 		ApplyURI(AppConfig.MongoURI).
-		SetMonitor(otelmongo.NewMonitor()).
-		// Load distribution optimizations (these OVERRIDE URI settings)
-		SetReadPreference(readpref.Nearest()). // Force reads from nearest node
-		// Connection pool optimization for high-write scenarios
-		SetMaxConnecting(100).                      // Increased for better concurrency
-		SetMaxConnIdleTime(2 * time.Minute).        // Reduced from 5min for faster rotation
-		SetMinPoolSize(50).                         // NEW: Warm up connections
-		SetMaxPoolSize(1000).                       // NEW: Large pool for high concurrency
-		SetRetryWrites(true).                       // Handle temporary failures gracefully
-		SetRetryReads(true).                        // Retry read operations on secondary nodes
-		SetServerSelectionTimeout(1 * time.Second). // Faster failover
-		SetSocketTimeout(15 * time.Second).         // Reduced from 25s
-		SetConnectTimeout(2 * time.Second).         // Reduced from 3s
-		// NEW: Compression optimization
-		SetCompressors([]string{"snappy"}). // Use snappy instead of zlib
-		// Write concern optimization - W=1 for better performance
-		SetWriteConcern(&writeconcern.WriteConcern{W: 1})
-		// Note: Connection pool and timeout settings are configured via URI parameters
-		// The code-level read preference will override URI settings
+		SetMonitor(otelmongo.NewMonitor())
+
+	// Only apply replica set configurations in production mode
+	if !isTestMode {
+		opts = opts.
+			// Load distribution optimizations (these OVERRIDE URI settings)
+			SetReadPreference(readpref.Nearest()). // Force reads from nearest node
+			// Connection pool optimization for high-write scenarios
+			SetMaxConnecting(100).                      // Increased for better concurrency
+			SetMaxConnIdleTime(2 * time.Minute).        // Reduced from 5min for faster rotation
+			SetMinPoolSize(50).                         // NEW: Warm up connections
+			SetMaxPoolSize(1000).                       // NEW: Large pool for high concurrency
+			SetRetryWrites(true).                       // Handle temporary failures gracefully
+			SetRetryReads(true).                        // Retry read operations on secondary nodes
+			SetServerSelectionTimeout(1 * time.Second). // Faster failover
+			SetSocketTimeout(15 * time.Second).         // Reduced from 25s
+			SetConnectTimeout(2 * time.Second).         // Reduced from 3s
+			// NEW: Compression optimization
+			SetCompressors([]string{"snappy"}). // Use snappy instead of zlib
+			// Write concern optimization - W=1 for better performance
+			SetWriteConcern(&writeconcern.WriteConcern{W: 1})
+	} else {
+		// Test mode: simpler configuration for single-node MongoDB
+		opts = opts.
+			SetDirect(true).                            // Direct connection, no replica set
+			SetServerSelectionTimeout(5 * time.Second). // More lenient timeout
+			SetConnectTimeout(5 * time.Second).         // More lenient timeout
+			SetSocketTimeout(30 * time.Second)          // More lenient timeout
+	}
+	// Note: Connection pool and timeout settings are configured via URI parameters
+	// The code-level read preference will override URI settings
 
 	// Add connection pool monitoring
 	// Pool monitoring disabled to reduce log verbosity
@@ -63,10 +123,10 @@ func InitMongoDB() {
 		Event: func(evt *event.PoolEvent) {
 			switch evt.Type {
 			case event.GetFailed:
-				logging.Logger.Warn("MongoDB connection acquisition failed",
+				logging.GetLogger().Warn("MongoDB connection acquisition failed",
 					zap.Uint64("connection_id", evt.ConnectionID))
 			case event.PoolCleared:
-				logging.Logger.Warn("MongoDB connection pool cleared")
+				logging.GetLogger().Warn("MongoDB connection pool cleared")
 			}
 		},
 	})
@@ -89,11 +149,11 @@ func InitMongoDB() {
 
 	// Ensure indexes exist and start maintenance routine
 	if err := ensureIndexes(); err != nil {
-		logging.Logger.Error("failed to ensure indexes on startup", zap.Error(err))
+		logging.GetLogger().Error("failed to ensure indexes on startup", zap.Error(err))
 	}
 	startIndexMaintenance()
 
-	logging.Logger.Info("Connected to MongoDB with load distribution",
+	logging.GetLogger().Info("Connected to MongoDB with load distribution",
 		zap.String("uri", maskMongoURI(AppConfig.MongoURI)),
 		zap.String("database", AppConfig.MongoDatabase),
 		zap.String("read_preference", "nearest (forced)"),
@@ -118,6 +178,12 @@ func configureCollectionWriteConcerns() {
 	// Configure collections with write concerns based on their criticality
 	collections := map[string]*writeconcern.WriteConcern{
 		// High-performance collections (W=0 for maximum speed)
+		// DURABILITY WARNING: W=0 is fire-and-forget - writes return immediately without waiting
+		// for acknowledgement. If the MongoDB primary crashes before replication, data can be
+		// silently lost with no error returned to the caller. This tradeoff prioritizes
+		// performance over durability. These collections are either frequently synced from
+		// external sources (CitizenCollection) or have Redis-based write buffers (PhoneMappingCollection)
+		// that provide eventual consistency recovery paths.
 		AppConfig.CitizenCollection:            &writeconcern.WriteConcern{W: 0},
 		AppConfig.UserConfigCollection:         &writeconcern.WriteConcern{W: 0},
 		AppConfig.PhoneMappingCollection:       &writeconcern.WriteConcern{W: 0},
@@ -137,7 +203,7 @@ func configureCollectionWriteConcerns() {
 	for collectionName, wc := range collections {
 		// Note: Write concerns are typically set at the collection level via options
 		// This is a reference for what should be configured
-		logging.Logger.Debug("Collection write concern configured",
+		logging.GetLogger().Debug("Collection write concern configured",
 			zap.String("collection", collectionName),
 			zap.String("write_concern", fmt.Sprintf("W(%d)", wc.W)),
 			zap.String("note", "Write concerns applied via URI and collection options"))
@@ -148,7 +214,7 @@ func configureCollectionWriteConcerns() {
 func InitRedis() {
 	if AppConfig.RedisClusterEnabled {
 		// Use Redis Cluster for distributed setup (production)
-		logging.Logger.Info("initializing Redis with Cluster for distributed setup",
+		logging.GetLogger().Info("initializing Redis with Cluster for distributed setup",
 			zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs))
 
 		clusterClient := redis.NewClusterClient(&redis.ClusterOptions{
@@ -183,10 +249,10 @@ func InitRedis() {
 		})
 
 		// Wrap with traced client using cluster client
-		Redis = redisclient.NewClusterClient(clusterClient)
+		setRedis(redisclient.NewClusterClient(clusterClient))
 	} else {
 		// Use single Redis instance (development/testing)
-		logging.Logger.Info("initializing Redis with single instance",
+		logging.GetLogger().Info("initializing Redis with single instance",
 			zap.String("addr", AppConfig.RedisURI))
 
 		singleClient := redis.NewClient(&redis.Options{
@@ -213,20 +279,20 @@ func InitRedis() {
 		})
 
 		// Wrap with traced client using single client
-		Redis = redisclient.NewClient(singleClient)
+		setRedis(redisclient.NewClient(singleClient))
 	}
 
 	// Test Redis connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := Redis.Ping(ctx).Err(); err != nil {
+	if err := getRedis().Ping(ctx).Err(); err != nil {
 		if AppConfig.RedisClusterEnabled {
-			logging.Logger.Error("failed to connect to Redis Cluster",
+			logging.GetLogger().Error("failed to connect to Redis Cluster",
 				zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs),
 				zap.Error(err))
 		} else {
-			logging.Logger.Error("failed to connect to Redis",
+			logging.GetLogger().Error("failed to connect to Redis",
 				zap.String("uri", AppConfig.RedisURI),
 				zap.Error(err))
 		}
@@ -234,12 +300,12 @@ func InitRedis() {
 	}
 
 	if AppConfig.RedisClusterEnabled {
-		logging.Logger.Info("connected to Redis Cluster",
+		logging.GetLogger().Info("connected to Redis Cluster",
 			zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs),
 			zap.Int("pool_size", AppConfig.RedisPoolSize),
 			zap.Int("min_idle_conns", AppConfig.RedisMinIdleConns))
 	} else {
-		logging.Logger.Info("connected to Redis",
+		logging.GetLogger().Info("connected to Redis",
 			zap.String("uri", AppConfig.RedisURI),
 			zap.Int("pool_size", AppConfig.RedisPoolSize),
 			zap.Int("min_idle_conns", AppConfig.RedisMinIdleConns))
@@ -251,8 +317,12 @@ func InitRedis() {
 
 // maskMongoURI masks sensitive information in MongoDB URI
 func maskMongoURI(uri string) string {
-	// Implementation to mask username/password in URI
-	return "mongodb://****:****@" + uri[strings.LastIndex(uri, "@")+1:]
+	atIndex := strings.LastIndex(uri, "@")
+	if atIndex == -1 {
+		// No credentials in URI, return as-is
+		return uri
+	}
+	return "mongodb://****:****@" + uri[atIndex+1:]
 }
 
 // ensureIndexes creates required indexes if they don't exist
@@ -267,6 +337,57 @@ func ensureIndexes() error {
 	if err := checkWriteAccess(ctx, logger); err != nil {
 		logger.Warn("cannot write to database, skipping index creation", zap.Error(err))
 		return nil
+	}
+
+	// Try to acquire distributed lock for index creation (only if Redis is available).
+	// This prevents multiple pods from trying to create indexes simultaneously.
+	//
+	// Correctness: we store a unique token as the lock value and release it with a
+	// Lua compare-and-delete script so that only the holder can release the lock,
+	// even if the TTL has already expired and another instance re-acquired it.
+	// Capture the Redis client once under the read lock so that concurrent calls
+	// to InitRedis (which holds the write lock) do not race with reads here.
+	redisClient := getRedis()
+	if redisClient != nil {
+		lockKey := "rmi:index_creation_lock"
+		lockTTL := 5 * time.Minute // Long enough for index creation, but expires if pod crashes
+		lockToken := uuid.New().String()
+
+		// Try to acquire lock using SETNX (Set if Not eXists)
+		acquired, err := redisClient.SetNX(ctx, lockKey, lockToken, lockTTL).Result()
+		if err != nil {
+			logger.Warn("failed to acquire index creation lock via Redis, proceeding anyway",
+				zap.Error(err))
+			// IMPORTANT: When Redis is unavailable, we fall through without the lock rather than
+			// skipping index creation entirely. This is a fail-open pattern that accepts the risk
+			// of concurrent index builds (which MongoDB will handle via duplicate key errors and
+			// in-progress detection) rather than leaving indexes uncreated. The defer for lock
+			// release is registered only in the else branch below, so we won't attempt to release
+			// a lock we never acquired.
+		} else if !acquired {
+			logger.Info("another instance is already creating indexes, skipping this cycle")
+			return nil
+		} else {
+			// We acquired the lock. Release it with a Lua compare-and-delete so that
+			// we never delete a lock token that belongs to a different holder (which
+			// can happen if our TTL expired mid-way and another pod acquired the lock).
+			const releaseScript = `
+				if redis.call("get", KEYS[1]) == ARGV[1] then
+					return redis.call("del", KEYS[1])
+				else
+					return 0
+				end`
+			defer func() {
+				releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer releaseCancel()
+				if err := redisClient.Eval(releaseCtx, releaseScript, []string{lockKey}, lockToken).Err(); err != nil && !errors.Is(err, redis.Nil) {
+					logger.Warn("failed to release index creation lock", zap.Error(err))
+				} else {
+					logger.Debug("released index creation lock")
+				}
+			}()
+			logger.Info("acquired distributed lock for index creation")
+		}
 	}
 
 	// Ensure citizen collection index
@@ -388,7 +509,7 @@ func checkWriteAccess(ctx context.Context, logger *zap.Logger) error {
 func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.CitizenCollection)
 
-	// Check if index already exists
+	// Check if index already exists or is being built
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
 		logger.Error("failed to list indexes", zap.Error(err))
@@ -413,6 +534,13 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 		return nil
 	}
 
+	// Check if index build is already in progress
+	if isIndexBuildInProgress(ctx, AppConfig.CitizenCollection, "cpf_1", logger) {
+		logger.Info("citizen index build already in progress, skipping",
+			zap.String("collection", AppConfig.CitizenCollection))
+		return nil
+	}
+
 	// Create unique index on cpf
 	indexModel := mongo.IndexModel{
 		Keys: bson.D{{Key: "cpf", Value: 1}},
@@ -426,6 +554,12 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 		// Check if it's a duplicate key error (another instance created it)
 		if mongo.IsDuplicateKeyError(err) {
 			logger.Info("citizen index already exists (created by another instance)",
+				zap.String("collection", AppConfig.CitizenCollection))
+			return nil
+		}
+		// Check if it's an IndexBuildAlreadyInProgress error
+		if isIndexBuildAlreadyInProgressError(err) {
+			logger.Info("citizen index build already in progress (detected via error)",
 				zap.String("collection", AppConfig.CitizenCollection))
 			return nil
 		}
@@ -1504,7 +1638,7 @@ func monitorConnectionPool() {
 		stats := MongoDB.Client().NumberSessionsInProgress()
 
 		// Log connection pool status
-		logging.Logger.Info("MongoDB connection pool status",
+		logging.GetLogger().Info("MongoDB connection pool status",
 			zap.Int("sessions_in_progress", stats),
 			zap.String("max_pool_size", "1000"),
 			zap.String("min_pool_size", "50"),
@@ -1512,14 +1646,14 @@ func monitorConnectionPool() {
 
 		// Alert if connection pool is under pressure
 		if stats > 800 { // 80% of maxPoolSize=1000
-			logging.Logger.Warn("MongoDB connection pool under pressure",
+			logging.GetLogger().Warn("MongoDB connection pool under pressure",
 				zap.Int("sessions_in_progress", stats),
 				zap.String("recommendation", "Consider increasing maxPoolSize or optimizing queries"))
 		}
 
 		// Dynamic connection pool optimization
 		if stats > 950 { // 95% of maxPoolSize=1000
-			logging.Logger.Error("MongoDB connection pool critical - immediate attention required",
+			logging.GetLogger().Error("MongoDB connection pool critical - immediate attention required",
 				zap.Int("sessions_in_progress", stats),
 				zap.String("action", "triggering connection pool optimization"))
 			optimizeConnectionPool()
@@ -1531,7 +1665,7 @@ func monitorConnectionPool() {
 func optimizeConnectionPool() {
 	// This function can be called during high load to dynamically adjust connection pool
 	// For now, it logs recommendations based on current usage patterns
-	logging.Logger.Info("Connection pool optimization recommendations",
+	logging.GetLogger().Info("Connection pool optimization recommendations",
 		zap.String("current_uri", maskMongoURI(AppConfig.MongoURI)),
 		zap.String("recommendation_1", "Current maxPoolSize=1000, minPoolSize=50 are optimal for high-write scenarios"),
 		zap.String("recommendation_2", "Using W=0 write concern for performance collections, W=1 for data integrity"),
@@ -1551,12 +1685,13 @@ func monitorRedisConnectionPool() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if Redis == nil {
+		redisClient := getRedis()
+		if redisClient == nil {
 			continue
 		}
 
 		// Get Redis pool stats
-		poolStats := Redis.PoolStats()
+		poolStats := redisClient.PoolStats()
 
 		// Determine Redis type for logging
 		redisType := "single"
@@ -1570,7 +1705,7 @@ func monitorRedisConnectionPool() {
 		totalUsagePercent := float64(poolStats.TotalConns) / float64(AppConfig.RedisPoolSize) * 100
 
 		// Log Redis connection pool status with enhanced metrics
-		logging.Logger.Info("Redis connection pool status",
+		logging.GetLogger().Info("Redis connection pool status",
 			zap.String("redis_type", redisType),
 			zap.Int("total_connections", int(poolStats.TotalConns)),
 			zap.Int("idle_connections", int(poolStats.IdleConns)),
@@ -1581,14 +1716,14 @@ func monitorRedisConnectionPool() {
 
 		// Progressive alerting based on connection usage
 		if totalUsagePercent > 90 {
-			logging.Logger.Error("Critical Redis connection usage - immediate action required",
+			logging.GetLogger().Error("Critical Redis connection usage - immediate action required",
 				zap.Float64("usage_percent", totalUsagePercent),
 				zap.Int("total_connections", int(poolStats.TotalConns)),
 				zap.Int("max_pool_size", AppConfig.RedisPoolSize),
 				zap.String("redis_type", redisType),
 				zap.String("action", "Increase REDIS_POOL_SIZE or investigate connection leaks"))
 		} else if totalUsagePercent > 80 {
-			logging.Logger.Warn("High Redis connection usage detected",
+			logging.GetLogger().Warn("High Redis connection usage detected",
 				zap.Float64("usage_percent", totalUsagePercent),
 				zap.Int("total_connections", int(poolStats.TotalConns)),
 				zap.Int("max_pool_size", AppConfig.RedisPoolSize),
@@ -1598,7 +1733,7 @@ func monitorRedisConnectionPool() {
 
 		// Alert if no idle connections available (potential bottleneck)
 		if poolStats.IdleConns == 0 && poolStats.TotalConns > 0 {
-			logging.Logger.Warn("No idle Redis connections available - potential bottleneck",
+			logging.GetLogger().Warn("No idle Redis connections available - potential bottleneck",
 				zap.Int("total_connections", int(poolStats.TotalConns)),
 				zap.String("redis_type", redisType),
 				zap.String("impact", "New requests may be queued or timeout"))
@@ -1607,7 +1742,7 @@ func monitorRedisConnectionPool() {
 		// Alert on high stale connections (connection issues)
 		stalePercent := float64(poolStats.StaleConns) / float64(poolStats.TotalConns) * 100
 		if poolStats.StaleConns > 0 && stalePercent > 20 {
-			logging.Logger.Warn("High number of stale Redis connections",
+			logging.GetLogger().Warn("High number of stale Redis connections",
 				zap.Int("stale_connections", int(poolStats.StaleConns)),
 				zap.Float64("stale_percent", stalePercent),
 				zap.String("redis_type", redisType),
@@ -1631,7 +1766,7 @@ func monitorPrimaryNodeLoad() {
 		if totalConnections > 0 {
 			primaryLoadPercentage := float64(primaryConnections) / float64(totalConnections) * 100
 
-			logging.Logger.Info("MongoDB load distribution status",
+			logging.GetLogger().Info("MongoDB load distribution status",
 				zap.Int("primary_connections", primaryConnections),
 				zap.Int("secondary_connections", secondaryConnections),
 				zap.Float64("primary_load_percentage", primaryLoadPercentage),
@@ -1639,7 +1774,7 @@ func monitorPrimaryNodeLoad() {
 
 			// Alert if primary node is under too much load
 			if primaryLoadPercentage > 70 {
-				logging.Logger.Warn("Primary node under high load - consider load distribution",
+				logging.GetLogger().Warn("Primary node under high load - consider load distribution",
 					zap.Float64("primary_load_percentage", primaryLoadPercentage),
 					zap.String("recommendation", "Verify readPreference=nearest is working, check secondary node health"))
 			}
@@ -1696,7 +1831,7 @@ func monitorReplicaSetHealth() {
 			primaryHealth := checkNodeHealth(ctx, "primary")
 			secondaryHealth := checkNodeHealth(ctx, "secondary")
 
-			logging.Logger.Info("Replica set health status",
+			logging.GetLogger().Info("Replica set health status",
 				zap.Bool("primary_healthy", primaryHealth),
 				zap.Bool("secondary_healthy", secondaryHealth),
 				zap.String("recommendation", getReplicaSetRecommendation(primaryHealth, secondaryHealth)))
@@ -1992,7 +2127,6 @@ func ensureNotificationCategoryIndex(ctx context.Context, logger *zap.Logger) er
 	// Create missing indexes
 	indexesToCreate := []mongo.IndexModel{}
 	requiredNames := []string{
-		"idx_notification_category_id",
 		"idx_notification_category_active_order",
 		"idx_notification_category_order",
 	}
@@ -2113,4 +2247,87 @@ func ensureCNAEIndex(ctx context.Context, logger *zap.Logger) error {
 	}
 
 	return nil
+}
+
+// isIndexBuildInProgress checks if an index build is currently running for a specific collection and index
+func isIndexBuildInProgress(ctx context.Context, collectionName string, indexName string, logger *zap.Logger) bool {
+	// Query MongoDB's currentOp to check for in-progress index builds
+	adminDB := MongoDB.Client().Database("admin")
+
+	// Build the fully-qualified namespace pattern (db.collection) anchored at both
+	// ends to prevent matching collections with similar names in other databases.
+	dbName := MongoDB.Name()
+	nsPattern := "^" + dbName + "\\." + collectionName + "$"
+
+	// Run currentOp command to get all current operations
+	var result bson.M
+	err := adminDB.RunCommand(ctx, bson.D{
+		{Key: "currentOp", Value: 1},
+		{Key: "op", Value: "command"},
+		{Key: "ns", Value: bson.D{{Key: "$regex", Value: nsPattern}}},
+	}).Decode(&result)
+
+	if err != nil {
+		logger.Warn("failed to check for in-progress index builds, assuming none",
+			zap.Error(err))
+		return false
+	}
+
+	// Parse operations
+	inprog, ok := result["inprog"].(bson.A)
+	if !ok {
+		return false
+	}
+
+	// Check if any operation is building the specified index
+	for _, op := range inprog {
+		opDoc, ok := op.(bson.M)
+		if !ok {
+			continue
+		}
+
+		// Check if this is an index build operation
+		if command, ok := opDoc["command"].(bson.M); ok {
+			if createIndexes, ok := command["createIndexes"].(string); ok {
+				ns, _ := opDoc["ns"].(string)
+				expectedNs := MongoDB.Name() + "." + collectionName
+				if createIndexes == collectionName && ns == expectedNs {
+					// Check if it's building our specific index
+					if indexes, ok := command["indexes"].(bson.A); ok {
+						for _, idx := range indexes {
+							if idxDoc, ok := idx.(bson.M); ok {
+								if name, ok := idxDoc["name"].(string); ok && name == indexName {
+									logger.Info("detected in-progress index build",
+										zap.String("collection", collectionName),
+										zap.String("index", indexName))
+									return true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// isIndexBuildAlreadyInProgressError checks if an error is an IndexBuildAlreadyInProgress error
+// (MongoDB error code 117). It uses errors.As so that wrapped errors are handled correctly.
+func isIndexBuildAlreadyInProgressError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// MongoDB error code 117 is IndexBuildAlreadyInProgress.
+	// Use errors.As so that wrapped error types (e.g. from the driver's enrichment) are matched.
+	var cmdErr mongo.CommandError
+	if errors.As(err, &cmdErr) {
+		return cmdErr.Code == 117
+	}
+	// Also check error message as fallback for cases the driver surfaces as plain errors.
+	errMsg := err.Error()
+	return strings.Contains(errMsg, "IndexBuildAlreadyInProgress") ||
+		strings.Contains(errMsg, "Index build already in progress") ||
+		strings.Contains(errMsg, "index build already in progress")
 }

@@ -1,0 +1,1046 @@
+package handlers
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+func setupNotificationPreferencesHandlersTest(t *testing.T) (*NotificationPreferencesHandlers, *gin.Engine, func()) {
+	mongoURI := os.Getenv("MONGODB_URI")
+	if mongoURI == "" {
+		t.Skip("Skipping notification preferences handlers tests: MONGODB_URI not set")
+	}
+
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6380"
+	}
+
+	logging.InitLogger()
+	gin.SetMode(gin.TestMode)
+
+	if config.AppConfig == nil {
+		config.AppConfig = &config.Config{}
+	}
+	config.AppConfig.UserConfigCollection = "test_user_config"
+	config.AppConfig.PhoneMappingCollection = "test_phone_mapping"
+	config.AppConfig.OptInHistoryCollection = "test_opt_in_history"
+	config.AppConfig.NotificationCategoryCollection = "test_notification_categories"
+	config.AppConfig.NotificationCategoryCacheTTL = 5 * time.Minute
+
+	ctx := context.Background()
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
+	if err != nil {
+		t.Fatalf("Failed to connect to MongoDB: %v", err)
+	}
+
+	database := client.Database("rmi_test")
+	config.MongoDB = database
+
+	// Redis setup
+	singleClient := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: os.Getenv("REDIS_PASSWORD"),
+		DB:       0,
+	})
+	config.Redis = redisclient.NewClient(singleClient)
+
+	handlers := NewNotificationPreferencesHandlers(logging.Logger)
+
+	router := gin.New()
+
+	// Middleware to inject CPF from JWT claims (simulate auth)
+	authMiddleware := func(c *gin.Context) {
+		cpf := c.Param("cpf")
+		claims := &models.JWTClaims{
+			PreferredUsername: cpf,
+		}
+		c.Set("claims", claims)
+		c.Next()
+	}
+
+	// Admin middleware for phone endpoints
+	adminMiddleware := func(c *gin.Context) {
+		claims := &models.JWTClaims{
+			PreferredUsername: "admin",
+		}
+		claims.RealmAccess.Roles = []string{"go:admin"}
+		c.Set("claims", claims)
+		c.Next()
+	}
+
+	// Citizen routes (protected by user auth)
+	citizenGroup := router.Group("/citizen/:cpf")
+	citizenGroup.Use(authMiddleware)
+	{
+		citizenGroup.GET("/notification-preferences", handlers.GetCitizenPreferences)
+		citizenGroup.PUT("/notification-preferences", handlers.UpdateCitizenPreferences)
+		citizenGroup.PATCH("/notification-preferences/categories/:category_id", handlers.UpdateCitizenCategoryPreference)
+	}
+
+	// Phone routes (admin only)
+	phoneGroup := router.Group("/phone/:phone_number")
+	phoneGroup.Use(adminMiddleware)
+	{
+		phoneGroup.GET("/notification-preferences", handlers.GetPhonePreferences)
+		phoneGroup.PUT("/notification-preferences", handlers.UpdatePhonePreferences)
+		phoneGroup.PATCH("/notification-preferences/categories/:category_id", handlers.UpdatePhoneCategoryPreference)
+	}
+
+	return handlers, router, func() {
+		// Clean up Redis
+		patterns := []string{"user_config:*", "notification_categories:*"}
+		for _, pattern := range patterns {
+			keys, _ := config.Redis.Keys(ctx, pattern).Result()
+			if len(keys) > 0 {
+				config.Redis.Del(ctx, keys...)
+			}
+		}
+
+		database.Drop(ctx)
+		client.Disconnect(ctx)
+	}
+}
+
+// Helper function to create test categories
+func createTestCategories(t *testing.T, ctx context.Context) {
+	collection := config.MongoDB.Collection(config.AppConfig.NotificationCategoryCollection)
+	categories := []interface{}{
+		bson.M{
+			"_id":            "health",
+			"name":           "Health",
+			"description":    "Health notifications",
+			"default_opt_in": true,
+			"active":         true,
+			"order":          1,
+			"created_at":     time.Now(),
+			"updated_at":     time.Now(),
+		},
+		bson.M{
+			"_id":            "education",
+			"name":           "Education",
+			"description":    "Education notifications",
+			"default_opt_in": true,
+			"active":         true,
+			"order":          2,
+			"created_at":     time.Now(),
+			"updated_at":     time.Now(),
+		},
+		bson.M{
+			"_id":            "transport",
+			"name":           "Transport",
+			"description":    "Transport notifications",
+			"default_opt_in": false,
+			"active":         true,
+			"order":          3,
+			"created_at":     time.Now(),
+			"updated_at":     time.Now(),
+		},
+	}
+
+	_, err := collection.InsertMany(ctx, categories)
+	require.NoError(t, err, "Failed to insert test categories")
+}
+
+// Helper function to create test user config
+func createTestUserConfig(t *testing.T, ctx context.Context, cpf string, optIn bool, categoryOptIns map[string]bool) {
+	collection := config.MongoDB.Collection(config.AppConfig.UserConfigCollection)
+	userConfig := bson.M{
+		"cpf":              cpf,
+		"opt_in":           optIn,
+		"category_opt_ins": categoryOptIns,
+		"first_login":      false,
+		"updated_at":       time.Now(),
+	}
+
+	_, err := collection.InsertOne(ctx, userConfig)
+	require.NoError(t, err, "Failed to insert test user config")
+}
+
+// Helper function to create test phone mapping
+func createTestPhoneMapping(t *testing.T, ctx context.Context, phoneNumber, cpf string, optIn bool, categoryOptIns map[string]bool) {
+	collection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
+	now := time.Now()
+	mapping := bson.M{
+		"phone_number":     phoneNumber,
+		"cpf":              cpf,
+		"opt_in":           optIn,
+		"category_opt_ins": categoryOptIns,
+		"status":           "active",
+		"updated_at":       now,
+	}
+
+	_, err := collection.InsertOne(ctx, mapping)
+	require.NoError(t, err, "Failed to insert test phone mapping")
+}
+
+func TestNewNotificationPreferencesHandlers(t *testing.T) {
+	handlers := NewNotificationPreferencesHandlers(logging.Logger)
+	assert.NotNil(t, handlers)
+	assert.NotNil(t, handlers.logger)
+	assert.NotNil(t, handlers.categoryService)
+}
+
+// ==================== GetCitizenPreferences Tests ====================
+
+func TestGetCitizenPreferences_InvalidCPF(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	req, _ := http.NewRequest("GET", "/citizen/invalid-cpf/notification-preferences", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var response ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Contains(t, response.Error, "Invalid CPF format")
+}
+
+func TestGetCitizenPreferences_NoConfig_ReturnsDefaults(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	cpf := "12345678901"
+	req, _ := http.NewRequest("GET", "/citizen/"+cpf+"/notification-preferences", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.NotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, cpf, response.CPF)
+	assert.True(t, response.OptIn, "Default global opt-in should be true")
+	assert.NotEmpty(t, response.CategoryOptIns, "Should have initialized category opt-ins")
+
+	// Verify default category opt-ins are set correctly
+	assert.True(t, response.CategoryOptIns["health"], "Health should default to opted-in")
+	assert.True(t, response.CategoryOptIns["education"], "Education should default to opted-in")
+	assert.False(t, response.CategoryOptIns["transport"], "Transport should default to opted-out")
+}
+
+func TestGetCitizenPreferences_ExistingConfig(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	cpf := "12345678901"
+	categoryOptIns := map[string]bool{
+		"health":    false,
+		"education": true,
+		"transport": true,
+	}
+	createTestUserConfig(t, ctx, cpf, false, categoryOptIns)
+
+	req, _ := http.NewRequest("GET", "/citizen/"+cpf+"/notification-preferences", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.NotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, cpf, response.CPF)
+	assert.False(t, response.OptIn)
+	assert.Equal(t, categoryOptIns, response.CategoryOptIns)
+}
+
+func TestGetCitizenPreferences_ConfigWithoutCategoryOptIns(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	cpf := "12345678901"
+	createTestUserConfig(t, ctx, cpf, false, map[string]bool{})
+
+	req, _ := http.NewRequest("GET", "/citizen/"+cpf+"/notification-preferences", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.NotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, cpf, response.CPF)
+	assert.False(t, response.OptIn)
+	assert.NotEmpty(t, response.CategoryOptIns, "Should initialize category opt-ins based on global opt-in")
+}
+
+// ==================== UpdateCitizenPreferences Tests ====================
+
+func TestUpdateCitizenPreferences_InvalidCPF(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	optIn := true
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		OptIn:   &optIn,
+		Channel: "app",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/invalid-cpf/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateCitizenPreferences_InvalidJSON(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	cpf := "12345678901"
+	req, _ := http.NewRequest("PUT", "/citizen/"+cpf+"/notification-preferences", bytes.NewBuffer([]byte("invalid json")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateCitizenPreferences_InvalidCategory(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	cpf := "12345678901"
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		CategoryOptIns: map[string]bool{
+			"invalid_category": true,
+		},
+		Channel: "app",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/"+cpf+"/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+
+	var response ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Contains(t, response.Error, "Invalid category")
+}
+
+func TestUpdateCitizenPreferences_CreateNewConfig(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	cpf := "12345678901"
+	optIn := false
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		OptIn:   &optIn,
+		Channel: "app",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/"+cpf+"/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.NotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, cpf, response.CPF)
+	assert.False(t, response.OptIn)
+	assert.NotEmpty(t, response.CategoryOptIns)
+}
+
+func TestUpdateCitizenPreferences_UpdateExistingConfig(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	cpf := "12345678901"
+	createTestUserConfig(t, ctx, cpf, true, map[string]bool{
+		"health":    true,
+		"education": true,
+		"transport": false,
+	})
+
+	optIn := false
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		OptIn: &optIn,
+		CategoryOptIns: map[string]bool{
+			"health": false,
+		},
+		Channel: "app",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/"+cpf+"/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.NotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, cpf, response.CPF)
+	assert.False(t, response.OptIn)
+	assert.False(t, response.CategoryOptIns["health"])
+	assert.True(t, response.CategoryOptIns["education"])
+	assert.False(t, response.CategoryOptIns["transport"])
+}
+
+func TestUpdateCitizenPreferences_OnlyCategoryOptIns(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	cpf := "12345678901"
+	createTestUserConfig(t, ctx, cpf, true, map[string]bool{
+		"health":    true,
+		"education": true,
+		"transport": false,
+	})
+
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		CategoryOptIns: map[string]bool{
+			"transport": true,
+		},
+		Channel: "app",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/"+cpf+"/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.NotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.True(t, response.OptIn, "Global opt-in should not change")
+	assert.True(t, response.CategoryOptIns["transport"], "Transport should be updated")
+}
+
+func TestUpdateCitizenPreferences_CreatesOptInHistory(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	cpf := "12345678901"
+	createTestUserConfig(t, ctx, cpf, true, map[string]bool{
+		"health": true,
+	})
+
+	optIn := false
+	reason := "User preference"
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		OptIn:   &optIn,
+		Channel: "app",
+		Reason:  &reason,
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/citizen/"+cpf+"/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify opt-in history was created
+	collection := config.MongoDB.Collection(config.AppConfig.OptInHistoryCollection)
+	var history models.OptInHistory
+	err := collection.FindOne(ctx, bson.M{"cpf": cpf, "scope": models.OptInScopeGlobal}).Decode(&history)
+	require.NoError(t, err)
+
+	assert.Equal(t, cpf, history.CPF)
+	assert.Equal(t, models.OptInActionOptOut, history.Action)
+	assert.Equal(t, models.OptInScopeGlobal, history.Scope)
+	assert.Equal(t, "app", history.Channel)
+	assert.NotNil(t, history.Reason)
+	assert.Equal(t, reason, *history.Reason)
+}
+
+// ==================== UpdateCitizenCategoryPreference Tests ====================
+
+func TestUpdateCitizenCategoryPreference_InvalidCPF(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	reqBody := models.UpdateCategoryPreferenceRequest{
+		OptIn:   true,
+		Channel: "app",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PATCH", "/citizen/invalid-cpf/notification-preferences/categories/health", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateCitizenCategoryPreference_InvalidCategory(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	cpf := "12345678901"
+	reqBody := models.UpdateCategoryPreferenceRequest{
+		OptIn:   true,
+		Channel: "app",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PATCH", "/citizen/"+cpf+"/notification-preferences/categories/invalid_category", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+}
+
+func TestUpdateCitizenCategoryPreference_Success(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	cpf := "12345678901"
+	createTestUserConfig(t, ctx, cpf, true, map[string]bool{
+		"health":    true,
+		"education": true,
+		"transport": false,
+	})
+
+	reqBody := models.UpdateCategoryPreferenceRequest{
+		OptIn:   true,
+		Channel: "app",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PATCH", "/citizen/"+cpf+"/notification-preferences/categories/transport", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.NotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.True(t, response.CategoryOptIns["transport"])
+	assert.True(t, response.CategoryOptIns["health"])
+	assert.True(t, response.CategoryOptIns["education"])
+}
+
+func TestUpdateCitizenCategoryPreference_CreateNewConfig(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	cpf := "12345678901"
+	reqBody := models.UpdateCategoryPreferenceRequest{
+		OptIn:   false,
+		Channel: "app",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PATCH", "/citizen/"+cpf+"/notification-preferences/categories/health", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.NotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.False(t, response.CategoryOptIns["health"])
+}
+
+// ==================== GetPhonePreferences Tests ====================
+
+func TestGetPhonePreferences_InvalidPhone(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	req, _ := http.NewRequest("GET", "/phone/invalid/notification-preferences", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGetPhonePreferences_NotFound(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	req, _ := http.NewRequest("GET", "/phone/5521999999999/notification-preferences", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestGetPhonePreferences_Success(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	phoneNumber := "5521999999999"
+	cpf := "12345678901"
+	categoryOptIns := map[string]bool{
+		"health":    true,
+		"education": false,
+		"transport": true,
+	}
+	createTestPhoneMapping(t, ctx, phoneNumber, cpf, true, categoryOptIns)
+
+	req, _ := http.NewRequest("GET", "/phone/5521999999999/notification-preferences", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.PhoneNotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "5521999999999", response.PhoneNumber)
+	assert.True(t, response.OptIn)
+	assert.Equal(t, categoryOptIns, response.CategoryOptIns)
+}
+
+func TestGetPhonePreferences_WithoutCategoryOptIns(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	phoneNumber := "5521999999999"
+	cpf := "12345678901"
+	createTestPhoneMapping(t, ctx, phoneNumber, cpf, false, map[string]bool{})
+
+	req, _ := http.NewRequest("GET", "/phone/5521999999999/notification-preferences", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.PhoneNotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.False(t, response.OptIn)
+	assert.NotEmpty(t, response.CategoryOptIns, "Should initialize category opt-ins")
+}
+
+// ==================== UpdatePhonePreferences Tests ====================
+
+func TestUpdatePhonePreferences_InvalidPhone(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	optIn := true
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		OptIn:   &optIn,
+		Channel: "whatsapp",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/phone/invalid/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdatePhonePreferences_NotFound(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	optIn := true
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		OptIn:   &optIn,
+		Channel: "whatsapp",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/phone/5521999999999/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestUpdatePhonePreferences_Success(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	phoneNumber := "5521999999999"
+	cpf := "12345678901"
+	createTestPhoneMapping(t, ctx, phoneNumber, cpf, true, map[string]bool{
+		"health":    true,
+		"education": true,
+		"transport": false,
+	})
+
+	optIn := false
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		OptIn: &optIn,
+		CategoryOptIns: map[string]bool{
+			"health": false,
+		},
+		Channel: "whatsapp",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/phone/5521999999999/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.PhoneNotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "5521999999999", response.PhoneNumber)
+	assert.False(t, response.OptIn)
+	assert.False(t, response.CategoryOptIns["health"])
+}
+
+func TestUpdatePhonePreferences_SyncsToCPF(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	phoneNumber := "5521999999999"
+	cpf := "12345678901"
+	createTestPhoneMapping(t, ctx, phoneNumber, cpf, true, map[string]bool{
+		"health": true,
+	})
+	createTestUserConfig(t, ctx, cpf, true, map[string]bool{
+		"health": true,
+	})
+
+	optIn := false
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		OptIn:   &optIn,
+		Channel: "whatsapp",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/phone/5521999999999/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify CPF preferences were also updated
+	// Note: This is done async via cache service, so we check the write cache
+	time.Sleep(100 * time.Millisecond) // Brief wait for async operations
+}
+
+func TestUpdatePhonePreferences_InvalidCategory(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	phoneNumber := "5521999999999"
+	cpf := "12345678901"
+	createTestPhoneMapping(t, ctx, phoneNumber, cpf, true, map[string]bool{})
+
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		CategoryOptIns: map[string]bool{
+			"invalid_category": true,
+		},
+		Channel: "whatsapp",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/phone/5521999999999/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+}
+
+func TestUpdatePhonePreferences_CreatesOptInHistory(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	phoneNumber := "5521999999999"
+	cpf := "12345678901"
+	createTestPhoneMapping(t, ctx, phoneNumber, cpf, true, map[string]bool{
+		"health": true,
+	})
+
+	optIn := false
+	reason := "User opted out via WhatsApp"
+	reqBody := models.UpdateNotificationPreferencesRequest{
+		OptIn:   &optIn,
+		Channel: "whatsapp",
+		Reason:  &reason,
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PUT", "/phone/5521999999999/notification-preferences", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify opt-in history was created
+	collection := config.MongoDB.Collection(config.AppConfig.OptInHistoryCollection)
+	var history models.OptInHistory
+	err := collection.FindOne(ctx, bson.M{"cpf": cpf, "phone_number": phoneNumber, "scope": models.OptInScopeGlobal}).Decode(&history)
+	require.NoError(t, err)
+
+	assert.Equal(t, cpf, history.CPF)
+	assert.Equal(t, phoneNumber, history.PhoneNumber)
+	assert.Equal(t, models.OptInActionOptOut, history.Action)
+	assert.Equal(t, "whatsapp", history.Channel)
+}
+
+// ==================== UpdatePhoneCategoryPreference Tests ====================
+
+func TestUpdatePhoneCategoryPreference_InvalidCategory(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	reqBody := models.UpdateCategoryPreferenceRequest{
+		OptIn:   true,
+		Channel: "whatsapp",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PATCH", "/phone/5521999999999/notification-preferences/categories/invalid_category", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+}
+
+func TestUpdatePhoneCategoryPreference_PhoneNotFound(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	reqBody := models.UpdateCategoryPreferenceRequest{
+		OptIn:   true,
+		Channel: "whatsapp",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PATCH", "/phone/5521999999999/notification-preferences/categories/health", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestUpdatePhoneCategoryPreference_Success(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	phoneNumber := "5521999999999"
+	cpf := "12345678901"
+	createTestPhoneMapping(t, ctx, phoneNumber, cpf, true, map[string]bool{
+		"health":    true,
+		"education": true,
+		"transport": false,
+	})
+
+	reqBody := models.UpdateCategoryPreferenceRequest{
+		OptIn:   true,
+		Channel: "whatsapp",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PATCH", "/phone/5521999999999/notification-preferences/categories/transport", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.PhoneNotificationPreferencesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.True(t, response.CategoryOptIns["transport"])
+}
+
+func TestUpdatePhoneCategoryPreference_SyncsToCPF(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	phoneNumber := "5521999999999"
+	cpf := "12345678901"
+	createTestPhoneMapping(t, ctx, phoneNumber, cpf, true, map[string]bool{
+		"health":    true,
+		"transport": false,
+	})
+	createTestUserConfig(t, ctx, cpf, true, map[string]bool{
+		"health":    true,
+		"transport": false,
+	})
+
+	reqBody := models.UpdateCategoryPreferenceRequest{
+		OptIn:   true,
+		Channel: "whatsapp",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PATCH", "/phone/5521999999999/notification-preferences/categories/transport", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Brief wait for async sync operations
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestUpdatePhoneCategoryPreference_CreatesOptInHistory(t *testing.T) {
+	_, router, cleanup := setupNotificationPreferencesHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	createTestCategories(t, ctx)
+
+	phoneNumber := "5521999999999"
+	cpf := "12345678901"
+	createTestPhoneMapping(t, ctx, phoneNumber, cpf, true, map[string]bool{
+		"transport": false,
+	})
+
+	reqBody := models.UpdateCategoryPreferenceRequest{
+		OptIn:   true,
+		Channel: "whatsapp",
+	}
+
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("PATCH", "/phone/5521999999999/notification-preferences/categories/transport", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify opt-in history was created
+	collection := config.MongoDB.Collection(config.AppConfig.OptInHistoryCollection)
+	categoryID := "transport"
+	var history models.OptInHistory
+	err := collection.FindOne(ctx, bson.M{
+		"cpf":          cpf,
+		"phone_number": phoneNumber,
+		"scope":        models.OptInScopeCategory,
+		"category":     categoryID,
+	}).Decode(&history)
+	require.NoError(t, err)
+
+	assert.Equal(t, cpf, history.CPF)
+	assert.Equal(t, phoneNumber, history.PhoneNumber)
+	assert.Equal(t, models.OptInActionCategoryUpdate, history.Action)
+	assert.Equal(t, models.OptInScopeCategory, history.Scope)
+	assert.NotNil(t, history.Category)
+	assert.Equal(t, categoryID, *history.Category)
+}

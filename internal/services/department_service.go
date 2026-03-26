@@ -2,6 +2,9 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -18,15 +21,17 @@ import (
 
 // DepartmentService handles department business logic
 type DepartmentService struct {
-	database *mongo.Database
-	logger   *logging.SafeLogger
+	database    *mongo.Database
+	dataManager *DataManager
+	logger      *logging.SafeLogger
 }
 
 // NewDepartmentService creates a new department service instance
-func NewDepartmentService(database *mongo.Database, logger *logging.SafeLogger) *DepartmentService {
+func NewDepartmentService(database *mongo.Database, dataManager *DataManager, logger *logging.SafeLogger) *DepartmentService {
 	return &DepartmentService{
-		database: database,
-		logger:   logger,
+		database:    database,
+		dataManager: dataManager,
+		logger:      logger,
 	}
 }
 
@@ -37,9 +42,17 @@ var DepartmentServiceInstance *DepartmentService
 func InitDepartmentService() {
 	logger := zap.L().Named("department_service")
 
-	DepartmentServiceInstance = NewDepartmentService(config.MongoDB, &logging.SafeLogger{})
+	// Create DataManager for cache-aware operations if Redis is available
+	var dataManager *DataManager
+	if config.Redis != nil {
+		dataManager = NewDataManager(config.Redis, config.MongoDB, &logging.SafeLogger{})
+		logger.Info("department service initialized successfully with DataManager caching")
+	} else {
+		logger.Warn("Redis not available, department service will operate without caching")
+	}
 
-	logger.Info("department service initialized successfully")
+	DepartmentServiceInstance = NewDepartmentService(config.MongoDB, dataManager, &logging.SafeLogger{})
+
 	logger.Info("indexes will be managed by global database maintenance system")
 }
 
@@ -55,10 +68,37 @@ type DepartmentFilters struct {
 	PerPage    int
 }
 
-// GetDepartmentByID retrieves a department by its cd_ua
+// GetDepartmentByID retrieves a department by its cd_ua with DataManager caching
 func (s *DepartmentService) GetDepartmentByID(ctx context.Context, cdUA string) (*models.Department, error) {
-	collection := s.database.Collection(config.AppConfig.DepartmentCollection)
+	// If DataManager is not available (Redis is down), fall back to direct MongoDB query
+	if s.dataManager == nil {
+		s.logger.Debug("DataManager not available, querying MongoDB directly",
+			zap.String("cd_ua", cdUA))
+		return s.getDepartmentFromMongoDB(ctx, cdUA)
+	}
 
+	// Use DataManager for cache-aware read
+	// DataManager.Read signature: Read(ctx, key, collection, dataType, result)
+	var rawDoc bson.M
+	err := s.dataManager.Read(ctx, cdUA, config.AppConfig.DepartmentCollection, "department", &rawDoc)
+	if err != nil {
+		if err == mongo.ErrNoDocuments || err == ErrDocumentNotFound {
+			return nil, fmt.Errorf("department not found with cd_ua: %s", cdUA)
+		}
+		s.logger.Error("failed to get department by ID",
+			zap.String("cd_ua", cdUA),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to get department: %w", err)
+	}
+
+	// Convert raw BSON to Department model with type handling
+	department := s.convertRawToDepartment(rawDoc)
+	return &department, nil
+}
+
+// getDepartmentFromMongoDB queries MongoDB directly without caching (fallback when Redis unavailable)
+func (s *DepartmentService) getDepartmentFromMongoDB(ctx context.Context, cdUA string) (*models.Department, error) {
+	collection := s.database.Collection(config.AppConfig.DepartmentCollection)
 	filter := bson.M{"cd_ua": cdUA}
 
 	var rawDoc bson.M
@@ -67,7 +107,7 @@ func (s *DepartmentService) GetDepartmentByID(ctx context.Context, cdUA string) 
 		if err == mongo.ErrNoDocuments {
 			return nil, fmt.Errorf("department not found with cd_ua: %s", cdUA)
 		}
-		s.logger.Error("failed to get department by ID",
+		s.logger.Error("failed to get department by ID from MongoDB",
 			zap.String("cd_ua", cdUA),
 			zap.Error(err))
 		return nil, fmt.Errorf("failed to get department: %w", err)
@@ -80,6 +120,22 @@ func (s *DepartmentService) GetDepartmentByID(ctx context.Context, cdUA string) 
 
 // ListDepartments retrieves a paginated list of departments with optional filters
 func (s *DepartmentService) ListDepartments(ctx context.Context, filters DepartmentFilters) (*models.DepartmentListResponse, error) {
+	// Try to get from cache if DataManager is available
+	if s.dataManager != nil {
+		cacheKey := s.buildListCacheKey(filters)
+		var cachedResponse models.DepartmentListResponse
+
+		// Try to read from cache
+		cacheKeyFull := fmt.Sprintf("department:list:%s", cacheKey)
+		if data, err := s.dataManager.redis.Get(ctx, cacheKeyFull).Result(); err == nil {
+			if err := json.Unmarshal([]byte(data), &cachedResponse); err == nil {
+				s.logger.Debug("department list read from cache",
+					zap.String("cache_key", cacheKey))
+				return &cachedResponse, nil
+			}
+		}
+	}
+
 	collection := s.database.Collection(config.AppConfig.DepartmentCollection)
 
 	// Build filter query
@@ -179,7 +235,7 @@ func (s *DepartmentService) ListDepartments(ctx context.Context, filters Departm
 		totalPages++
 	}
 
-	return &models.DepartmentListResponse{
+	response := &models.DepartmentListResponse{
 		Departments: departmentResponses,
 		Pagination: models.PaginationInfo{
 			Page:       filters.Page,
@@ -188,20 +244,39 @@ func (s *DepartmentService) ListDepartments(ctx context.Context, filters Departm
 			TotalPages: totalPages,
 		},
 		TotalCount: totalCount,
-	}, nil
+	}
+
+	// Cache the response if DataManager is available
+	if s.dataManager != nil {
+		cacheKey := s.buildListCacheKey(filters)
+		cacheKeyFull := fmt.Sprintf("department:list:%s", cacheKey)
+		if responseBytes, err := json.Marshal(response); err == nil {
+			// Cache for 3 hours (same as individual department TTL)
+			s.dataManager.redis.Set(ctx, cacheKeyFull, string(responseBytes), 3*time.Hour)
+			s.logger.Debug("department list cached",
+				zap.String("cache_key", cacheKey))
+		}
+	}
+
+	return response, nil
 }
 
 // convertRawToDepartment converts a raw BSON document to a Department model with type handling
 func (s *DepartmentService) convertRawToDepartment(rawDoc bson.M) models.Department {
 	dept := models.Department{}
 
-	// Handle _id field
+	// Handle _id field (can be ObjectID, string, or map from JSON)
 	if id, ok := rawDoc["_id"]; ok {
 		switch v := id.(type) {
 		case string:
 			dept.ID = v
 		case primitive.ObjectID:
 			dept.ID = v.Hex()
+		case map[string]interface{}:
+			// JSON representation of ObjectID: {"$oid": "hex_string"}
+			if oid, ok := v["$oid"].(string); ok {
+				dept.ID = oid
+			}
 		}
 	}
 
@@ -228,7 +303,7 @@ func (s *DepartmentService) convertRawToDepartment(rawDoc bson.M) models.Departm
 		dept.OrdemRelativa = ordemRelativa
 	}
 
-	// Handle nivel field (can be int or string)
+	// Handle nivel field (can be int, string, or float64 after JSON round-trip)
 	if nivel, ok := rawDoc["nivel"]; ok {
 		switch v := nivel.(type) {
 		case int:
@@ -236,6 +311,8 @@ func (s *DepartmentService) convertRawToDepartment(rawDoc bson.M) models.Departm
 		case int32:
 			dept.Nivel = int(v)
 		case int64:
+			dept.Nivel = int(v)
+		case float64:
 			dept.Nivel = int(v)
 		case string:
 			// Try to parse string to int
@@ -250,7 +327,7 @@ func (s *DepartmentService) convertRawToDepartment(rawDoc bson.M) models.Departm
 		dept.Msg = &msg
 	}
 
-	// Handle optional updated_at field
+	// Handle optional updated_at field (can be primitive.DateTime, time.Time, string, or map from JSON)
 	if updatedAt, ok := rawDoc["updated_at"]; ok {
 		switch v := updatedAt.(type) {
 		case primitive.DateTime:
@@ -258,8 +335,66 @@ func (s *DepartmentService) convertRawToDepartment(rawDoc bson.M) models.Departm
 			dept.UpdatedAt = &t
 		case time.Time:
 			dept.UpdatedAt = &v
+		case string:
+			// JSON representation of time: ISO 8601 string
+			if t, err := time.Parse(time.RFC3339, v); err == nil {
+				dept.UpdatedAt = &t
+			} else if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+				dept.UpdatedAt = &t
+			}
+		case map[string]interface{}:
+			// JSON representation of DateTime: {"$date": "iso_string"} or {"$date": {"$numberLong": "ms"}}
+			if dateVal, ok := v["$date"]; ok {
+				switch dv := dateVal.(type) {
+				case string:
+					if t, err := time.Parse(time.RFC3339, dv); err == nil {
+						dept.UpdatedAt = &t
+					}
+				case map[string]interface{}:
+					if ms, ok := dv["$numberLong"].(string); ok {
+						if msInt, err := strconv.ParseInt(ms, 10, 64); err == nil {
+							t := time.Unix(0, msInt*int64(time.Millisecond))
+							dept.UpdatedAt = &t
+						}
+					}
+				case float64:
+					t := time.Unix(0, int64(dv)*int64(time.Millisecond))
+					dept.UpdatedAt = &t
+				}
+			}
 		}
 	}
 
 	return dept
+}
+
+// buildListCacheKey creates a deterministic cache key from filter parameters
+func (s *DepartmentService) buildListCacheKey(filters DepartmentFilters) string {
+	// Create a structured representation of filters for hashing
+	keyData := struct {
+		ParentID   string
+		MinLevel   *int
+		MaxLevel   *int
+		ExactLevel *int
+		SiglaUA    string
+		Search     string
+		Page       int
+		PerPage    int
+	}{
+		ParentID:   filters.ParentID,
+		MinLevel:   filters.MinLevel,
+		MaxLevel:   filters.MaxLevel,
+		ExactLevel: filters.ExactLevel,
+		SiglaUA:    filters.SiglaUA,
+		Search:     filters.Search,
+		Page:       filters.Page,
+		PerPage:    filters.PerPage,
+	}
+
+	// Marshal to JSON for consistent representation
+	jsonBytes, _ := json.Marshal(keyData)
+
+	// Hash the JSON to create a shorter, deterministic key
+	hash := sha256.Sum256(jsonBytes)
+	return hex.EncodeToString(hash[:])
 }

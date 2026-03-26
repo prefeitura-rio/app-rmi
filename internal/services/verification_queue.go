@@ -129,13 +129,13 @@ func (vq *VerificationQueue) processJob(job VerificationJob, workerID int) {
 	if err != nil {
 		result.Success = false
 		result.Error = err.Error()
-		logging.Logger.Error("verification failed",
+		logging.GetLogger().Error("verification failed",
 			zap.Int("worker_id", workerID),
 			zap.String("phone_number", job.PhoneNumber),
 			zap.Error(err))
 	} else {
 		result.Success = true
-		logging.Logger.Info("verification successful",
+		logging.GetLogger().Info("verification successful",
 			zap.Int("worker_id", workerID),
 			zap.String("phone_number", job.PhoneNumber))
 	}
@@ -146,7 +146,7 @@ func (vq *VerificationQueue) processJob(job VerificationJob, workerID int) {
 		// Result sent successfully
 	default:
 		// Results channel is full, log warning
-		logging.Logger.Warn("results channel full, dropping result")
+		logging.GetLogger().Warn("results channel full, dropping result")
 	}
 
 	// Update processing time stats
@@ -166,6 +166,13 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Normalize phone number for database lookup
+	components, err := utils.ParsePhoneNumber(job.PhoneNumber)
+	if err != nil {
+		return fmt.Errorf("invalid phone number format: %w", err)
+	}
+	normalizedPhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+
 	// Find the verification code in the database
 	collection := config.MongoDB.Collection(config.AppConfig.PhoneVerificationCollection)
 
@@ -175,8 +182,8 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 		Used      bool      `bson:"used"`
 	}
 
-	err := collection.FindOne(ctx, bson.M{
-		"phone_number": job.PhoneNumber,
+	err = collection.FindOne(ctx, bson.M{
+		"phone_number": normalizedPhone,
 		"code":         job.Code,
 		"used":         false,
 		"expires_at":   bson.M{"$gt": time.Now()},
@@ -191,7 +198,7 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 
 	// Mark code as used
 	_, err = collection.UpdateOne(ctx,
-		bson.M{"phone_number": job.PhoneNumber, "code": job.Code},
+		bson.M{"phone_number": normalizedPhone, "code": job.Code},
 		bson.M{"$set": bson.M{"used": true, "used_at": time.Now()}},
 	)
 	if err != nil {
@@ -201,7 +208,7 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 	// Update phone mapping to verified
 	phoneCollection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
 	_, err = phoneCollection.UpdateOne(ctx,
-		bson.M{"phone_number": job.PhoneNumber},
+		bson.M{"phone_number": normalizedPhone},
 		bson.M{"$set": bson.M{
 			"verified":    true,
 			"verified_at": time.Now(),
@@ -215,13 +222,13 @@ func (vq *VerificationQueue) validateVerificationCode(job VerificationJob) error
 	// Log audit event
 	auditCtx := utils.GetAuditContextFromRequest(job.CPF, job.UserID, job.RequestID, job.IPAddress, job.UserAgent)
 	if err := utils.LogPhoneVerificationSuccess(ctx, auditCtx, job.PhoneNumber); err != nil {
-		logging.Logger.Warn("failed to log phone verification success", zap.Error(err))
+		logging.GetLogger().Warn("failed to log phone verification success", zap.Error(err))
 	}
 
 	// Invalidate related caches
 	cacheKey := fmt.Sprintf("phone:%s:status", job.PhoneNumber)
 	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
-		logging.Logger.Warn("failed to invalidate phone status cache", zap.Error(err))
+		logging.GetLogger().Warn("failed to invalidate phone status cache", zap.Error(err))
 	}
 
 	return nil
@@ -242,7 +249,7 @@ func (vq *VerificationQueue) processResults() {
 				// Channel closed, process remaining batch and exit
 				if len(batch) > 0 {
 					if err := vq.processBatchResults(batch); err != nil {
-						logging.Logger.Error("failed to process final batch", zap.Error(err))
+						logging.GetLogger().Error("failed to process final batch", zap.Error(err))
 					}
 				}
 				return
@@ -252,7 +259,7 @@ func (vq *VerificationQueue) processResults() {
 			// Process batch when it reaches batchSize items
 			if len(batch) >= batchSize {
 				if err := vq.processBatchResults(batch); err != nil {
-					logging.Logger.Error("failed to process batch", zap.Error(err))
+					logging.GetLogger().Error("failed to process batch", zap.Error(err))
 				}
 				batch = batch[:0] // Reset slice but keep capacity
 			}
@@ -260,7 +267,7 @@ func (vq *VerificationQueue) processResults() {
 			// Process any remaining items in batch
 			if len(batch) > 0 {
 				if err := vq.processBatchResults(batch); err != nil {
-					logging.Logger.Error("failed to process batch from ticker", zap.Error(err))
+					logging.GetLogger().Error("failed to process batch from ticker", zap.Error(err))
 				}
 				batch = batch[:0] // Reset slice but keep capacity
 			}
@@ -268,7 +275,7 @@ func (vq *VerificationQueue) processResults() {
 			// Process remaining batch before exiting
 			if len(batch) > 0 {
 				if err := vq.processBatchResults(batch); err != nil {
-					logging.Logger.Error("failed to process final batch before shutdown", zap.Error(err))
+					logging.GetLogger().Error("failed to process final batch before shutdown", zap.Error(err))
 				}
 			}
 			return
@@ -304,7 +311,7 @@ func (vq *VerificationQueue) processBatchResults(results []VerificationResult) e
 		}
 	}
 
-	logging.Logger.Info("processing verification results batch",
+	logging.GetLogger().Info("processing verification results batch",
 		zap.Int("total_results", len(results)),
 		zap.Int("successful", successCount),
 		zap.Int("failed", failureCount))
@@ -328,13 +335,13 @@ func (vq *VerificationQueue) processBatchResults(results []VerificationResult) e
 		BulkWrite(context.Background(), operations, opts)
 
 	if err != nil {
-		logging.Logger.Error("failed to bulk update verification results",
+		logging.GetLogger().Error("failed to bulk update verification results",
 			zap.Error(err),
 			zap.Int("results_count", len(results)))
 		return fmt.Errorf("failed to bulk update verification results: %w", err)
 	}
 
-	logging.Logger.Info("bulk verification results update completed",
+	logging.GetLogger().Info("bulk verification results update completed",
 		zap.Int("results_count", len(results)))
 
 	return nil
@@ -354,12 +361,12 @@ func (vq *VerificationQueue) BulkEnqueueJobs(jobs []VerificationJob) error {
 			atomic.AddInt64(&vq.processingStats.JobsEnqueued, 1)
 		default:
 			// Queue is full, log warning
-			logging.Logger.Warn("verification queue is full, job dropped",
+			logging.GetLogger().Warn("verification queue is full, job dropped",
 				zap.String("phone_number", job.PhoneNumber))
 		}
 	}
 
-	logging.Logger.Info("bulk job enqueue completed",
+	logging.GetLogger().Info("bulk job enqueue completed",
 		zap.Int("total_jobs", len(jobs)),
 		zap.Int("enqueued_jobs", enqueued),
 		zap.Int("dropped_jobs", len(jobs)-enqueued))
@@ -397,10 +404,10 @@ func (vq *VerificationQueue) GetStats() ProcessingStats {
 
 // Stop gracefully stops the verification queue
 func (vq *VerificationQueue) Stop() {
-	vq.cancel()
-	close(vq.queue)
-	close(vq.results)
-	vq.wg.Wait()
+	vq.cancel()       // Signal workers to stop via context
+	close(vq.queue)   // Close queue to unblock workers waiting on queue
+	vq.wg.Wait()      // Wait for all workers to finish (they might still be sending on results)
+	close(vq.results) // Now safe to close results channel
 }
 
 // IsHealthy checks if the queue is healthy

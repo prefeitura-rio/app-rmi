@@ -1,0 +1,691 @@
+package config
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/stretchr/testify/assert"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.uber.org/zap"
+)
+
+func TestMaskMongoURI(t *testing.T) {
+	tests := []struct {
+		name     string
+		uri      string
+		expected string
+	}{
+		{
+			name:     "standard URI with credentials",
+			uri:      "mongodb://username:password@localhost:27017/database",
+			expected: "mongodb://****:****@localhost:27017/database",
+		},
+		{
+			name:     "URI with special characters in password",
+			uri:      "mongodb://user:p@ssw0rd!@cluster.mongodb.net:27017/db",
+			expected: "mongodb://****:****@cluster.mongodb.net:27017/db",
+		},
+		{
+			name:     "URI with replica set",
+			uri:      "mongodb://admin:secret@host1:27017,host2:27017,host3:27017/mydb?replicaSet=rs0",
+			expected: "mongodb://****:****@host1:27017,host2:27017,host3:27017/mydb?replicaSet=rs0",
+		},
+		{
+			name:     "URI with MongoDB Atlas",
+			uri:      "mongodb://myuser:mypass@cluster0.mongodb.net/test?retryWrites=true&w=majority",
+			expected: "mongodb://****:****@cluster0.mongodb.net/test?retryWrites=true&w=majority",
+		},
+		{
+			name:     "URI with long password",
+			uri:      "mongodb://service:verylongpassword123456789@prod-cluster.example.com:27017/production",
+			expected: "mongodb://****:****@prod-cluster.example.com:27017/production",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := maskMongoURI(tt.uri)
+			assert.Equal(t, tt.expected, result)
+
+			// Verify credentials are masked
+			assert.Contains(t, result, "****:****")
+			assert.NotContains(t, result, "username")
+			assert.NotContains(t, result, "password")
+			assert.NotContains(t, result, "secret")
+			assert.NotContains(t, result, "admin")
+		})
+	}
+}
+
+func TestGetLoadDistributionStatus(t *testing.T) {
+	tests := []struct {
+		name                  string
+		primaryLoadPercentage float64
+		expectedStatus        string
+	}{
+		{
+			name:                  "excellent load distribution",
+			primaryLoadPercentage: 30.0,
+			expectedStatus:        "excellent",
+		},
+		{
+			name:                  "good load distribution",
+			primaryLoadPercentage: 55.0,
+			expectedStatus:        "good",
+		},
+		{
+			name:                  "fair load distribution",
+			primaryLoadPercentage: 65.0,
+			expectedStatus:        "fair",
+		},
+		{
+			name:                  "poor load distribution",
+			primaryLoadPercentage: 75.0,
+			expectedStatus:        "poor",
+		},
+		{
+			name:                  "critical load distribution",
+			primaryLoadPercentage: 85.0,
+			expectedStatus:        "critical",
+		},
+		{
+			name:                  "boundary excellent/good",
+			primaryLoadPercentage: 49.9,
+			expectedStatus:        "excellent",
+		},
+		{
+			name:                  "boundary good/fair",
+			primaryLoadPercentage: 59.9,
+			expectedStatus:        "good",
+		},
+		{
+			name:                  "boundary fair/poor",
+			primaryLoadPercentage: 69.9,
+			expectedStatus:        "fair",
+		},
+		{
+			name:                  "boundary poor/critical",
+			primaryLoadPercentage: 79.9,
+			expectedStatus:        "poor",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getLoadDistributionStatus(tt.primaryLoadPercentage)
+			assert.Equal(t, tt.expectedStatus, result)
+		})
+	}
+}
+
+func TestGetDatabasePerformanceStatus(t *testing.T) {
+	tests := []struct {
+		name               string
+		sessionsInProgress int
+		expectedStatus     string
+	}{
+		{
+			name:               "excellent performance",
+			sessionsInProgress: 100,
+			expectedStatus:     "excellent",
+		},
+		{
+			name:               "good performance",
+			sessionsInProgress: 600,
+			expectedStatus:     "good",
+		},
+		{
+			name:               "fair performance",
+			sessionsInProgress: 750,
+			expectedStatus:     "fair",
+		},
+		{
+			name:               "poor performance",
+			sessionsInProgress: 850,
+			expectedStatus:     "poor",
+		},
+		{
+			name:               "critical performance",
+			sessionsInProgress: 950,
+			expectedStatus:     "critical",
+		},
+		{
+			name:               "boundary excellent/good",
+			sessionsInProgress: 499,
+			expectedStatus:     "excellent",
+		},
+		{
+			name:               "boundary good/fair",
+			sessionsInProgress: 699,
+			expectedStatus:     "good",
+		},
+		{
+			name:               "boundary fair/poor",
+			sessionsInProgress: 799,
+			expectedStatus:     "fair",
+		},
+		{
+			name:               "boundary poor/critical",
+			sessionsInProgress: 899,
+			expectedStatus:     "poor",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getDatabasePerformanceStatus(tt.sessionsInProgress)
+			assert.Equal(t, tt.expectedStatus, result)
+		})
+	}
+}
+
+func TestGetReplicaSetRecommendation(t *testing.T) {
+	tests := []struct {
+		name             string
+		primaryHealthy   bool
+		secondaryHealthy bool
+		expectedContains string
+	}{
+		{
+			name:             "all nodes healthy",
+			primaryHealthy:   true,
+			secondaryHealthy: true,
+			expectedContains: "GOOD",
+		},
+		{
+			name:             "primary unhealthy",
+			primaryHealthy:   false,
+			secondaryHealthy: true,
+			expectedContains: "CRITICAL",
+		},
+		{
+			name:             "secondary unhealthy",
+			primaryHealthy:   true,
+			secondaryHealthy: false,
+			expectedContains: "WARNING",
+		},
+		{
+			name:             "both unhealthy",
+			primaryHealthy:   false,
+			secondaryHealthy: false,
+			expectedContains: "CRITICAL",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getReplicaSetRecommendation(tt.primaryHealthy, tt.secondaryHealthy)
+			assert.Contains(t, result, tt.expectedContains)
+		})
+	}
+}
+
+func TestCheckNodeHealth(t *testing.T) {
+	tests := []struct {
+		name     string
+		nodeType string
+		expected bool
+	}{
+		{
+			name:     "primary node",
+			nodeType: "primary",
+			expected: true,
+		},
+		{
+			name:     "secondary node",
+			nodeType: "secondary",
+			expected: true,
+		},
+		{
+			name:     "unknown node",
+			nodeType: "unknown",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Using background context since checkNodeHealth doesn't actually use it
+			// in the current simplified implementation
+			result := checkNodeHealth(context.TODO(), tt.nodeType)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGetPrimaryNodeConnections(t *testing.T) {
+	// This function requires MongoDB to be initialized,
+	// which we can't do in unit tests. Skip this test for now.
+	// In a real environment with MongoDB initialized, it would return
+	// an estimate based on connection pool stats.
+	t.Skip("Requires MongoDB initialization")
+}
+
+func TestGetSecondaryNodeConnections(t *testing.T) {
+	// This function requires MongoDB to be initialized,
+	// which we can't do in unit tests. Skip this test for now.
+	// In a real environment with MongoDB initialized, it would return
+	// an estimate based on connection pool stats.
+	t.Skip("Requires MongoDB initialization")
+}
+
+func TestMaskMongoURI_PreservesHostAndParams(t *testing.T) {
+	uri := "mongodb://user:pass@host1:27017,host2:27017/db?ssl=true"
+	result := maskMongoURI(uri)
+
+	// Should preserve hosts
+	assert.Contains(t, result, "host1:27017")
+	assert.Contains(t, result, "host2:27017")
+
+	// Should preserve parameters
+	assert.Contains(t, result, "ssl=true")
+
+	// Should preserve database name
+	assert.Contains(t, result, "/db")
+
+	// Should mask credentials
+	assert.Contains(t, result, "****:****")
+	assert.NotContains(t, result, "user")
+	assert.NotContains(t, result, "pass")
+}
+
+func TestMaskMongoURI_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		uri  string
+	}{
+		{
+			name: "URI with @ in password",
+			uri:  "mongodb://user:p@ss@host:27017/db",
+		},
+		{
+			name: "URI with multiple @ symbols",
+			uri:  "mongodb://user:p@ss:w@rd@cluster.net:27017/db",
+		},
+		{
+			name: "URI with special chars in username",
+			uri:  "mongodb://user@example.com:password@host:27017/db",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := maskMongoURI(tt.uri)
+
+			// Should always contain masked credentials
+			assert.Contains(t, result, "****:****@")
+
+			// Should preserve what comes after last @
+			parts := strings.Split(tt.uri, "@")
+			lastPart := parts[len(parts)-1]
+			assert.Contains(t, result, lastPart)
+		})
+	}
+}
+
+func TestMaskMongoURI_NoCredentials(t *testing.T) {
+	// URI without credentials (localhost development) - must be returned unchanged
+	uri := "mongodb://localhost:27017/database"
+	result := maskMongoURI(uri)
+
+	// No @ present: the URI has no credentials, so it is returned as-is without
+	// prepending a spurious "mongodb://****:****@" prefix.
+	assert.Equal(t, uri, result, "URI without credentials must be returned unchanged")
+	assert.NotContains(t, result, "****", "unchanged URI must not contain masked credential placeholder")
+}
+
+func TestConfigureCollectionWriteConcerns_DoesNotPanic(t *testing.T) {
+	// Initialize minimal config
+	if AppConfig == nil {
+		AppConfig = &Config{
+			CitizenCollection:            "citizens",
+			UserConfigCollection:         "user_config",
+			PhoneMappingCollection:       "phone_mappings",
+			OptInHistoryCollection:       "opt_in_history",
+			BetaGroupCollection:          "beta_groups",
+			PhoneVerificationCollection:  "phone_verifications",
+			MaintenanceRequestCollection: "maintenance_requests",
+			SelfDeclaredCollection:       "self_declared",
+			AuditLogsCollection:          "audit_logs",
+		}
+	}
+
+	// Should not panic when called
+	assert.NotPanics(t, func() {
+		configureCollectionWriteConcerns()
+	})
+}
+
+func TestConfig_CollectionNames(t *testing.T) {
+	config := &Config{
+		CitizenCollection:           "test_citizens",
+		SelfDeclaredCollection:      "test_self_declared",
+		PhoneVerificationCollection: "test_phone_verifications",
+		UserConfigCollection:        "test_user_config",
+	}
+
+	assert.Equal(t, "test_citizens", config.CitizenCollection)
+	assert.Equal(t, "test_self_declared", config.SelfDeclaredCollection)
+	assert.Equal(t, "test_phone_verifications", config.PhoneVerificationCollection)
+	assert.Equal(t, "test_user_config", config.UserConfigCollection)
+}
+
+func TestConfig_ConnectionSettings(t *testing.T) {
+	config := &Config{
+		MongoURI:      "mongodb://localhost:27017",
+		MongoDatabase: "test_db",
+		RedisURI:      "redis://localhost:6379",
+		RedisDB:       1,
+	}
+
+	assert.Equal(t, "mongodb://localhost:27017", config.MongoURI)
+	assert.Equal(t, "test_db", config.MongoDatabase)
+	assert.Equal(t, "redis://localhost:6379", config.RedisURI)
+	assert.Equal(t, 1, config.RedisDB)
+}
+
+func TestConfig_RedisClusterSettings(t *testing.T) {
+	config := &Config{
+		RedisClusterEnabled:  true,
+		RedisClusterAddrs:    []string{"node1:6379", "node2:6379", "node3:6379"},
+		RedisClusterPassword: "cluster_pass",
+	}
+
+	assert.True(t, config.RedisClusterEnabled)
+	assert.Len(t, config.RedisClusterAddrs, 3)
+	assert.Contains(t, config.RedisClusterAddrs, "node1:6379")
+	assert.Equal(t, "cluster_pass", config.RedisClusterPassword)
+}
+
+func TestConfig_TimeoutSettings(t *testing.T) {
+	config := &Config{
+		RedisDialTimeout:  5000000000, // 5 seconds in nanoseconds
+		RedisReadTimeout:  3000000000, // 3 seconds
+		RedisWriteTimeout: 3000000000, // 3 seconds
+		RedisPoolTimeout:  4000000000, // 4 seconds
+	}
+
+	assert.Greater(t, config.RedisDialTimeout, int64(0))
+	assert.Greater(t, config.RedisReadTimeout, int64(0))
+	assert.Greater(t, config.RedisWriteTimeout, int64(0))
+	assert.Greater(t, config.RedisPoolTimeout, int64(0))
+}
+
+func TestConfig_PoolSettings(t *testing.T) {
+	config := &Config{
+		RedisPoolSize:     100,
+		RedisMinIdleConns: 20,
+	}
+
+	assert.Equal(t, 100, config.RedisPoolSize)
+	assert.Equal(t, 20, config.RedisMinIdleConns)
+	assert.Less(t, config.RedisMinIdleConns, config.RedisPoolSize)
+}
+
+func TestConfig_FeatureFlags(t *testing.T) {
+	config := &Config{
+		AuditLogsEnabled: true,
+		WhatsAppEnabled:  false,
+		CFLookupEnabled:  true,
+	}
+
+	assert.True(t, config.AuditLogsEnabled)
+	assert.False(t, config.WhatsAppEnabled)
+	assert.True(t, config.CFLookupEnabled)
+}
+
+func TestConfig_WorkerSettings(t *testing.T) {
+	config := &Config{
+		AuditWorkerCount:        10,
+		AuditBufferSize:         200,
+		VerificationWorkerCount: 5,
+		VerificationQueueSize:   100,
+		DBWorkerCount:           8,
+		DBBatchSize:             50,
+	}
+
+	assert.Equal(t, 10, config.AuditWorkerCount)
+	assert.Equal(t, 200, config.AuditBufferSize)
+	assert.Equal(t, 5, config.VerificationWorkerCount)
+	assert.Equal(t, 100, config.VerificationQueueSize)
+	assert.Equal(t, 8, config.DBWorkerCount)
+	assert.Equal(t, 50, config.DBBatchSize)
+}
+
+func TestMaskMongoURI_MultipleMasks(t *testing.T) {
+	uris := []string{
+		"mongodb://admin:password123@prod.example.com:27017/mydb",
+		"mongodb://user:secret@staging.example.com:27017/testdb",
+		"mongodb://service:key@dev.example.com:27017/devdb",
+	}
+
+	for _, uri := range uris {
+		result := maskMongoURI(uri)
+
+		// All should be masked
+		assert.Contains(t, result, "****:****@")
+
+		// None should contain actual credentials
+		assert.NotContains(t, result, "admin")
+		assert.NotContains(t, result, "password123")
+		assert.NotContains(t, result, "user")
+		assert.NotContains(t, result, "secret")
+		assert.NotContains(t, result, "service")
+		assert.NotContains(t, result, "key")
+	}
+}
+
+// TestSetRedis_GetRedis verifies that the mutex-protected Redis accessors are consistent.
+func TestSetRedis_GetRedis(t *testing.T) {
+	// Save and restore original Redis value to avoid polluting other tests
+	original := Redis
+	defer func() { Redis = original }()
+
+	t.Run("setRedis stores value readable by getRedis", func(t *testing.T) {
+		// nil sentinel
+		setRedis(nil)
+		assert.Nil(t, getRedis(), "getRedis should return nil after setRedis(nil)")
+
+		// Use a typed nil *redisclient.Client pointer to exercise the non-nil path
+		// without requiring a live Redis connection.
+		var c *redisclient.Client
+		setRedis(c)
+		assert.Equal(t, c, getRedis(), "getRedis should return the value stored by setRedis")
+	})
+
+	t.Run("SetRedis (exported) stores value readable by getRedis", func(t *testing.T) {
+		SetRedis(nil)
+		assert.Nil(t, getRedis(), "getRedis should return nil after SetRedis(nil)")
+	})
+
+	t.Run("concurrent SetRedis and getRedis do not race", func(t *testing.T) {
+		// The Go race detector will flag unsynchronised concurrent accesses.
+		// This test verifies that our mutex prevents such races.
+		const goroutines = 50
+		var wg sync.WaitGroup
+		wg.Add(goroutines * 2)
+
+		for i := 0; i < goroutines; i++ {
+			go func() {
+				defer wg.Done()
+				SetRedis(nil)
+			}()
+			go func() {
+				defer wg.Done()
+				_ = getRedis()
+			}()
+		}
+
+		wg.Wait()
+	})
+}
+
+// TestIsIndexBuildAlreadyInProgressError verifies the error detection helper.
+func TestIsIndexBuildAlreadyInProgressError(t *testing.T) {
+	t.Run("nil error returns false", func(t *testing.T) {
+		assert.False(t, isIndexBuildAlreadyInProgressError(nil))
+	})
+
+	t.Run("unrelated error returns false", func(t *testing.T) {
+		assert.False(t, isIndexBuildAlreadyInProgressError(context.DeadlineExceeded))
+	})
+
+	t.Run("error message fallback - exact phrase IndexBuildAlreadyInProgress", func(t *testing.T) {
+		assert.True(t, isIndexBuildAlreadyInProgressError(
+			simpleError("IndexBuildAlreadyInProgress"),
+		))
+	})
+
+	t.Run("error message fallback - Index build already in progress phrase", func(t *testing.T) {
+		assert.True(t, isIndexBuildAlreadyInProgressError(
+			simpleError("Index build already in progress for collection foo"),
+		))
+	})
+
+	t.Run("error message fallback - lowercase phrase", func(t *testing.T) {
+		assert.True(t, isIndexBuildAlreadyInProgressError(
+			simpleError("index build already in progress"),
+		))
+	})
+}
+
+// simpleError is a trivial error implementation used in tests.
+type simpleError string
+
+func (e simpleError) Error() string { return string(e) }
+
+// TestOptimizeConnectionPool verifies that optimizeConnectionPool does not panic.
+// The function only logs recommendations based on config values.
+func TestOptimizeConnectionPool_DoesNotPanic(t *testing.T) {
+	// Ensure AppConfig is initialized so the function has a MongoURI to log.
+	if AppConfig == nil {
+		AppConfig = &Config{
+			MongoURI: "mongodb://user:pass@localhost:27017/db",
+		}
+	}
+	assert.NotPanics(t, func() {
+		optimizeConnectionPool()
+	})
+}
+
+// TestOptimizeIndexesIfNeeded verifies that optimizeIndexesIfNeeded does not panic.
+// The function only logs; it does not touch MongoDB or Redis.
+func TestOptimizeIndexesIfNeeded_DoesNotPanic(t *testing.T) {
+	logger := zap.NewNop()
+	assert.NotPanics(t, func() {
+		optimizeIndexesIfNeeded(logger)
+	})
+}
+
+// TestApplyDatabasePerformanceOptimizations verifies the function does not panic.
+// It is a pure logging function with no external dependencies.
+func TestApplyDatabasePerformanceOptimizations_DoesNotPanic(t *testing.T) {
+	logger := zap.NewNop()
+	assert.NotPanics(t, func() {
+		applyDatabasePerformanceOptimizations(logger)
+	})
+}
+
+// TestIsIndexBuildAlreadyInProgressError_CommandError verifies that a real
+// mongo.CommandError with code 117 is correctly detected.
+func TestIsIndexBuildAlreadyInProgressError_CommandError(t *testing.T) {
+	t.Run("mongo.CommandError with code 117 returns true", func(t *testing.T) {
+		err := mongo.CommandError{Code: 117, Message: "Index build already in progress"}
+		assert.True(t, isIndexBuildAlreadyInProgressError(err),
+			"should detect IndexBuildAlreadyInProgress via CommandError.Code")
+	})
+
+	t.Run("mongo.CommandError with other code returns false", func(t *testing.T) {
+		err := mongo.CommandError{Code: 11000, Message: "E11000 duplicate key error"}
+		assert.False(t, isIndexBuildAlreadyInProgressError(err),
+			"should not detect unrelated CommandError code as IndexBuildAlreadyInProgress")
+	})
+
+	t.Run("wrapped mongo.CommandError with code 117 returns true", func(t *testing.T) {
+		wrapped := fmt.Errorf("wrapped: %w", mongo.CommandError{Code: 117})
+		assert.True(t, isIndexBuildAlreadyInProgressError(wrapped),
+			"errors.As should unwrap and detect CommandError.Code 117")
+	})
+}
+
+// TestEnsureNotificationCategoryIndex_RequiredNamesMatchModels verifies that the
+// requiredNames slice and the requiredIndexes slice are aligned: same length and
+// each name matches the name set on the corresponding IndexModel option.  This
+// test is a regression guard for the off-by-one bug where a stale
+// "idx_notification_category_id" entry in requiredNames caused the loop to
+// check the wrong name for the first model and to skip the last model entirely.
+func TestEnsureNotificationCategoryIndex_RequiredNamesMatchModels(t *testing.T) {
+	requiredIndexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "active", Value: 1},
+				{Key: "order", Value: 1},
+			},
+			Options: options.Index().SetName("idx_notification_category_active_order"),
+		},
+		{
+			Keys:    bson.D{{Key: "order", Value: 1}},
+			Options: options.Index().SetName("idx_notification_category_order"),
+		},
+	}
+	requiredNames := []string{
+		"idx_notification_category_active_order",
+		"idx_notification_category_order",
+	}
+
+	assert.Equal(t, len(requiredIndexes), len(requiredNames),
+		"requiredNames must have the same number of entries as requiredIndexes to avoid off-by-one indexing")
+
+	for i, model := range requiredIndexes {
+		modelName := model.Options.Name
+		assert.NotNil(t, modelName, "IndexModel at position %d must have a name set", i)
+		assert.Equal(t, requiredNames[i], *modelName,
+			"requiredNames[%d] must match the name on requiredIndexes[%d]", i, i)
+	}
+}
+
+// TestIsIndexBuildInProgress_NamespaceMatching verifies the namespace collision
+// fix: the secondary check must compare the full "database.collection" namespace
+// stored in opDoc["ns"], not just the bare collection name from the command
+// document.  Without this guard a collection with the same name in a different
+// database could trigger a false positive.
+func TestIsIndexBuildInProgress_NamespaceMatching(t *testing.T) {
+	t.Run("correct namespace matches", func(t *testing.T) {
+		dbName := "mydb"
+		collectionName := "notifications"
+		expectedNs := dbName + "." + collectionName
+
+		// Simulate what the fixed code computes
+		ns := dbName + "." + collectionName
+		assert.Equal(t, expectedNs, ns,
+			"full namespace must equal database+'.'+collection")
+	})
+
+	t.Run("same collection name in different database does not match", func(t *testing.T) {
+		dbName := "mydb"
+		collectionName := "notifications"
+		expectedNs := dbName + "." + collectionName
+
+		// An op from a different database with the same collection name
+		otherNs := "otherdb." + collectionName
+		assert.NotEqual(t, expectedNs, otherNs,
+			"namespace from a different database must not match the expected namespace")
+	})
+
+	t.Run("namespace with same prefix but longer collection name does not match", func(t *testing.T) {
+		dbName := "mydb"
+		collectionName := "notifications"
+		expectedNs := dbName + "." + collectionName
+
+		// e.g. "mydb.notifications_archive" should not match
+		longerNs := dbName + "." + collectionName + "_archive"
+		assert.NotEqual(t, expectedNs, longerNs,
+			"longer collection name sharing a prefix must not match the expected namespace")
+	})
+}

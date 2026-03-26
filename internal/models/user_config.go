@@ -20,6 +20,6 @@ type UserConfigResponse struct {
 
 // UserConfigOptInResponse represents the response format for opt-in endpoints
 type UserConfigOptInResponse struct {
-	OptIn          bool            `json:"opt_in"`
+	OptIn          *bool           `json:"opt_in" binding:"required"`
 	CategoryOptIns map[string]bool `json:"category_opt_ins,omitempty"`
 }

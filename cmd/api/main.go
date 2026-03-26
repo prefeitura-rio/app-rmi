@@ -70,7 +70,7 @@ func main() {
 
 	// Load configuration
 	if err := config.LoadConfig(); err != nil {
-		logging.Logger.Fatal("failed to load config", zap.Error(err))
+		logging.GetLogger().Fatal("failed to load config", zap.Error(err))
 	}
 
 	// Initialize observability
@@ -365,12 +365,12 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		logging.Logger.Info("starting server",
+		logging.GetLogger().Info("starting server",
 			zap.Int("port", config.AppConfig.Port),
 			zap.String("environment", config.AppConfig.Environment),
 		)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logging.Logger.Fatal("failed to start server", zap.Error(err))
+			logging.GetLogger().Fatal("failed to start server", zap.Error(err))
 		}
 	}()
 
@@ -385,7 +385,7 @@ func main() {
 
 	// Attempt graceful shutdown
 	if err := srv.Shutdown(ctx); err != nil {
-		logging.Logger.Fatal("server forced to shutdown", zap.Error(err))
+		logging.GetLogger().Fatal("server forced to shutdown", zap.Error(err))
 	}
 
 	// Stop audit worker gracefully
@@ -398,5 +398,5 @@ func main() {
 		verificationQueue.Stop()
 	}
 
-	logging.Logger.Info("server exiting")
+	logging.GetLogger().Info("server exiting")
 }

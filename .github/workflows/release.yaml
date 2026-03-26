@@ -1,0 +1,302 @@
+name: Release and Deploy
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      - name: Install swag
+        run: |
+          mkdir -p bin
+          GOBIN="$PWD/bin" go install github.com/swaggo/swag/cmd/swag@latest
+          echo "$PWD/bin" >> $GITHUB_PATH
+
+      - name: Generate Swagger documentation
+        run: swag init -g cmd/api/main.go
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+
+      - name: Extract release version
+        id: version
+        run: |
+          VERSION=${{ github.ref_name }}
+          VERSION_NO_V=${VERSION#v}
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION_NO_V=$VERSION_NO_V" >> $GITHUB_ENV
+          echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_ENV
+          echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/app-rmi" >> $GITHUB_ENV
+
+      - name: Build and Push Docker Image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --build-arg VERSION=$COMMIT_HASH \
+            --tag $IMAGE_NAME:$VERSION \
+            --tag $IMAGE_NAME:$VERSION_NO_V \
+            --tag $IMAGE_NAME:latest-release \
+            --push .
+
+      - name: Get image digest
+        id: digest
+        run: |
+          DIGEST=$(docker buildx imagetools inspect $IMAGE_NAME:$VERSION --format '{{.Manifest.Digest}}' | grep -oE 'sha256:[a-f0-9]+' | head -n1)
+          echo "DIGEST=$DIGEST" >> $GITHUB_ENV
+          echo "Image digest: $DIGEST"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest
+
+      - name: Configure kubectl for GKE (Production)
+        run: gcloud container clusters get-credentials application --zone=us-central1 --project="${{ vars.GCP_PROJECT_ID }}"
+
+      - name: Update ArgoCD Application image override
+        run: |
+          echo "Updating production ArgoCD Application image override..."
+          echo "Image: $IMAGE_NAME:$VERSION@$DIGEST"
+
+          # Update the Kustomize image override in ArgoCD Application
+          kubectl patch application rmi -n argocd --type=json \
+            -p="[{\"op\": \"replace\", \"path\": \"/spec/source/kustomize/images/0\", \"value\": \"$IMAGE_NAME:$VERSION@$DIGEST\"}]"
+
+          echo "✅ ArgoCD Application updated with new image override"
+
+      - name: Wait for ArgoCD sync and rollout to start
+        timeout-minutes: 5
+        run: |
+          echo "Waiting for ArgoCD to sync and rollout to use new image..."
+          echo "Expected image: $IMAGE_NAME:$VERSION@$DIGEST"
+
+          # Wait for the rollout spec to be updated with the new image
+          for i in {1..60}; do
+            CURRENT_IMAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.spec.template.spec.containers[0].image}')
+            SYNC_STATUS=$(kubectl get application rmi -n argocd -o jsonpath='{.status.sync.status}')
+
+            echo "Attempt $i/60: Image=$CURRENT_IMAGE, ArgoCD Sync=$SYNC_STATUS"
+
+            if [[ "$CURRENT_IMAGE" == "$IMAGE_NAME:$VERSION@$DIGEST" ]]; then
+              echo "✅ Rollout spec updated with correct image!"
+              break
+            fi
+
+            if [ $i -eq 60 ]; then
+              echo "❌ Timeout waiting for rollout image update"
+              echo "Expected: $IMAGE_NAME:$VERSION@$DIGEST"
+              echo "Got: $CURRENT_IMAGE"
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+      - name: Monitor Rollout
+        timeout-minutes: 45
+        run: |
+          echo "Monitoring rollout progress for version $VERSION..."
+          echo "Expected image: $IMAGE_NAME:$VERSION@$DIGEST"
+
+          while true; do
+            PHASE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.phase}')
+            MESSAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.message}')
+            CURRENT_IMAGE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.spec.template.spec.containers[0].image}')
+
+            echo "Rollout phase: $PHASE"
+            echo "Message: $MESSAGE"
+            echo "Current image: $CURRENT_IMAGE"
+
+            # Verify we're still monitoring the correct version
+            if [[ "$CURRENT_IMAGE" != "$IMAGE_NAME:$VERSION@$DIGEST" ]]; then
+              echo "⚠️ WARNING: Rollout image changed unexpectedly!"
+              echo "Expected: $IMAGE_NAME:$VERSION@$DIGEST"
+              echo "Got: $CURRENT_IMAGE"
+            fi
+
+            # Check if rollout completed successfully
+            if [ "$PHASE" = "Healthy" ]; then
+              echo "✅ Rollout completed successfully!"
+              exit 0
+            fi
+
+            # Check if rollout was aborted or degraded
+            if [ "$PHASE" = "Degraded" ]; then
+              echo "❌ Rollout failed - status is Degraded"
+              echo "Message: $MESSAGE"
+              kubectl get rollout rmi -n rmi -o yaml
+              exit 1
+            fi
+
+            if [ "$PHASE" = "Aborted" ]; then
+              echo "❌ Rollout was aborted (likely due to failed analysis)"
+              echo "Message: $MESSAGE"
+
+              # Get analysis run details
+              echo "Analysis Run Details:"
+              kubectl get analysisrun -n rmi -l rollout-pod-template-hash=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.canary.stableRS}') --sort-by=.metadata.creationTimestamp -o yaml || true
+
+              exit 1
+            fi
+
+            # Show current status
+            kubectl get rollout rmi -n rmi
+
+            echo "Waiting 30s before next check..."
+            sleep 30
+          done
+
+      - name: Create deployment summary
+        if: always()
+        run: |
+          echo "## 🚀 Release Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: $COMMIT_HASH" >> $GITHUB_STEP_SUMMARY
+          echo "**Image**: \`$IMAGE_NAME:$VERSION@${DIGEST:0:12}...\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          PHASE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+          echo "**Final Status**: $PHASE" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$PHASE" = "Healthy" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
+            echo "The canary deployment completed successfully and is now serving 100% traffic." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+            echo "The rollout did not complete successfully. Check the logs above for details." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Send Discord notification
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "Discord webhook not configured, skipping notification"
+            exit 0
+          fi
+
+          # Get commit info
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s' ${{ github.sha }})
+          COMMIT_AUTHOR=$(git log -1 --pretty=format:'%an' ${{ github.sha }})
+          COMMIT_URL="https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/$VERSION"
+
+          # Get rollout status
+          PHASE=$(kubectl get rollout rmi -n rmi -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+
+          # Determine status and color
+          if [ "$PHASE" = "Healthy" ]; then
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="Successful"
+            COLOR="3066993"  # Green
+            DESCRIPTION="Canary deployment completed successfully. New version is serving 100% traffic in production."
+          elif [ "$PHASE" = "Aborted" ]; then
+            STATUS_EMOJI="🛑"
+            STATUS_TEXT="Aborted"
+            COLOR="15105570"  # Orange
+            DESCRIPTION="Rollout was aborted due to failed analysis metrics. Deployment rolled back to stable version."
+          elif [ "$PHASE" = "Degraded" ]; then
+            STATUS_EMOJI="❌"
+            STATUS_TEXT="Failed"
+            COLOR="15158332"  # Red
+            DESCRIPTION="Rollout entered degraded state. Check logs for details."
+          else
+            STATUS_EMOJI="⚠️"
+            STATUS_TEXT="Unknown"
+            COLOR="16776960"  # Yellow
+            DESCRIPTION="Rollout status could not be determined. Manual investigation required."
+          fi
+
+          # Create Discord embed
+          DISCORD_PAYLOAD=$(cat <<EOF
+          {
+            "content": "<@&903644455582695494>",
+            "embeds": [{
+              "title": "${STATUS_EMOJI} Production Release ${STATUS_TEXT}",
+              "description": "${DESCRIPTION}",
+              "color": ${COLOR},
+              "fields": [
+                {
+                  "name": "🏷️ Version",
+                  "value": "[${VERSION}](${RELEASE_URL})",
+                  "inline": true
+                },
+                {
+                  "name": "📊 Status",
+                  "value": "\`${PHASE}\`",
+                  "inline": true
+                },
+                {
+                  "name": "📝 Commit",
+                  "value": "[${COMMIT_MSG:0:50}](${COMMIT_URL})",
+                  "inline": false
+                },
+                {
+                  "name": "👤 Author",
+                  "value": "${COMMIT_AUTHOR}",
+                  "inline": true
+                },
+                {
+                  "name": "🔖 Hash",
+                  "value": "\`${COMMIT_HASH}\`",
+                  "inline": true
+                },
+                {
+                  "name": "🐳 Image",
+                  "value": "\`${IMAGE_NAME}:${VERSION}\`",
+                  "inline": false
+                }
+              ],
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+              "footer": {
+                "text": "GitHub Actions"
+              }
+            }]
+          }
+          EOF
+          )
+
+          # Send to Discord
+          curl -H "Content-Type: application/json" \
+               -d "$DISCORD_PAYLOAD" \
+               "$DISCORD_WEBHOOK"

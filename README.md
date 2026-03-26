@@ -1,5 +1,7 @@
 # API RMI
 
+[![Coverage](https://img.shields.io/endpoint?url=https://prefeitura-rio.github.io/app-rmi/coverage-badge.json)](https://github.com/prefeitura-rio/app-rmi/actions/workflows/coverage-baseline.yaml)
+
 API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autodeclaração de informações e verificação de contato.
 
 ## Funcionalidades

@@ -35,6 +35,9 @@ func NewPhoneHandlers(logger *logging.SafeLogger, phoneMappingService *services.
 
 // isPhoneParsingError checks if an error is related to phone number parsing
 func isPhoneParsingError(err error) bool {
+	if err == nil {
+		return false
+	}
 	errMsg := strings.ToLower(err.Error())
 	return strings.Contains(errMsg, "invalid phone number") ||
 		strings.Contains(errMsg, "failed to parse phone number") ||

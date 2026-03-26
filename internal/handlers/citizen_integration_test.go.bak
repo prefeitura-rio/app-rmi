@@ -1,0 +1,124 @@
+package handlers
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/tests"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/bson"
+)
+
+func setupCitizenIntegrationTest(t *testing.T) (*gin.Engine, *tests.TestContainers) {
+	logging.InitLogger()
+	containers := tests.SetupTestContainers(t)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/v1/citizen/:cpf", GetCitizenData)
+
+	return router, containers
+}
+
+func TestGetCitizenData_Integration_NotFound(t *testing.T) {
+	router, containers := setupCitizenIntegrationTest(t)
+	defer containers.Cleanup()
+
+	req, _ := http.NewRequest("GET", "/v1/citizen/12345678901", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Contains(t, response, "error")
+}
+
+func TestGetCitizenData_Integration_WithData(t *testing.T) {
+	router, containers := setupCitizenIntegrationTest(t)
+	defer containers.Cleanup()
+
+	ctx := context.Background()
+
+	// Insert test citizen
+	citizenCollection := config.MongoDB.Collection(config.AppConfig.CitizenCollection)
+	citizen := bson.M{
+		"cpf":             "12345678901",
+		"nome_completo":   "Test User",
+		"nome_mae":        "Test Mother",
+		"data_nascimento": "1990-01-01",
+	}
+	_, err := citizenCollection.InsertOne(ctx, citizen)
+	require.NoError(t, err)
+
+	// Make request
+	req, _ := http.NewRequest("GET", "/v1/citizen/12345678901", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.CitizenResponse
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "12345678901", response.CPF)
+	require.NotNil(t, response.Nome)
+	assert.Equal(t, "Test User", *response.Nome)
+}
+
+func TestGetCitizenData_Integration_WithSelfDeclaredData(t *testing.T) {
+	router, containers := setupCitizenIntegrationTest(t)
+	defer containers.Cleanup()
+
+	ctx := context.Background()
+
+	// Insert citizen
+	citizenCollection := config.MongoDB.Collection(config.AppConfig.CitizenCollection)
+	citizen := bson.M{
+		"cpf":             "12345678901",
+		"nome_completo":   "Test User",
+		"data_nascimento": "1990-01-01",
+	}
+	_, err := citizenCollection.InsertOne(ctx, citizen)
+	require.NoError(t, err)
+
+	// Insert self-declared data
+	selfDeclaredCollection := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection)
+	selfDeclared := bson.M{
+		"cpf": "12345678901",
+		"telefone": bson.M{
+			"principal": bson.M{
+				"ddi":   "55",
+				"ddd":   "21",
+				"valor": "999999999",
+			},
+		},
+		"email": "test@example.com",
+	}
+	_, err = selfDeclaredCollection.InsertOne(ctx, selfDeclared)
+	require.NoError(t, err)
+
+	// Make request
+	req, _ := http.NewRequest("GET", "/v1/citizen/12345678901", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.CitizenResponse
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "12345678901", response.CPF)
+	assert.NotNil(t, response.Email)
+	assert.Equal(t, "test@example.com", *response.Email)
+}
