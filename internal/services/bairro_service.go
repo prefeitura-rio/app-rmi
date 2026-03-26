@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
@@ -36,9 +37,11 @@ func (s *BairroService) ListBairros(ctx context.Context, filters models.BairroFi
 	filter := bson.M{}
 
 	// Case-insensitive substring search on the nome field
+	// Escape regex metacharacters to prevent regex injection
 	if filters.Search != "" {
+		escapedSearch := regexp.QuoteMeta(filters.Search)
 		filter["nome"] = bson.M{
-			"$regex":   filters.Search,
+			"$regex":   escapedSearch,
 			"$options": "i",
 		}
 	}
@@ -71,8 +74,8 @@ func (s *BairroService) ListBairros(ctx context.Context, filters models.BairroFi
 	for cursor.Next(ctx) {
 		var rawDoc bson.M
 		if err := cursor.Decode(&rawDoc); err != nil {
-			s.logger.Warn("failed to decode bairro document", zap.Error(err))
-			continue
+			s.logger.Error("failed to decode bairro document", zap.Error(err))
+			return nil, fmt.Errorf("failed to decode bairro document: %w", err)
 		}
 		bairro := convertRawToBairro(rawDoc)
 		bairros = append(bairros, bairro)
@@ -113,6 +116,11 @@ func convertRawToBairro(rawDoc bson.M) models.Bairro {
 	// Handle nome field
 	if nome, ok := rawDoc["nome"].(string); ok {
 		bairro.Nome = nome
+	}
+
+	// Handle subprefeitura field
+	if subprefeitura, ok := rawDoc["subprefeitura"].(string); ok {
+		bairro.Subprefeitura = subprefeitura
 	}
 
 	return bairro

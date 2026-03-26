@@ -38,8 +38,8 @@ func setupBairroHandlersTest(t *testing.T) (*BairroHandlers, *gin.Engine, func()
 		_ = database.Collection(config.AppConfig.BairroCollection).Drop(ctx)
 	}
 
-	service := services.NewBairroService(database, logging.Logger)
-	h := NewBairroHandlers(service, logging.Logger)
+	service := services.NewBairroService(database, logging.GetLogger())
+	h := NewBairroHandlers(service, logging.GetLogger())
 
 	router := gin.New()
 	router.GET("/bairros", h.ListBairros)
@@ -48,8 +48,8 @@ func setupBairroHandlersTest(t *testing.T) (*BairroHandlers, *gin.Engine, func()
 }
 
 func TestNewBairroHandlers(t *testing.T) {
-	service := services.NewBairroService(nil, logging.Logger)
-	h := NewBairroHandlers(service, logging.Logger)
+	service := services.NewBairroService(nil, logging.GetLogger())
+	h := NewBairroHandlers(service, logging.GetLogger())
 
 	assert.NotNil(t, h, "NewBairroHandlers() returned nil")
 	assert.NotNil(t, h.service, "NewBairroHandlers() service is nil")
@@ -84,9 +84,9 @@ func TestListBairros_WithData(t *testing.T) {
 	collection := config.MongoDB.Collection(config.AppConfig.BairroCollection)
 
 	bairros := []interface{}{
-		bson.M{"id_bairro": "001", "nome": "Copacabana"},
-		bson.M{"id_bairro": "002", "nome": "Ipanema"},
-		bson.M{"id_bairro": "003", "nome": "Leblon"},
+		bson.M{"id_bairro": "001", "nome": "Copacabana", "subprefeitura": "Subprefeitura da Zona Sul"},
+		bson.M{"id_bairro": "002", "nome": "Ipanema", "subprefeitura": "Subprefeitura da Zona Sul"},
+		bson.M{"id_bairro": "003", "nome": "Leblon", "subprefeitura": "Subprefeitura da Zona Sul"},
 	}
 
 	_, err := collection.InsertMany(ctx, bairros)
@@ -115,7 +115,7 @@ func TestListBairros_ResponseFields(t *testing.T) {
 	ctx := context.Background()
 	collection := config.MongoDB.Collection(config.AppConfig.BairroCollection)
 
-	_, err := collection.InsertOne(ctx, bson.M{"id_bairro": "001", "nome": "Copacabana"})
+	_, err := collection.InsertOne(ctx, bson.M{"id_bairro": "001", "nome": "Copacabana", "subprefeitura": "Subprefeitura da Zona Sul"})
 	require.NoError(t, err, "Failed to insert test bairro")
 
 	req, _ := http.NewRequest("GET", "/bairros", nil)
@@ -131,6 +131,7 @@ func TestListBairros_ResponseFields(t *testing.T) {
 	require.Len(t, response.Bairros, 1, "Expected 1 bairro")
 	assert.Equal(t, "001", response.Bairros[0].ID, "Expected id '001'")
 	assert.Equal(t, "Copacabana", response.Bairros[0].Nome, "Expected nome 'Copacabana'")
+	assert.Equal(t, "Subprefeitura da Zona Sul", response.Bairros[0].Subprefeitura, "Expected subprefeitura 'Subprefeitura da Zona Sul'")
 }
 
 func TestListBairros_CustomPagination(t *testing.T) {
@@ -345,4 +346,40 @@ func TestListBairros_MaxLimit(t *testing.T) {
 	require.NoError(t, err, "Failed to unmarshal response")
 
 	assert.Equal(t, 100, response.Limit, "Expected limit 100")
+}
+
+func TestListBairros_AlphabeticalOrdering(t *testing.T) {
+	_, router, cleanup := setupBairroHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	collection := config.MongoDB.Collection(config.AppConfig.BairroCollection)
+
+	// Insert bairros in non-alphabetical order
+	bairros := []interface{}{
+		bson.M{"id_bairro": "003", "nome": "Zebra", "subprefeitura": "Test"},
+		bson.M{"id_bairro": "001", "nome": "Alpha", "subprefeitura": "Test"},
+		bson.M{"id_bairro": "004", "nome": "Delta", "subprefeitura": "Test"},
+		bson.M{"id_bairro": "002", "nome": "Bravo", "subprefeitura": "Test"},
+	}
+	_, err := collection.InsertMany(ctx, bairros)
+	require.NoError(t, err, "Failed to insert test bairros")
+
+	req, _ := http.NewRequest("GET", "/bairros", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "Expected status 200")
+
+	var response models.BairroListResponse
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err, "Failed to unmarshal response")
+
+	require.Len(t, response.Bairros, 4, "Expected 4 bairros")
+
+	// Verify alphabetical ordering
+	assert.Equal(t, "Alpha", response.Bairros[0].Nome, "Expected first bairro to be Alpha")
+	assert.Equal(t, "Bravo", response.Bairros[1].Nome, "Expected second bairro to be Bravo")
+	assert.Equal(t, "Delta", response.Bairros[2].Nome, "Expected third bairro to be Delta")
+	assert.Equal(t, "Zebra", response.Bairros[3].Nome, "Expected fourth bairro to be Zebra")
 }

@@ -2,8 +2,9 @@ package models
 
 // Bairro represents a neighborhood (bairro) record
 type Bairro struct {
-	ID   string `bson:"id_bairro" json:"id"`
-	Nome string `bson:"nome" json:"nome"`
+	ID            string `bson:"id_bairro" json:"id"`
+	Nome          string `bson:"nome" json:"nome"`
+	Subprefeitura string `bson:"subprefeitura" json:"subprefeitura"`
 }
 
 // BairroListResponse represents the response for listing bairros with pagination

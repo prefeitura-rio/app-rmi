@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -63,12 +64,22 @@ func (h *BairroHandlers) ListBairros(c *gin.Context) {
 	page := 1
 	if pageStr := c.Query("page"); pageStr != "" {
 		p, err := strconv.Atoi(pageStr)
-		if err != nil || p < 1 {
-			utils.RecordErrorInSpan(paginationSpan, nil, map[string]interface{}{
+		if err != nil {
+			utils.RecordErrorInSpan(paginationSpan, err, map[string]interface{}{
 				"page_param": pageStr,
 			})
 			paginationSpan.End()
-			logger.Error("invalid page parameter", zap.String("page", pageStr))
+			logger.Error("invalid page parameter", zap.String("page", pageStr), zap.Error(err))
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid page parameter: must be a positive integer"})
+			return
+		}
+		if p < 1 {
+			validationErr := fmt.Errorf("page must be >= 1, got %d", p)
+			utils.RecordErrorInSpan(paginationSpan, validationErr, map[string]interface{}{
+				"page_param": pageStr,
+			})
+			paginationSpan.End()
+			logger.Error("invalid page parameter", zap.String("page", pageStr), zap.Error(validationErr))
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid page parameter: must be a positive integer"})
 			return
 		}
@@ -78,12 +89,22 @@ func (h *BairroHandlers) ListBairros(c *gin.Context) {
 	limit := 50
 	if limitStr := c.Query("limit"); limitStr != "" {
 		l, err := strconv.Atoi(limitStr)
-		if err != nil || l < 1 || l > 100 {
-			utils.RecordErrorInSpan(paginationSpan, nil, map[string]interface{}{
+		if err != nil {
+			utils.RecordErrorInSpan(paginationSpan, err, map[string]interface{}{
 				"limit_param": limitStr,
 			})
 			paginationSpan.End()
-			logger.Error("invalid limit parameter", zap.String("limit", limitStr))
+			logger.Error("invalid limit parameter", zap.String("limit", limitStr), zap.Error(err))
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid limit parameter: must be between 1 and 100"})
+			return
+		}
+		if l < 1 || l > 100 {
+			validationErr := fmt.Errorf("limit must be between 1 and 100, got %d", l)
+			utils.RecordErrorInSpan(paginationSpan, validationErr, map[string]interface{}{
+				"limit_param": limitStr,
+			})
+			paginationSpan.End()
+			logger.Error("invalid limit parameter", zap.String("limit", limitStr), zap.Error(validationErr))
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid limit parameter: must be between 1 and 100"})
 			return
 		}
