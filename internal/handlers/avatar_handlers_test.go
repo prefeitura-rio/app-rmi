@@ -49,9 +49,9 @@ func setupAvatarHandlersTest(t *testing.T) (*AvatarHandlers, *gin.Engine, func()
 	// Initialize services
 	cacheService := services.NewCacheService()
 	// Pass nil for mongoClient in tests since we only use database
-	services.AvatarServiceInstance = services.NewAvatarService(nil, database, logging.Logger.Unwrap())
+	services.AvatarServiceInstance = services.NewAvatarService(nil, database, logging.GetLogger().Unwrap())
 
-	handlers := NewAvatarHandlers(logging.Logger, cacheService)
+	handlers := NewAvatarHandlers(logging.GetLogger(), cacheService)
 
 	router := gin.New()
 	router.GET("/avatars", handlers.ListAvatars)
@@ -78,7 +78,7 @@ func setupAvatarHandlersTest(t *testing.T) (*AvatarHandlers, *gin.Engine, func()
 }
 
 func TestNewAvatarHandlers(t *testing.T) {
-	handlers := NewAvatarHandlers(logging.Logger, nil)
+	handlers := NewAvatarHandlers(logging.GetLogger(), nil)
 	assert.NotNil(t, handlers, "NewAvatarHandlers() returned nil")
 	assert.NotNil(t, handlers.logger, "NewAvatarHandlers() logger is nil")
 }

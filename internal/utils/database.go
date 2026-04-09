@@ -24,7 +24,7 @@ type DatabaseOperation struct {
 
 // ExecuteWithTransaction executes multiple database operations within a transaction
 func ExecuteWithTransaction(ctx context.Context, operations []DatabaseOperation) error {
-	logger := logging.Logger.With(zap.String("operation", "database_transaction"))
+	logger := logging.GetLogger().With(zap.String("operation", "database_transaction"))
 
 	// Start a session
 	session, err := config.MongoDB.Client().StartSession()
@@ -68,7 +68,7 @@ func ExecuteWithTransaction(ctx context.Context, operations []DatabaseOperation)
 
 // ExecuteWriteOperation executes a database write operation without transaction overhead for better performance
 func ExecuteWriteOperation(ctx context.Context, collection string, operationType string, operation func(*mongo.Collection) error) error {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.String("operation", "write_operation"),
 		zap.String("collection", collection),
 		zap.String("operation_type", operationType),
@@ -90,7 +90,7 @@ func ExecuteWriteOperation(ctx context.Context, collection string, operationType
 
 // ExecuteWithWriteConcern executes a database operation with a specific write concern
 func ExecuteWithWriteConcern(ctx context.Context, operationType string, operation func(mongo.SessionContext) error) error {
-	logger := logging.Logger.With(zap.String("operation", "write_concern_operation"))
+	logger := logging.GetLogger().With(zap.String("operation", "write_concern_operation"))
 
 	wc := GetWriteConcernForOperation(operationType)
 
@@ -158,7 +158,7 @@ type PhoneVerificationData struct {
 
 // CreatePhoneVerification creates a phone verification record with proper error handling
 func CreatePhoneVerification(ctx context.Context, data PhoneVerificationData) error {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.String("cpf", data.CPF),
 		zap.String("phone", data.PhoneNumber),
 	)
@@ -203,7 +203,7 @@ func CreatePhoneVerification(ctx context.Context, data PhoneVerificationData) er
 
 // UpdateSelfDeclaredPendingPhone updates the pending phone in self-declared collection
 func UpdateSelfDeclaredPendingPhone(ctx context.Context, cpf string, data PhoneVerificationData) error {
-	logger := logging.Logger.With(zap.String("cpf", cpf))
+	logger := logging.GetLogger().With(zap.String("cpf", cpf))
 
 	pendingPhone := &models.Telefone{
 		Indicador: BoolPtr(false),
@@ -239,7 +239,7 @@ func UpdateSelfDeclaredPendingPhone(ctx context.Context, cpf string, data PhoneV
 
 // InvalidateCitizenCache invalidates all cache entries related to a citizen
 func InvalidateCitizenCache(ctx context.Context, cpf string) error {
-	logger := logging.Logger.With(zap.String("cpf", cpf))
+	logger := logging.GetLogger().With(zap.String("cpf", cpf))
 
 	// Invalidate main citizen cache
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)
@@ -313,7 +313,7 @@ func GetCollectionWithWriteConcern(collectionName, operationType string) *mongo.
 
 // BulkWriteWithWriteConcern executes multiple write operations in a single batch
 func BulkWriteWithWriteConcern(ctx context.Context, collection string, operations []mongo.WriteModel, operationType string) (*mongo.BulkWriteResult, error) {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.String("collection", collection),
 		zap.String("operation_type", operationType),
 		zap.Int("operations_count", len(operations)),
@@ -396,7 +396,7 @@ func GetCollectionForWriteOperation(collectionName string) *mongo.Collection {
 
 // ExecuteReadWithLoadDistribution executes a read operation with load distribution
 func ExecuteReadWithLoadDistribution(ctx context.Context, collection string, operation func(*mongo.Collection) error) error {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.String("operation", "read_with_load_distribution"),
 		zap.String("collection", collection),
 	)
@@ -418,7 +418,7 @@ func ExecuteReadWithLoadDistribution(ctx context.Context, collection string, ope
 
 // ExecuteWriteWithOptimizedConcern executes a write operation with optimized write concern
 func ExecuteWriteWithOptimizedConcern(ctx context.Context, collection string, operationType string, operation func(*mongo.Collection) error) error {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.String("operation", "write_with_optimized_concern"),
 		zap.String("collection", collection),
 		zap.String("operation_type", operationType),
@@ -441,7 +441,7 @@ func ExecuteWriteWithOptimizedConcern(ctx context.Context, collection string, op
 
 // ExecuteWithLoadDistribution executes operations with optimal load distribution
 func ExecuteWithLoadDistribution(ctx context.Context, operationType string, operation func(mongo.SessionContext) error) error {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.String("operation", "load_distribution_operation"),
 		zap.String("operation_type", operationType),
 	)
@@ -537,7 +537,7 @@ func ExecuteWriteWithPrimaryOptimization(ctx context.Context, collection string,
 
 // ExecuteBulkWriteOptimized executes multiple write operations in a single batch with performance optimization
 func ExecuteBulkWriteOptimized(ctx context.Context, collection string, operations []mongo.WriteModel, operationType string) (*mongo.BulkWriteResult, error) {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.String("operation", "bulk_write_optimized"),
 		zap.String("collection", collection),
 		zap.String("operation_type", operationType),
@@ -586,7 +586,7 @@ func CreateOptimizedBulkUpdateModels(updates []BulkUpdateRequest) []mongo.WriteM
 
 // ExecuteWriteWithLoadOptimization executes a write operation with dynamic optimization based on current load
 func ExecuteWriteWithLoadOptimization(ctx context.Context, collection string, operationType string, operation func(*mongo.Collection) error) error {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.String("operation", "write_with_load_optimization"),
 		zap.String("collection", collection),
 		zap.String("operation_type", operationType),
@@ -639,7 +639,7 @@ func shouldUseBulkOperations() bool {
 
 // ExecuteWriteWithCollectionOptimization executes a write operation with collection-specific optimizations
 func ExecuteWriteWithCollectionOptimization(ctx context.Context, collection string, operationType string, operation func(*mongo.Collection) error) error {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.String("operation", "write_with_collection_optimization"),
 		zap.String("collection", collection),
 		zap.String("operation_type", operationType),

@@ -35,7 +35,7 @@ func NewPerformanceMonitor(ctx context.Context, operation string) *PerformanceMo
 	return &PerformanceMonitor{
 		startTime:    time.Now(),
 		operation:    operation,
-		logger:       logging.Logger,
+		logger:       logging.GetLogger(),
 		checkpoints:  make([]Checkpoint, 0),
 		memoryBefore: memStats,
 	}

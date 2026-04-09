@@ -34,9 +34,9 @@ func setupPhoneHandlersTest(t *testing.T) (*PhoneHandlers, *gin.Engine, func()) 
 	database := config.MongoDB
 
 	// Initialize services
-	phoneMappingService := services.NewPhoneMappingService(logging.Logger)
+	phoneMappingService := services.NewPhoneMappingService(logging.GetLogger())
 	configService := services.NewConfigService()
-	handlers := NewPhoneHandlers(logging.Logger, phoneMappingService, configService)
+	handlers := NewPhoneHandlers(logging.GetLogger(), phoneMappingService, configService)
 
 	router := gin.New()
 
@@ -159,7 +159,7 @@ func insertTestCitizen(t *testing.T, cpf, name, birthDate string) {
 
 // TestNewPhoneHandlers tests the constructor
 func TestNewPhoneHandlers(t *testing.T) {
-	handlers := NewPhoneHandlers(logging.Logger, nil, nil)
+	handlers := NewPhoneHandlers(logging.GetLogger(), nil, nil)
 	assert.NotNil(t, handlers)
 	assert.NotNil(t, handlers.logger)
 }

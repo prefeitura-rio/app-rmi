@@ -111,7 +111,7 @@ func (aw *AuditWorker) start() {
 		}(i)
 	}
 
-	logging.Logger.Info("audit worker started with batched processing",
+	logging.GetLogger().Info("audit worker started with batched processing",
 		zap.Int("workers", aw.workers),
 		zap.Int("buffer_size", cap(aw.auditChan)))
 }
@@ -162,7 +162,7 @@ func (aw *AuditWorker) flushBatch(batch []AuditLog) {
 		return
 	}
 
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.Int("batch_size", len(batch)),
 		zap.String("operation", "audit_batch_insert"),
 	)
@@ -239,7 +239,7 @@ func LogAuditEvent(ctx context.Context, auditCtx AuditContext, action, resource,
 		return nil
 	default:
 		// Channel is full, fall back to synchronous logging
-		logging.Logger.Warn("audit channel full, falling back to synchronous logging",
+		logging.GetLogger().Warn("audit channel full, falling back to synchronous logging",
 			zap.String("cpf", auditCtx.CPF),
 			zap.String("action", action))
 		return logAuditEventSync(ctx, auditCtx, action, resource, resourceID, oldValue, newValue, metadata)
@@ -248,7 +248,7 @@ func LogAuditEvent(ctx context.Context, auditCtx AuditContext, action, resource,
 
 // logAuditEventSync logs an audit event synchronously (fallback method)
 func logAuditEventSync(ctx context.Context, auditCtx AuditContext, action, resource, resourceID string, oldValue, newValue interface{}, metadata map[string]string) error {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.String("cpf", auditCtx.CPF),
 		zap.String("action", action),
 		zap.String("resource", resource),
@@ -459,13 +459,13 @@ func (aw *AuditWorker) adjustAuditWorkerBuffer() {
 	// Only log when there are actual issues or significant changes
 	if bufferUsagePercentage > 80 {
 		// High buffer usage - process batches more frequently
-		logging.Logger.Warn("high audit buffer usage detected",
+		logging.GetLogger().Warn("high audit buffer usage detected",
 			zap.Int("current_usage", currentBufferUsage),
 			zap.Int("buffer_capacity", bufferCapacity),
 			zap.Float64("usage_percentage", bufferUsagePercentage))
 	} else if bufferUsagePercentage > 50 {
 		// Medium buffer usage - log at debug level
-		logging.Logger.Debug("audit worker buffer status",
+		logging.GetLogger().Debug("audit worker buffer status",
 			zap.Int("current_usage", currentBufferUsage),
 			zap.Int("buffer_capacity", bufferCapacity),
 			zap.Float64("usage_percentage", bufferUsagePercentage))

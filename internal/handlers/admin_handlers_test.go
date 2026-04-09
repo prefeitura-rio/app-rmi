@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -14,17 +13,16 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func setupAdminHandlersTest(t *testing.T) (*gin.Engine, func()) {
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6380"
-	}
+	// Ensure the shared test environment is initialized (MongoDB, Redis, config).
+	// This must be done before creating the router so that config.Redis is set
+	// by the single initialisation path, preventing concurrent writes that cause
+	// data races detected by -race.
+	setupTestEnvironment()
 
 	_ = logging.InitLogger()
 	gin.SetMode(gin.TestMode)
@@ -33,14 +31,6 @@ func setupAdminHandlersTest(t *testing.T) (*gin.Engine, func()) {
 		config.AppConfig = &config.Config{}
 	}
 	config.AppConfig.AdminGroup = "go:admin"
-
-	// Redis setup
-	singleClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       0,
-	})
-	config.Redis = redisclient.NewClient(singleClient)
 
 	router := gin.New()
 
@@ -71,10 +61,10 @@ func setupAdminHandlersTest(t *testing.T) (*gin.Engine, func()) {
 }
 
 func setupAdminHandlersTestWithAuth(t *testing.T, isAdmin bool) (*gin.Engine, func()) {
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6380"
-	}
+	// Reuse the shared Redis connection initialised by setupTestEnvironment to
+	// avoid concurrent writes to config.Redis from separate setup calls, which
+	// would otherwise trigger a data race under -race.
+	setupTestEnvironment()
 
 	_ = logging.InitLogger()
 	gin.SetMode(gin.TestMode)
@@ -83,14 +73,6 @@ func setupAdminHandlersTestWithAuth(t *testing.T, isAdmin bool) (*gin.Engine, fu
 		config.AppConfig = &config.Config{}
 	}
 	config.AppConfig.AdminGroup = "go:admin"
-
-	// Redis setup
-	singleClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       0,
-	})
-	config.Redis = redisclient.NewClient(singleClient)
 
 	router := gin.New()
 
@@ -125,10 +107,8 @@ func setupAdminHandlersTestWithAuth(t *testing.T, isAdmin bool) (*gin.Engine, fu
 }
 
 func setupAdminHandlersTestNoAuth(t *testing.T) (*gin.Engine, func()) {
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6380"
-	}
+	// Reuse the shared Redis connection initialised by setupTestEnvironment.
+	setupTestEnvironment()
 
 	_ = logging.InitLogger()
 	gin.SetMode(gin.TestMode)
@@ -137,14 +117,6 @@ func setupAdminHandlersTestNoAuth(t *testing.T) (*gin.Engine, func()) {
 		config.AppConfig = &config.Config{}
 	}
 	config.AppConfig.AdminGroup = "go:admin"
-
-	// Redis setup
-	singleClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       0,
-	})
-	config.Redis = redisclient.NewClient(singleClient)
 
 	router := gin.New()
 	// No auth middleware - simulates unauthenticated request
@@ -796,10 +768,8 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 	// checked authorization.
 
 	t.Run("admin with middleware enforcement", func(t *testing.T) {
-		redisAddr := os.Getenv("REDIS_ADDR")
-		if redisAddr == "" {
-			redisAddr = "localhost:6380"
-		}
+		// Reuse the shared Redis connection initialised by setupTestEnvironment.
+		setupTestEnvironment()
 
 		_ = logging.InitLogger()
 		gin.SetMode(gin.TestMode)
@@ -811,15 +781,7 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 
 		ctx := context.Background()
 
-		// Redis setup
-		singleClient := redis.NewClient(&redis.Options{
-			Addr:     redisAddr,
-			Password: os.Getenv("REDIS_PASSWORD"),
-			DB:       0,
-		})
-		config.Redis = redisclient.NewClient(singleClient)
-
-		// Test Redis connection
+		// Verify Redis connection is ready.
 		err := config.Redis.Ping(ctx).Err()
 		require.NoError(t, err, "Failed to connect to Redis")
 
@@ -913,10 +875,8 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 	})
 
 	t.Run("non-admin with middleware enforcement", func(t *testing.T) {
-		redisAddr := os.Getenv("REDIS_ADDR")
-		if redisAddr == "" {
-			redisAddr = "localhost:6380"
-		}
+		// Reuse the shared Redis connection initialised by setupTestEnvironment.
+		setupTestEnvironment()
 
 		_ = logging.InitLogger()
 		gin.SetMode(gin.TestMode)
@@ -925,14 +885,6 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 			config.AppConfig = &config.Config{}
 		}
 		config.AppConfig.AdminGroup = "go:admin"
-
-		// Redis setup
-		singleClient := redis.NewClient(&redis.Options{
-			Addr:     redisAddr,
-			Password: os.Getenv("REDIS_PASSWORD"),
-			DB:       0,
-		})
-		config.Redis = redisclient.NewClient(singleClient)
 
 		router := gin.New()
 
@@ -1014,10 +966,8 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 	})
 
 	t.Run("missing claims with middleware enforcement", func(t *testing.T) {
-		redisAddr := os.Getenv("REDIS_ADDR")
-		if redisAddr == "" {
-			redisAddr = "localhost:6380"
-		}
+		// Reuse the shared Redis connection initialised by setupTestEnvironment.
+		setupTestEnvironment()
 
 		_ = logging.InitLogger()
 		gin.SetMode(gin.TestMode)
@@ -1026,14 +976,6 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 			config.AppConfig = &config.Config{}
 		}
 		config.AppConfig.AdminGroup = "go:admin"
-
-		// Redis setup
-		singleClient := redis.NewClient(&redis.Options{
-			Addr:     redisAddr,
-			Password: os.Getenv("REDIS_PASSWORD"),
-			DB:       0,
-		})
-		config.Redis = redisclient.NewClient(singleClient)
 
 		router := gin.New()
 

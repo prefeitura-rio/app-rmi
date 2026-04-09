@@ -38,13 +38,19 @@ type OptimisticUpdateResult struct {
 
 // UpdateWithOptimisticLock performs an update with optimistic locking
 func UpdateWithOptimisticLock(ctx context.Context, collection string, filter bson.M, update bson.M, expectedVersion int32) (*OptimisticUpdateResult, error) {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.String("collection", collection),
 		zap.Int32("expected_version", expectedVersion),
 	)
 
-	// Add version check to filter
-	filter["version"] = expectedVersion
+	// Create a copy of the filter that includes the version check.
+	// This avoids mutating the caller's map, which would cause a data race
+	// when the filter is accessed concurrently (e.g. in retry loops).
+	versionedFilter := make(bson.M, len(filter)+1)
+	for k, v := range filter {
+		versionedFilter[k] = v
+	}
+	versionedFilter["version"] = expectedVersion
 
 	// Add version increment to update
 	newVersion := expectedVersion + 1
@@ -58,8 +64,8 @@ func UpdateWithOptimisticLock(ctx context.Context, collection string, filter bso
 	update["$set"].(bson.M)["version"] = newVersion
 	update["$set"].(bson.M)["updated_at"] = now
 
-	// Perform the update
-	result, err := config.MongoDB.Collection(collection).UpdateOne(ctx, filter, update)
+	// Perform the update using the copy so caller's filter is not mutated
+	result, err := config.MongoDB.Collection(collection).UpdateOne(ctx, versionedFilter, update)
 	if err != nil {
 		logger.Error("failed to perform optimistic update", zap.Error(err))
 		return nil, fmt.Errorf("failed to perform optimistic update: %w", err)
@@ -151,7 +157,7 @@ func GetUserConfigVersion(ctx context.Context, cpf string) (int32, error) {
 
 // RetryWithOptimisticLock retries an operation with exponential backoff on optimistic lock conflicts
 func RetryWithOptimisticLock(ctx context.Context, maxRetries int, operation func() error) error {
-	logger := logging.Logger.With(zap.String("operation", "retry_with_optimistic_lock"))
+	logger := logging.GetLogger().With(zap.String("operation", "retry_with_optimistic_lock"))
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		err := operation()
@@ -191,7 +197,7 @@ func RetryWithOptimisticLock(ctx context.Context, maxRetries int, operation func
 
 // InitializeDocumentVersion initializes version field for existing documents
 func InitializeDocumentVersion(ctx context.Context, collection string, filter bson.M) error {
-	logger := logging.Logger.With(zap.String("collection", collection))
+	logger := logging.GetLogger().With(zap.String("collection", collection))
 
 	// Find documents without version field
 	noVersionFilter := bson.M{}

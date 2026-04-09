@@ -29,7 +29,7 @@ func setupNotificationCategoryHandlersTest(t *testing.T) (*NotificationCategoryH
 	ctx := context.Background()
 	database := config.MongoDB
 
-	handlers := NewNotificationCategoryHandlers(logging.Logger)
+	handlers := NewNotificationCategoryHandlers(logging.GetLogger())
 
 	router := gin.New()
 	router.GET("/notification-categories", handlers.ListCategories)
@@ -52,7 +52,7 @@ func setupNotificationCategoryHandlersTest(t *testing.T) (*NotificationCategoryH
 }
 
 func TestNewNotificationCategoryHandlers(t *testing.T) {
-	handlers := NewNotificationCategoryHandlers(logging.Logger)
+	handlers := NewNotificationCategoryHandlers(logging.GetLogger())
 	if handlers == nil {
 		t.Error("NewNotificationCategoryHandlers() returned nil")
 		return

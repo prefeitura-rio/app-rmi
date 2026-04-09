@@ -73,13 +73,35 @@ func setupTestEnvironment() {
 			os.Setenv("WHATSAPP_ENABLED", "false")
 		}
 
+		// Set WhatsApp environment variables (required by config even when disabled)
+		if os.Getenv("WHATSAPP_API_BASE_URL") == "" {
+			os.Setenv("WHATSAPP_API_BASE_URL", "http://localhost:8080")
+		}
+		if os.Getenv("WHATSAPP_API_USERNAME") == "" {
+			os.Setenv("WHATSAPP_API_USERNAME", "test_username")
+		}
+		if os.Getenv("WHATSAPP_API_PASSWORD") == "" {
+			os.Setenv("WHATSAPP_API_PASSWORD", "test_password")
+		}
+		if os.Getenv("WHATSAPP_HSM_ID") == "" {
+			os.Setenv("WHATSAPP_HSM_ID", "test_hsm_id")
+		}
+		if os.Getenv("WHATSAPP_COST_CENTER_ID") == "" {
+			os.Setenv("WHATSAPP_COST_CENTER_ID", "test_cost_center")
+		}
+		if os.Getenv("WHATSAPP_CAMPAIGN_NAME") == "" {
+			os.Setenv("WHATSAPP_CAMPAIGN_NAME", "test_campaign")
+		}
+
 		// Initialize configuration and connections only once
 		if err := config.LoadConfig(); err != nil {
 			testInitError = err
 			return
 		}
-		config.InitMongoDB()
+		// Initialize Redis before MongoDB so that the distributed index-creation
+		// lock in ensureIndexes (called by InitMongoDB) can be exercised in tests.
 		config.InitRedis()
+		config.InitMongoDB()
 
 		zap.L().Info("Test environment initialized for handlers package")
 	})

@@ -25,7 +25,7 @@ var (
 // InitTracer initializes the OpenTelemetry tracer
 func InitTracer() {
 	if !config.AppConfig.TracingEnabled {
-		logging.Logger.Info("tracing is disabled")
+		logging.GetLogger().Info("tracing is disabled")
 		return
 	}
 
@@ -39,7 +39,7 @@ func InitTracer() {
 	)
 	exporter, err := otlptrace.New(ctx, client)
 	if err != nil {
-		logging.Logger.Error("failed to create OTLP exporter", zap.Error(err))
+		logging.GetLogger().Error("failed to create OTLP exporter", zap.Error(err))
 		return
 	}
 
@@ -51,7 +51,7 @@ func InitTracer() {
 		),
 	)
 	if err != nil {
-		logging.Logger.Error("failed to create resource", zap.Error(err))
+		logging.GetLogger().Error("failed to create resource", zap.Error(err))
 		return
 	}
 
@@ -73,7 +73,7 @@ func InitTracer() {
 		propagation.Baggage{},
 	))
 
-	logging.Logger.Info("tracer initialized")
+	logging.GetLogger().Info("tracer initialized")
 }
 
 // ShutdownTracer shuts down the tracer provider
@@ -86,6 +86,6 @@ func ShutdownTracer() {
 	defer cancel()
 
 	if err := tracerProvider.Shutdown(ctx); err != nil {
-		logging.Logger.Error("failed to shutdown tracer provider", zap.Error(err))
+		logging.GetLogger().Error("failed to shutdown tracer provider", zap.Error(err))
 	}
 }

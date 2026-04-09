@@ -6,7 +6,7 @@ import (
 
 // Logger returns the global safe logger instance
 func Logger() *logging.SafeLogger {
-	return logging.Logger
+	return logging.GetLogger()
 }
 
 // MaskCPF masks a CPF number for logging

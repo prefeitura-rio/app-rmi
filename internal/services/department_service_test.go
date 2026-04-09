@@ -12,8 +12,8 @@ import (
 )
 
 func setupDepartmentServiceTest(t *testing.T) (*DepartmentService, func()) {
-	if config.MongoDB == nil {
-		t.Skip("Skipping department service tests: MongoDB not initialized")
+	if config.MongoDB == nil || config.Redis == nil {
+		t.Skip("Skipping department service tests: MongoDB or Redis not initialized")
 	}
 
 	_ = logging.InitLogger()
@@ -23,20 +23,35 @@ func setupDepartmentServiceTest(t *testing.T) (*DepartmentService, func()) {
 	}
 	config.AppConfig.DepartmentCollection = "test_departments"
 
-	service := NewDepartmentService(config.MongoDB, logging.Logger)
+	// Create DataManager for cache-aware operations
+	dataManager := NewDataManager(config.Redis, config.MongoDB, logging.GetLogger())
+	service := NewDepartmentService(config.MongoDB, dataManager, logging.GetLogger())
+
+	// Clear Redis cache before test
+	ctx := context.Background()
+	keys, err := config.Redis.Keys(ctx, "department:*").Result()
+	if err == nil && len(keys) > 0 {
+		_ = config.Redis.Del(ctx, keys...).Err()
+	}
 
 	return service, func() {
 		ctx := context.Background()
 		_ = config.MongoDB.Collection(config.AppConfig.DepartmentCollection).Drop(ctx)
+		// Clear Redis cache after test
+		keys, err := config.Redis.Keys(ctx, "department:*").Result()
+		if err == nil && len(keys) > 0 {
+			_ = config.Redis.Del(ctx, keys...).Err()
+		}
 	}
 }
 
 func TestNewDepartmentService(t *testing.T) {
-	if config.MongoDB == nil {
-		t.Skip("Skipping: MongoDB not initialized")
+	if config.MongoDB == nil || config.Redis == nil {
+		t.Skip("Skipping: MongoDB or Redis not initialized")
 	}
 
-	service := NewDepartmentService(config.MongoDB, logging.Logger)
+	dataManager := NewDataManager(config.Redis, config.MongoDB, logging.GetLogger())
+	service := NewDepartmentService(config.MongoDB, dataManager, logging.GetLogger())
 
 	if service == nil {
 		t.Error("NewDepartmentService() returned nil")
@@ -90,6 +105,99 @@ func TestGetDepartmentByID_NotFound(t *testing.T) {
 	_, err := service.GetDepartmentByID(ctx, "9999")
 	if err == nil {
 		t.Error("GetDepartmentByID() should return error for non-existent department")
+	}
+}
+
+func TestGetDepartmentByID_CacheHit(t *testing.T) {
+	// Note: NOT running in parallel because cache cleanup from other tests
+	// would interfere with this test's cache verification
+
+	service, cleanup := setupDepartmentServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Use unique cd_ua for parallel test execution
+	uniqueCdUA := "cache_test_1000"
+
+	// Insert test department with updated_at field
+	collection := config.MongoDB.Collection(config.AppConfig.DepartmentCollection)
+	now := time.Now().UTC()
+	dept := bson.M{
+		"cd_ua":      uniqueCdUA,
+		"sigla_ua":   "PCRJ",
+		"nome_ua":    "Prefeitura da Cidade do Rio de Janeiro",
+		"nivel":      1,
+		"updated_at": primitive.NewDateTimeFromTime(now),
+	}
+
+	_, err := collection.InsertOne(ctx, dept)
+	if err != nil {
+		t.Fatalf("Failed to insert department: %v", err)
+	}
+	defer func() {
+		_, _ = collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueCdUA})
+	}()
+
+	// First call - populates cache from MongoDB
+	result1, err := service.GetDepartmentByID(ctx, uniqueCdUA)
+	if err != nil {
+		t.Fatalf("First GetDepartmentByID() error = %v", err)
+	}
+
+	if result1 == nil {
+		t.Fatal("First GetDepartmentByID() returned nil")
+	}
+
+	if result1.CdUA != uniqueCdUA {
+		t.Errorf("First GetDepartmentByID() CdUA = %v, want %s", result1.CdUA, uniqueCdUA)
+	}
+
+	// Delete the document from MongoDB (cache should still have it)
+	_, err = collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueCdUA})
+	if err != nil {
+		t.Fatalf("Failed to delete department from MongoDB: %v", err)
+	}
+
+	// Verify document is gone from MongoDB
+	var checkDoc bson.M
+	err = collection.FindOne(ctx, bson.M{"cd_ua": uniqueCdUA}).Decode(&checkDoc)
+	if err == nil {
+		t.Fatal("Document should have been deleted from MongoDB")
+	}
+
+	// Second call - should return from cache even though MongoDB document is gone
+	result2, err := service.GetDepartmentByID(ctx, uniqueCdUA)
+	if err != nil {
+		t.Fatalf("Second GetDepartmentByID() error = %v (should return from cache)", err)
+	}
+
+	if result2 == nil {
+		t.Fatal("Second GetDepartmentByID() returned nil (should return from cache)")
+	}
+
+	if result2.CdUA != uniqueCdUA {
+		t.Errorf("Second GetDepartmentByID() CdUA = %v, want %s (from cache)", result2.CdUA, uniqueCdUA)
+	}
+
+	if result2.SiglaUA != "PCRJ" {
+		t.Errorf("Second GetDepartmentByID() SiglaUA = %v, want PCRJ (from cache)", result2.SiglaUA)
+	}
+
+	// Verify nivel field was preserved through cache round-trip (critical: JSON deserializes numbers as float64)
+	if result2.Nivel != 1 {
+		t.Errorf("Second GetDepartmentByID() Nivel = %v, want 1 (from cache, must handle float64)", result2.Nivel)
+	}
+
+	// Verify updated_at field was preserved through cache round-trip
+	if result2.UpdatedAt == nil {
+		t.Error("Second GetDepartmentByID() UpdatedAt = nil (should be preserved from cache)")
+	} else {
+		// Allow for slight time precision differences due to JSON serialization
+		diff := result2.UpdatedAt.Sub(now).Abs()
+		if diff > time.Second {
+			t.Errorf("Second GetDepartmentByID() UpdatedAt time diff = %v, want < 1s (from cache)", diff)
+		}
 	}
 }
 
@@ -577,5 +685,99 @@ func TestConvertRawToDepartment_TimeTime(t *testing.T) {
 		t.Error("convertRawToDepartment() UpdatedAt should not be nil")
 	} else if !dept.UpdatedAt.Equal(now) {
 		t.Errorf("convertRawToDepartment() UpdatedAt = %v, want %v", *dept.UpdatedAt, now)
+	}
+}
+
+func TestListDepartments_CacheHit(t *testing.T) {
+	// Note: NOT running in parallel because cache cleanup from other tests
+	// would interfere with this test's cache verification
+
+	service, cleanup := setupDepartmentServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Use unique cd_ua values for parallel test execution
+	uniqueID1 := "cache_list_1000"
+	uniqueID2 := "cache_list_2000"
+
+	// Insert test departments
+	collection := config.MongoDB.Collection(config.AppConfig.DepartmentCollection)
+	departments := []interface{}{
+		bson.M{
+			"cd_ua":    uniqueID1,
+			"sigla_ua": "PCRJ",
+			"nome_ua":  "Prefeitura",
+			"nivel":    1,
+		},
+		bson.M{
+			"cd_ua":     uniqueID2,
+			"sigla_ua":  "SMF",
+			"nome_ua":   "Secretaria Municipal de Fazenda",
+			"nivel":     2,
+			"cd_ua_pai": uniqueID1,
+		},
+	}
+
+	_, err := collection.InsertMany(ctx, departments)
+	if err != nil {
+		t.Fatalf("Failed to insert departments: %v", err)
+	}
+	defer func() {
+		_, _ = collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueID1})
+		_, _ = collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueID2})
+	}()
+
+	// Use a filter that matches only our test departments
+	filters := DepartmentFilters{
+		ParentID: uniqueID1,
+		Page:     1,
+		PerPage:  10,
+	}
+
+	// First call - populates cache from MongoDB
+	result1, err := service.ListDepartments(ctx, filters)
+	if err != nil {
+		t.Fatalf("First ListDepartments() error = %v", err)
+	}
+
+	if result1.Pagination.Total != 1 {
+		t.Errorf("First ListDepartments() Total = %v, want 1", result1.Pagination.Total)
+	}
+
+	// Delete the child department from MongoDB (cache should still have it)
+	_, err = collection.DeleteOne(ctx, bson.M{"cd_ua": uniqueID2})
+	if err != nil {
+		t.Fatalf("Failed to delete department from MongoDB: %v", err)
+	}
+
+	// Verify document is gone from MongoDB
+	count, err := collection.CountDocuments(ctx, bson.M{"cd_ua": uniqueID2})
+	if err != nil {
+		t.Fatalf("Failed to count documents: %v", err)
+	}
+	if count != 0 {
+		t.Fatal("Document should have been deleted from MongoDB")
+	}
+
+	// Second call - should return from cache even though MongoDB document is gone
+	result2, err := service.ListDepartments(ctx, filters)
+	if err != nil {
+		t.Fatalf("Second ListDepartments() error = %v (should return from cache)", err)
+	}
+
+	if result2.Pagination.Total != 1 {
+		t.Errorf("Second ListDepartments() Total = %v, want 1 (from cache)", result2.Pagination.Total)
+	}
+
+	if len(result2.Departments) != 1 {
+		t.Errorf("Second ListDepartments() len(Departments) = %v, want 1 (from cache)", len(result2.Departments))
+	}
+
+	// Verify nivel field was preserved through cache round-trip (float64 handling)
+	for _, dept := range result2.Departments {
+		if dept.Nivel == 0 {
+			t.Errorf("Second ListDepartments() department has Nivel = 0 (should be 2 from cache)")
+		}
 	}
 }
