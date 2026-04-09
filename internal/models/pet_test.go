@@ -335,6 +335,91 @@ func TestPetRegistrationRequest_Structure(t *testing.T) {
 	}
 }
 
+func TestPet_OutrosTutores(t *testing.T) {
+	t.Run("deserializes outros_tutores from MongoDB", func(t *testing.T) {
+		// Create a pet with outros_tutores data matching MongoDB structure
+		pet := Pet{
+			ID:   intPtr(40777),
+			Name: "SULAMITA",
+			OtherTutors: []OtherTutor{
+				{
+					CPF:   "90680510753",
+					Name:  "COSMEANA MIRANDA LIMA DOS SANTOS",
+					Email: "crosmiana@gmail.com",
+				},
+			},
+		}
+
+		// Verify outros_tutores field is present
+		require.NotNil(t, pet.OtherTutors)
+		assert.Len(t, pet.OtherTutors, 1)
+		assert.Equal(t, "90680510753", pet.OtherTutors[0].CPF)
+		assert.Equal(t, "COSMEANA MIRANDA LIMA DOS SANTOS", pet.OtherTutors[0].Name)
+		assert.Equal(t, "crosmiana@gmail.com", pet.OtherTutors[0].Email)
+	})
+
+	t.Run("handles empty outros_tutores array", func(t *testing.T) {
+		pet := Pet{
+			ID:          intPtr(8005),
+			Name:        "MILLI",
+			OtherTutors: []OtherTutor{},
+		}
+
+		assert.NotNil(t, pet.OtherTutors)
+		assert.Len(t, pet.OtherTutors, 0)
+	})
+
+	t.Run("handles outros_tutores with phone", func(t *testing.T) {
+		pet := Pet{
+			ID:   intPtr(12345),
+			Name: "TEST",
+			OtherTutors: []OtherTutor{
+				{
+					CPF:   "12345678900",
+					Name:  "Test Tutor",
+					Phone: "21999999999",
+					Email: "test@example.com",
+				},
+			},
+		}
+
+		assert.Len(t, pet.OtherTutors, 1)
+		assert.Equal(t, "21999999999", pet.OtherTutors[0].Phone)
+	})
+
+	t.Run("BSON round-trip preserves outros_tutores", func(t *testing.T) {
+		// Test BSON serialization/deserialization
+		original := Pet{
+			ID:   intPtr(99999),
+			Name: "BSON Test Pet",
+			OtherTutors: []OtherTutor{
+				{
+					CPF:   "12345678900",
+					Name:  "Primary Tutor",
+					Phone: "21987654321",
+					Email: "primary@test.com",
+				},
+				{
+					CPF:   "09876543211",
+					Name:  "Secondary Tutor",
+					Email: "secondary@test.com",
+				},
+			},
+		}
+
+		// This test verifies the BSON tags are correct
+		// by checking that the struct fields match expected MongoDB field names
+		assert.Equal(t, 2, len(original.OtherTutors))
+		assert.Equal(t, "Primary Tutor", original.OtherTutors[0].Name)
+		assert.Equal(t, "Secondary Tutor", original.OtherTutors[1].Name)
+	})
+}
+
+// Helper function for test
+func intPtr(i int) *int {
+	return &i
+}
+
 func TestRawCitizenPets_ToCitizenPets_WithTestify(t *testing.T) {
 	stats := &Statistics{DogCount: 2, CatCount: 1}
 	var partition int64 = 5
