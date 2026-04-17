@@ -23,12 +23,12 @@ func TestBuildAddressString(t *testing.T) {
 		{
 			name: "complete address with all fields",
 			endereco: &models.EnderecoPrincipal{
-				Logradouro: strPtr("Rua das Flores"),
-				Numero:     strPtr("123"),
+				Logradouro:  strPtr("Rua das Flores"),
+				Numero:      strPtr("123"),
 				Complemento: strPtr("Apto 401"),
-				Bairro:     strPtr("Centro"),
-				Municipio:  strPtr("Rio de Janeiro"),
-				Estado:     strPtr("RJ"),
+				Bairro:      strPtr("Centro"),
+				Municipio:   strPtr("Rio de Janeiro"),
+				Estado:      strPtr("RJ"),
 			},
 			expected: "Rua das Flores, 123, Apto 401, Centro, Rio de Janeiro, RJ",
 		},
