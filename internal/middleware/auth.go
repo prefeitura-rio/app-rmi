@@ -332,6 +332,10 @@ func RequireOwnCPFOrServiceAccount(clientIDs ...string) gin.HandlerFunc {
 					return
 				}
 			}
+			// SA from a disallowed client — reject immediately
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			c.Abort()
+			return
 		}
 
 		// Regular users must be accessing their own CPF
