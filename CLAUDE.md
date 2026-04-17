@@ -176,8 +176,8 @@ When asked to do the "commit thing":
 This project follows a structured git workflow:
 
 #### Branch Structure
-- **main**: Production-ready code only
-- **staging**: Integration testing and pre-production  
+- **main**: Staging/homologation/pre-production environment — all feature branches target here
+- **releases**: Production deployments via tagged releases
 - **feature branches**: Active development work with meaningful names
 
 #### Branch Naming Convention
@@ -188,7 +188,7 @@ This project follows a structured git workflow:
 - **test/**: Test improvements (e.g., `test/integration-coverage`)
 
 #### Development Rules
-1. Always create a new feature branch from **staging** for new work
+1. Always create a new feature branch from **main** for new work
 2. Use descriptive branch names with appropriate prefixes
 3. Test every batch of implemented tasks before committing
 4. Never push commits directly - create PRs for code review
