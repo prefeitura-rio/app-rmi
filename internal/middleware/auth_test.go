@@ -11,6 +11,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/stretchr/testify/assert"
 )
 
 func init() {
@@ -357,4 +358,289 @@ func TestMin(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Helpers for RequireServiceAccount / RequireOwnCPFOrServiceAccount tests
+// ---------------------------------------------------------------------------
+
+// adminGroup is the value set in init() — must match config.AppConfig.AdminGroup.
+const adminGroup = "go:admin"
+
+// buildRouter creates a gin.Engine with the given middleware chain and a dummy
+// GET /test handler that always returns 200. The optional routePath lets callers
+// register a parameterised route (e.g. "/citizen/:cpf/data").
+func buildRouter(routePath string, middlewares ...gin.HandlerFunc) *gin.Engine {
+	r := gin.New()
+	path := routePath
+	if path == "" {
+		path = "/test"
+	}
+	r.GET(path, append(middlewares, func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	})...)
+	return r
+}
+
+// injectClaims returns a gin.HandlerFunc that stores the given claims in the
+// context under the "claims" key, mimicking what AuthMiddleware does.
+func injectClaims(claims *models.JWTClaims) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set("claims", claims)
+		c.Next()
+	}
+}
+
+// makeAdminClaims returns claims for a human admin (has adminGroup in RealmAccess.Roles).
+func makeAdminClaims() *models.JWTClaims {
+	c := &models.JWTClaims{
+		PreferredUsername: "admin-user",
+		AZP:               "some-client",
+	}
+	c.RealmAccess.Roles = []string{adminGroup}
+	return c
+}
+
+// makeSAClaims returns claims for a Keycloak service account from clientID.
+func makeSAClaims(clientID string) *models.JWTClaims {
+	return &models.JWTClaims{
+		PreferredUsername: "service-account-" + clientID,
+		AZP:               clientID,
+	}
+}
+
+// makeUserClaims returns claims for a regular (non-SA, non-admin) user.
+func makeUserClaims(preferredUsername string) *models.JWTClaims {
+	return &models.JWTClaims{
+		PreferredUsername: preferredUsername,
+		AZP:               "some-client",
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RequireServiceAccount tests
+// ---------------------------------------------------------------------------
+
+// TestRequireServiceAccount_AdminCaller verifies that a caller with the admin
+// role in realm_access.roles is always allowed through, regardless of azp.
+func TestRequireServiceAccount_AdminCaller(t *testing.T) {
+	// Arrange
+	router := buildRouter("", injectClaims(makeAdminClaims()), RequireServiceAccount("superapp"))
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusOK, w.Code, "admin caller must bypass RequireServiceAccount")
+}
+
+// TestRequireServiceAccount_ValidSACorrectClient verifies that a service account
+// from the expected client is allowed through.
+func TestRequireServiceAccount_ValidSACorrectClient(t *testing.T) {
+	// Arrange
+	router := buildRouter("", injectClaims(makeSAClaims("superapp")), RequireServiceAccount("superapp"))
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusOK, w.Code, "valid SA from correct client must be allowed")
+}
+
+// TestRequireServiceAccount_ValidSAWrongClient verifies that a service account
+// from a different client is rejected with 403.
+func TestRequireServiceAccount_ValidSAWrongClient(t *testing.T) {
+	// Arrange
+	router := buildRouter("", injectClaims(makeSAClaims("other-client")), RequireServiceAccount("superapp"))
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusForbidden, w.Code, "SA from wrong client must be rejected")
+}
+
+// TestRequireServiceAccount_NotSACorrectAZP verifies that a regular user whose
+// azp matches the allowed client ID is still rejected (no service-account- prefix).
+func TestRequireServiceAccount_NotSACorrectAZP(t *testing.T) {
+	// Arrange — preferred_username does NOT start with "service-account-"
+	claims := &models.JWTClaims{
+		PreferredUsername: "regular-user",
+		AZP:               "superapp",
+	}
+	router := buildRouter("", injectClaims(claims), RequireServiceAccount("superapp"))
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusForbidden, w.Code, "non-SA caller must be rejected even with correct azp")
+}
+
+// TestRequireServiceAccount_NoClaims verifies that a request with no claims in
+// context is rejected with 401.
+func TestRequireServiceAccount_NoClaims(t *testing.T) {
+	// Arrange — no injectClaims middleware, so context has no "claims" key
+	router := buildRouter("", RequireServiceAccount("superapp"))
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusUnauthorized, w.Code, "missing claims must return 401")
+}
+
+// TestRequireServiceAccount_MultipleClientIDs_MatchesSecond verifies that when
+// multiple client IDs are allowed, a caller matching the second one is accepted.
+func TestRequireServiceAccount_MultipleClientIDs_MatchesSecond(t *testing.T) {
+	// Arrange — SA from "app-eai-agent", allowed list is ["superapp", "app-eai-agent"]
+	router := buildRouter("",
+		injectClaims(makeSAClaims("app-eai-agent")),
+		RequireServiceAccount("superapp", "app-eai-agent"),
+	)
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusOK, w.Code, "SA matching second allowed client must be accepted")
+}
+
+// TestRequireServiceAccount_MultipleClientIDs_MatchesNone verifies that a SA
+// whose azp does not match any of the allowed client IDs is rejected with 403.
+func TestRequireServiceAccount_MultipleClientIDs_MatchesNone(t *testing.T) {
+	// Arrange — SA from "unknown-client", allowed list is ["superapp", "app-eai-agent"]
+	router := buildRouter("",
+		injectClaims(makeSAClaims("unknown-client")),
+		RequireServiceAccount("superapp", "app-eai-agent"),
+	)
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusForbidden, w.Code, "SA matching no allowed client must be rejected")
+}
+
+// ---------------------------------------------------------------------------
+// RequireOwnCPFOrServiceAccount tests
+// ---------------------------------------------------------------------------
+
+// TestRequireOwnCPFOrServiceAccount_AdminCaller verifies that an admin is always
+// allowed through, regardless of the :cpf param or azp.
+func TestRequireOwnCPFOrServiceAccount_AdminCaller(t *testing.T) {
+	// Arrange
+	router := buildRouter("/citizen/:cpf/data",
+		injectClaims(makeAdminClaims()),
+		RequireOwnCPFOrServiceAccount("superapp"),
+	)
+	req, _ := http.NewRequest(http.MethodGet, "/citizen/99999999999/data", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusOK, w.Code, "admin caller must bypass RequireOwnCPFOrServiceAccount")
+}
+
+// TestRequireOwnCPFOrServiceAccount_ValidSAAllowedClient verifies that a service
+// account from an allowed client can access any CPF.
+func TestRequireOwnCPFOrServiceAccount_ValidSAAllowedClient(t *testing.T) {
+	// Arrange
+	router := buildRouter("/citizen/:cpf/data",
+		injectClaims(makeSAClaims("superapp")),
+		RequireOwnCPFOrServiceAccount("superapp", "app-eai-agent"),
+	)
+	req, _ := http.NewRequest(http.MethodGet, "/citizen/12345678901/data", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusOK, w.Code, "SA from allowed client must be accepted")
+}
+
+// TestRequireOwnCPFOrServiceAccount_ValidSADisallowedClient verifies that a
+// service account from a client NOT in the allowed list is rejected with 403.
+func TestRequireOwnCPFOrServiceAccount_ValidSADisallowedClient(t *testing.T) {
+	// Arrange — SA from "app-sms-gateway", allowed list is ["superapp"]
+	router := buildRouter("/citizen/:cpf/data",
+		injectClaims(makeSAClaims("app-sms-gateway")),
+		RequireOwnCPFOrServiceAccount("superapp"),
+	)
+	req, _ := http.NewRequest(http.MethodGet, "/citizen/12345678901/data", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusForbidden, w.Code, "SA from disallowed client must be rejected")
+}
+
+// TestRequireOwnCPFOrServiceAccount_CitizenAccessesOwnCPF verifies that a
+// regular citizen whose preferred_username matches the :cpf param is allowed.
+func TestRequireOwnCPFOrServiceAccount_CitizenAccessesOwnCPF(t *testing.T) {
+	// Arrange — preferred_username == CPF in URL
+	router := buildRouter("/citizen/:cpf/data",
+		injectClaims(makeUserClaims("12345678901")),
+		RequireOwnCPFOrServiceAccount("superapp"),
+	)
+	req, _ := http.NewRequest(http.MethodGet, "/citizen/12345678901/data", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusOK, w.Code, "citizen accessing own CPF must be allowed")
+}
+
+// TestRequireOwnCPFOrServiceAccount_CitizenAccessesOtherCPF verifies that a
+// regular citizen trying to access another citizen's CPF is rejected with 403.
+func TestRequireOwnCPFOrServiceAccount_CitizenAccessesOtherCPF(t *testing.T) {
+	// Arrange — preferred_username != CPF in URL, not SA, not admin
+	router := buildRouter("/citizen/:cpf/data",
+		injectClaims(makeUserClaims("12345678901")),
+		RequireOwnCPFOrServiceAccount("superapp"),
+	)
+	req, _ := http.NewRequest(http.MethodGet, "/citizen/99999999999/data", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusForbidden, w.Code, "citizen accessing another's CPF must be rejected")
+}
+
+// TestRequireOwnCPFOrServiceAccount_NoClaims verifies that a request with no
+// claims in context is rejected with 401.
+func TestRequireOwnCPFOrServiceAccount_NoClaims(t *testing.T) {
+	// Arrange — no injectClaims middleware
+	router := buildRouter("/citizen/:cpf/data", RequireOwnCPFOrServiceAccount("superapp"))
+	req, _ := http.NewRequest(http.MethodGet, "/citizen/12345678901/data", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusUnauthorized, w.Code, "missing claims must return 401")
 }
