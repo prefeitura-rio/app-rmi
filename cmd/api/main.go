@@ -158,9 +158,9 @@ func main() {
 		// Metrics endpoint (no auth required) - for Prometheus scraping
 		v1.GET("/metrics", handlers.MetricsHandler)
 
-		// Memory endpoints (require auth)
+		// Memory endpoints (require service account)
 		memory := v1.Group("/memory")
-		memory.Use(middleware.AuthMiddleware())
+		memory.Use(middleware.AuthMiddleware(), middleware.RequireServiceAccount("app-eai-agent"))
 		{
 			memory.GET("/:phone_number", handlers.GetMemoryList)
 			memory.GET("/:phone_number/:memory_name", handlers.GetMemoryByName)
@@ -173,33 +173,34 @@ func main() {
 		citizen := v1.Group("/citizen")
 		citizen.Use(middleware.AuthMiddleware())
 		{
-			// Endpoints that require own CPF access
-			citizen.GET("/:cpf", middleware.RequireOwnCPF(), handlers.GetCitizenData)
-			citizen.GET("/:cpf/wallet", middleware.RequireOwnCPF(), handlers.GetCitizenWallet)
-			citizen.GET("/:cpf/maintenance-request", middleware.RequireOwnCPF(), handlers.GetMaintenanceRequests)
-			citizen.PUT("/:cpf/address", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredAddress)
-			citizen.PUT("/:cpf/phone", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredPhone)
-			citizen.PUT("/:cpf/email", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredEmail)
-			citizen.PUT("/:cpf/ethnicity", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredRaca)
-			citizen.PUT("/:cpf/exhibition-name", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredNomeExibicao)
-			citizen.PUT("/:cpf/gender", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredGenero)
-			citizen.PUT("/:cpf/family-income", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredRendaFamiliar)
-			citizen.PUT("/:cpf/education", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredEscolaridade)
-			citizen.PUT("/:cpf/disability", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredDeficiencia)
-			citizen.GET("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.GetFirstLogin)
-			citizen.PUT("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.UpdateFirstLogin)
-			citizen.GET("/:cpf/optin", middleware.RequireOwnCPF(), handlers.GetOptIn)
-			citizen.PUT("/:cpf/optin", middleware.RequireOwnCPF(), handlers.UpdateOptIn)
-			citizen.POST("/:cpf/phone/validate", middleware.RequireOwnCPF(), handlers.ValidatePhoneVerification)
-			citizen.GET("/:cpf/legal-entities", middleware.RequireOwnCPF(), handlers.GetLegalEntities)
-			citizen.GET("/:cpf/pets", middleware.RequireOwnCPF(), handlers.GetPets)
-			citizen.POST("/:cpf/pets", middleware.RequireOwnCPF(), handlers.RegisterPet)
-			citizen.GET("/:cpf/pets/:pet_id", middleware.RequireOwnCPF(), handlers.GetPet)
-			citizen.GET("/:cpf/pets/stats", middleware.RequireOwnCPF(), handlers.GetPetStats)
+			// GET endpoints: own CPF or service account (superapp, app-eai-agent)
+			citizen.GET("/:cpf", middleware.RequireOwnCPFOrServiceAccount("superapp", "app-eai-agent"), handlers.GetCitizenData)
+			citizen.GET("/:cpf/wallet", middleware.RequireOwnCPFOrServiceAccount("superapp", "app-eai-agent"), handlers.GetCitizenWallet)
+			citizen.GET("/:cpf/maintenance-request", middleware.RequireOwnCPFOrServiceAccount("superapp", "app-eai-agent"), handlers.GetMaintenanceRequests)
+			// PUT/POST endpoints: own CPF or service account (superapp only)
+			citizen.PUT("/:cpf/address", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateSelfDeclaredAddress)
+			citizen.PUT("/:cpf/phone", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateSelfDeclaredPhone)
+			citizen.PUT("/:cpf/email", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateSelfDeclaredEmail)
+			citizen.PUT("/:cpf/ethnicity", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateSelfDeclaredRaca)
+			citizen.PUT("/:cpf/exhibition-name", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateSelfDeclaredNomeExibicao)
+			citizen.PUT("/:cpf/gender", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateSelfDeclaredGenero)
+			citizen.PUT("/:cpf/family-income", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateSelfDeclaredRendaFamiliar)
+			citizen.PUT("/:cpf/education", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateSelfDeclaredEscolaridade)
+			citizen.PUT("/:cpf/disability", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateSelfDeclaredDeficiencia)
+			citizen.GET("/:cpf/firstlogin", middleware.RequireOwnCPFOrServiceAccount("superapp", "app-eai-agent"), handlers.GetFirstLogin)
+			citizen.PUT("/:cpf/firstlogin", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateFirstLogin)
+			citizen.GET("/:cpf/optin", middleware.RequireOwnCPFOrServiceAccount("superapp", "app-eai-agent"), handlers.GetOptIn)
+			citizen.PUT("/:cpf/optin", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateOptIn)
+			citizen.POST("/:cpf/phone/validate", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.ValidatePhoneVerification)
+			citizen.GET("/:cpf/legal-entities", middleware.RequireOwnCPFOrServiceAccount("superapp", "app-eai-agent"), handlers.GetLegalEntities)
+			citizen.GET("/:cpf/pets", middleware.RequireOwnCPFOrServiceAccount("superapp", "app-eai-agent"), handlers.GetPets)
+			citizen.POST("/:cpf/pets", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.RegisterPet)
+			citizen.GET("/:cpf/pets/:pet_id", middleware.RequireOwnCPFOrServiceAccount("superapp", "app-eai-agent"), handlers.GetPet)
+			citizen.GET("/:cpf/pets/stats", middleware.RequireOwnCPFOrServiceAccount("superapp", "app-eai-agent"), handlers.GetPetStats)
 
 			// Avatar endpoints
-			citizen.GET("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.GetUserAvatar)
-			citizen.PUT("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.UpdateUserAvatar)
+			citizen.GET("/:cpf/avatar", middleware.RequireOwnCPFOrServiceAccount("superapp", "app-eai-agent"), handlers.GetUserAvatar)
+			citizen.PUT("/:cpf/avatar", middleware.RequireOwnCPFOrServiceAccount("superapp"), handlers.UpdateUserAvatar)
 		}
 
 		// Public citizen endpoints (no auth required)
@@ -240,9 +241,9 @@ func main() {
 			phoneGroup.GET("/:phone_number/beta-status", betaGroupHandlers.GetBetaStatus)
 		}
 
-		// Phone routes (protected)
+		// Phone routes (protected — service account only)
 		protectedPhoneGroup := v1.Group("/phone")
-		protectedPhoneGroup.Use(middleware.AuthMiddleware())
+		protectedPhoneGroup.Use(middleware.AuthMiddleware(), middleware.RequireServiceAccount("superapp", "app-sms-gateway", "app-notification"))
 		{
 			protectedPhoneGroup.GET("/:phone_number/citizen", phoneHandlers.GetCitizenByPhone)
 			protectedPhoneGroup.POST("/:phone_number/validate-registration", phoneHandlers.ValidateRegistration)
@@ -300,9 +301,9 @@ func main() {
 			cnaes.GET("", cnaeHandlers.ListCNAEs)
 		}
 
-		// Legal entity routes (protected)
+		// Legal entity routes (protected — service account only)
 		legalEntity := v1.Group("/legal-entity")
-		legalEntity.Use(middleware.AuthMiddleware())
+		legalEntity.Use(middleware.AuthMiddleware(), middleware.RequireServiceAccount("superapp", "app-eai-agent"))
 		{
 			legalEntity.GET("/:cnpj", handlers.GetLegalEntityByCNPJ)
 		}
@@ -331,9 +332,9 @@ func main() {
 			citizenPreferences.PATCH("/categories/:category_id", notificationPreferencesHandlers.UpdateCitizenCategoryPreference)
 		}
 
-		// Phone notification preferences routes (admin only)
+		// Phone notification preferences routes (service account only)
 		phonePreferences := v1.Group("/phone/:phone_number/notification-preferences")
-		phonePreferences.Use(middleware.AuthMiddleware(), middleware.RequireAdmin())
+		phonePreferences.Use(middleware.AuthMiddleware(), middleware.RequireServiceAccount("app-notification"))
 		{
 			phonePreferences.GET("", notificationPreferencesHandlers.GetPhonePreferences)
 			phonePreferences.PUT("", notificationPreferencesHandlers.UpdatePhonePreferences)
