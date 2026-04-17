@@ -248,8 +248,9 @@ func RequireServiceAccount(clientIDs ...string) gin.HandlerFunc {
 			return
 		}
 
-		// Must be a service account from one of the expected clients
-		isServiceAccount := strings.HasPrefix(jwtClaims.PreferredUsername, "service-account-")
+		// Must be a service account from one of the expected clients.
+		// We require preferred_username == "service-account-"+AZP (Keycloak convention)
+		// in addition to AZP matching an allowed client ID, preventing username spoofing.
 		isAllowedClient := false
 		for _, id := range clientIDs {
 			if jwtClaims.AZP == id {
@@ -257,9 +258,10 @@ func RequireServiceAccount(clientIDs ...string) gin.HandlerFunc {
 				break
 			}
 		}
+		isServiceAccount := jwtClaims.PreferredUsername == "service-account-"+jwtClaims.AZP
 
 		if !isServiceAccount || !isAllowedClient {
-			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "Service account not authorized"})
 			c.Abort()
 			return
 		}
@@ -296,8 +298,10 @@ func RequireOwnCPFOrServiceAccount(clientIDs ...string) gin.HandlerFunc {
 			return
 		}
 
-		// Service accounts from allowed clients bypass CPF check
-		if strings.HasPrefix(jwtClaims.PreferredUsername, "service-account-") {
+		// Service accounts from allowed clients bypass CPF check.
+		// We require preferred_username == "service-account-"+AZP (Keycloak convention)
+		// in addition to AZP matching an allowed client ID, preventing username spoofing.
+		if jwtClaims.PreferredUsername == "service-account-"+jwtClaims.AZP {
 			for _, id := range clientIDs {
 				if jwtClaims.AZP == id {
 					c.Next()
@@ -305,7 +309,7 @@ func RequireOwnCPFOrServiceAccount(clientIDs ...string) gin.HandlerFunc {
 				}
 			}
 			// SA from a disallowed client — reject immediately
-			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "Service account not authorized"})
 			c.Abort()
 			return
 		}
@@ -317,7 +321,7 @@ func RequireOwnCPFOrServiceAccount(clientIDs ...string) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		c.Abort()
 	}
 }

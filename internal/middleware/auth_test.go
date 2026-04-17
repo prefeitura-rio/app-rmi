@@ -364,8 +364,8 @@ func TestMin(t *testing.T) {
 // Helpers for RequireServiceAccount / RequireOwnCPFOrServiceAccount tests
 // ---------------------------------------------------------------------------
 
-// adminGroup is the value set in init() — must match config.AppConfig.AdminGroup.
-const adminGroup = "go:admin"
+// adminGroup returns the configured admin group so tests stay in sync with config.
+func adminGroup() string { return config.AppConfig.AdminGroup }
 
 // buildRouter creates a gin.Engine with the given middleware chain and a dummy
 // GET /test handler that always returns 200. The optional routePath lets callers
@@ -399,8 +399,8 @@ func makeAdminClaims() *models.JWTClaims {
 		PreferredUsername: "admin-user",
 		AZP:               "some-client",
 	}
-	c.RealmAccess.Roles = []string{adminGroup}
-	c.ResourceAccess.Superapp.Roles = []string{adminGroup}
+	c.RealmAccess.Roles = []string{adminGroup()}
+	c.ResourceAccess.Superapp.Roles = []string{adminGroup()}
 	return c
 }
 
@@ -412,7 +412,7 @@ func makeAdminClaimsResourceOnly() *models.JWTClaims {
 		PreferredUsername: "admin-user",
 		AZP:               "some-client",
 	}
-	c.ResourceAccess.Superapp.Roles = []string{adminGroup}
+	c.ResourceAccess.Superapp.Roles = []string{adminGroup()}
 	return c
 }
 
