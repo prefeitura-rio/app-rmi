@@ -133,23 +133,7 @@ func RequireAdmin() gin.HandlerFunc {
 		}
 
 		// Check if user has admin role in RealmAccess or ResourceAccess.Superapp
-		isAdmin := false
-		for _, role := range jwtClaims.RealmAccess.Roles {
-			if role == config.AppConfig.AdminGroup {
-				isAdmin = true
-				break
-			}
-		}
-		if !isAdmin {
-			for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
-				if role == config.AppConfig.AdminGroup {
-					isAdmin = true
-					break
-				}
-			}
-		}
-
-		if !isAdmin {
+		if !isAdminClaims(jwtClaims) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required"})
 			c.Abort()
 			return
@@ -180,25 +164,8 @@ func RequireOwnCPF() gin.HandlerFunc {
 		requestedCPF := c.Param("cpf")
 		userCPF := jwtClaims.PreferredUsername
 
-		// Check if user is admin in RealmAccess or ResourceAccess.Superapp
-		isAdmin := false
-		for _, role := range jwtClaims.RealmAccess.Roles {
-			if role == config.AppConfig.AdminGroup {
-				isAdmin = true
-				break
-			}
-		}
-		if !isAdmin {
-			for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
-				if role == config.AppConfig.AdminGroup {
-					isAdmin = true
-					break
-				}
-			}
-		}
-
 		// Allow if user is admin or accessing their own data
-		if !isAdmin && requestedCPF != userCPF {
+		if !isAdminClaims(jwtClaims) && requestedCPF != userCPF {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			c.Abort()
 			return
@@ -223,6 +190,22 @@ func ExtractCPFFromToken(c *gin.Context) (string, error) {
 	return jwtClaims.PreferredUsername, nil
 }
 
+// isAdminClaims reports whether the JWT claims carry the configured admin group
+// in either RealmAccess.Roles or ResourceAccess.Superapp.Roles.
+func isAdminClaims(jwtClaims *models.JWTClaims) bool {
+	for _, role := range jwtClaims.RealmAccess.Roles {
+		if role == config.AppConfig.AdminGroup {
+			return true
+		}
+	}
+	for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
+		if role == config.AppConfig.AdminGroup {
+			return true
+		}
+	}
+	return false
+}
+
 // IsAdmin checks if the user has admin privileges
 func IsAdmin(c *gin.Context) (bool, error) {
 	claims, exists := c.Get("claims")
@@ -235,43 +218,34 @@ func IsAdmin(c *gin.Context) (bool, error) {
 		return false, fmt.Errorf("invalid claims type")
 	}
 
-	// Check if user has admin role
-	for _, role := range jwtClaims.RealmAccess.Roles {
-		if role == config.AppConfig.AdminGroup {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return isAdminClaims(jwtClaims), nil
 }
 
 // RequireServiceAccount ensures the caller is either:
 //   - a Keycloak service account from one of the allowed client IDs, OR
-//   - a human admin (rmi-admin role — admins can do anything)
+//   - a human admin in the configured admin group (admins can do anything)
 //
 // Usage: RequireServiceAccount("superapp", "app-eai-agent")
 func RequireServiceAccount(clientIDs ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, exists := c.Get("claims")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Claims not found"})
 			c.Abort()
 			return
 		}
 
 		jwtClaims, ok := claims.(*models.JWTClaims)
 		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid claims"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid claims type"})
 			c.Abort()
 			return
 		}
 
-		// Admins bypass everything
-		for _, role := range jwtClaims.RealmAccess.Roles {
-			if role == config.AppConfig.AdminGroup {
-				c.Next()
-				return
-			}
+		// Admins bypass everything (checked in both RealmAccess and ResourceAccess.Superapp)
+		if isAdminClaims(jwtClaims) {
+			c.Next()
+			return
 		}
 
 		// Must be a service account from one of the expected clients
@@ -295,7 +269,7 @@ func RequireServiceAccount(clientIDs ...string) gin.HandlerFunc {
 }
 
 // RequireOwnCPFOrServiceAccount passes if the caller is:
-//   - a human admin (rmi-admin role), OR
+//   - a human admin in the configured admin group, OR
 //   - a Keycloak service account from one of the allowed client IDs, OR
 //   - a regular user whose preferred_username matches the :cpf URL param
 //
@@ -304,24 +278,22 @@ func RequireOwnCPFOrServiceAccount(clientIDs ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, exists := c.Get("claims")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Claims not found"})
 			c.Abort()
 			return
 		}
 
 		jwtClaims, ok := claims.(*models.JWTClaims)
 		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid claims"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid claims type"})
 			c.Abort()
 			return
 		}
 
-		// Admins bypass everything
-		for _, role := range jwtClaims.RealmAccess.Roles {
-			if role == config.AppConfig.AdminGroup {
-				c.Next()
-				return
-			}
+		// Admins bypass everything (checked in both RealmAccess and ResourceAccess.Superapp)
+		if isAdminClaims(jwtClaims) {
+			c.Next()
+			return
 		}
 
 		// Service accounts from allowed clients bypass CPF check

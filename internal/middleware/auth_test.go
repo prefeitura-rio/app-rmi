@@ -391,13 +391,28 @@ func injectClaims(claims *models.JWTClaims) gin.HandlerFunc {
 	}
 }
 
-// makeAdminClaims returns claims for a human admin (has adminGroup in RealmAccess.Roles).
+// makeAdminClaims returns claims for a human admin.
+// The admin role is populated in both RealmAccess.Roles and
+// ResourceAccess.Superapp.Roles because middleware accepts either shape.
 func makeAdminClaims() *models.JWTClaims {
 	c := &models.JWTClaims{
 		PreferredUsername: "admin-user",
 		AZP:               "some-client",
 	}
 	c.RealmAccess.Roles = []string{adminGroup}
+	c.ResourceAccess.Superapp.Roles = []string{adminGroup}
+	return c
+}
+
+// makeAdminClaimsResourceOnly returns claims where the admin role is present
+// only in ResourceAccess.Superapp.Roles (not in RealmAccess.Roles).
+// Used to verify that middleware correctly checks both sources.
+func makeAdminClaimsResourceOnly() *models.JWTClaims {
+	c := &models.JWTClaims{
+		PreferredUsername: "admin-user",
+		AZP:               "some-client",
+	}
+	c.ResourceAccess.Superapp.Roles = []string{adminGroup}
 	return c
 }
 
@@ -643,4 +658,39 @@ func TestRequireOwnCPFOrServiceAccount_NoClaims(t *testing.T) {
 
 	// Assert
 	assert.Equal(t, http.StatusUnauthorized, w.Code, "missing claims must return 401")
+}
+
+// TestRequireServiceAccount_AdminCallerViaResourceAccess verifies that an admin
+// whose role is only in ResourceAccess.Superapp.Roles (not RealmAccess.Roles) is
+// still allowed through RequireServiceAccount.
+func TestRequireServiceAccount_AdminCallerViaResourceAccess(t *testing.T) {
+	// Arrange — admin role only in ResourceAccess.Superapp.Roles
+	router := buildRouter("", injectClaims(makeAdminClaimsResourceOnly()), RequireServiceAccount("superapp"))
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusOK, w.Code, "admin via ResourceAccess.Superapp.Roles must bypass RequireServiceAccount")
+}
+
+// TestRequireOwnCPFOrServiceAccount_AdminCallerViaResourceAccess verifies that an
+// admin whose role is only in ResourceAccess.Superapp.Roles (not RealmAccess.Roles)
+// is still allowed through RequireOwnCPFOrServiceAccount.
+func TestRequireOwnCPFOrServiceAccount_AdminCallerViaResourceAccess(t *testing.T) {
+	// Arrange — admin role only in ResourceAccess.Superapp.Roles, accessing another CPF
+	router := buildRouter("/citizen/:cpf/data",
+		injectClaims(makeAdminClaimsResourceOnly()),
+		RequireOwnCPFOrServiceAccount("superapp"),
+	)
+	req, _ := http.NewRequest(http.MethodGet, "/citizen/99999999999/data", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusOK, w.Code, "admin via ResourceAccess.Superapp.Roles must bypass RequireOwnCPFOrServiceAccount")
 }
