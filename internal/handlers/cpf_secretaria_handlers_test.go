@@ -96,6 +96,18 @@ func TestAdminAddCPFSecretaria_InvalidCPF(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestAdminAddCPFSecretaria_InvalidJSON(t *testing.T) {
+	r, cleanup := setupCPFSecretariaRouter(t)
+	defer cleanup()
+
+	req, _ := http.NewRequest(http.MethodPost, "/admin/cpf-secretaria/"+testCPF, bytes.NewReader([]byte(`{not valid json`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestAdminAddCPFSecretaria_MissingCdUA(t *testing.T) {
 	r, cleanup := setupCPFSecretariaRouter(t)
 	defer cleanup()
