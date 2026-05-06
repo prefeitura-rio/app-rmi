@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -67,17 +68,28 @@ func (s *CPFSecretariaService) ListByCPF(ctx context.Context, cpf string) ([]mod
 
 func (s *CPFSecretariaService) AddMapping(ctx context.Context, cpf, cdUA, createdBy string) (*models.CPFSecretariaMapping, error) {
 	coll := s.database.Collection(config.AppConfig.CPFSecretariaCollection)
+	normalizedCPF := normalizeCPF(cpf)
+
+	var existing models.CPFSecretariaMapping
+	err := coll.FindOne(ctx, bson.M{"cpf": normalizedCPF, "cd_ua": cdUA}).Decode(&existing)
+	if err == nil {
+		return nil, fmt.Errorf("cpf_secretaria: mapping already exists for CPF %s and cd_ua %s", cpf, cdUA)
+	}
+	if !errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, fmt.Errorf("cpf_secretaria: check existing: %w", err)
+	}
+
 	now := time.Now()
 	mapping := models.CPFSecretariaMapping{
 		ID:        primitive.NewObjectID(),
-		CPF:       normalizeCPF(cpf),
+		CPF:       normalizedCPF,
 		CdUA:      cdUA,
 		CreatedAt: now,
 		UpdatedAt: now,
 		CreatedBy: createdBy,
 	}
 
-	_, err := coll.InsertOne(ctx, mapping)
+	_, err = coll.InsertOne(ctx, mapping)
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
 			return nil, fmt.Errorf("cpf_secretaria: mapping already exists for CPF %s and cd_ua %s", cpf, cdUA)
