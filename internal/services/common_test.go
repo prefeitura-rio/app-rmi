@@ -51,6 +51,7 @@ func setupTestEnvironment() {
 			"MONGODB_PETS_SELF_REGISTERED_COLLECTION":  "pets_self_registered",
 			"MONGODB_NOTIFICATION_CATEGORY_COLLECTION": "notification_categories",
 			"MONGODB_USER_CONFIG_COLLECTION":           "user_config",
+			"MONGODB_CPF_SECRETARIA_COLLECTION":        "cpf_secretaria_svc_test",
 		}
 		for key, defaultValue := range collections {
 			if os.Getenv(key) == "" {
