@@ -57,6 +57,7 @@ type Config struct {
 	DepartmentCollection           string `json:"mongo_department_collection"`
 	NotificationCategoryCollection string `json:"mongo_notification_category_collection"`
 	CNAECollection                 string `json:"mongo_cnae_collection"`
+	CPFSecretariaCollection        string `json:"mongo_cpf_secretaria_collection"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -368,6 +369,7 @@ func LoadConfig() error {
 		DepartmentCollection:           departmentCollection,
 		NotificationCategoryCollection: notificationCategoryCollection,
 		CNAECollection:                 cnaeCollection,
+		CPFSecretariaCollection:        getEnvOrDefault("MONGODB_CPF_SECRETARIA_COLLECTION", "cpf_secretaria_mappings"),
 
 		// Phone verification configuration
 		PhoneVerificationTTL:          phoneVerificationTTL,

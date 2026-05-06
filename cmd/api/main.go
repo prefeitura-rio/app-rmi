@@ -115,6 +115,8 @@ func main() {
 	// Initialize department service for department/UA queries
 	services.InitDepartmentService()
 
+	services.InitCPFSecretariaService()
+
 	// Initialize CF rate limiter for CF lookup requests
 	services.InitCFRateLimiter(config.AppConfig.CFLookupGlobalRateLimit, observability.Logger())
 
@@ -278,6 +280,16 @@ func main() {
 
 			// Cache management
 			adminGroup.POST("/cache/read", handlers.ReadCacheKey)
+
+			adminGroup.GET("/cpf-secretaria/:cpf", handlers.AdminListCPFSecretaria)
+			adminGroup.POST("/cpf-secretaria/:cpf", handlers.AdminAddCPFSecretaria)
+			adminGroup.DELETE("/cpf-secretaria/:cpf/:cd_ua", handlers.AdminRemoveCPFSecretaria)
+		}
+
+		cpfSecretariaGroup := v1.Group("/cpf-secretaria")
+		cpfSecretariaGroup.Use(middleware.AuthMiddleware())
+		{
+			cpfSecretariaGroup.GET("/:cpf", handlers.GetCPFSecretarias)
 		}
 
 		// Config routes (public)
