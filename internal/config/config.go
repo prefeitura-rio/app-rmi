@@ -114,7 +114,8 @@ type Config struct {
 	DBBatchSize   int `json:"db_batch_size"`
 
 	// Authorization configuration
-	AdminGroup string `json:"admin_group"`
+	AdminGroup            string   `json:"admin_group"`
+	TrustedServiceClients []string `json:"trusted_service_clients"`
 
 	// Index maintenance configuration
 	IndexMaintenanceInterval time.Duration `json:"index_maintenance_interval"`
@@ -423,7 +424,8 @@ func LoadConfig() error {
 		DBBatchSize:   getEnvAsIntOrDefault("DB_BATCH_SIZE", 100),
 
 		// Authorization configuration
-		AdminGroup: getEnvOrDefault("ADMIN_GROUP", "rmi-admin"),
+		AdminGroup:            getEnvOrDefault("ADMIN_GROUP", "rmi-admin"),
+		TrustedServiceClients: parseCommaSeparatedList(getEnvOrDefault("TRUSTED_SERVICE_CLIENTS", "")),
 
 		// Index maintenance configuration
 		IndexMaintenanceInterval: indexMaintenanceInterval,
