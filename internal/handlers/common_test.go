@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"go.uber.org/zap"
 )
 
@@ -52,6 +53,7 @@ func setupTestEnvironment() {
 			"MONGODB_PETS_SELF_REGISTERED_COLLECTION":  "pets_self_registered",
 			"MONGODB_NOTIFICATION_CATEGORY_COLLECTION": "notification_categories",
 			"MONGODB_USER_CONFIG_COLLECTION":           "user_config",
+			"MONGODB_CPF_SECRETARIA_COLLECTION":        "cpf_secretaria_test",
 		}
 		for key, defaultValue := range collections {
 			if os.Getenv(key) == "" {
@@ -102,6 +104,7 @@ func setupTestEnvironment() {
 		// lock in ensureIndexes (called by InitMongoDB) can be exercised in tests.
 		config.InitRedis()
 		config.InitMongoDB()
+		services.InitCPFSecretariaService()
 
 		zap.L().Info("Test environment initialized for handlers package")
 	})
