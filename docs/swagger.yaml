@@ -195,6 +195,13 @@ definitions:
       telefone:
         type: string
     type: object
+  models.AddCPFSecretariaRequest:
+    properties:
+      cd_ua:
+        type: string
+    required:
+    - cd_ua
+    type: object
   models.Aluno:
     properties:
       conceito:
@@ -404,6 +411,39 @@ definitions:
         type: array
       pagination:
         $ref: '#/definitions/models.PaginationInfo'
+    type: object
+  models.CPFSecretariaListResponse:
+    properties:
+      cpf:
+        type: string
+      mappings:
+        items:
+          $ref: '#/definitions/models.CPFSecretariaResponse'
+        type: array
+    type: object
+  models.CPFSecretariaQueryResponse:
+    properties:
+      cd_uas:
+        items:
+          type: string
+        type: array
+      cpf:
+        type: string
+    type: object
+  models.CPFSecretariaResponse:
+    properties:
+      cd_ua:
+        type: string
+      cpf:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      id:
+        type: string
+      updated_at:
+        type: string
     type: object
   models.CRAS:
     properties:
@@ -1000,6 +1040,17 @@ definitions:
       status:
         type: string
     type: object
+  models.OtherTutor:
+    properties:
+      cpf:
+        type: string
+      email:
+        type: string
+      nome:
+        type: string
+      telefone:
+        type: string
+    type: object
   models.PaginatedLegalEntities:
     properties:
       data:
@@ -1114,6 +1165,10 @@ definitions:
         type: string
       nascimento_data:
         type: string
+      outros_tutores:
+        items:
+          $ref: '#/definitions/models.OtherTutor'
+        type: array
       pedigree_indicador:
         type: boolean
       pedigree_origem_nome:
@@ -1564,6 +1619,8 @@ definitions:
         type: object
       opt_in:
         type: boolean
+    required:
+    - opt_in
     type: object
   models.UserConfigResponse:
     properties:
@@ -2185,6 +2242,136 @@ paths:
       summary: Ler chave arbitrária do cache Redis
       tags:
       - admin
+  /admin/cpf-secretaria/{cpf}:
+    get:
+      description: Retorna todos os vínculos de secretaria associados a um CPF na
+        base de apoio.
+      parameters:
+      - description: CPF do usuário (11 dígitos)
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CPFSecretariaListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar vínculos CPF-Secretaria
+      tags:
+      - admin
+      - cpf-secretaria
+    post:
+      consumes:
+      - application/json
+      description: Vincula um CPF a uma secretaria (cd_ua SICI) na base de apoio.
+        Um CPF pode ter múltiplos vínculos.
+      parameters:
+      - description: CPF do usuário (11 dígitos)
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: cd_ua da secretaria
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.AddCPFSecretariaRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.CPFSecretariaResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Adicionar vínculo CPF-Secretaria
+      tags:
+      - admin
+      - cpf-secretaria
+  /admin/cpf-secretaria/{cpf}/{cd_ua}:
+    delete:
+      description: Remove o vínculo entre um CPF e uma secretaria específica.
+      parameters:
+      - description: CPF do usuário (11 dígitos)
+        in: path
+        name: cpf
+        required: true
+        type: string
+      - description: Código da UA (SICI)
+        in: path
+        name: cd_ua
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remover vínculo CPF-Secretaria
+      tags:
+      - admin
+      - cpf-secretaria
   /admin/notification-categories:
     post:
       consumes:
@@ -4118,6 +4305,40 @@ paths:
       summary: Obter motivos de opt-out
       tags:
       - config
+  /cpf-secretaria/{cpf}:
+    get:
+      description: Retorna a lista de cd_uas vinculados ao CPF na base de apoio. Usado
+        por outras APIs (app-go-api) via service account.
+      parameters:
+      - description: CPF do usuário (11 dígitos)
+        in: path
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.CPFSecretariaQueryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Consultar secretarias de um CPF
+      tags:
+      - cpf-secretaria
   /departments:
     get:
       consumes:

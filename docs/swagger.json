@@ -901,6 +901,203 @@
                 }
             }
         },
+        "/admin/cpf-secretaria/{cpf}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna todos os vínculos de secretaria associados a um CPF na base de apoio.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin",
+                    "cpf-secretaria"
+                ],
+                "summary": "Listar vínculos CPF-Secretaria",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF do usuário (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CPFSecretariaListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Vincula um CPF a uma secretaria (cd_ua SICI) na base de apoio. Um CPF pode ter múltiplos vínculos.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin",
+                    "cpf-secretaria"
+                ],
+                "summary": "Adicionar vínculo CPF-Secretaria",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF do usuário (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "cd_ua da secretaria",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.AddCPFSecretariaRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.CPFSecretariaResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/cpf-secretaria/{cpf}/{cd_ua}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove o vínculo entre um CPF e uma secretaria específica.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin",
+                    "cpf-secretaria"
+                ],
+                "summary": "Remover vínculo CPF-Secretaria",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF do usuário (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Código da UA (SICI)",
+                        "name": "cd_ua",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/notification-categories": {
             "post": {
                 "security": [
@@ -3819,6 +4016,58 @@
                 }
             }
         },
+        "/cpf-secretaria/{cpf}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna a lista de cd_uas vinculados ao CPF na base de apoio. Usado por outras APIs (app-go-api) via service account.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cpf-secretaria"
+                ],
+                "summary": "Consultar secretarias de um CPF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF do usuário (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.CPFSecretariaQueryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/departments": {
             "get": {
                 "description": "Recupera a lista paginada de departamentos com filtros opcionais (hierarquia, nível, busca).",
@@ -5865,6 +6114,17 @@
                 }
             }
         },
+        "models.AddCPFSecretariaRequest": {
+            "type": "object",
+            "required": [
+                "cd_ua"
+            ],
+            "properties": {
+                "cd_ua": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Aluno": {
             "type": "object",
             "properties": {
@@ -6183,6 +6443,57 @@
                 },
                 "pagination": {
                     "$ref": "#/definitions/models.PaginationInfo"
+                }
+            }
+        },
+        "models.CPFSecretariaListResponse": {
+            "type": "object",
+            "properties": {
+                "cpf": {
+                    "type": "string"
+                },
+                "mappings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.CPFSecretariaResponse"
+                    }
+                }
+            }
+        },
+        "models.CPFSecretariaQueryResponse": {
+            "type": "object",
+            "properties": {
+                "cd_uas": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cpf": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.CPFSecretariaResponse": {
+            "type": "object",
+            "properties": {
+                "cd_ua": {
+                    "type": "string"
+                },
+                "cpf": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -7091,6 +7402,23 @@
                 }
             }
         },
+        "models.OtherTutor": {
+            "type": "object",
+            "properties": {
+                "cpf": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "nome": {
+                    "type": "string"
+                },
+                "telefone": {
+                    "type": "string"
+                }
+            }
+        },
         "models.PaginatedLegalEntities": {
             "type": "object",
             "properties": {
@@ -7265,6 +7593,12 @@
                 },
                 "nascimento_data": {
                     "type": "string"
+                },
+                "outros_tutores": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.OtherTutor"
+                    }
                 },
                 "pedigree_indicador": {
                     "type": "boolean"
@@ -7941,6 +8275,9 @@
         },
         "models.UserConfigOptInResponse": {
             "type": "object",
+            "required": [
+                "opt_in"
+            ],
             "properties": {
                 "category_opt_ins": {
                     "type": "object",
