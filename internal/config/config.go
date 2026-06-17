@@ -426,7 +426,7 @@ func LoadConfig() error {
 		DBBatchSize:   getEnvAsIntOrDefault("DB_BATCH_SIZE", 100),
 
 		// Authorization configuration
-		AdminGroup:            getEnvOrDefault("ADMIN_GROUP", "rmi-admin"),
+		AdminGroup:            getEnvOrDefault("ADMIN_GROUP", "heimdall-admin"),
 		TrustedServiceClients: parseCommaSeparatedList(getEnvOrDefault("TRUSTED_SERVICE_CLIENTS", "")),
 
 		// Index maintenance configuration
