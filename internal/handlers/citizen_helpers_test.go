@@ -121,6 +121,17 @@ func TestBuildAddressString(t *testing.T) {
 			},
 			expected: "",
 		},
+		{
+			name: "strips parenthetical neighborhood annotation",
+			endereco: &models.EnderecoPrincipal{
+				Logradouro: strPtr("Estrada dos Bandeirantes"),
+				Numero:     strPtr("100"),
+				Bairro:     strPtr("Freguesia (Jacarepaguá)"),
+				Municipio:  strPtr("Rio de Janeiro"),
+				Estado:     strPtr("RJ"),
+			},
+			expected: "Estrada dos Bandeirantes, 100, Freguesia, Rio de Janeiro, RJ",
+		},
 	}
 
 	for _, tt := range tests {
@@ -142,23 +153,21 @@ func TestQueueCFLookupJob(t *testing.T) {
 	cpf := "12345678901"
 	address := "Rua Teste, 123, Centro, Rio de Janeiro, RJ"
 
-	// Clear any existing jobs
 	queueKey := "sync:queue:cf_lookup"
 	config.Redis.Del(ctx, queueKey)
+	config.Redis.Del(ctx, "cf_lookup:pending:"+cpf)
 
 	t.Run("successfully queue CF lookup job", func(t *testing.T) {
-		// Queue the job
+		config.Redis.Del(ctx, queueKey)
+		config.Redis.Del(ctx, "cf_lookup:pending:"+cpf)
 		queueCFLookupJob(ctx, cpf, address)
 
-		// Give it a moment to process
 		time.Sleep(10 * time.Millisecond)
 
-		// Verify job was queued
 		length, err := config.Redis.LLen(ctx, queueKey).Result()
 		require.NoError(t, err, "Should be able to check queue length")
 		assert.Equal(t, int64(1), length, "Queue should have 1 job")
 
-		// Get the job and verify its structure
 		jobJSON, err := config.Redis.RPop(ctx, queueKey).Result()
 		require.NoError(t, err, "Should be able to pop job from queue")
 
@@ -166,14 +175,12 @@ func TestQueueCFLookupJob(t *testing.T) {
 		err = json.Unmarshal([]byte(jobJSON), &job)
 		require.NoError(t, err, "Job should be valid JSON")
 
-		// Verify job fields
 		assert.Equal(t, "cf_lookup", job.Type, "Job type should be cf_lookup")
 		assert.Equal(t, cpf, job.Key, "Job key should be CPF")
 		assert.Equal(t, "cf_lookup", job.Collection, "Job collection should be cf_lookup")
 		assert.Equal(t, 0, job.RetryCount, "RetryCount should be 0")
 		assert.Equal(t, 3, job.MaxRetries, "MaxRetries should be 3")
 
-		// Verify job data
 		jobData, ok := job.Data.(map[string]interface{})
 		require.True(t, ok, "Job data should be a map")
 		assert.Equal(t, cpf, jobData["cpf"], "Job data should contain CPF")
@@ -181,19 +188,35 @@ func TestQueueCFLookupJob(t *testing.T) {
 	})
 
 	t.Run("queue multiple jobs", func(t *testing.T) {
-		// Clear queue
+		cpfs := []string{"11111111111", "22222222222", "33333333333"}
 		config.Redis.Del(ctx, queueKey)
+		for _, c := range cpfs {
+			config.Redis.Del(ctx, "cf_lookup:pending:"+c)
+		}
 
-		// Queue multiple jobs
-		queueCFLookupJob(ctx, "11111111111", "Address 1")
-		queueCFLookupJob(ctx, "22222222222", "Address 2")
-		queueCFLookupJob(ctx, "33333333333", "Address 3")
+		queueCFLookupJob(ctx, cpfs[0], "Address 1")
+		queueCFLookupJob(ctx, cpfs[1], "Address 2")
+		queueCFLookupJob(ctx, cpfs[2], "Address 3")
 
 		time.Sleep(10 * time.Millisecond)
 
-		// Verify all jobs queued
 		length, err := config.Redis.LLen(ctx, queueKey).Result()
 		require.NoError(t, err, "Should be able to check queue length")
 		assert.Equal(t, int64(3), length, "Queue should have 3 jobs")
+	})
+
+	t.Run("skips duplicate job for same CPF while pending", func(t *testing.T) {
+		dupCPF := "44444444444"
+		config.Redis.Del(ctx, queueKey)
+		config.Redis.Del(ctx, "cf_lookup:pending:"+dupCPF)
+
+		queueCFLookupJob(ctx, dupCPF, "Address A")
+		queueCFLookupJob(ctx, dupCPF, "Address B")
+
+		time.Sleep(10 * time.Millisecond)
+
+		length, err := config.Redis.LLen(ctx, queueKey).Result()
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), length, "Only one job should be queued while pending")
 	})
 }

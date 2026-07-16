@@ -54,7 +54,16 @@ func queueCFLookupJob(ctx context.Context, cpf, address string) {
 
 	// Queue job using Redis
 	queueKey := "sync:queue:cf_lookup"
+	created, err := config.Redis.SetNX(ctx, "cf_lookup:pending:"+cpf, "1", time.Hour).Result()
+
+	if err == nil && !created {
+		logger.Debug("CF lookup job already pending, skipping",
+			zap.String("cpf", cpf))
+		return
+	}
+
 	err = config.Redis.LPush(ctx, queueKey, string(jobBytes)).Err()
+
 	if err != nil {
 		logger.Error("failed to queue CF lookup job", zap.Error(err))
 		return
@@ -2922,24 +2931,32 @@ func GetCitizenWallet(c *gin.Context) {
 				// No cached data, try synchronous CF lookup
 				logger.Info("NO CACHED CF DATA - ATTEMPTING SYNCHRONOUS LOOKUP", zap.String("cpf", cpf))
 
-				// Get citizen address for CF lookup - prioritize self-declared address directly
-				address := getSelfDeclaredAddressForCFLookup(ctx, cpf)
-				if address == "" {
-					// Fallback to extraction from citizen data
-					address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
+				// Skip lookup for municipalities not covered by the MCP service
+				var municipio *string
+				if citizen.Endereco != nil && citizen.Endereco.Principal != nil {
+					municipio = citizen.Endereco.Principal.Municipio
 				}
-				logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
+				if services.IsMunicipioCoberto(municipio) {
+					// Get citizen address for CF lookup - prioritize self-declared address directly
+					address := getSelfDeclaredAddressForCFLookup(ctx, cpf)
+					if address == "" {
+						address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
+					}
+					logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
 
-				if address != "" {
-					logger.Info("CALLING TrySynchronousCFLookup", zap.String("cpf", cpf), zap.String("address", address))
-					cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
-					if err != nil {
-						logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), zap.String("cpf", cpf))
+					if address != "" {
+						logger.Info("CALLING TrySynchronousCFLookup", zap.String("cpf", cpf), zap.String("address", address))
+						cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
+						if err != nil {
+							logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), zap.String("cpf", cpf))
+						} else {
+							logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
+						}
 					} else {
-						logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
+						logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", zap.String("cpf", cpf))
 					}
 				} else {
-					logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", zap.String("cpf", cpf))
+					logger.Debug("município não coberto pelo MCP, ignorando lookup síncrono", zap.String("cpf", cpf))
 				}
 			} else {
 				logger.Info("FOUND CACHED CF DATA", zap.String("cpf", cpf), zap.Bool("is_active", cfData.IsActive))
@@ -3451,18 +3468,18 @@ func buildAddressString(endereco *models.EnderecoPrincipal) string {
 		return ""
 	}
 
-	parts := []string{*endereco.Logradouro}
+	parts := []string{services.SanitizeAddressField(*endereco.Logradouro)}
 
 	if endereco.Numero != nil && *endereco.Numero != "" {
-		parts = append(parts, *endereco.Numero)
+		parts = append(parts, services.SanitizeAddressField(*endereco.Numero))
 	}
 
 	if endereco.Complemento != nil && *endereco.Complemento != "" {
-		parts = append(parts, *endereco.Complemento)
+		parts = append(parts, services.SanitizeAddressField(*endereco.Complemento))
 	}
 
 	if endereco.Bairro != nil && *endereco.Bairro != "" {
-		parts = append(parts, *endereco.Bairro)
+		parts = append(parts, services.SanitizeAddressField(*endereco.Bairro))
 	}
 
 	if endereco.Municipio != nil && *endereco.Municipio != "" {

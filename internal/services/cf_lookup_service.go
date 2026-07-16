@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -86,6 +87,14 @@ func (s *CFLookupService) ShouldLookupCF(ctx context.Context, cpf string, citize
 		*citizenData.Saude.ClinicaFamilia.Indicador {
 		s.logger.Debug("citizen already has CF data from base data", zap.String("cpf", cpf))
 		return false, "", nil
+	}
+
+	if citizenData.Endereco != nil && citizenData.Endereco.Principal != nil {
+		if !isMunicipioCoberto(citizenData.Endereco.Principal.Municipio) {
+			s.logger.Debug("município não coberto pelo MCP, ignorando lookup",
+				zap.String("cpf", cpf))
+			return false, "", nil
+		}
 	}
 
 	// Extract address from citizen data (prioritize self-declared, then base data)
@@ -357,18 +366,18 @@ func (s *CFLookupService) buildFullAddress(logradouro, numero, complemento, bair
 		return ""
 	}
 
-	parts := []string{*logradouro}
+	parts := []string{SanitizeAddressField(*logradouro)}
 
 	if numero != nil && *numero != "" {
-		parts = append(parts, *numero)
+		parts = append(parts, SanitizeAddressField(*numero))
 	}
 
 	if complemento != nil && *complemento != "" {
-		parts = append(parts, *complemento)
+		parts = append(parts, SanitizeAddressField(*complemento))
 	}
 
 	if bairro != nil && *bairro != "" {
-		parts = append(parts, *bairro)
+		parts = append(parts, SanitizeAddressField(*bairro))
 	}
 
 	if cidade != nil && *cidade != "" {
@@ -384,6 +393,15 @@ func (s *CFLookupService) buildFullAddress(logradouro, numero, complemento, bair
 	}
 
 	return strings.Join(parts, ", ")
+}
+
+// addressParensRE strips parenthetical annotations (e.g. "Freguesia (Jacarepaguá)" → "Freguesia")
+// that break MCP geocoding.
+var addressParensRE = regexp.MustCompile(`\s*\(.*?\)`)
+
+// SanitizeAddressField removes parenthetical annotations from address components before MCP lookup.
+func SanitizeAddressField(address string) string {
+	return strings.TrimSpace(addressParensRE.ReplaceAllString(address, ""))
 }
 
 // categorizeError categorizes errors for better handling and monitoring
@@ -484,14 +502,15 @@ func (s *CFLookupService) storeCFLookup(ctx context.Context, cfLookup *models.CF
 
 	update := bson.M{
 		"$set": bson.M{
-			"cpf":             cfLookup.CPF,
-			"address_hash":    cfLookup.AddressHash,
-			"address_used":    cfLookup.AddressUsed,
-			"cf_data":         cfLookup.CFData,
-			"distance_meters": cfLookup.DistanceMeters,
-			"lookup_source":   cfLookup.LookupSource,
-			"updated_at":      time.Now(),
-			"is_active":       true,
+			"cpf":               cfLookup.CPF,
+			"address_hash":      cfLookup.AddressHash,
+			"address_used":      cfLookup.AddressUsed,
+			"cf_data":           cfLookup.CFData,
+			"equipe_saude_data": cfLookup.EquipeSaudeData,
+			"distance_meters":   cfLookup.DistanceMeters,
+			"lookup_source":     cfLookup.LookupSource,
+			"updated_at":        time.Now(),
+			"is_active":         true,
 		},
 		"$setOnInsert": bson.M{
 			"_id":        cfLookup.ID,
@@ -614,11 +633,10 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	}
 
 	// Store in database
-	collection := s.database.Collection(config.AppConfig.CFLookupCollection)
-	_, err = collection.InsertOne(ctx, cfLookup)
+	err = s.storeCFLookup(ctx, cfLookup)
 	if err != nil {
 		s.logger.Error("failed to store synchronous CF lookup result", zap.Error(err))
-		return cfLookup, nil // Return the data even if storage failed
+		return cfLookup, nil
 	}
 
 	// Cache the result
@@ -655,6 +673,14 @@ func (s *CFLookupService) queueCFLookupJob(ctx context.Context, cpf, address str
 		return
 	}
 
+	created, err := config.Redis.SetNX(ctx, "cf_lookup:pending:"+cpf, "1", time.Hour).Result()
+
+	if err == nil && !created {
+		s.logger.Debug("CF lookup job already pending, skipping",
+			zap.String("cpf", cpf))
+		return
+	}
+
 	// Queue job using Redis
 	queueKey := "sync:queue:cf_lookup"
 	err = config.Redis.LPush(ctx, queueKey, string(jobBytes)).Err()
@@ -664,4 +690,16 @@ func (s *CFLookupService) queueCFLookupJob(ctx context.Context, cpf, address str
 	}
 
 	s.logger.Debug("CF lookup job queued successfully", zap.String("job_id", job.ID))
+}
+
+func isMunicipioCoberto(municipio *string) bool {
+	if municipio == nil || *municipio == "" {
+		return true
+	}
+	m := strings.TrimSpace(strings.ToLower(*municipio))
+	return m == "rio de janeiro"
+}
+
+func IsMunicipioCoberto(municipio *string) bool {
+	return isMunicipioCoberto(municipio)
 }

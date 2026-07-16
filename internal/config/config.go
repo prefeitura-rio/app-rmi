@@ -279,7 +279,7 @@ func LoadConfig() error {
 		return fmt.Errorf("invalid CF_LOOKUP_GLOBAL_RATE_LIMIT: %w", err)
 	}
 
-	cfLookupSyncTimeout, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_SYNC_TIMEOUT", "8s")) // 8 seconds for synchronous lookups
+	cfLookupSyncTimeout, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_SYNC_TIMEOUT", "15s")) // 15 seconds for synchronous lookups
 	if err != nil {
 		return fmt.Errorf("invalid CF_LOOKUP_SYNC_TIMEOUT: %w", err)
 	}

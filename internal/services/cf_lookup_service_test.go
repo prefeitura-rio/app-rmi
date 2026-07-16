@@ -276,6 +276,15 @@ func TestBuildFullAddress(t *testing.T) {
 			numero:     strPtr("123"),
 			wantEmpty:  true,
 		},
+		{
+			name:        "strips parenthetical neighborhood annotation",
+			logradouro:  strPtr("Estrada dos Bandeirantes"),
+			numero:      strPtr("100"),
+			bairro:      strPtr("Freguesia (Jacarepaguá)"),
+			cidade:      strPtr("Rio de Janeiro"),
+			estado:      strPtr("RJ"),
+			wantContain: []string{"Estrada dos Bandeirantes", "100", "Freguesia", "Rio de Janeiro", "RJ"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -288,6 +297,8 @@ func TestBuildFullAddress(t *testing.T) {
 				for _, want := range tt.wantContain {
 					assert.Contains(t, address, want)
 				}
+				assert.NotContains(t, address, "(")
+				assert.NotContains(t, address, ")")
 			}
 		})
 	}
@@ -957,11 +968,15 @@ func TestQueueCFLookupJob(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
+	cpf := "12345678901"
+	queueKey := "sync:queue:cf_lookup"
 
-	service.queueCFLookupJob(ctx, "12345678901", "Rua Test, 123")
+	config.Redis.Del(ctx, queueKey)
+	config.Redis.Del(ctx, "cf_lookup:pending:"+cpf)
+
+	service.queueCFLookupJob(ctx, cpf, "Rua Test, 123")
 
 	// Verify job was queued
-	queueKey := "sync:queue:cf_lookup"
 	jobJSON, err := config.Redis.RPop(ctx, queueKey).Result()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, jobJSON)
@@ -976,7 +991,7 @@ func TestQueueCFLookupJob(t *testing.T) {
 	// Convert Data to map for access
 	dataMap, ok := job.Data.(map[string]interface{})
 	assert.True(t, ok)
-	assert.Equal(t, "12345678901", dataMap["cpf"])
+	assert.Equal(t, cpf, dataMap["cpf"])
 	assert.Equal(t, "Rua Test, 123", dataMap["address"])
 }
 
