@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+const (
+	// VerificationProviderWetalkie routes OTP dispatch through the legacy Wetalkie HSM API.
+	VerificationProviderWetalkie = "wetalkie"
+	// VerificationProviderSalesforce routes OTP dispatch through the Salesforce Marketing Cloud OTT API.
+	VerificationProviderSalesforce = "salesforce"
+)
+
 // Config holds all configuration values
 type Config struct {
 	// Server configuration
@@ -94,6 +101,18 @@ type Config struct {
 	WhatsAppHSMID        string `json:"whatsapp_hsm_id"`
 	WhatsAppCostCenterID string `json:"whatsapp_cost_center_id"`
 	WhatsAppCampaignName string `json:"whatsapp_campaign_name"`
+
+	// Verification provider selection (wetalkie | salesforce)
+	VerificationProvider string `json:"verification_provider"`
+
+	// Salesforce Marketing Cloud (OTT) configuration
+	SFMCEnabled       bool   `json:"sfmc_enabled"`
+	SFMCSubdomain     string `json:"sfmc_subdomain"`
+	SFMCClientID      string `json:"sfmc_client_id"`
+	SFMCClientSecret  string `json:"sfmc_client_secret"`
+	SFMCAccountID     string `json:"sfmc_account_id"`
+	SFMCDefinitionKey string `json:"sfmc_definition_key"`
+	SFMCOTPAttribute  string `json:"sfmc_otp_attribute"`
 
 	// Tracing configuration
 	TracingEnabled  bool   `json:"tracing_enabled"`
@@ -305,6 +324,48 @@ func LoadConfig() error {
 		return fmt.Errorf("WHATSAPP_CAMPAIGN_NAME is required")
 	}
 
+	verificationProvider := strings.ToLower(getEnvOrDefault("VERIFICATION_PROVIDER", VerificationProviderWetalkie))
+	switch verificationProvider {
+	case VerificationProviderWetalkie, VerificationProviderSalesforce:
+	default:
+		return fmt.Errorf("invalid VERIFICATION_PROVIDER %q: must be %q or %q", verificationProvider, VerificationProviderWetalkie, VerificationProviderSalesforce)
+	}
+
+	sfmcEnabled, err := strconv.ParseBool(getEnvOrDefault("SFMC_ENABLED", "true"))
+	if err != nil {
+		return fmt.Errorf("invalid SFMC_ENABLED value: %w", err)
+	}
+
+	sfmcSubdomain := os.Getenv("SFMC_SUBDOMAIN")
+	sfmcClientID := os.Getenv("SFMC_CLIENT_ID")
+	sfmcClientSecret := os.Getenv("SFMC_CLIENT_SECRET")
+	sfmcAccountID := os.Getenv("SFMC_ACCOUNT_ID")
+	sfmcDefinitionKey := os.Getenv("SFMC_DEFINITION_KEY")
+	sfmcOTPAttribute := getEnvOrDefault("SFMC_OTP_ATTRIBUTE", "codigo_otp")
+
+	// Require SFMC credentials only when Salesforce is active, so Wetalkie deployments boot unchanged.
+	if verificationProvider == VerificationProviderSalesforce {
+		var missing []string
+		if sfmcSubdomain == "" {
+			missing = append(missing, "SFMC_SUBDOMAIN")
+		}
+		if sfmcClientID == "" {
+			missing = append(missing, "SFMC_CLIENT_ID")
+		}
+		if sfmcClientSecret == "" {
+			missing = append(missing, "SFMC_CLIENT_SECRET")
+		}
+		if sfmcAccountID == "" {
+			missing = append(missing, "SFMC_ACCOUNT_ID")
+		}
+		if sfmcDefinitionKey == "" {
+			missing = append(missing, "SFMC_DEFINITION_KEY")
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("VERIFICATION_PROVIDER=salesforce requires: %s", strings.Join(missing, ", "))
+		}
+	}
+
 	indexMaintenanceInterval, err := time.ParseDuration(getEnvOrDefault("INDEX_MAINTENANCE_INTERVAL", "1h"))
 	if err != nil {
 		return fmt.Errorf("invalid INDEX_MAINTENANCE_INTERVAL: %w", err)
@@ -405,6 +466,16 @@ func LoadConfig() error {
 		WhatsAppHSMID:        whatsappHSMID,
 		WhatsAppCostCenterID: whatsappCostCenterID,
 		WhatsAppCampaignName: whatsappCampaignName,
+
+		VerificationProvider: verificationProvider,
+
+		SFMCEnabled:       sfmcEnabled,
+		SFMCSubdomain:     sfmcSubdomain,
+		SFMCClientID:      sfmcClientID,
+		SFMCClientSecret:  sfmcClientSecret,
+		SFMCAccountID:     sfmcAccountID,
+		SFMCDefinitionKey: sfmcDefinitionKey,
+		SFMCOTPAttribute:  sfmcOTPAttribute,
 
 		// Tracing configuration
 		TracingEnabled:  getEnvOrDefault("TRACING_ENABLED", "false") == "true",

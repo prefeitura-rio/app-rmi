@@ -124,6 +124,8 @@ test-ci:
     WHATSAPP_CAMPAIGN_NAME=${WHATSAPP_CAMPAIGN_NAME:-test} \
     WHATSAPP_COST_CENTER_ID=${WHATSAPP_COST_CENTER_ID:-1} \
     WHATSAPP_HSM_ID=${WHATSAPP_HSM_ID:-1} \
+    VERIFICATION_PROVIDER=${VERIFICATION_PROVIDER:-wetalkie} \
+    SFMC_ENABLED=${SFMC_ENABLED:-false} \
     go test -v -race -coverprofile=coverage.out ./...
 
 # Run E2E tests
