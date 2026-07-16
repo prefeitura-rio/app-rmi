@@ -1,10 +1,12 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
 
+	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -76,6 +78,30 @@ func TestGenerateVerificationCode_Distribution(t *testing.T) {
 	uniqueRatio := float64(len(codes)) / float64(iterations)
 	assert.Greater(t, uniqueRatio, 0.8,
 		"Should have high code diversity (got %.2f%% unique)", uniqueRatio*100)
+}
+
+func TestSendVerificationCode_WetalkieProviderDisabled(t *testing.T) {
+	original := config.AppConfig
+	defer func() { config.AppConfig = original }()
+	config.AppConfig = &config.Config{
+		VerificationProvider: config.VerificationProviderWetalkie,
+		WhatsAppEnabled:      false,
+	}
+
+	err := SendVerificationCode(context.Background(), "12345678900", "5521999999999", "123456")
+	assert.NoError(t, err, "wetalkie branch should short-circuit when WhatsApp is disabled")
+}
+
+func TestSendVerificationCode_SalesforceProviderDisabled(t *testing.T) {
+	original := config.AppConfig
+	defer func() { config.AppConfig = original }()
+	config.AppConfig = &config.Config{
+		VerificationProvider: config.VerificationProviderSalesforce,
+		SFMCEnabled:          false,
+	}
+
+	err := SendVerificationCode(context.Background(), "12345678900", "5521999999999", "123456")
+	assert.NoError(t, err, "salesforce branch should short-circuit when SFMC is disabled")
 }
 
 func TestGenerateVerificationCode_NoLeadingZeros(t *testing.T) {
