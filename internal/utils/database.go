@@ -166,7 +166,7 @@ func CreatePhoneVerification(ctx context.Context, data PhoneVerificationData) er
 	// First, try to send WhatsApp message
 	if data.DDI != "" && data.Valor != "" {
 		phone := fmt.Sprintf("%s%s%s", data.DDI, data.DDD, data.Valor)
-		if err := SendVerificationCode(ctx, phone, data.Code); err != nil {
+		if err := SendVerificationCode(ctx, data.CPF, phone, data.Code); err != nil {
 			logger.Error("failed to send WhatsApp message", zap.Error(err))
 			return fmt.Errorf("failed to send verification code: %w", err)
 		}

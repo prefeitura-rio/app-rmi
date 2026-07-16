@@ -56,6 +56,14 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | WHATSAPP_HSM_ID | ID do template HSM do WhatsApp | - | Sim |
 | WHATSAPP_COST_CENTER_ID | ID do centro de custo do WhatsApp | - | Sim |
 | WHATSAPP_CAMPAIGN_NAME | Nome da campanha do WhatsApp | - | Sim |
+| VERIFICATION_PROVIDER | Provedor de disparo do código OTP (`wetalkie` ou `salesforce`) | wetalkie | Não |
+| SFMC_ENABLED | Habilita/desabilita o envio via Salesforce Marketing Cloud | true | Não |
+| SFMC_SUBDOMAIN | Subdomínio do tenant do Marketing Cloud (ex: `mcpv1-xxxx`) | - | Sim (se salesforce) |
+| SFMC_CLIENT_ID | Client ID da API do Marketing Cloud | - | Sim (se salesforce) |
+| SFMC_CLIENT_SECRET | Client Secret da API do Marketing Cloud | - | Sim (se salesforce) |
+| SFMC_ACCOUNT_ID | Account ID (MID) do Marketing Cloud | - | Sim (se salesforce) |
+| SFMC_DEFINITION_KEY | Definition Key da OTT definition do Marketing Cloud | - | Sim (se salesforce) |
+| SFMC_OTP_ATTRIBUTE | Nome do atributo do código OTP no payload OTT | codigo_otp | Não |
 | MCP_SERVER_URL | URL do servidor MCP para lookup de CF | https://services.pref.rio/mcp/mcp/ | Não |
 | MCP_AUTH_TOKEN | Token de autenticação do servidor MCP | - | Não* |
 | CF_LOOKUP_COLLECTION | Nome da coleção de lookups de CF | cf_lookups | Não |
