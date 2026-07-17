@@ -995,6 +995,32 @@ func TestQueueCFLookupJob(t *testing.T) {
 	assert.Equal(t, "Rua Test, 123", dataMap["address"])
 }
 
+func TestIsMunicipioCoberto(t *testing.T) {
+	str := func(s string) *string { return &s }
+
+	tests := []struct {
+		name      string
+		municipio *string
+		want      bool
+	}{
+		{name: "nil assumes covered", municipio: nil, want: true},
+		{name: "empty assumes covered", municipio: str(""), want: true},
+		{name: "exact match", municipio: str("Rio de Janeiro"), want: true},
+		{name: "lowercase", municipio: str("rio de janeiro"), want: true},
+		{name: "trimmed", municipio: str("  Rio de Janeiro  "), want: true},
+		{name: "with slash suffix", municipio: str("Rio de Janeiro/RJ"), want: true},
+		{name: "with comma suffix", municipio: str("Rio de Janeiro, RJ"), want: true},
+		{name: "other city", municipio: str("Niterói"), want: false},
+		{name: "sao paulo", municipio: str("São Paulo"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsMunicipioCoberto(tt.municipio))
+		})
+	}
+}
+
 func TestTrySynchronousCFLookup_NilService(t *testing.T) {
 	var service *CFLookupService = nil
 	ctx := context.Background()

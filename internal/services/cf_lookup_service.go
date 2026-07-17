@@ -89,15 +89,15 @@ func (s *CFLookupService) ShouldLookupCF(ctx context.Context, cpf string, citize
 		return false, "", nil
 	}
 
-	if citizenData.Endereco != nil && citizenData.Endereco.Principal != nil {
-		if !isMunicipioCoberto(citizenData.Endereco.Principal.Municipio) {
-			s.logger.Debug("município não coberto pelo MCP, ignorando lookup",
-				zap.String("cpf", cpf))
-			return false, "", nil
-		}
+	// Prefer the same address principal used for the MCP lookup (self-declared overlay
+	// when present on citizenData, otherwise base data).
+	principal := preferredAddressPrincipal(citizenData)
+	if principal != nil && !isMunicipioCoberto(principal.Municipio) {
+		s.logger.Debug("município não coberto pelo MCP, ignorando lookup",
+			zap.String("cpf", cpf))
+		return false, "", nil
 	}
 
-	// Extract address from citizen data (prioritize self-declared, then base data)
 	address := s.ExtractAddress(citizenData)
 	if address == "" {
 		s.logger.Debug("no address available for CF lookup", zap.String("cpf", cpf))
@@ -234,6 +234,9 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 		zap.Int("distance_meters", cfLookup.DistanceMeters),
 		zap.Bool("cf_ativo", healthData.HealthFacility.Ativo),
 		zap.Bool("cf_aberto_publico", healthData.HealthFacility.AbertoAoPublico))
+
+	// Allow a new background job (e.g. after address change) without waiting for TTL.
+	ClearCFLookupPending(ctx, cpf)
 
 	return nil
 }
@@ -649,6 +652,8 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 		zap.String("cpf", cpf),
 		zap.String("cf_name", healthData.HealthFacility.NomePopular))
 
+	ClearCFLookupPending(ctx, cpf)
+
 	return cfLookup, nil
 }
 
@@ -673,7 +678,7 @@ func (s *CFLookupService) queueCFLookupJob(ctx context.Context, cpf, address str
 		return
 	}
 
-	created, err := config.Redis.SetNX(ctx, "cf_lookup:pending:"+cpf, "1", time.Hour).Result()
+	created, err := config.Redis.SetNX(ctx, CFLookupPendingKey(cpf), "1", time.Hour).Result()
 
 	if err == nil && !created {
 		s.logger.Debug("CF lookup job already pending, skipping",
@@ -692,14 +697,43 @@ func (s *CFLookupService) queueCFLookupJob(ctx context.Context, cpf, address str
 	s.logger.Debug("CF lookup job queued successfully", zap.String("job_id", job.ID))
 }
 
+// preferredAddressPrincipal returns the address principal used for CF lookup:
+// self-declared when origem is set, otherwise the base principal.
+func preferredAddressPrincipal(citizenData *models.Citizen) *models.EnderecoPrincipal {
+	if citizenData == nil || citizenData.Endereco == nil || citizenData.Endereco.Principal == nil {
+		return nil
+	}
+	return citizenData.Endereco.Principal
+}
+
 func isMunicipioCoberto(municipio *string) bool {
 	if municipio == nil || *municipio == "" {
+		// No municipality on record: system default is Rio de Janeiro.
 		return true
 	}
-	m := strings.TrimSpace(strings.ToLower(*municipio))
+	m := strings.ToLower(strings.TrimSpace(*municipio))
+	// Normalize common suffixes from non-normalized base data, e.g. "Rio de Janeiro/RJ".
+	if i := strings.IndexAny(m, "/,"); i >= 0 {
+		m = strings.TrimSpace(m[:i])
+	}
 	return m == "rio de janeiro"
 }
 
+// IsMunicipioCoberto reports whether the municipality is covered by the MCP CF service.
 func IsMunicipioCoberto(municipio *string) bool {
 	return isMunicipioCoberto(municipio)
+}
+
+// CFLookupPendingKey returns the Redis key used to dedupe CF lookup jobs per CPF.
+func CFLookupPendingKey(cpf string) string {
+	return "cf_lookup:pending:" + cpf
+}
+
+// ClearCFLookupPending removes the per-CPF pending lock so a new job can be enqueued
+// (e.g. after a successful lookup or an address change).
+func ClearCFLookupPending(ctx context.Context, cpf string) {
+	if config.Redis == nil || cpf == "" {
+		return
+	}
+	_ = config.Redis.Del(ctx, CFLookupPendingKey(cpf)).Err()
 }

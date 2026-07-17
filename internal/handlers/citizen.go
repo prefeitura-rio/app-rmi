@@ -54,7 +54,7 @@ func queueCFLookupJob(ctx context.Context, cpf, address string) {
 
 	// Queue job using Redis
 	queueKey := "sync:queue:cf_lookup"
-	created, err := config.Redis.SetNX(ctx, "cf_lookup:pending:"+cpf, "1", time.Hour).Result()
+	created, err := config.Redis.SetNX(ctx, services.CFLookupPendingKey(cpf), "1", time.Hour).Result()
 
 	if err == nil && !created {
 		logger.Debug("CF lookup job already pending, skipping",
@@ -679,7 +679,9 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		if err != nil {
 			logger.Warn("failed to invalidate CF data for address change", zap.Error(err))
 		} else {
-			// Queue new CF lookup for the updated address
+			// Address changed (or no prior CF): allow a new lookup even if a pending
+			// lock still exists from a previous enqueue within the TTL window.
+			services.ClearCFLookupPending(ctx, cpf)
 			logger.Debug("queuing CF lookup for updated address", zap.String("cpf", cpf))
 			queueCFLookupJob(ctx, cpf, newAddress)
 		}
@@ -2931,17 +2933,20 @@ func GetCitizenWallet(c *gin.Context) {
 				// No cached data, try synchronous CF lookup
 				logger.Info("NO CACHED CF DATA - ATTEMPTING SYNCHRONOUS LOOKUP", zap.String("cpf", cpf))
 
-				// Skip lookup for municipalities not covered by the MCP service
+				// Gate coverage using the same address source as the lookup:
+				// self-declared when present, otherwise base citizen data.
 				var municipio *string
-				if citizen.Endereco != nil && citizen.Endereco.Principal != nil {
-					municipio = citizen.Endereco.Principal.Municipio
+				var address string
+				if selfDeclaredPrincipal := getSelfDeclaredEnderecoPrincipalForCFLookup(ctx, cpf); selfDeclaredPrincipal != nil {
+					municipio = selfDeclaredPrincipal.Municipio
+					address = buildAddressString(selfDeclaredPrincipal)
+				} else {
+					if citizen.Endereco != nil && citizen.Endereco.Principal != nil {
+						municipio = citizen.Endereco.Principal.Municipio
+					}
+					address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
 				}
 				if services.IsMunicipioCoberto(municipio) {
-					// Get citizen address for CF lookup - prioritize self-declared address directly
-					address := getSelfDeclaredAddressForCFLookup(ctx, cpf)
-					if address == "" {
-						address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
-					}
 					logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
 
 					if address != "" {
@@ -3429,9 +3434,8 @@ func getCurrentEmailData(ctx context.Context, cpf string) (*EmailDataWithTimesta
 	}, nil
 }
 
-// getSelfDeclaredAddressForCFLookup gets the current self-declared address for CF lookup
-func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
-	// Try to get from cache first using DataManager
+// getSelfDeclaredEnderecoPrincipalForCFLookup returns the self-declared address principal if present.
+func getSelfDeclaredEnderecoPrincipalForCFLookup(ctx context.Context, cpf string) *models.EnderecoPrincipal {
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
 
 	var addressData struct {
@@ -3442,10 +3446,9 @@ func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
 
 	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_address", &addressData)
 	if err == nil && addressData.Endereco != nil && addressData.Endereco.Principal != nil {
-		return buildAddressString(addressData.Endereco.Principal)
+		return addressData.Endereco.Principal
 	}
 
-	// Fallback to MongoDB with field projection (only get endereco field)
 	var selfDeclared struct {
 		Endereco *models.Endereco `bson:"endereco"`
 	}
@@ -3456,9 +3459,17 @@ func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
 	).Decode(&selfDeclared)
 
 	if err == nil && selfDeclared.Endereco != nil && selfDeclared.Endereco.Principal != nil {
-		return buildAddressString(selfDeclared.Endereco.Principal)
+		return selfDeclared.Endereco.Principal
 	}
 
+	return nil
+}
+
+// getSelfDeclaredAddressForCFLookup gets the current self-declared address for CF lookup
+func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
+	if principal := getSelfDeclaredEnderecoPrincipalForCFLookup(ctx, cpf); principal != nil {
+		return buildAddressString(principal)
+	}
 	return ""
 }
 
