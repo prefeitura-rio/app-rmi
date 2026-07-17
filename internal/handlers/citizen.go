@@ -2893,11 +2893,8 @@ func GetCitizenWallet(c *gin.Context) {
 
 	// Check if we need to populate CF data in saude.clinica_familia
 	ctx, cfDataSpan := utils.TraceBusinessLogic(ctx, "cf_data_integration_wallet")
-	needsCFData := false
-	if wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil ||
-		wallet.Saude.ClinicaFamilia.Indicador == nil || !*wallet.Saude.ClinicaFamilia.Indicador {
-		needsCFData = true
-	}
+	needsCFData := wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil ||
+		wallet.Saude.ClinicaFamilia.Indicador == nil || !*wallet.Saude.ClinicaFamilia.Indicador
 
 	logger.Info("WALLET CF CHECK", zap.Bool("needs_cf_data", needsCFData))
 
@@ -3463,14 +3460,6 @@ func getSelfDeclaredEnderecoPrincipalForCFLookup(ctx context.Context, cpf string
 	}
 
 	return nil
-}
-
-// getSelfDeclaredAddressForCFLookup gets the current self-declared address for CF lookup
-func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
-	if principal := getSelfDeclaredEnderecoPrincipalForCFLookup(ctx, cpf); principal != nil {
-		return buildAddressString(principal)
-	}
-	return ""
 }
 
 // buildAddressString builds a complete address string from address components
