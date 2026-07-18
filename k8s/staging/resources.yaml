@@ -171,7 +171,7 @@ spec:
   triggers:
     - type: prometheus
       metadata:
-        serverAddress: http://prometheus.istio-system.svc.cluster.local:9090
+        serverAddress: http://prometheus-server.istio-system.svc.cluster.local:9090
         metricName: http_requests_total
         threshold: "250"
         query: sum(rate(istio_requests_total{destination_workload="rmi"}[30s]))
@@ -219,7 +219,7 @@ spec:
 #   triggers:
 #     - type: prometheus
 #       metadata:
-#         serverAddress: http://prometheus.istio-system.svc.cluster.local:9090
+#         serverAddress: http://prometheus-server.istio-system.svc.cluster.local:9090
 #         metricName: rmi_sync_queue_depth
 #         threshold: "100"
 #         query: max(rmi_sync_queue_depth) by (queue)
