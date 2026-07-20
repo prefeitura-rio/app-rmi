@@ -54,7 +54,16 @@ func queueCFLookupJob(ctx context.Context, cpf, address string) {
 
 	// Queue job using Redis
 	queueKey := "sync:queue:cf_lookup"
+	created, err := config.Redis.SetNX(ctx, services.CFLookupPendingKey(cpf), "1", time.Hour).Result()
+
+	if err == nil && !created {
+		logger.Debug("CF lookup job already pending, skipping",
+			zap.String("cpf", cpf))
+		return
+	}
+
 	err = config.Redis.LPush(ctx, queueKey, string(jobBytes)).Err()
+
 	if err != nil {
 		logger.Error("failed to queue CF lookup job", zap.Error(err))
 		return
@@ -670,7 +679,9 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		if err != nil {
 			logger.Warn("failed to invalidate CF data for address change", zap.Error(err))
 		} else {
-			// Queue new CF lookup for the updated address
+			// Address changed (or no prior CF): allow a new lookup even if a pending
+			// lock still exists from a previous enqueue within the TTL window.
+			services.ClearCFLookupPending(ctx, cpf)
 			logger.Debug("queuing CF lookup for updated address", zap.String("cpf", cpf))
 			queueCFLookupJob(ctx, cpf, newAddress)
 		}
@@ -2882,11 +2893,8 @@ func GetCitizenWallet(c *gin.Context) {
 
 	// Check if we need to populate CF data in saude.clinica_familia
 	ctx, cfDataSpan := utils.TraceBusinessLogic(ctx, "cf_data_integration_wallet")
-	needsCFData := false
-	if wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil ||
-		wallet.Saude.ClinicaFamilia.Indicador == nil || !*wallet.Saude.ClinicaFamilia.Indicador {
-		needsCFData = true
-	}
+	needsCFData := wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil ||
+		wallet.Saude.ClinicaFamilia.Indicador == nil || !*wallet.Saude.ClinicaFamilia.Indicador
 
 	logger.Info("WALLET CF CHECK", zap.Bool("needs_cf_data", needsCFData))
 
@@ -2922,24 +2930,35 @@ func GetCitizenWallet(c *gin.Context) {
 				// No cached data, try synchronous CF lookup
 				logger.Info("NO CACHED CF DATA - ATTEMPTING SYNCHRONOUS LOOKUP", zap.String("cpf", cpf))
 
-				// Get citizen address for CF lookup - prioritize self-declared address directly
-				address := getSelfDeclaredAddressForCFLookup(ctx, cpf)
-				if address == "" {
-					// Fallback to extraction from citizen data
+				// Gate coverage using the same address source as the lookup:
+				// self-declared when present, otherwise base citizen data.
+				var municipio *string
+				var address string
+				if selfDeclaredPrincipal := getSelfDeclaredEnderecoPrincipalForCFLookup(ctx, cpf); selfDeclaredPrincipal != nil {
+					municipio = selfDeclaredPrincipal.Municipio
+					address = buildAddressString(selfDeclaredPrincipal)
+				} else {
+					if citizen.Endereco != nil && citizen.Endereco.Principal != nil {
+						municipio = citizen.Endereco.Principal.Municipio
+					}
 					address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
 				}
-				logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
+				if services.IsMunicipioCoberto(municipio) {
+					logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
 
-				if address != "" {
-					logger.Info("CALLING TrySynchronousCFLookup", zap.String("cpf", cpf), zap.String("address", address))
-					cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
-					if err != nil {
-						logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), zap.String("cpf", cpf))
+					if address != "" {
+						logger.Info("CALLING TrySynchronousCFLookup", zap.String("cpf", cpf), zap.String("address", address))
+						cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
+						if err != nil {
+							logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), zap.String("cpf", cpf))
+						} else {
+							logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
+						}
 					} else {
-						logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
+						logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", zap.String("cpf", cpf))
 					}
 				} else {
-					logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", zap.String("cpf", cpf))
+					logger.Debug("município não coberto pelo MCP, ignorando lookup síncrono", zap.String("cpf", cpf))
 				}
 			} else {
 				logger.Info("FOUND CACHED CF DATA", zap.String("cpf", cpf), zap.Bool("is_active", cfData.IsActive))
@@ -3412,9 +3431,8 @@ func getCurrentEmailData(ctx context.Context, cpf string) (*EmailDataWithTimesta
 	}, nil
 }
 
-// getSelfDeclaredAddressForCFLookup gets the current self-declared address for CF lookup
-func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
-	// Try to get from cache first using DataManager
+// getSelfDeclaredEnderecoPrincipalForCFLookup returns the self-declared address principal if present.
+func getSelfDeclaredEnderecoPrincipalForCFLookup(ctx context.Context, cpf string) *models.EnderecoPrincipal {
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
 
 	var addressData struct {
@@ -3425,10 +3443,9 @@ func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
 
 	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_address", &addressData)
 	if err == nil && addressData.Endereco != nil && addressData.Endereco.Principal != nil {
-		return buildAddressString(addressData.Endereco.Principal)
+		return addressData.Endereco.Principal
 	}
 
-	// Fallback to MongoDB with field projection (only get endereco field)
 	var selfDeclared struct {
 		Endereco *models.Endereco `bson:"endereco"`
 	}
@@ -3439,10 +3456,10 @@ func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
 	).Decode(&selfDeclared)
 
 	if err == nil && selfDeclared.Endereco != nil && selfDeclared.Endereco.Principal != nil {
-		return buildAddressString(selfDeclared.Endereco.Principal)
+		return selfDeclared.Endereco.Principal
 	}
 
-	return ""
+	return nil
 }
 
 // buildAddressString builds a complete address string from address components
@@ -3451,18 +3468,18 @@ func buildAddressString(endereco *models.EnderecoPrincipal) string {
 		return ""
 	}
 
-	parts := []string{*endereco.Logradouro}
+	parts := []string{services.SanitizeAddressField(*endereco.Logradouro)}
 
 	if endereco.Numero != nil && *endereco.Numero != "" {
-		parts = append(parts, *endereco.Numero)
+		parts = append(parts, services.SanitizeAddressField(*endereco.Numero))
 	}
 
 	if endereco.Complemento != nil && *endereco.Complemento != "" {
-		parts = append(parts, *endereco.Complemento)
+		parts = append(parts, services.SanitizeAddressField(*endereco.Complemento))
 	}
 
 	if endereco.Bairro != nil && *endereco.Bairro != "" {
-		parts = append(parts, *endereco.Bairro)
+		parts = append(parts, services.SanitizeAddressField(*endereco.Bairro))
 	}
 
 	if endereco.Municipio != nil && *endereco.Municipio != "" {

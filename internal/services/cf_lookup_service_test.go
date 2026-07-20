@@ -276,6 +276,15 @@ func TestBuildFullAddress(t *testing.T) {
 			numero:     strPtr("123"),
 			wantEmpty:  true,
 		},
+		{
+			name:        "strips parenthetical neighborhood annotation",
+			logradouro:  strPtr("Estrada dos Bandeirantes"),
+			numero:      strPtr("100"),
+			bairro:      strPtr("Freguesia (Jacarepaguá)"),
+			cidade:      strPtr("Rio de Janeiro"),
+			estado:      strPtr("RJ"),
+			wantContain: []string{"Estrada dos Bandeirantes", "100", "Freguesia", "Rio de Janeiro", "RJ"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -288,6 +297,8 @@ func TestBuildFullAddress(t *testing.T) {
 				for _, want := range tt.wantContain {
 					assert.Contains(t, address, want)
 				}
+				assert.NotContains(t, address, "(")
+				assert.NotContains(t, address, ")")
 			}
 		})
 	}
@@ -957,11 +968,15 @@ func TestQueueCFLookupJob(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
+	cpf := "12345678901"
+	queueKey := "sync:queue:cf_lookup"
 
-	service.queueCFLookupJob(ctx, "12345678901", "Rua Test, 123")
+	config.Redis.Del(ctx, queueKey)
+	config.Redis.Del(ctx, "cf_lookup:pending:"+cpf)
+
+	service.queueCFLookupJob(ctx, cpf, "Rua Test, 123")
 
 	// Verify job was queued
-	queueKey := "sync:queue:cf_lookup"
 	jobJSON, err := config.Redis.RPop(ctx, queueKey).Result()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, jobJSON)
@@ -976,8 +991,34 @@ func TestQueueCFLookupJob(t *testing.T) {
 	// Convert Data to map for access
 	dataMap, ok := job.Data.(map[string]interface{})
 	assert.True(t, ok)
-	assert.Equal(t, "12345678901", dataMap["cpf"])
+	assert.Equal(t, cpf, dataMap["cpf"])
 	assert.Equal(t, "Rua Test, 123", dataMap["address"])
+}
+
+func TestIsMunicipioCoberto(t *testing.T) {
+	str := func(s string) *string { return &s }
+
+	tests := []struct {
+		name      string
+		municipio *string
+		want      bool
+	}{
+		{name: "nil assumes covered", municipio: nil, want: true},
+		{name: "empty assumes covered", municipio: str(""), want: true},
+		{name: "exact match", municipio: str("Rio de Janeiro"), want: true},
+		{name: "lowercase", municipio: str("rio de janeiro"), want: true},
+		{name: "trimmed", municipio: str("  Rio de Janeiro  "), want: true},
+		{name: "with slash suffix", municipio: str("Rio de Janeiro/RJ"), want: true},
+		{name: "with comma suffix", municipio: str("Rio de Janeiro, RJ"), want: true},
+		{name: "other city", municipio: str("Niterói"), want: false},
+		{name: "sao paulo", municipio: str("São Paulo"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsMunicipioCoberto(tt.municipio))
+		})
+	}
 }
 
 func TestTrySynchronousCFLookup_NilService(t *testing.T) {
