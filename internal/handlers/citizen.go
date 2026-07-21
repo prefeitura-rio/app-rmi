@@ -54,12 +54,13 @@ func queueCFLookupJob(ctx context.Context, cpf, address string) {
 
 	// Queue job using Redis
 	queueKey := "sync:queue:cf_lookup"
-	created, err := config.Redis.SetNX(ctx, services.CFLookupPendingKey(cpf), "1", time.Hour).Result()
-
-	if err == nil && !created {
-		logger.Debug("CF lookup job already pending, skipping",
-			zap.String("cpf", cpf))
-		return
+	if config.IsCFLookupV2Enabled() {
+		created, setErr := config.Redis.SetNX(ctx, services.CFLookupPendingKey(cpf), "1", time.Hour).Result()
+		if setErr == nil && !created {
+			logger.Debug("CF lookup job already pending, skipping",
+				zap.String("cpf", cpf))
+			return
+		}
 	}
 
 	err = config.Redis.LPush(ctx, queueKey, string(jobBytes)).Err()
@@ -2930,35 +2931,43 @@ func GetCitizenWallet(c *gin.Context) {
 				// No cached data, try synchronous CF lookup
 				logger.Info("NO CACHED CF DATA - ATTEMPTING SYNCHRONOUS LOOKUP", zap.String("cpf", cpf))
 
-				// Gate coverage using the same address source as the lookup:
-				// self-declared when present, otherwise base citizen data.
-				var municipio *string
 				var address string
-				if selfDeclaredPrincipal := getSelfDeclaredEnderecoPrincipalForCFLookup(ctx, cpf); selfDeclaredPrincipal != nil {
-					municipio = selfDeclaredPrincipal.Municipio
-					address = buildAddressString(selfDeclaredPrincipal)
-				} else {
-					if citizen.Endereco != nil && citizen.Endereco.Principal != nil {
-						municipio = citizen.Endereco.Principal.Municipio
-					}
-					address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
-				}
-				if services.IsMunicipioCoberto(municipio) {
-					logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
-
-					if address != "" {
-						logger.Info("CALLING TrySynchronousCFLookup", zap.String("cpf", cpf), zap.String("address", address))
-						cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
-						if err != nil {
-							logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), zap.String("cpf", cpf))
-						} else {
-							logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
-						}
+				if config.IsCFLookupV2Enabled() {
+					// Gate coverage using the same address source as the lookup:
+					// self-declared when present, otherwise base citizen data.
+					var municipio *string
+					if selfDeclaredPrincipal := getSelfDeclaredEnderecoPrincipalForCFLookup(ctx, cpf); selfDeclaredPrincipal != nil {
+						municipio = selfDeclaredPrincipal.Municipio
+						address = buildAddressString(selfDeclaredPrincipal)
 					} else {
-						logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", zap.String("cpf", cpf))
+						if citizen.Endereco != nil && citizen.Endereco.Principal != nil {
+							municipio = citizen.Endereco.Principal.Municipio
+						}
+						address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
+					}
+					if !services.IsMunicipioCoberto(municipio) {
+						logger.Debug("município não coberto pelo MCP, ignorando lookup síncrono", zap.String("cpf", cpf))
+						address = ""
 					}
 				} else {
-					logger.Debug("município não coberto pelo MCP, ignorando lookup síncrono", zap.String("cpf", cpf))
+					// Legacy production path: self-declared address, then base extract.
+					address = getSelfDeclaredAddressForCFLookup(ctx, cpf)
+					if address == "" {
+						address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
+					}
+				}
+				logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
+
+				if address != "" {
+					logger.Info("CALLING TrySynchronousCFLookup", zap.String("cpf", cpf), zap.String("address", address))
+					cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
+					if err != nil {
+						logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), zap.String("cpf", cpf))
+					} else {
+						logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
+					}
+				} else {
+					logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", zap.String("cpf", cpf))
 				}
 			} else {
 				logger.Info("FOUND CACHED CF DATA", zap.String("cpf", cpf), zap.Bool("is_active", cfData.IsActive))
@@ -3460,6 +3469,14 @@ func getSelfDeclaredEnderecoPrincipalForCFLookup(ctx context.Context, cpf string
 	}
 
 	return nil
+}
+
+// getSelfDeclaredAddressForCFLookup gets the current self-declared address for CF lookup
+func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
+	if principal := getSelfDeclaredEnderecoPrincipalForCFLookup(ctx, cpf); principal != nil {
+		return buildAddressString(principal)
+	}
+	return ""
 }
 
 // buildAddressString builds a complete address string from address components

@@ -91,11 +91,13 @@ func (s *CFLookupService) ShouldLookupCF(ctx context.Context, cpf string, citize
 
 	// Prefer the same address principal used for the MCP lookup (self-declared overlay
 	// when present on citizenData, otherwise base data).
-	principal := preferredAddressPrincipal(citizenData)
-	if principal != nil && !isMunicipioCoberto(principal.Municipio) {
-		s.logger.Debug("município não coberto pelo MCP, ignorando lookup",
-			zap.String("cpf", cpf))
-		return false, "", nil
+	if config.IsCFLookupV2Enabled() {
+		principal := preferredAddressPrincipal(citizenData)
+		if principal != nil && !isMunicipioCoberto(principal.Municipio) {
+			s.logger.Debug("município não coberto pelo MCP, ignorando lookup",
+				zap.String("cpf", cpf))
+			return false, "", nil
+		}
 	}
 
 	address := s.ExtractAddress(citizenData)
@@ -235,8 +237,10 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 		zap.Bool("cf_ativo", healthData.HealthFacility.Ativo),
 		zap.Bool("cf_aberto_publico", healthData.HealthFacility.AbertoAoPublico))
 
-	// Allow a new background job (e.g. after address change) without waiting for TTL.
-	ClearCFLookupPending(ctx, cpf)
+	if config.IsCFLookupV2Enabled() {
+		// Allow a new background job (e.g. after address change) without waiting for TTL.
+		ClearCFLookupPending(ctx, cpf)
+	}
 
 	return nil
 }
@@ -403,7 +407,11 @@ func (s *CFLookupService) buildFullAddress(logradouro, numero, complemento, bair
 var addressParensRE = regexp.MustCompile(`\s*\(.*?\)`)
 
 // SanitizeAddressField removes parenthetical annotations from address components before MCP lookup.
+// No-op when CF lookup V2 hardening is disabled (production default).
 func SanitizeAddressField(address string) string {
+	if !config.IsCFLookupV2Enabled() {
+		return address
+	}
 	return strings.TrimSpace(addressParensRE.ReplaceAllString(address, ""))
 }
 
@@ -636,7 +644,12 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	}
 
 	// Store in database
-	err = s.storeCFLookup(ctx, cfLookup)
+	if config.IsCFLookupV2Enabled() {
+		err = s.storeCFLookup(ctx, cfLookup)
+	} else {
+		collection := s.database.Collection(config.AppConfig.CFLookupCollection)
+		_, err = collection.InsertOne(ctx, cfLookup)
+	}
 	if err != nil {
 		s.logger.Error("failed to store synchronous CF lookup result", zap.Error(err))
 		return cfLookup, nil
@@ -652,7 +665,9 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 		zap.String("cpf", cpf),
 		zap.String("cf_name", healthData.HealthFacility.NomePopular))
 
-	ClearCFLookupPending(ctx, cpf)
+	if config.IsCFLookupV2Enabled() {
+		ClearCFLookupPending(ctx, cpf)
+	}
 
 	return cfLookup, nil
 }
@@ -678,12 +693,13 @@ func (s *CFLookupService) queueCFLookupJob(ctx context.Context, cpf, address str
 		return
 	}
 
-	created, err := config.Redis.SetNX(ctx, CFLookupPendingKey(cpf), "1", time.Hour).Result()
-
-	if err == nil && !created {
-		s.logger.Debug("CF lookup job already pending, skipping",
-			zap.String("cpf", cpf))
-		return
+	if config.IsCFLookupV2Enabled() {
+		created, setErr := config.Redis.SetNX(ctx, CFLookupPendingKey(cpf), "1", time.Hour).Result()
+		if setErr == nil && !created {
+			s.logger.Debug("CF lookup job already pending, skipping",
+				zap.String("cpf", cpf))
+			return
+		}
 	}
 
 	// Queue job using Redis
@@ -720,7 +736,11 @@ func isMunicipioCoberto(municipio *string) bool {
 }
 
 // IsMunicipioCoberto reports whether the municipality is covered by the MCP CF service.
+// When CF lookup V2 is disabled, always returns true (no municipality gate).
 func IsMunicipioCoberto(municipio *string) bool {
+	if !config.IsCFLookupV2Enabled() {
+		return true
+	}
 	return isMunicipioCoberto(municipio)
 }
 
@@ -730,9 +750,9 @@ func CFLookupPendingKey(cpf string) string {
 }
 
 // ClearCFLookupPending removes the per-CPF pending lock so a new job can be enqueued
-// (e.g. after a successful lookup or an address change).
+// (e.g. after a successful lookup or an address change). No-op when V2 is disabled.
 func ClearCFLookupPending(ctx context.Context, cpf string) {
-	if config.Redis == nil || cpf == "" {
+	if !config.IsCFLookupV2Enabled() || config.Redis == nil || cpf == "" {
 		return
 	}
 	_ = config.Redis.Del(ctx, CFLookupPendingKey(cpf)).Err()

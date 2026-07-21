@@ -92,6 +92,12 @@ type Config struct {
 	CFLookupRateLimit       time.Duration `json:"cf_lookup_rate_limit"`
 	CFLookupGlobalRateLimit int           `json:"cf_lookup_global_rate_limit"`
 	CFLookupSyncTimeout     time.Duration `json:"cf_lookup_sync_timeout"`
+	// CFLookupV2Enabled gates CF lookup hardening (municipality filter, pending
+	// dedupe, address sanitization, sync upsert, 15s timeout default). The MCP
+	// "no equipment found" → nil,nil behavior is always on and is not gated.
+	// Default: false when ENVIRONMENT is production/prod, true otherwise.
+	// Override with CF_LOOKUP_V2_ENABLED=true|false.
+	CFLookupV2Enabled bool `json:"cf_lookup_v2_enabled"`
 
 	// WhatsApp configuration
 	WhatsAppEnabled      bool   `json:"whatsapp_enabled"`
@@ -279,7 +285,14 @@ func LoadConfig() error {
 		return fmt.Errorf("invalid CF_LOOKUP_GLOBAL_RATE_LIMIT: %w", err)
 	}
 
-	cfLookupSyncTimeout, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_SYNC_TIMEOUT", "15s")) // 15 seconds for synchronous lookups
+	environment := getEnvOrDefault("ENVIRONMENT", "development")
+	cfLookupV2Enabled := resolveCFLookupV2Enabled(environment)
+
+	cfLookupSyncTimeoutDefault := "8s"
+	if cfLookupV2Enabled {
+		cfLookupSyncTimeoutDefault = "15s"
+	}
+	cfLookupSyncTimeout, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_SYNC_TIMEOUT", cfLookupSyncTimeoutDefault))
 	if err != nil {
 		return fmt.Errorf("invalid CF_LOOKUP_SYNC_TIMEOUT: %w", err)
 	}
@@ -386,7 +399,7 @@ func LoadConfig() error {
 	AppConfig = &Config{
 		// Server configuration
 		Port:        port,
-		Environment: getEnvOrDefault("ENVIRONMENT", "development"),
+		Environment: environment,
 
 		// MongoDB configuration
 		MongoURI:      getEnvOrDefault("MONGODB_URI", "mongodb://localhost:27017"),
@@ -457,6 +470,7 @@ func LoadConfig() error {
 		CFLookupRateLimit:       cfLookupRateLimit,
 		CFLookupGlobalRateLimit: cfLookupGlobalRateLimit,
 		CFLookupSyncTimeout:     cfLookupSyncTimeout,
+		CFLookupV2Enabled:       cfLookupV2Enabled,
 
 		// WhatsApp configuration
 		WhatsAppEnabled:      whatsappEnabledBool,
@@ -513,6 +527,29 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// resolveCFLookupV2Enabled decides whether CF lookup hardening (V2) is active.
+// Explicit CF_LOOKUP_V2_ENABLED wins; otherwise V2 is off in production/prod and
+// on in every other environment (staging, development, test, …).
+func resolveCFLookupV2Enabled(environment string) bool {
+	if value, exists := os.LookupEnv("CF_LOOKUP_V2_ENABLED"); exists {
+		return strings.EqualFold(strings.TrimSpace(value), "true")
+	}
+	switch strings.ToLower(strings.TrimSpace(environment)) {
+	case "production", "prod":
+		return false
+	default:
+		return true
+	}
+}
+
+// IsCFLookupV2Enabled reports whether CF lookup V2 hardening behaviors are active.
+func IsCFLookupV2Enabled() bool {
+	if AppConfig == nil {
+		return false
+	}
+	return AppConfig.CFLookupV2Enabled
 }
 
 // getEnvAsIntOrDefault returns environment variable value as int or default if not set
