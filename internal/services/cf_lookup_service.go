@@ -644,12 +644,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	}
 
 	// Store in database
-	if config.IsCFLookupV2Enabled() {
-		err = s.storeCFLookup(ctx, cfLookup)
-	} else {
-		collection := s.database.Collection(config.AppConfig.CFLookupCollection)
-		_, err = collection.InsertOne(ctx, cfLookup)
-	}
+	err = s.storeCFLookup(ctx, cfLookup)
 	if err != nil {
 		s.logger.Error("failed to store synchronous CF lookup result", zap.Error(err))
 		return cfLookup, nil
