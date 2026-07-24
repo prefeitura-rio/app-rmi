@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -95,5 +96,37 @@ func TestGetAudiences_MixedInterfaceSlice(t *testing.T) {
 
 	if !reflect.DeepEqual(result, expected) {
 		t.Errorf("GetAudiences() with mixed types = %v, want %v", result, expected)
+	}
+}
+
+// Regression: real Keycloak tokens key resource_access on the fully-qualified
+// client id (e.g. "superapp.apps.rio.gov.br"), not the short "superapp". A fixed
+// struct hardcoded to "superapp" silently dropped these roles, so admins were
+// rejected. HasRole must find roles under any client id.
+func TestHasRole_QualifiedResourceClientID(t *testing.T) {
+	payload := `{
+		"realm_access": {"roles": ["carioca-rio"]},
+		"resource_access": {
+			"superapp.apps.rio.gov.br": {"roles": ["heimdall-admin"]},
+			"broker": {"roles": ["read-token"]}
+		}
+	}`
+
+	var claims JWTClaims
+	if err := json.Unmarshal([]byte(payload), &claims); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if !claims.HasResourceRole("heimdall-admin") {
+		t.Error("HasResourceRole(\"heimdall-admin\") = false, want true")
+	}
+	if !claims.HasRole("heimdall-admin") {
+		t.Error("HasRole(\"heimdall-admin\") = false, want true")
+	}
+	if !claims.HasRole("carioca-rio") {
+		t.Error("HasRole(\"carioca-rio\") = false, want true (realm role)")
+	}
+	if claims.HasRole("nonexistent") {
+		t.Error("HasRole(\"nonexistent\") = true, want false")
 	}
 }

@@ -35,7 +35,9 @@ func setupCPFSecretariaRouter(t *testing.T) (*gin.Engine, func()) {
 
 	adminMiddleware := func(c *gin.Context) {
 		claims := &models.JWTClaims{PreferredUsername: "99999999999"}
-		claims.ResourceAccess.Superapp.Roles = []string{"go:admin"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"go:admin"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	}

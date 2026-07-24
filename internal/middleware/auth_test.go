@@ -138,7 +138,9 @@ func TestRequireAdmin_Success(t *testing.T) {
 		claims := &models.JWTClaims{
 			PreferredUsername: "12345678901",
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"go:admin"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"go:admin"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	})
@@ -178,7 +180,9 @@ func TestRequireAdmin_NotAdmin(t *testing.T) {
 		claims := &models.JWTClaims{
 			PreferredUsername: "12345678901",
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"user"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"user"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	})
@@ -248,7 +252,9 @@ func TestRequireOwnCPF_AdminAccess(t *testing.T) {
 		claims := &models.JWTClaims{
 			PreferredUsername: "12345678901",
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"go:admin"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"go:admin"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	})
