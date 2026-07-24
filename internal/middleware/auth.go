@@ -132,22 +132,7 @@ func RequireAdmin() gin.HandlerFunc {
 			return
 		}
 
-		// Check if user has admin role in RealmAccess or ResourceAccess.Superapp
-		isAdmin := false
-		for _, role := range jwtClaims.RealmAccess.Roles {
-			if role == config.AppConfig.AdminGroup {
-				isAdmin = true
-				break
-			}
-		}
-		if !isAdmin {
-			for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
-				if role == config.AppConfig.AdminGroup {
-					isAdmin = true
-					break
-				}
-			}
-		}
+		isAdmin := jwtClaims.HasRole(config.AppConfig.AdminGroup)
 
 		if !isAdmin {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required"})
@@ -180,22 +165,7 @@ func RequireOwnCPF() gin.HandlerFunc {
 		requestedCPF := c.Param("cpf")
 		userCPF := jwtClaims.PreferredUsername
 
-		// Check if user is admin in RealmAccess or ResourceAccess.Superapp
-		isAdmin := false
-		for _, role := range jwtClaims.RealmAccess.Roles {
-			if role == config.AppConfig.AdminGroup {
-				isAdmin = true
-				break
-			}
-		}
-		if !isAdmin {
-			for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
-				if role == config.AppConfig.AdminGroup {
-					isAdmin = true
-					break
-				}
-			}
-		}
+		isAdmin := jwtClaims.HasRole(config.AppConfig.AdminGroup)
 
 		// Allow if user is admin or accessing their own data
 		if !isAdmin && requestedCPF != userCPF {
@@ -235,11 +205,8 @@ func IsAdmin(c *gin.Context) (bool, error) {
 		return false, fmt.Errorf("invalid claims type")
 	}
 
-	// Check if user has admin role
-	for _, role := range jwtClaims.RealmAccess.Roles {
-		if role == config.AppConfig.AdminGroup {
-			return true, nil
-		}
+	if jwtClaims.HasRole(config.AppConfig.AdminGroup) {
+		return true, nil
 	}
 
 	return false, nil

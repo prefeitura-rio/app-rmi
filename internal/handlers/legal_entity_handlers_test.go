@@ -49,7 +49,9 @@ func adminMiddleware() gin.HandlerFunc {
 		claims := &models.JWTClaims{
 			PreferredUsername: "03561350712",
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"go:admin"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"go:admin"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	}
@@ -61,7 +63,9 @@ func userMiddleware(cpf string) gin.HandlerFunc {
 		claims := &models.JWTClaims{
 			PreferredUsername: cpf,
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"user"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"user"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	}
@@ -671,7 +675,9 @@ func TestGetLegalEntityByCNPJ_MissingCPFInToken(t *testing.T) {
 		claims := &models.JWTClaims{
 			PreferredUsername: "", // Empty CPF
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"user"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"user"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	})

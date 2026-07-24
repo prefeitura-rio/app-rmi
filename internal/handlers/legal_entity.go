@@ -247,13 +247,9 @@ func GetLegalEntityByCNPJ(c *gin.Context) {
 	}
 
 	// Check if user is admin
-	isAdmin := false
-	for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
-		if role == "go:admin" {
-			isAdmin = true
-			utils.AddSpanAttribute(accessSpan, "is_admin", true)
-			break
-		}
+	isAdmin := jwtClaims.HasRole("go:admin")
+	if isAdmin {
+		utils.AddSpanAttribute(accessSpan, "is_admin", true)
 	}
 
 	// If admin, allow access
