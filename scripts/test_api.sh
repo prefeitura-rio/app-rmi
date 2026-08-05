@@ -158,8 +158,8 @@ make_request() {
         headers+=("-H" "Authorization: Bearer $BEARER_TOKEN")
     fi
     
-    # Add content type for POST/PUT requests
-    if [[ "$method" == "POST" || "$method" == "PUT" ]]; then
+    # Add content type for POST/PUT/PATCH requests
+    if [[ "$method" == "POST" || "$method" == "PUT" || "$method" == "PATCH" ]]; then
         headers+=("-H" "Content-Type: application/json")
     fi
     
@@ -1859,6 +1859,98 @@ if [[ "$http_code" == "422" ]]; then
 else
     echo -e "${RED}❌ Did not reject invalid category (HTTP $http_code)${NC}"
     ((TESTS_FAILED++))
+fi
+
+# ==========================================
+# Mobilidade (vehicles / catalog)
+# ==========================================
+echo "=================================================="
+echo -e "${BLUE}🛵 Testing Mobilidade (vehicles) endpoints...${NC}"
+echo "=================================================="
+
+make_request "GET" "/mobilidade/vehicle-colors" "" "Get Mobilidade Vehicle Colors"
+make_request "GET" "/mobilidade/vehicle-brands" "" "Get Mobilidade Vehicle Brands"
+make_request "GET" "/mobilidade/vehicle-models?brand_id=brand_caloi" "" "Get Mobilidade Vehicle Models"
+make_request "GET" "/mobilidade/vehicle-models" "" "Get Mobilidade Vehicle Models Invalid Missing brand_id"
+
+vehicle_create_data=$(cat <<EOF
+{
+  "display_name": "Patinete API Test",
+  "brand_other": "Xiaomi",
+  "model_other": "Mi Electric Scooter Test",
+  "vehicle_type": "autopropelido",
+  "color": "Preto",
+  "serial_number": "API-TEST-SN-$RANDOM",
+  "serial_number_photo_url": "https://storage.googleapis.com/rmi-test/serial.jpg",
+  "vehicle_photo_url": "https://storage.googleapis.com/rmi-test/vehicle.jpg",
+  "has_invoice": false,
+  "invoice_photo_url": null,
+  "self_declaration": true
+}
+EOF
+)
+
+echo -e "${BLUE}Testing: Create Mobilidade Vehicle (Outro)${NC}"
+create_response=$(curl -s -w "\n%{http_code}" -X POST "$API_BASE_URL/citizen/$CPF/vehicles" \
+    -H "Authorization: Bearer $BEARER_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$vehicle_create_data" 2>/dev/null)
+create_status=$(echo "$create_response" | tail -n1)
+create_body=$(echo "$create_response" | sed '$d')
+MOBILIDADE_VEHICLE_ID=""
+if [[ "$create_status" -ge 200 && "$create_status" -lt 300 ]]; then
+    print_result "Create Mobilidade Vehicle (Outro)" "PASS" "$create_body"
+    if command -v jq >/dev/null 2>&1; then
+        MOBILIDADE_VEHICLE_ID=$(echo "$create_body" | jq -r '.id // empty')
+    fi
+else
+    print_result "Create Mobilidade Vehicle (Outro)" "FAIL" "Status: $create_status, Response: $create_body"
+fi
+
+if [[ -n "$MOBILIDADE_VEHICLE_ID" && "$MOBILIDADE_VEHICLE_ID" != "null" ]]; then
+    make_request "GET" "/citizen/$CPF/vehicles?page=1&per_page=10" "" "List Mobilidade Vehicles"
+    make_request "GET" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID" "" "Get Mobilidade Vehicle Detail"
+    make_request "PATCH" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID" '{"display_name":"Patinete API Test Updated"}' "Update Mobilidade Vehicle"
+    make_request "GET" "/citizen/$CPF/vehicle-invitations" "" "List Mobilidade Vehicle Invitations"
+    make_request "GET" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" "" "List Mobilidade Vehicle Conductors"
+
+    bad_invoice_data=$(cat <<EOF
+{
+  "display_name": "Bike Bad Invoice",
+  "brand_other": "Caloi",
+  "model_other": "Outro",
+  "vehicle_type": "bicicleta_eletrica",
+  "color": "Preto",
+  "serial_number": "BAD-NF-$RANDOM",
+  "serial_number_photo_url": "https://storage.googleapis.com/rmi-test/serial.jpg",
+  "vehicle_photo_url": "https://storage.googleapis.com/rmi-test/vehicle.jpg",
+  "has_invoice": true,
+  "self_declaration": true
+}
+EOF
+)
+    make_request "POST" "/citizen/$CPF/vehicles" "$bad_invoice_data" "Create Mobilidade Vehicle Invalid Missing Invoice"
+
+    bad_url_data=$(cat <<EOF
+{
+  "display_name": "Bike Bad URL",
+  "brand_other": "Caloi",
+  "model_other": "Outro",
+  "vehicle_type": "bicicleta_eletrica",
+  "color": "Preto",
+  "serial_number": "BAD-URL-$RANDOM",
+  "serial_number_photo_url": "https://example.com/serial.jpg",
+  "vehicle_photo_url": "https://storage.googleapis.com/rmi-test/vehicle.jpg",
+  "has_invoice": false,
+  "self_declaration": true
+}
+EOF
+)
+    make_request "POST" "/citizen/$CPF/vehicles" "$bad_url_data" "Create Mobilidade Vehicle Invalid Photo URL"
+
+    make_request "DELETE" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID" "" "Delete Mobilidade Vehicle"
+else
+    echo -e "${YELLOW}⚠️  Skipping mobilidade detail/update/delete tests (vehicle id unavailable)${NC}"
 fi
 
 echo "=================================================="

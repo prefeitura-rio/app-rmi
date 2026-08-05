@@ -3807,6 +3807,777 @@
                 }
             }
         },
+        "/citizen/{cpf}/vehicle-invitations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista convites pending em que o CPF é o convidado.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Listar convites pendentes de veículo",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Convites pendentes",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleInvitationsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "CPF inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/{cpf}/vehicle-invitations/{conductor_id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza status do convite para accepted ou rejected (somente o convidado).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Aceitar ou recusar convite de veículo",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do vínculo/convite",
+                        "name": "conductor_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Novo status",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.RespondInvitationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Convite respondido",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleConductor"
+                        }
+                    },
+                    "400": {
+                        "description": "Validação inválida",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Convite não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/{cpf}/vehicles": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna veículos em que o CPF é proprietário ou condutor aceito, com role em cada item.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Listar veículos da carteira (mobilidade)",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Número da página (padrão: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Itens por página (padrão: 10, máximo: 100)",
+                        "name": "per_page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista paginada de veículos",
+                        "schema": {
+                            "$ref": "#/definitions/models.PaginatedVehicles"
+                        }
+                    },
+                    "400": {
+                        "description": "CPF ou paginação inválidos",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id) ou Outro (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é obrigatória.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Cadastrar veículo",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dados do veículo",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleCreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Veículo criado",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "Validação inválida",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/{cpf}/vehicles/{vehicle_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url e metadados de arquivos).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Obter detalhe do veículo",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do veículo",
+                        "name": "vehicle_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detalhe do veículo",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "CPF inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Veículo não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete do veículo e revoga vínculos pending/accepted (somente proprietário).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Excluir veículo (soft delete)",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do veículo",
+                        "name": "vehicle_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Veículo excluído"
+                    },
+                    "400": {
+                        "description": "CPF inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Veículo não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza campos do veículo (somente proprietário). Em mudança de marca/modelo do catálogo, vehicle_type é rederivado do modelo.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Atualizar veículo",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do veículo",
+                        "name": "vehicle_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Campos a atualizar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleUpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Veículo atualizado",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "Validação inválida",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado (não é o proprietário)",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Veículo não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/{cpf}/vehicles/{vehicle_id}/conductors": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista vínculos pending e accepted (somente proprietário).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Listar condutores do veículo",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do veículo",
+                        "name": "vehicle_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista de condutores",
+                        "schema": {
+                            "$ref": "#/definitions/models.ConductorsListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "CPF inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Veículo não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria vínculo pending e enfileira e-mail de convite (somente proprietário). Duplicata pending/accepted retorna 409.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Convidar condutor",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do veículo",
+                        "name": "vehicle_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Dados do convidado",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.InviteConductorRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Convite criado",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleConductor"
+                        }
+                    },
+                    "400": {
+                        "description": "Validação inválida",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Veículo não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Já existe vínculo pending/accepted",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/citizen/{cpf}/vehicles/{vehicle_id}/conductors/{conductor_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Proprietário revoga pending/accepted; condutor aceito pode sair (self-leave).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Remover / revogar condutor",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do veículo",
+                        "name": "vehicle_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do vínculo",
+                        "name": "conductor_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Vínculo revogado"
+                    },
+                    "400": {
+                        "description": "Validação inválida",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/{cpf}/wallet": {
             "get": {
                 "security": [
@@ -4714,6 +5485,144 @@
                     },
                     "500": {
                         "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mobilidade/vehicle-brands": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Catálogo de marcas para o formulário de mobilidade (seed Mongo).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Listar marcas de veículos",
+                "responses": {
+                    "200": {
+                        "description": "Lista de marcas em data",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mobilidade/vehicle-colors": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista fixa de cores permitidas no formulário de mobilidade.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Listar cores de veículos",
+                "responses": {
+                    "200": {
+                        "description": "Lista de cores em data",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mobilidade/vehicle-models": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modelos do catálogo filtrados por brand_id (obrigatório), incluindo vehicle_type.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Listar modelos de veículos por marca",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da marca",
+                        "name": "brand_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista de modelos em data",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "brand_id ausente",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -6693,6 +7602,32 @@
                 }
             }
         },
+        "models.ConductorStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "accepted",
+                "rejected",
+                "revoked"
+            ],
+            "x-enum-varnames": [
+                "ConductorStatusPending",
+                "ConductorStatusAccepted",
+                "ConductorStatusRejected",
+                "ConductorStatusRevoked"
+            ]
+        },
+        "models.ConductorsListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.VehicleConductor"
+                    }
+                }
+            }
+        },
         "models.CreateNotificationCategoryRequest": {
             "type": "object",
             "required": [
@@ -7018,6 +7953,39 @@
                     "type": "string"
                 }
             }
+        },
+        "models.InviteConductorRequest": {
+            "type": "object",
+            "required": [
+                "cpf",
+                "email"
+            ],
+            "properties": {
+                "cpf": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.InviteEmailStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "queued",
+                "sent",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "InviteEmailStatusPending",
+                "InviteEmailStatusQueued",
+                "InviteEmailStatusSent",
+                "InviteEmailStatusFailed"
+            ]
         },
         "models.LegalEntity": {
             "type": "object",
@@ -7503,6 +8471,34 @@
                 }
             }
         },
+        "models.PaginatedVehicles": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.VehicleListItem"
+                    }
+                },
+                "pagination": {
+                    "type": "object",
+                    "properties": {
+                        "page": {
+                            "type": "integer"
+                        },
+                        "per_page": {
+                            "type": "integer"
+                        },
+                        "total": {
+                            "type": "integer"
+                        },
+                        "total_pages": {
+                            "type": "integer"
+                        }
+                    }
+                }
+            }
+        },
         "models.PaginationInfo": {
             "type": "object",
             "properties": {
@@ -7948,6 +8944,17 @@
                 }
             }
         },
+        "models.RespondInvitationRequest": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "status": {
+                    "$ref": "#/definitions/models.ConductorStatus"
+                }
+            }
+        },
         "models.ResponsiblePerson": {
             "type": "object",
             "properties": {
@@ -8342,6 +9349,390 @@
                     "type": "boolean"
                 }
             }
+        },
+        "models.VehicleConductor": {
+            "type": "object",
+            "properties": {
+                "conductor_cpf": {
+                    "type": "string"
+                },
+                "conductor_name": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email_attempted_at": {
+                    "type": "string"
+                },
+                "email_status": {
+                    "description": "Invite email delivery (handoff: register attempt/status on the link).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.InviteEmailStatus"
+                        }
+                    ]
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invited_by_cpf": {
+                    "type": "string"
+                },
+                "notify_email": {
+                    "type": "string"
+                },
+                "responded_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.ConductorStatus"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "vehicle_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.VehicleCreateRequest": {
+            "type": "object",
+            "required": [
+                "color",
+                "display_name",
+                "self_declaration",
+                "serial_number",
+                "serial_number_photo_url",
+                "vehicle_photo_url"
+            ],
+            "properties": {
+                "brand_id": {
+                    "type": "string"
+                },
+                "brand_other": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "has_invoice": {
+                    "type": "boolean"
+                },
+                "invoice_photo_file_name": {
+                    "type": "string"
+                },
+                "invoice_photo_file_size": {
+                    "type": "integer"
+                },
+                "invoice_photo_url": {
+                    "type": "string"
+                },
+                "model_id": {
+                    "type": "string"
+                },
+                "model_other": {
+                    "type": "string"
+                },
+                "self_declaration": {
+                    "type": "boolean"
+                },
+                "serial_number": {
+                    "type": "string"
+                },
+                "serial_number_photo_file_name": {
+                    "type": "string"
+                },
+                "serial_number_photo_file_size": {
+                    "type": "integer"
+                },
+                "serial_number_photo_url": {
+                    "type": "string"
+                },
+                "vehicle_photo_file_name": {
+                    "type": "string"
+                },
+                "vehicle_photo_file_size": {
+                    "type": "integer"
+                },
+                "vehicle_photo_url": {
+                    "type": "string"
+                },
+                "vehicle_type": {
+                    "$ref": "#/definitions/models.VehicleType"
+                }
+            }
+        },
+        "models.VehicleDetail": {
+            "type": "object",
+            "properties": {
+                "brand_id": {
+                    "type": "string"
+                },
+                "brand_other": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "has_invoice": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invoice_photo_file_name": {
+                    "type": "string"
+                },
+                "invoice_photo_file_size": {
+                    "type": "integer"
+                },
+                "invoice_photo_url": {
+                    "type": "string"
+                },
+                "model_id": {
+                    "type": "string"
+                },
+                "model_other": {
+                    "type": "string"
+                },
+                "owner_cpf": {
+                    "type": "string"
+                },
+                "owner_email": {
+                    "type": "string"
+                },
+                "owner_name": {
+                    "type": "string"
+                },
+                "owner_phone": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/models.VehicleRole"
+                },
+                "self_declaration": {
+                    "type": "boolean"
+                },
+                "serial_number": {
+                    "type": "string"
+                },
+                "serial_number_photo_file_name": {
+                    "description": "Optional file metadata for UI detail (Apêndice A.4).",
+                    "type": "string"
+                },
+                "serial_number_photo_file_size": {
+                    "type": "integer"
+                },
+                "serial_number_photo_url": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "vehicle_photo_file_name": {
+                    "type": "string"
+                },
+                "vehicle_photo_file_size": {
+                    "type": "integer"
+                },
+                "vehicle_photo_url": {
+                    "type": "string"
+                },
+                "vehicle_type": {
+                    "$ref": "#/definitions/models.VehicleType"
+                }
+            }
+        },
+        "models.VehicleInvitationItem": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "invited_by_cpf": {
+                    "type": "string"
+                },
+                "owner_name": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.ConductorStatus"
+                },
+                "vehicle": {
+                    "$ref": "#/definitions/models.VehicleInvitationSummary"
+                },
+                "vehicle_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.VehicleInvitationSummary": {
+            "type": "object",
+            "properties": {
+                "brand_label": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "model_label": {
+                    "type": "string"
+                },
+                "vehicle_photo_url": {
+                    "type": "string"
+                },
+                "vehicle_type": {
+                    "$ref": "#/definitions/models.VehicleType"
+                }
+            }
+        },
+        "models.VehicleInvitationsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.VehicleInvitationItem"
+                    }
+                }
+            }
+        },
+        "models.VehicleListItem": {
+            "type": "object",
+            "properties": {
+                "brand_id": {
+                    "type": "string"
+                },
+                "brand_other": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "model_id": {
+                    "type": "string"
+                },
+                "model_other": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/models.VehicleRole"
+                },
+                "vehicle_photo_url": {
+                    "type": "string"
+                },
+                "vehicle_type": {
+                    "$ref": "#/definitions/models.VehicleType"
+                }
+            }
+        },
+        "models.VehicleRole": {
+            "type": "string",
+            "enum": [
+                "owner",
+                "conductor"
+            ],
+            "x-enum-varnames": [
+                "VehicleRoleOwner",
+                "VehicleRoleConductor"
+            ]
+        },
+        "models.VehicleType": {
+            "type": "string",
+            "enum": [
+                "bicicleta_eletrica",
+                "autopropelido",
+                "ciclomotor"
+            ],
+            "x-enum-varnames": [
+                "VehicleTypeBicicletaEletrica",
+                "VehicleTypeAutopropelido",
+                "VehicleTypeCiclomotor"
+            ]
+        },
+        "models.VehicleUpdateRequest": {
+            "type": "object",
+            "properties": {
+                "brand_id": {
+                    "type": "string"
+                },
+                "brand_other": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "has_invoice": {
+                    "type": "boolean"
+                },
+                "invoice_photo_file_name": {
+                    "type": "string"
+                },
+                "invoice_photo_file_size": {
+                    "type": "integer"
+                },
+                "invoice_photo_url": {
+                    "type": "string"
+                },
+                "model_id": {
+                    "type": "string"
+                },
+                "model_other": {
+                    "type": "string"
+                },
+                "serial_number": {
+                    "type": "string"
+                },
+                "serial_number_photo_file_name": {
+                    "type": "string"
+                },
+                "serial_number_photo_file_size": {
+                    "type": "integer"
+                },
+                "serial_number_photo_url": {
+                    "type": "string"
+                },
+                "vehicle_photo_file_name": {
+                    "type": "string"
+                },
+                "vehicle_photo_file_size": {
+                    "type": "integer"
+                },
+                "vehicle_photo_url": {
+                    "type": "string"
+                },
+                "vehicle_type": {
+                    "$ref": "#/definitions/models.VehicleType"
+                }
+            }
         }
     },
     "securityDefinitions": {
@@ -8356,6 +9747,10 @@
         {
             "description": "Operações relacionadas a cidadãos, incluindo consulta e atualização de dados autodeclarados",
             "name": "citizen"
+        },
+        {
+            "description": "Carteira de veículos (bicicleta elétrica, autopropelido, ciclomotor), condutores e catálogo",
+            "name": "mobilidade"
         },
         {
             "description": "Operações relacionadas a departamentos/unidades administrativas (UA)",

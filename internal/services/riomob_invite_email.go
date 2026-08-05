@@ -1,0 +1,215 @@
+package services
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/prefeitura-rio/app-rmi/internal/clients"
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"go.uber.org/zap"
+)
+
+const (
+	// RioMobInviteEmailQueue is the Redis sync queue name for conductor invite emails.
+	RioMobInviteEmailQueue = "riomob_invite_email"
+)
+
+// RioMobInviteEmailPayload is the job data enqueued when a conductor is invited.
+type RioMobInviteEmailPayload struct {
+	ConductorID  string `json:"conductor_id"`
+	NotifyEmail  string `json:"notify_email"`
+	VehicleID    string `json:"vehicle_id"`
+	OwnerName    string `json:"owner_name"`
+	DisplayName  string `json:"display_name"`
+	ConductorCPF string `json:"conductor_cpf"`
+}
+
+// EmailMessage is a transactional email to be delivered by an EmailSender.
+type EmailMessage struct {
+	To         string
+	Subject    string
+	Body       string
+	IsHTMLBody bool
+}
+
+// EmailSender delivers transactional emails (Data Relay mailman / logging / tests).
+type EmailSender interface {
+	Send(ctx context.Context, msg EmailMessage) error
+}
+
+// LoggingEmailSender logs the message and succeeds. Used when outbound email is disabled.
+type LoggingEmailSender struct {
+	logger *logging.SafeLogger
+}
+
+// NewLoggingEmailSender creates a LoggingEmailSender.
+func NewLoggingEmailSender(logger *logging.SafeLogger) *LoggingEmailSender {
+	return &LoggingEmailSender{logger: logger}
+}
+
+// Send logs the invite email without calling an external provider.
+func (s *LoggingEmailSender) Send(ctx context.Context, msg EmailMessage) error {
+	if s.logger != nil {
+		s.logger.Info("riomob invite email (logging sender)",
+			zap.String("to", msg.To),
+			zap.String("subject", msg.Subject),
+			zap.Int("body_len", len(msg.Body)))
+	}
+	return nil
+}
+
+// DataRelayEmailSender sends mail via Data Relay POST /data/mailman.
+type DataRelayEmailSender struct {
+	client *clients.DataRelayClient
+	logger *logging.SafeLogger
+}
+
+// NewDataRelayEmailSender wraps a configured Data Relay client as an EmailSender.
+func NewDataRelayEmailSender(client *clients.DataRelayClient, logger *logging.SafeLogger) *DataRelayEmailSender {
+	return &DataRelayEmailSender{client: client, logger: logger}
+}
+
+// Send delivers the message through Data Relay mailman.
+func (s *DataRelayEmailSender) Send(ctx context.Context, msg EmailMessage) error {
+	if s == nil || s.client == nil {
+		return fmt.Errorf("data relay email sender not configured")
+	}
+	to := strings.TrimSpace(msg.To)
+	if to == "" {
+		return fmt.Errorf("email recipient is required")
+	}
+
+	err := s.client.SendEmail(ctx, &clients.EmailRequest{
+		ToAddresses: []string{to},
+		Subject:     msg.Subject,
+		Body:        msg.Body,
+		IsHTMLBody:  msg.IsHTMLBody,
+	})
+	if err != nil {
+		return err
+	}
+	if s.logger != nil {
+		s.logger.Info("riomob invite email sent via data relay",
+			zap.String("to", to),
+			zap.String("subject", msg.Subject))
+	}
+	return nil
+}
+
+// RecordingEmailSender stores sent messages in memory (for tests).
+type RecordingEmailSender struct {
+	mu       sync.Mutex
+	Messages []EmailMessage
+	Err      error
+}
+
+// Send records the message or returns Err if set.
+func (s *RecordingEmailSender) Send(ctx context.Context, msg EmailMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Err != nil {
+		return s.Err
+	}
+	s.Messages = append(s.Messages, msg)
+	return nil
+}
+
+// SentCount returns how many messages were recorded.
+func (s *RecordingEmailSender) SentCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.Messages)
+}
+
+// BuildRioMobInviteEmail builds subject/body for a conductor invitation.
+func BuildRioMobInviteEmail(payload RioMobInviteEmailPayload, deepLinkBase string) EmailMessage {
+	owner := strings.TrimSpace(payload.OwnerName)
+	if owner == "" {
+		owner = "Alguém"
+	}
+	vehicle := strings.TrimSpace(payload.DisplayName)
+	if vehicle == "" {
+		vehicle = "um veículo"
+	}
+	base := strings.TrimRight(strings.TrimSpace(deepLinkBase), "/")
+	if base == "" {
+		base = "https://pref.rio"
+	}
+	cta := base + "/carteira?riomob=true"
+
+	subject := fmt.Sprintf("%s convidou você para um veículo no pref.rio", owner)
+	body := fmt.Sprintf(
+		"%s convidou você para usar o veículo \"%s\" no pref.rio (RioMob).\n\n"+
+			"Abra a carteira para aceitar ou recusar o convite:\n%s\n",
+		owner, vehicle, cta,
+	)
+
+	return EmailMessage{
+		To:         payload.NotifyEmail,
+		Subject:    subject,
+		Body:       body,
+		IsHTMLBody: false,
+	}
+}
+
+// ProcessRioMobInviteEmail validates the payload and sends the invite email.
+func ProcessRioMobInviteEmail(ctx context.Context, sender EmailSender, payload RioMobInviteEmailPayload, deepLinkBase string) error {
+	if sender == nil {
+		return fmt.Errorf("email sender is nil")
+	}
+	if strings.TrimSpace(payload.NotifyEmail) == "" {
+		return fmt.Errorf("notify_email is required")
+	}
+	if strings.TrimSpace(payload.ConductorID) == "" {
+		return fmt.Errorf("conductor_id is required")
+	}
+
+	msg := BuildRioMobInviteEmail(payload, deepLinkBase)
+	if err := sender.Send(ctx, msg); err != nil {
+		return fmt.Errorf("send invite email: %w", err)
+	}
+	return nil
+}
+
+// DefaultRioMobInviteDeepLinkBase returns the configured pref.rio deep-link base.
+func DefaultRioMobInviteDeepLinkBase() string {
+	if config.AppConfig != nil && config.AppConfig.RioMobInviteDeepLinkBase != "" {
+		return config.AppConfig.RioMobInviteDeepLinkBase
+	}
+	return "https://pref.rio"
+}
+
+// DefaultEmailSender is an optional process-wide override (tests may set a RecordingEmailSender).
+var DefaultEmailSender EmailSender
+
+// ResolveDefaultEmailSender picks Data Relay when configured, otherwise logging-only.
+// DefaultEmailSender (tests) always wins when set.
+func ResolveDefaultEmailSender(logger *logging.SafeLogger) EmailSender {
+	if DefaultEmailSender != nil {
+		return DefaultEmailSender
+	}
+	if config.AppConfig != nil {
+		base := config.AppConfig.DataRelayBaseURL
+		key := config.AppConfig.DataRelayAPIKey
+		if base != "" && key != "" {
+			timeout := config.AppConfig.DataRelayTimeout
+			if timeout <= 0 {
+				timeout = 30 * time.Second
+			}
+			client := clients.NewDataRelayClient(base, key, timeout)
+			if logger != nil {
+				logger.Info("email sender: data relay mailman enabled",
+					zap.String("base_url", base))
+			}
+			return NewDataRelayEmailSender(client, logger)
+		}
+	}
+	if logger != nil {
+		logger.Info("email sender: logging only (DATA_RELAY_BASE_URL / DATA_RELAY_API_KEY not set)")
+	}
+	return NewLoggingEmailSender(logger)
+}

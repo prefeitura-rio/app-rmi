@@ -475,6 +475,11 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure RioMob collections indexes
+	if err := ensureRioMobIndexes(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -2247,6 +2252,173 @@ func ensureCNAEIndex(ctx context.Context, logger *zap.Logger) error {
 	}
 
 	return nil
+}
+
+// ensureRioMobIndexes creates indexes for all RioMob collections.
+func ensureRioMobIndexes(ctx context.Context, logger *zap.Logger) error {
+	if err := ensureRioMobVehicleIndex(ctx, logger); err != nil {
+		return err
+	}
+	if err := ensureRioMobConductorIndex(ctx, logger); err != nil {
+		return err
+	}
+	if err := ensureRioMobBrandIndex(ctx, logger); err != nil {
+		return err
+	}
+	return ensureRioMobModelIndex(ctx, logger)
+}
+
+func listExistingIndexNames(ctx context.Context, collection *mongo.Collection) (map[string]bool, error) {
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	existing := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existing[name] = true
+		}
+	}
+	return existing, nil
+}
+
+func createMissingIndexes(ctx context.Context, logger *zap.Logger, collectionName string, collection *mongo.Collection, requiredIndexes []mongo.IndexModel, requiredNames []string) error {
+	existingIndexes, err := listExistingIndexNames(ctx, collection)
+	if err != nil {
+		logger.Error("failed to list indexes",
+			zap.String("collection", collectionName),
+			zap.Error(err))
+		return err
+	}
+
+	indexesToCreate := []mongo.IndexModel{}
+	for i, indexModel := range requiredIndexes {
+		if !existingIndexes[requiredNames[i]] {
+			indexesToCreate = append(indexesToCreate, indexModel)
+		}
+	}
+
+	if len(indexesToCreate) == 0 {
+		logger.Debug("indexes already exist", zap.String("collection", collectionName))
+		return nil
+	}
+
+	logger.Info("creating missing indexes",
+		zap.String("collection", collectionName),
+		zap.Int("count", len(indexesToCreate)))
+
+	_, err = collection.Indexes().CreateMany(ctx, indexesToCreate)
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			logger.Info("indexes already exist (created by another instance)",
+				zap.String("collection", collectionName))
+			return nil
+		}
+		logger.Error("failed to create indexes",
+			zap.String("collection", collectionName),
+			zap.Error(err))
+		return err
+	}
+
+	logger.Info("created indexes successfully",
+		zap.String("collection", collectionName),
+		zap.Int("created_count", len(indexesToCreate)))
+	return nil
+}
+
+// ensureRioMobVehicleIndex creates indexes for riomob_vehicles.
+func ensureRioMobVehicleIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.RioMobVehicleCollection)
+	requiredNames := []string{
+		"idx_riomob_vehicles_owner_active",
+	}
+	requiredIndexes := []mongo.IndexModel{
+		// Wallet listing: vehicles owned by CPF that are not soft-deleted.
+		{
+			Keys: bson.D{{Key: "owner_cpf", Value: 1}},
+			Options: options.Index().
+				SetName("idx_riomob_vehicles_owner_active").
+				SetPartialFilterExpression(bson.M{"deleted_at": nil}),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.RioMobVehicleCollection, collection, requiredIndexes, requiredNames)
+}
+
+// ensureRioMobConductorIndex creates indexes for riomob_vehicle_conductors.
+func ensureRioMobConductorIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.RioMobConductorCollection)
+	requiredNames := []string{
+		"idx_riomob_conductors_vehicle_cpf_active",
+		"idx_riomob_conductors_cpf_status",
+		"idx_riomob_conductors_vehicle_status",
+	}
+	requiredIndexes := []mongo.IndexModel{
+		// Unique active link per (vehicle, conductor) — enforces 409 on duplicate invite.
+		{
+			Keys: bson.D{
+				{Key: "vehicle_id", Value: 1},
+				{Key: "conductor_cpf", Value: 1},
+			},
+			Options: options.Index().
+				SetName("idx_riomob_conductors_vehicle_cpf_active").
+				SetUnique(true).
+				SetPartialFilterExpression(bson.M{
+					"status": bson.M{"$in": bson.A{"pending", "accepted"}},
+				}),
+		},
+		// Pending invitations + accepted shared vehicles for a CPF.
+		{
+			Keys: bson.D{
+				{Key: "conductor_cpf", Value: 1},
+				{Key: "status", Value: 1},
+			},
+			Options: options.Index().SetName("idx_riomob_conductors_cpf_status"),
+		},
+		// Owner management of conductors on a vehicle.
+		{
+			Keys: bson.D{
+				{Key: "vehicle_id", Value: 1},
+				{Key: "status", Value: 1},
+			},
+			Options: options.Index().SetName("idx_riomob_conductors_vehicle_status"),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.RioMobConductorCollection, collection, requiredIndexes, requiredNames)
+}
+
+// ensureRioMobBrandIndex creates indexes for riomob_vehicle_brands.
+func ensureRioMobBrandIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.RioMobBrandCollection)
+	requiredNames := []string{"idx_riomob_brands_name"}
+	requiredIndexes := []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "name", Value: 1}},
+			Options: options.Index().SetName("idx_riomob_brands_name"),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.RioMobBrandCollection, collection, requiredIndexes, requiredNames)
+}
+
+// ensureRioMobModelIndex creates indexes for riomob_vehicle_models.
+func ensureRioMobModelIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.RioMobModelCollection)
+	requiredNames := []string{"idx_riomob_models_brand_name"}
+	requiredIndexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "brand_id", Value: 1},
+				{Key: "name", Value: 1},
+			},
+			Options: options.Index().SetName("idx_riomob_models_brand_name"),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.RioMobModelCollection, collection, requiredIndexes, requiredNames)
 }
 
 // isIndexBuildInProgress checks if an index build is currently running for a specific collection and index

@@ -17,35 +17,46 @@ import (
 func setupAvatarServiceTest(t *testing.T) (*AvatarService, func()) {
 	_ = logging.InitLogger()
 
-	// Initialize config
 	if config.AppConfig == nil {
 		config.AppConfig = &config.Config{}
 	}
-	config.AppConfig.AvatarsCollection = "test_avatars"
+	origCollection := config.AppConfig.AvatarsCollection
+	origTTL := config.AppConfig.AvatarCacheTTL
+	config.AppConfig.AvatarsCollection = "svc_test_avatars"
 	config.AppConfig.AvatarCacheTTL = 5 * time.Minute
 
-	// Use shared MongoDB connection
 	if config.MongoDB == nil {
 		t.Skip("Skipping avatar service tests: MongoDB not initialized")
 	}
 
 	ctx := context.Background()
 
-	// Create service with nil client (uses shared connection)
-	logger := zap.L().Named("avatar_service_test")
-	service := NewAvatarService(nil, config.MongoDB, logger)
-
-	return service, func() {
-		// Clean up Redis
-		if config.Redis != nil {
-			keys, _ := config.Redis.Keys(ctx, "avatar*").Result()
+	// Clean before test — Redis list keys are shared across packages running in parallel.
+	if config.Redis != nil {
+		for _, pattern := range []string{"avatar:*", "avatars:*"} {
+			keys, _ := config.Redis.Keys(ctx, pattern).Result()
 			if len(keys) > 0 {
 				config.Redis.Del(ctx, keys...)
 			}
 		}
+	}
+	_ = config.MongoDB.Collection(config.AppConfig.AvatarsCollection).Drop(ctx)
 
-		// Clean up only test_avatars collection
-		_ = config.MongoDB.Collection("test_avatars").Drop(ctx)
+	logger := zap.L().Named("avatar_service_test")
+	service := NewAvatarService(nil, config.MongoDB, logger)
+
+	return service, func() {
+		if config.Redis != nil {
+			for _, pattern := range []string{"avatar:*", "avatars:*"} {
+				keys, _ := config.Redis.Keys(ctx, pattern).Result()
+				if len(keys) > 0 {
+					config.Redis.Del(ctx, keys...)
+				}
+			}
+		}
+		_ = config.MongoDB.Collection(config.AppConfig.AvatarsCollection).Drop(ctx)
+		config.AppConfig.AvatarsCollection = origCollection
+		config.AppConfig.AvatarCacheTTL = origTTL
 	}
 }
 

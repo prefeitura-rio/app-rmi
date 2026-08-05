@@ -575,6 +575,25 @@ definitions:
       id:
         type: string
     type: object
+  models.ConductorStatus:
+    enum:
+    - pending
+    - accepted
+    - rejected
+    - revoked
+    type: string
+    x-enum-varnames:
+    - ConductorStatusPending
+    - ConductorStatusAccepted
+    - ConductorStatusRejected
+    - ConductorStatusRevoked
+  models.ConductorsListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.VehicleConductor'
+        type: array
+    type: object
   models.CreateNotificationCategoryRequest:
     properties:
       active:
@@ -788,6 +807,30 @@ definitions:
       id:
         type: string
     type: object
+  models.InviteConductorRequest:
+    properties:
+      cpf:
+        type: string
+      email:
+        type: string
+      name:
+        type: string
+    required:
+    - cpf
+    - email
+    type: object
+  models.InviteEmailStatus:
+    enum:
+    - pending
+    - queued
+    - sent
+    - failed
+    type: string
+    x-enum-varnames:
+    - InviteEmailStatusPending
+    - InviteEmailStatusQueued
+    - InviteEmailStatusSent
+    - InviteEmailStatusFailed
   models.LegalEntity:
     properties:
       _id: {}
@@ -1105,6 +1148,24 @@ definitions:
             type: integer
         type: object
     type: object
+  models.PaginatedVehicles:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.VehicleListItem'
+        type: array
+      pagination:
+        properties:
+          page:
+            type: integer
+          per_page:
+            type: integer
+          total:
+            type: integer
+          total_pages:
+            type: integer
+        type: object
+    type: object
   models.PaginationInfo:
     properties:
       page:
@@ -1399,6 +1460,13 @@ definitions:
       status:
         type: string
     type: object
+  models.RespondInvitationRequest:
+    properties:
+      status:
+        $ref: '#/definitions/models.ConductorStatus'
+    required:
+    - status
+    type: object
   models.ResponsiblePerson:
     properties:
       cpf:
@@ -1656,6 +1724,263 @@ definitions:
     properties:
       valid:
         type: boolean
+    type: object
+  models.VehicleConductor:
+    properties:
+      conductor_cpf:
+        type: string
+      conductor_name:
+        type: string
+      created_at:
+        type: string
+      email_attempted_at:
+        type: string
+      email_status:
+        allOf:
+        - $ref: '#/definitions/models.InviteEmailStatus'
+        description: 'Invite email delivery (handoff: register attempt/status on the
+          link).'
+      id:
+        type: string
+      invited_by_cpf:
+        type: string
+      notify_email:
+        type: string
+      responded_at:
+        type: string
+      status:
+        $ref: '#/definitions/models.ConductorStatus'
+      updated_at:
+        type: string
+      vehicle_id:
+        type: string
+    type: object
+  models.VehicleCreateRequest:
+    properties:
+      brand_id:
+        type: string
+      brand_other:
+        type: string
+      color:
+        type: string
+      display_name:
+        type: string
+      has_invoice:
+        type: boolean
+      invoice_photo_file_name:
+        type: string
+      invoice_photo_file_size:
+        type: integer
+      invoice_photo_url:
+        type: string
+      model_id:
+        type: string
+      model_other:
+        type: string
+      self_declaration:
+        type: boolean
+      serial_number:
+        type: string
+      serial_number_photo_file_name:
+        type: string
+      serial_number_photo_file_size:
+        type: integer
+      serial_number_photo_url:
+        type: string
+      vehicle_photo_file_name:
+        type: string
+      vehicle_photo_file_size:
+        type: integer
+      vehicle_photo_url:
+        type: string
+      vehicle_type:
+        $ref: '#/definitions/models.VehicleType'
+    required:
+    - color
+    - display_name
+    - self_declaration
+    - serial_number
+    - serial_number_photo_url
+    - vehicle_photo_url
+    type: object
+  models.VehicleDetail:
+    properties:
+      brand_id:
+        type: string
+      brand_other:
+        type: string
+      color:
+        type: string
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      display_name:
+        type: string
+      has_invoice:
+        type: boolean
+      id:
+        type: string
+      invoice_photo_file_name:
+        type: string
+      invoice_photo_file_size:
+        type: integer
+      invoice_photo_url:
+        type: string
+      model_id:
+        type: string
+      model_other:
+        type: string
+      owner_cpf:
+        type: string
+      owner_email:
+        type: string
+      owner_name:
+        type: string
+      owner_phone:
+        type: string
+      role:
+        $ref: '#/definitions/models.VehicleRole'
+      self_declaration:
+        type: boolean
+      serial_number:
+        type: string
+      serial_number_photo_file_name:
+        description: Optional file metadata for UI detail (Apêndice A.4).
+        type: string
+      serial_number_photo_file_size:
+        type: integer
+      serial_number_photo_url:
+        type: string
+      updated_at:
+        type: string
+      vehicle_photo_file_name:
+        type: string
+      vehicle_photo_file_size:
+        type: integer
+      vehicle_photo_url:
+        type: string
+      vehicle_type:
+        $ref: '#/definitions/models.VehicleType'
+    type: object
+  models.VehicleInvitationItem:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      invited_by_cpf:
+        type: string
+      owner_name:
+        type: string
+      status:
+        $ref: '#/definitions/models.ConductorStatus'
+      vehicle:
+        $ref: '#/definitions/models.VehicleInvitationSummary'
+      vehicle_id:
+        type: string
+    type: object
+  models.VehicleInvitationSummary:
+    properties:
+      brand_label:
+        type: string
+      color:
+        type: string
+      display_name:
+        type: string
+      model_label:
+        type: string
+      vehicle_photo_url:
+        type: string
+      vehicle_type:
+        $ref: '#/definitions/models.VehicleType'
+    type: object
+  models.VehicleInvitationsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.VehicleInvitationItem'
+        type: array
+    type: object
+  models.VehicleListItem:
+    properties:
+      brand_id:
+        type: string
+      brand_other:
+        type: string
+      color:
+        type: string
+      display_name:
+        type: string
+      id:
+        type: string
+      model_id:
+        type: string
+      model_other:
+        type: string
+      role:
+        $ref: '#/definitions/models.VehicleRole'
+      vehicle_photo_url:
+        type: string
+      vehicle_type:
+        $ref: '#/definitions/models.VehicleType'
+    type: object
+  models.VehicleRole:
+    enum:
+    - owner
+    - conductor
+    type: string
+    x-enum-varnames:
+    - VehicleRoleOwner
+    - VehicleRoleConductor
+  models.VehicleType:
+    enum:
+    - bicicleta_eletrica
+    - autopropelido
+    - ciclomotor
+    type: string
+    x-enum-varnames:
+    - VehicleTypeBicicletaEletrica
+    - VehicleTypeAutopropelido
+    - VehicleTypeCiclomotor
+  models.VehicleUpdateRequest:
+    properties:
+      brand_id:
+        type: string
+      brand_other:
+        type: string
+      color:
+        type: string
+      display_name:
+        type: string
+      has_invoice:
+        type: boolean
+      invoice_photo_file_name:
+        type: string
+      invoice_photo_file_size:
+        type: integer
+      invoice_photo_url:
+        type: string
+      model_id:
+        type: string
+      model_other:
+        type: string
+      serial_number:
+        type: string
+      serial_number_photo_file_name:
+        type: string
+      serial_number_photo_file_size:
+        type: integer
+      serial_number_photo_url:
+        type: string
+      vehicle_photo_file_name:
+        type: string
+      vehicle_photo_file_size:
+        type: integer
+      vehicle_photo_url:
+        type: string
+      vehicle_type:
+        $ref: '#/definitions/models.VehicleType'
     type: object
 host: localhost:8080
 info:
@@ -4055,6 +4380,524 @@ paths:
       summary: Validar verificação de telefone
       tags:
       - citizen
+  /citizen/{cpf}/vehicle-invitations:
+    get:
+      consumes:
+      - application/json
+      description: Lista convites pending em que o CPF é o convidado.
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Convites pendentes
+          schema:
+            $ref: '#/definitions/models.VehicleInvitationsResponse'
+        "400":
+          description: CPF inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar convites pendentes de veículo
+      tags:
+      - mobilidade
+  /citizen/{cpf}/vehicle-invitations/{conductor_id}:
+    patch:
+      consumes:
+      - application/json
+      description: Atualiza status do convite para accepted ou rejected (somente o
+        convidado).
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: ID do vínculo/convite
+        in: path
+        name: conductor_id
+        required: true
+        type: string
+      - description: Novo status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.RespondInvitationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Convite respondido
+          schema:
+            $ref: '#/definitions/models.VehicleConductor'
+        "400":
+          description: Validação inválida
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Convite não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Aceitar ou recusar convite de veículo
+      tags:
+      - mobilidade
+  /citizen/{cpf}/vehicles:
+    get:
+      consumes:
+      - application/json
+      description: Retorna veículos em que o CPF é proprietário ou condutor aceito,
+        com role em cada item.
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: 'Número da página (padrão: 1)'
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - description: 'Itens por página (padrão: 10, máximo: 100)'
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista paginada de veículos
+          schema:
+            $ref: '#/definitions/models.PaginatedVehicles'
+        "400":
+          description: CPF ou paginação inválidos
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar veículos da carteira (mobilidade)
+      tags:
+      - mobilidade
+    post:
+      consumes:
+      - application/json
+      description: Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id)
+        ou Outro (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS
+        GCS. Se has_invoice=true, invoice_photo_url é obrigatória.
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: Dados do veículo
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.VehicleCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Veículo criado
+          schema:
+            $ref: '#/definitions/models.VehicleDetail'
+        "400":
+          description: Validação inválida
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cadastrar veículo
+      tags:
+      - mobilidade
+  /citizen/{cpf}/vehicles/{vehicle_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Soft-delete do veículo e revoga vínculos pending/accepted (somente
+        proprietário).
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: ID do veículo
+        in: path
+        name: vehicle_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Veículo excluído
+        "400":
+          description: CPF inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Veículo não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir veículo (soft delete)
+      tags:
+      - mobilidade
+    get:
+      consumes:
+      - application/json
+      description: Retorna o detalhe do veículo para proprietário ou condutor aceito
+        (inclui invoice_photo_url e metadados de arquivos).
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: ID do veículo
+        in: path
+        name: vehicle_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Detalhe do veículo
+          schema:
+            $ref: '#/definitions/models.VehicleDetail'
+        "400":
+          description: CPF inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Veículo não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Obter detalhe do veículo
+      tags:
+      - mobilidade
+    patch:
+      consumes:
+      - application/json
+      description: Atualiza campos do veículo (somente proprietário). Em mudança de
+        marca/modelo do catálogo, vehicle_type é rederivado do modelo.
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: ID do veículo
+        in: path
+        name: vehicle_id
+        required: true
+        type: string
+      - description: Campos a atualizar
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.VehicleUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Veículo atualizado
+          schema:
+            $ref: '#/definitions/models.VehicleDetail'
+        "400":
+          description: Validação inválida
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado (não é o proprietário)
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Veículo não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar veículo
+      tags:
+      - mobilidade
+  /citizen/{cpf}/vehicles/{vehicle_id}/conductors:
+    get:
+      consumes:
+      - application/json
+      description: Lista vínculos pending e accepted (somente proprietário).
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: ID do veículo
+        in: path
+        name: vehicle_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de condutores
+          schema:
+            $ref: '#/definitions/models.ConductorsListResponse'
+        "400":
+          description: CPF inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Veículo não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar condutores do veículo
+      tags:
+      - mobilidade
+    post:
+      consumes:
+      - application/json
+      description: Cria vínculo pending e enfileira e-mail de convite (somente proprietário).
+        Duplicata pending/accepted retorna 409.
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: ID do veículo
+        in: path
+        name: vehicle_id
+        required: true
+        type: string
+      - description: Dados do convidado
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.InviteConductorRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Convite criado
+          schema:
+            $ref: '#/definitions/models.VehicleConductor'
+        "400":
+          description: Validação inválida
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Veículo não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "409":
+          description: Já existe vínculo pending/accepted
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Convidar condutor
+      tags:
+      - mobilidade
+  /citizen/{cpf}/vehicles/{vehicle_id}/conductors/{conductor_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Proprietário revoga pending/accepted; condutor aceito pode sair
+        (self-leave).
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: ID do veículo
+        in: path
+        name: vehicle_id
+        required: true
+        type: string
+      - description: ID do vínculo
+        in: path
+        name: conductor_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Vínculo revogado
+        "400":
+          description: Validação inválida
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Não encontrado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remover / revogar condutor
+      tags:
+      - mobilidade
   /citizen/{cpf}/wallet:
     get:
       consumes:
@@ -4772,6 +5615,95 @@ paths:
       summary: Métricas Prometheus
       tags:
       - metrics
+  /mobilidade/vehicle-brands:
+    get:
+      consumes:
+      - application/json
+      description: Catálogo de marcas para o formulário de mobilidade (seed Mongo).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de marcas em data
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar marcas de veículos
+      tags:
+      - mobilidade
+  /mobilidade/vehicle-colors:
+    get:
+      consumes:
+      - application/json
+      description: Lista fixa de cores permitidas no formulário de mobilidade.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de cores em data
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar cores de veículos
+      tags:
+      - mobilidade
+  /mobilidade/vehicle-models:
+    get:
+      consumes:
+      - application/json
+      description: Modelos do catálogo filtrados por brand_id (obrigatório), incluindo
+        vehicle_type.
+      parameters:
+      - description: ID da marca
+        in: query
+        name: brand_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Lista de modelos em data
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: brand_id ausente
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Não autenticado
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar modelos de veículos por marca
+      tags:
+      - mobilidade
   /notification-categories:
     get:
       consumes:
@@ -5516,6 +6448,9 @@ tags:
 - description: Operações relacionadas a cidadãos, incluindo consulta e atualização
     de dados autodeclarados
   name: citizen
+- description: Carteira de veículos (bicicleta elétrica, autopropelido, ciclomotor),
+    condutores e catálogo
+  name: mobilidade
 - description: Operações relacionadas a departamentos/unidades administrativas (UA)
   name: departments
 - description: Gerenciamento de categorias de notificação (admin) e listagem pública

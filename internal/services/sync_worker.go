@@ -8,6 +8,7 @@ import (
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -25,6 +26,7 @@ type SyncWorker struct {
 	degradedMode *DegradedMode
 	stopChan     chan struct{}
 	queues       []string
+	emailSender  EmailSender
 }
 
 // NewSyncWorker creates a new sync worker
@@ -37,6 +39,7 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 		metrics:      metrics,
 		degradedMode: degradedMode,
 		stopChan:     make(chan struct{}),
+		emailSender:  ResolveDefaultEmailSender(logger),
 		queues: []string{
 			"citizen",
 			"phone_mapping",
@@ -55,8 +58,14 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 			"self_declared_escolaridade",
 			"self_declared_deficiencia",
 			"cf_lookup",
+			RioMobInviteEmailQueue,
 		},
 	}
+}
+
+// SetEmailSender overrides the email sender (used by tests).
+func (w *SyncWorker) SetEmailSender(sender EmailSender) {
+	w.emailSender = sender
 }
 
 // Start starts the worker
@@ -412,6 +421,11 @@ func (w *SyncWorker) handleSpecialJobTypes(ctx context.Context, job *SyncJob) er
 		return w.handleCFLookupJob(ctx, job)
 	}
 
+	// RioMob conductor invite email
+	if job.Type == RioMobInviteEmailQueue || job.Collection == RioMobInviteEmailQueue {
+		return w.handleRioMobInviteEmailJob(ctx, job)
+	}
+
 	// Not a special job type
 	return fmt.Errorf("not_special_job")
 }
@@ -510,6 +524,67 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 	}
 
 	return nil
+}
+
+func (w *SyncWorker) handleRioMobInviteEmailJob(ctx context.Context, job *SyncJob) error {
+	w.logger.Info("processing riomob invite email job",
+		zap.String("job_id", job.ID),
+		zap.String("key", job.Key))
+
+	payload, err := parseRioMobInviteEmailPayload(job.Data)
+	if err != nil {
+		conductorID := job.Key
+		if conductorID == "" {
+			conductorID = payload.ConductorID
+		}
+		if conductorID != "" {
+			w.persistInviteEmailStatus(ctx, conductorID, models.InviteEmailStatusFailed, err.Error())
+		}
+		return err
+	}
+
+	sender := w.emailSender
+	if sender == nil {
+		sender = NewLoggingEmailSender(w.logger)
+	}
+
+	if err := ProcessRioMobInviteEmail(ctx, sender, payload, DefaultRioMobInviteDeepLinkBase()); err != nil {
+		w.logger.Error("riomob invite email failed",
+			zap.Error(err),
+			zap.String("job_id", job.ID),
+			zap.String("conductor_id", payload.ConductorID),
+			zap.String("notify_email", payload.NotifyEmail))
+		w.persistInviteEmailStatus(ctx, payload.ConductorID, models.InviteEmailStatusFailed, err.Error())
+		return err
+	}
+
+	w.persistInviteEmailStatus(ctx, payload.ConductorID, models.InviteEmailStatusSent, "")
+	w.logger.Info("riomob invite email sent",
+		zap.String("job_id", job.ID),
+		zap.String("conductor_id", payload.ConductorID),
+		zap.String("notify_email", payload.NotifyEmail))
+	return nil
+}
+
+func (w *SyncWorker) persistInviteEmailStatus(ctx context.Context, conductorID string, status models.InviteEmailStatus, lastError string) {
+	if err := SetConductorInviteEmailStatus(ctx, w.mongo, conductorID, status, lastError); err != nil {
+		w.logger.Warn("riomob invite email status update failed",
+			zap.String("conductor_id", conductorID),
+			zap.String("email_status", string(status)),
+			zap.Error(err))
+	}
+}
+
+func parseRioMobInviteEmailPayload(data interface{}) (RioMobInviteEmailPayload, error) {
+	var payload RioMobInviteEmailPayload
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return payload, fmt.Errorf("marshal invite email payload: %w", err)
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return payload, fmt.Errorf("unmarshal invite email payload: %w", err)
+	}
+	return payload, nil
 }
 
 // getFieldNameFromJobType maps job types to their corresponding database field names

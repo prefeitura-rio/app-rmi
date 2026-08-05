@@ -38,7 +38,8 @@ func setupLegalEntityHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
 
 	return router, func() {
-		_ = database.Drop(ctx)
+		// Drop only this test's collection — never the whole rmi_test DB (shared across packages).
+		_ = database.Collection(config.AppConfig.LegalEntityCollection).Drop(ctx)
 		services.LegalEntityServiceInstance = nil
 	}
 }

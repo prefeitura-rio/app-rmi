@@ -60,6 +60,12 @@ func setupTestEnvironment() {
 				os.Setenv(key, defaultValue)
 			}
 		}
+		// Always isolate from just dotenv-load (.env may set MONGODB_DATABASE=rmi, CF_LOOKUP=true).
+		os.Setenv("MONGODB_DATABASE", "rmi_test")
+		os.Setenv("CF_LOOKUP_ENABLED", "false")
+		os.Setenv("CF_LOOKUP_V2_ENABLED", "false")
+		os.Setenv("WHATSAPP_ENABLED", "false")
+		os.Setenv("SFMC_ENABLED", "false")
 
 		// Set other required environment variables
 		if os.Getenv("JWT_ISSUER_URL") == "" {
@@ -67,12 +73,6 @@ func setupTestEnvironment() {
 		}
 		if os.Getenv("PORT") == "" {
 			os.Setenv("PORT", "8080")
-		}
-		if os.Getenv("CF_LOOKUP_ENABLED") == "" {
-			os.Setenv("CF_LOOKUP_ENABLED", "false")
-		}
-		if os.Getenv("WHATSAPP_ENABLED") == "" {
-			os.Setenv("WHATSAPP_ENABLED", "false")
 		}
 
 		// Set WhatsApp environment variables (required by config even when disabled)
