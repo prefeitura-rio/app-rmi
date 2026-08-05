@@ -19,11 +19,11 @@ import (
 // @Failure 500 {object} ErrorResponse "Erro interno"
 // @Router /mobilidade/vehicle-brands [get]
 func GetMobilidadeVehicleBrands(c *gin.Context) {
-	if services.RioMobCatalogServiceInstance == nil {
+	if services.MobilidadeCatalogServiceInstance == nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Catalog service unavailable"})
 		return
 	}
-	result, err := services.RioMobCatalogServiceInstance.ListBrands(c.Request.Context())
+	result, err := services.MobilidadeCatalogServiceInstance.ListBrands(c.Request.Context())
 	if err != nil {
 		mapMobilidadeError(c, err)
 		return
@@ -50,11 +50,11 @@ func GetMobilidadeVehicleModels(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "brand_id is required"})
 		return
 	}
-	if services.RioMobCatalogServiceInstance == nil {
+	if services.MobilidadeCatalogServiceInstance == nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Catalog service unavailable"})
 		return
 	}
-	result, err := services.RioMobCatalogServiceInstance.ListModelsByBrand(c.Request.Context(), brandID)
+	result, err := services.MobilidadeCatalogServiceInstance.ListModelsByBrand(c.Request.Context(), brandID)
 	if err != nil {
 		mapMobilidadeError(c, err)
 		return
@@ -74,11 +74,11 @@ func GetMobilidadeVehicleModels(c *gin.Context) {
 // @Failure 500 {object} ErrorResponse "Erro interno"
 // @Router /mobilidade/vehicle-colors [get]
 func GetMobilidadeVehicleColors(c *gin.Context) {
-	if services.RioMobCatalogServiceInstance == nil {
+	if services.MobilidadeCatalogServiceInstance == nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Catalog service unavailable"})
 		return
 	}
-	result, err := services.RioMobCatalogServiceInstance.ListColors(c.Request.Context())
+	result, err := services.MobilidadeCatalogServiceInstance.ListColors(c.Request.Context())
 	if err != nil {
 		mapMobilidadeError(c, err)
 		return

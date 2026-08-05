@@ -18,8 +18,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-func TestBuildRioMobInviteEmail(t *testing.T) {
-	msg := BuildRioMobInviteEmail(RioMobInviteEmailPayload{
+func TestBuildMobilidadeInviteEmail(t *testing.T) {
+	msg := BuildMobilidadeInviteEmail(MobilidadeInviteEmailPayload{
 		NotifyEmail: "joao@example.com",
 		OwnerName:   "Ana Souza",
 		DisplayName: "Bike do trabalho",
@@ -28,22 +28,22 @@ func TestBuildRioMobInviteEmail(t *testing.T) {
 	assert.Equal(t, "joao@example.com", msg.To)
 	assert.Contains(t, msg.Subject, "Ana Souza")
 	assert.Contains(t, msg.Body, "Bike do trabalho")
-	assert.Contains(t, msg.Body, "https://pref.rio/carteira?riomob=true")
+	assert.Contains(t, msg.Body, "https://pref.rio/carteira?mobilidade=true")
 }
 
-func TestBuildRioMobInviteEmail_Defaults(t *testing.T) {
-	msg := BuildRioMobInviteEmail(RioMobInviteEmailPayload{
+func TestBuildMobilidadeInviteEmail_Defaults(t *testing.T) {
+	msg := BuildMobilidadeInviteEmail(MobilidadeInviteEmailPayload{
 		NotifyEmail: "x@example.com",
 	}, "")
 
 	assert.Contains(t, msg.Subject, "Alguém")
 	assert.Contains(t, msg.Body, "um veículo")
-	assert.Contains(t, msg.Body, "https://pref.rio/carteira?riomob=true")
+	assert.Contains(t, msg.Body, "https://pref.rio/carteira?mobilidade=true")
 }
 
-func TestProcessRioMobInviteEmail_Success(t *testing.T) {
+func TestProcessMobilidadeInviteEmail_Success(t *testing.T) {
 	sender := &RecordingEmailSender{}
-	err := ProcessRioMobInviteEmail(context.Background(), sender, RioMobInviteEmailPayload{
+	err := ProcessMobilidadeInviteEmail(context.Background(), sender, MobilidadeInviteEmailPayload{
 		ConductorID: "cond1",
 		NotifyEmail: "joao@example.com",
 		OwnerName:   "Ana",
@@ -54,23 +54,23 @@ func TestProcessRioMobInviteEmail_Success(t *testing.T) {
 	assert.Equal(t, "joao@example.com", sender.Messages[0].To)
 }
 
-func TestProcessRioMobInviteEmail_RequiresEmailAndConductorID(t *testing.T) {
+func TestProcessMobilidadeInviteEmail_RequiresEmailAndConductorID(t *testing.T) {
 	sender := &RecordingEmailSender{}
-	err := ProcessRioMobInviteEmail(context.Background(), sender, RioMobInviteEmailPayload{
+	err := ProcessMobilidadeInviteEmail(context.Background(), sender, MobilidadeInviteEmailPayload{
 		ConductorID: "cond1",
 	}, "https://pref.rio")
 	require.Error(t, err)
 	assert.Equal(t, 0, sender.SentCount())
 
-	err = ProcessRioMobInviteEmail(context.Background(), sender, RioMobInviteEmailPayload{
+	err = ProcessMobilidadeInviteEmail(context.Background(), sender, MobilidadeInviteEmailPayload{
 		NotifyEmail: "a@example.com",
 	}, "https://pref.rio")
 	require.Error(t, err)
 }
 
-func TestProcessRioMobInviteEmail_SenderError(t *testing.T) {
+func TestProcessMobilidadeInviteEmail_SenderError(t *testing.T) {
 	sender := &RecordingEmailSender{Err: errors.New("smtp down")}
-	err := ProcessRioMobInviteEmail(context.Background(), sender, RioMobInviteEmailPayload{
+	err := ProcessMobilidadeInviteEmail(context.Background(), sender, MobilidadeInviteEmailPayload{
 		ConductorID: "cond1",
 		NotifyEmail: "a@example.com",
 	}, "https://pref.rio")
@@ -78,7 +78,7 @@ func TestProcessRioMobInviteEmail_SenderError(t *testing.T) {
 	assert.Contains(t, err.Error(), "smtp down")
 }
 
-func TestSyncWorker_HandleRioMobInviteEmailJob(t *testing.T) {
+func TestSyncWorker_HandleMobilidadeInviteEmailJob(t *testing.T) {
 	worker, _, cleanup := setupSyncWorkerTest(t)
 	defer cleanup()
 
@@ -87,10 +87,10 @@ func TestSyncWorker_HandleRioMobInviteEmailJob(t *testing.T) {
 
 	job := &SyncJob{
 		ID:         "job-1",
-		Type:       RioMobInviteEmailQueue,
+		Type:       MobilidadeInviteEmailQueue,
 		Key:        "cond-1",
-		Collection: RioMobInviteEmailQueue,
-		Data: RioMobInviteEmailPayload{
+		Collection: MobilidadeInviteEmailQueue,
+		Data: MobilidadeInviteEmailPayload{
 			ConductorID:  "cond-1",
 			NotifyEmail:  "joao@example.com",
 			VehicleID:    "veh-1",
@@ -102,13 +102,13 @@ func TestSyncWorker_HandleRioMobInviteEmailJob(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.handleRioMobInviteEmailJob(context.Background(), job)
+	err := worker.handleMobilidadeInviteEmailJob(context.Background(), job)
 	require.NoError(t, err)
 	require.Equal(t, 1, sender.SentCount())
 	assert.Contains(t, sender.Messages[0].Body, "Ana Souza")
 }
 
-func TestSyncWorker_ProcessRioMobInviteEmailFromQueue(t *testing.T) {
+func TestSyncWorker_ProcessMobilidadeInviteEmailFromQueue(t *testing.T) {
 	worker, _, cleanup := setupSyncWorkerTest(t)
 	defer cleanup()
 
@@ -117,9 +117,9 @@ func TestSyncWorker_ProcessRioMobInviteEmailFromQueue(t *testing.T) {
 
 	job := SyncJob{
 		ID:         "job-queue-1",
-		Type:       RioMobInviteEmailQueue,
+		Type:       MobilidadeInviteEmailQueue,
 		Key:        "cond-2",
-		Collection: RioMobInviteEmailQueue,
+		Collection: MobilidadeInviteEmailQueue,
 		Data: map[string]interface{}{
 			"conductor_id":  "cond-2",
 			"notify_email":  "maria@example.com",
@@ -135,13 +135,13 @@ func TestSyncWorker_ProcessRioMobInviteEmailFromQueue(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	queueKey := "sync:queue:" + RioMobInviteEmailQueue
+	queueKey := "sync:queue:" + MobilidadeInviteEmailQueue
 	require.NoError(t, worker.redis.LPush(ctx, queueKey, raw).Err())
 
-	got, err := worker.getJobNonBlocking(RioMobInviteEmailQueue)
+	got, err := worker.getJobNonBlocking(MobilidadeInviteEmailQueue)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, RioMobInviteEmailQueue, got.Type)
+	assert.Equal(t, MobilidadeInviteEmailQueue, got.Type)
 
 	worker.processJob(got)
 	require.Equal(t, 1, sender.SentCount())
@@ -149,7 +149,7 @@ func TestSyncWorker_ProcessRioMobInviteEmailFromQueue(t *testing.T) {
 	assert.Contains(t, sender.Messages[0].Body, "Patinete")
 }
 
-func TestSyncWorker_RioMobInviteEmailFailure(t *testing.T) {
+func TestSyncWorker_MobilidadeInviteEmailFailure(t *testing.T) {
 	worker, _, cleanup := setupSyncWorkerTest(t)
 	defer cleanup()
 
@@ -158,10 +158,10 @@ func TestSyncWorker_RioMobInviteEmailFailure(t *testing.T) {
 
 	job := &SyncJob{
 		ID:         "job-fail-1",
-		Type:       RioMobInviteEmailQueue,
+		Type:       MobilidadeInviteEmailQueue,
 		Key:        "cond-3",
-		Collection: RioMobInviteEmailQueue,
-		Data: RioMobInviteEmailPayload{
+		Collection: MobilidadeInviteEmailQueue,
+		Data: MobilidadeInviteEmailPayload{
 			ConductorID: "cond-3",
 			NotifyEmail: "fail@example.com",
 			OwnerName:   "Ana",
@@ -172,16 +172,16 @@ func TestSyncWorker_RioMobInviteEmailFailure(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.handleRioMobInviteEmailJob(context.Background(), job)
+	err := worker.handleMobilidadeInviteEmailJob(context.Background(), job)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "provider unavailable")
 	assert.Equal(t, 0, sender.SentCount())
 }
 
 func TestInviteConductor_EnqueuesSyncJobForEmail(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
 	if config.Redis == nil {
 		t.Skip("Redis not available")
@@ -189,14 +189,14 @@ func TestInviteConductor_EnqueuesSyncJobForEmail(t *testing.T) {
 	_ = logging.InitLogger()
 
 	ctx := context.Background()
-	queueKey := "sync:queue:" + RioMobInviteEmailQueue
+	queueKey := "sync:queue:" + MobilidadeInviteEmailQueue
 	_ = config.Redis.Del(ctx, queueKey)
 
-	created, err := vehicleSvc.CreateVehicle(ctx, riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(ctx, mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	link, err := conductorSvc.InviteConductor(ctx, riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Name: "João", Email: "form-email@example.com",
+	link, err := conductorSvc.InviteConductor(ctx, mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Name: "João", Email: "form-email@example.com",
 	})
 	require.NoError(t, err)
 
@@ -205,17 +205,17 @@ func TestInviteConductor_EnqueuesSyncJobForEmail(t *testing.T) {
 
 	var job SyncJob
 	require.NoError(t, json.Unmarshal([]byte(raw), &job))
-	assert.Equal(t, RioMobInviteEmailQueue, job.Type)
+	assert.Equal(t, MobilidadeInviteEmailQueue, job.Type)
 	assert.Equal(t, link.ID.Hex(), job.Key)
 	assert.Equal(t, 3, job.MaxRetries)
 	assert.Equal(t, models.InviteEmailStatusQueued, link.EmailStatus)
 
 	// Persist status should be queued on the document too.
 	var stored models.VehicleConductor
-	require.NoError(t, config.MongoDB.Collection(config.AppConfig.RioMobConductorCollection).FindOne(ctx, bson.M{"_id": link.ID}).Decode(&stored))
+	require.NoError(t, config.MongoDB.Collection(config.AppConfig.MobilidadeConductorCollection).FindOne(ctx, bson.M{"_id": link.ID}).Decode(&stored))
 	assert.Equal(t, models.InviteEmailStatusQueued, stored.EmailStatus)
 
-	payload, err := parseRioMobInviteEmailPayload(job.Data)
+	payload, err := parseMobilidadeInviteEmailPayload(job.Data)
 	require.NoError(t, err)
 	assert.Equal(t, "form-email@example.com", payload.NotifyEmail)
 	assert.Equal(t, link.ID.Hex(), payload.ConductorID)

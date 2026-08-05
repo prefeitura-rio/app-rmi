@@ -115,10 +115,10 @@ func main() {
 	// Initialize pet service for pets queries
 	services.InitPetService()
 
-	// Initialize RioMob (vehicles / conductors / catalog)
+	// Initialize Mobilidade (vehicles / conductors / catalog)
 	services.InitVehicleService()
 	services.InitVehicleConductorService()
-	services.InitRioMobCatalogService()
+	services.InitMobilidadeCatalogService()
 
 	// Initialize department service for department/UA queries
 	services.InitDepartmentService()

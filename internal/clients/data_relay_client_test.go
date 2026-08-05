@@ -31,14 +31,14 @@ func TestDataRelayClient_SendEmail_Success(t *testing.T) {
 	client := NewDataRelayClient(srv.URL, "test-api-key", time.Second)
 	err := client.SendEmail(context.Background(), &EmailRequest{
 		ToAddresses: []string{"joao@example.com"},
-		Subject:     "Convite RioMob",
+		Subject:     "Convite Mobilidade",
 		Body:        "Abra a carteira",
 		IsHTMLBody:  false,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "test-api-key", gotKey)
 	assert.Equal(t, []interface{}{"joao@example.com"}, gotBody["to_addresses"])
-	assert.Equal(t, "Convite RioMob", gotBody["subject"])
+	assert.Equal(t, "Convite Mobilidade", gotBody["subject"])
 	assert.Equal(t, false, gotBody["is_html_body"])
 }
 

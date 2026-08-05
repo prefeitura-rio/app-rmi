@@ -42,19 +42,19 @@ func InitVehicleConductorService() {
 }
 
 func (s *VehicleConductorService) vehicles() *mongo.Collection {
-	return s.database.Collection(config.AppConfig.RioMobVehicleCollection)
+	return s.database.Collection(config.AppConfig.MobilidadeVehicleCollection)
 }
 
 func (s *VehicleConductorService) conductors() *mongo.Collection {
-	return s.database.Collection(config.AppConfig.RioMobConductorCollection)
+	return s.database.Collection(config.AppConfig.MobilidadeConductorCollection)
 }
 
 func (s *VehicleConductorService) brands() *mongo.Collection {
-	return s.database.Collection(config.AppConfig.RioMobBrandCollection)
+	return s.database.Collection(config.AppConfig.MobilidadeBrandCollection)
 }
 
 func (s *VehicleConductorService) modelsColl() *mongo.Collection {
-	return s.database.Collection(config.AppConfig.RioMobModelCollection)
+	return s.database.Collection(config.AppConfig.MobilidadeModelCollection)
 }
 
 // ListInvitations returns pending invitations for conductor_cpf = cpf.
@@ -105,7 +105,7 @@ func (s *VehicleConductorService) ListInvitations(ctx context.Context, cpf strin
 // RespondInvitation accepts or rejects a pending invitation for cpf.
 func (s *VehicleConductorService) RespondInvitation(ctx context.Context, cpf, conductorID string, req *models.RespondInvitationRequest) (*models.VehicleConductor, error) {
 	if err := req.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrRioMobInvalidInput, err.Error())
+		return nil, fmt.Errorf("%w: %s", ErrMobilidadeInvalidInput, err.Error())
 	}
 
 	link, err := s.findConductorByID(ctx, conductorID)
@@ -113,10 +113,10 @@ func (s *VehicleConductorService) RespondInvitation(ctx context.Context, cpf, co
 		return nil, err
 	}
 	if link.ConductorCPF != cpf {
-		return nil, ErrRioMobForbidden
+		return nil, ErrMobilidadeForbidden
 	}
 	if link.Status != models.ConductorStatusPending {
-		return nil, fmt.Errorf("%w: invitation is not pending", ErrRioMobInvalidInput)
+		return nil, fmt.Errorf("%w: invitation is not pending", ErrMobilidadeInvalidInput)
 	}
 
 	// Reject accept/reject against soft-deleted vehicles.
@@ -141,7 +141,7 @@ func (s *VehicleConductorService) RespondInvitation(ctx context.Context, cpf, co
 		return nil, fmt.Errorf("respond invitation: %w", err)
 	}
 	if res.MatchedCount == 0 {
-		return nil, fmt.Errorf("%w: invitation is not pending", ErrRioMobInvalidInput)
+		return nil, fmt.Errorf("%w: invitation is not pending", ErrMobilidadeInvalidInput)
 	}
 
 	link.Status = req.Status
@@ -182,10 +182,10 @@ func (s *VehicleConductorService) ListConductors(ctx context.Context, cpf, vehic
 // InviteConductor creates a pending link and enqueues email notification; owner only.
 func (s *VehicleConductorService) InviteConductor(ctx context.Context, cpf, vehicleID string, req *models.InviteConductorRequest) (*models.VehicleConductor, error) {
 	if !utils.ValidateCPF(req.CPF) {
-		return nil, fmt.Errorf("%w: invalid conductor cpf", ErrRioMobInvalidInput)
+		return nil, fmt.Errorf("%w: invalid conductor cpf", ErrMobilidadeInvalidInput)
 	}
 	if req.Email == "" {
-		return nil, fmt.Errorf("%w: email is required", ErrRioMobInvalidInput)
+		return nil, fmt.Errorf("%w: email is required", ErrMobilidadeInvalidInput)
 	}
 
 	v, err := s.requireOwnerVehicle(ctx, cpf, vehicleID)
@@ -193,7 +193,7 @@ func (s *VehicleConductorService) InviteConductor(ctx context.Context, cpf, vehi
 		return nil, err
 	}
 	if req.CPF == v.OwnerCPF {
-		return nil, fmt.Errorf("%w: cannot invite vehicle owner", ErrRioMobInvalidInput)
+		return nil, fmt.Errorf("%w: cannot invite vehicle owner", ErrMobilidadeInvalidInput)
 	}
 
 	existingCount, err := s.conductors().CountDocuments(ctx, bson.M{
@@ -208,7 +208,7 @@ func (s *VehicleConductorService) InviteConductor(ctx context.Context, cpf, vehi
 		return nil, fmt.Errorf("check duplicate invite: %w", err)
 	}
 	if existingCount > 0 {
-		return nil, ErrRioMobConflict
+		return nil, ErrMobilidadeConflict
 	}
 
 	conductorName := req.Name
@@ -247,7 +247,7 @@ func (s *VehicleConductorService) lookupConductorName(ctx context.Context, cpf s
 	}
 	if err != nil {
 		if s.logger != nil {
-			s.logger.Warn("riomob conductor name lookup miss", zap.String("cpf", cpf), zap.Error(err))
+			s.logger.Warn("mobilidade conductor name lookup miss", zap.String("cpf", cpf), zap.Error(err))
 		}
 		return ""
 	}
@@ -259,7 +259,7 @@ func (s *VehicleConductorService) lookupConductorName(ctx context.Context, cpf s
 
 func mapConductorInsertError(err error) error {
 	if mongo.IsDuplicateKeyError(err) {
-		return ErrRioMobConflict
+		return ErrMobilidadeConflict
 	}
 	return fmt.Errorf("insert conductor: %w", err)
 }
@@ -281,10 +281,10 @@ func (s *VehicleConductorService) RemoveConductor(ctx context.Context, cpf, vehi
 	isOwner := v.OwnerCPF == cpf
 	isSelfLeave := link.ConductorCPF == cpf && link.Status == models.ConductorStatusAccepted
 	if !isOwner && !isSelfLeave {
-		return ErrRioMobForbidden
+		return ErrMobilidadeForbidden
 	}
 	if isOwner && link.Status != models.ConductorStatusPending && link.Status != models.ConductorStatusAccepted {
-		return fmt.Errorf("%w: link cannot be revoked", ErrRioMobInvalidInput)
+		return fmt.Errorf("%w: link cannot be revoked", ErrMobilidadeInvalidInput)
 	}
 
 	now := time.Now().UTC()
@@ -304,7 +304,7 @@ func (s *VehicleConductorService) requireOwnerVehicle(ctx context.Context, cpf, 
 		return nil, err
 	}
 	if v.OwnerCPF != cpf {
-		return nil, ErrRioMobForbidden
+		return nil, ErrMobilidadeForbidden
 	}
 	return v, nil
 }
@@ -367,7 +367,7 @@ func (s *VehicleConductorService) enqueueInviteEmail(ctx context.Context, link *
 		return
 	}
 
-	payload := RioMobInviteEmailPayload{
+	payload := MobilidadeInviteEmailPayload{
 		ConductorID:  link.ID.Hex(),
 		NotifyEmail:  link.NotifyEmail,
 		VehicleID:    v.ID.Hex(),
@@ -378,9 +378,9 @@ func (s *VehicleConductorService) enqueueInviteEmail(ctx context.Context, link *
 
 	job := SyncJob{
 		ID:         primitive.NewObjectID().Hex(),
-		Type:       RioMobInviteEmailQueue,
+		Type:       MobilidadeInviteEmailQueue,
 		Key:        link.ID.Hex(),
-		Collection: RioMobInviteEmailQueue,
+		Collection: MobilidadeInviteEmailQueue,
 		Data:       payload,
 		Timestamp:  time.Now().UTC(),
 		RetryCount: 0,
@@ -390,16 +390,16 @@ func (s *VehicleConductorService) enqueueInviteEmail(ctx context.Context, link *
 	jobBytes, err := json.Marshal(job)
 	if err != nil {
 		if s.logger != nil {
-			s.logger.Warn("riomob invite email marshal failed", zap.Error(err))
+			s.logger.Warn("mobilidade invite email marshal failed", zap.Error(err))
 		}
 		s.persistInviteEmailStatus(ctx, link, models.InviteEmailStatusFailed, err.Error())
 		return
 	}
 
-	queueKey := fmt.Sprintf("sync:queue:%s", RioMobInviteEmailQueue)
+	queueKey := fmt.Sprintf("sync:queue:%s", MobilidadeInviteEmailQueue)
 	if err := config.Redis.LPush(ctx, queueKey, jobBytes).Err(); err != nil {
 		if s.logger != nil {
-			s.logger.Warn("riomob invite email enqueue failed", zap.Error(err), zap.String("queue", queueKey))
+			s.logger.Warn("mobilidade invite email enqueue failed", zap.Error(err), zap.String("queue", queueKey))
 		}
 		s.persistInviteEmailStatus(ctx, link, models.InviteEmailStatusFailed, err.Error())
 		return
@@ -411,7 +411,7 @@ func (s *VehicleConductorService) enqueueInviteEmail(ctx context.Context, link *
 func (s *VehicleConductorService) persistInviteEmailStatus(ctx context.Context, link *models.VehicleConductor, status models.InviteEmailStatus, lastError string) {
 	if err := SetConductorInviteEmailStatus(ctx, s.database, link.ID.Hex(), status, lastError); err != nil {
 		if s.logger != nil {
-			s.logger.Warn("riomob invite email status update failed",
+			s.logger.Warn("mobilidade invite email status update failed",
 				zap.String("conductor_id", link.ID.Hex()),
 				zap.String("email_status", string(status)),
 				zap.Error(err))
@@ -448,6 +448,6 @@ func SetConductorInviteEmailStatus(ctx context.Context, db *mongo.Database, cond
 	} else {
 		set["email_last_error"] = nil
 	}
-	_, err = db.Collection(config.AppConfig.RioMobConductorCollection).UpdateOne(ctx, bson.M{"_id": oid}, bson.M{"$set": set})
+	_, err = db.Collection(config.AppConfig.MobilidadeConductorCollection).UpdateOne(ctx, bson.M{"_id": oid}, bson.M{"$set": set})
 	return err
 }

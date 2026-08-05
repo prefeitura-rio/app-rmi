@@ -19,22 +19,22 @@ import (
 )
 
 const (
-	riomobOwnerCPF     = "03561350712"
-	riomobConductorCPF = "45049725810"
-	riomobOtherCPF     = "11144477735"
+	mobilidadeOwnerCPF     = "03561350712"
+	mobilidadeConductorCPF = "45049725810"
+	mobilidadeOtherCPF     = "11144477735"
 )
 
-func setupRioMobVehicleServiceTest(t *testing.T) (*VehicleService, *VehicleConductorService, *RioMobCatalogService, func()) {
+func setupMobilidadeVehicleServiceTest(t *testing.T) (*VehicleService, *VehicleConductorService, *MobilidadeCatalogService, func()) {
 	t.Helper()
 	_ = logging.InitLogger()
 
 	if config.AppConfig == nil {
 		config.AppConfig = &config.Config{}
 	}
-	config.AppConfig.RioMobVehicleCollection = "test_riomob_vehicles"
-	config.AppConfig.RioMobConductorCollection = "test_riomob_vehicle_conductors"
-	config.AppConfig.RioMobBrandCollection = "test_riomob_vehicle_brands"
-	config.AppConfig.RioMobModelCollection = "test_riomob_vehicle_models"
+	config.AppConfig.MobilidadeVehicleCollection = "test_mobilidade_vehicles"
+	config.AppConfig.MobilidadeConductorCollection = "test_mobilidade_vehicle_conductors"
+	config.AppConfig.MobilidadeBrandCollection = "test_mobilidade_vehicle_brands"
+	config.AppConfig.MobilidadeModelCollection = "test_mobilidade_vehicle_models"
 
 	ctx := context.Background()
 	db := config.MongoDB
@@ -42,35 +42,35 @@ func setupRioMobVehicleServiceTest(t *testing.T) (*VehicleService, *VehicleCondu
 
 	vehicleSvc := NewVehicleService(db, NewDataManager(config.Redis, db, logging.GetLogger()), logging.GetLogger())
 	conductorSvc := NewVehicleConductorService(db, logging.GetLogger())
-	catalogSvc := NewRioMobCatalogService(db, logging.GetLogger())
+	catalogSvc := NewMobilidadeCatalogService(db, logging.GetLogger())
 
 	cleanup := func() {
-		_ = db.Collection(config.AppConfig.RioMobVehicleCollection).Drop(ctx)
-		_ = db.Collection(config.AppConfig.RioMobConductorCollection).Drop(ctx)
-		_ = db.Collection(config.AppConfig.RioMobBrandCollection).Drop(ctx)
-		_ = db.Collection(config.AppConfig.RioMobModelCollection).Drop(ctx)
+		_ = db.Collection(config.AppConfig.MobilidadeVehicleCollection).Drop(ctx)
+		_ = db.Collection(config.AppConfig.MobilidadeConductorCollection).Drop(ctx)
+		_ = db.Collection(config.AppConfig.MobilidadeBrandCollection).Drop(ctx)
+		_ = db.Collection(config.AppConfig.MobilidadeModelCollection).Drop(ctx)
 	}
 	cleanup()
 
 	// Seed owner citizens so CreateVehicle can snapshot owner_name for invitation cards.
-	seedRioMobCitizen(t, riomobOwnerCPF, "Ana Souza")
-	seedRioMobCitizen(t, riomobOtherCPF, "Outro Owner")
-	ensureRioMobConductorUniqueIndex(t)
+	seedMobilidadeCitizen(t, mobilidadeOwnerCPF, "Ana Souza")
+	seedMobilidadeCitizen(t, mobilidadeOtherCPF, "Outro Owner")
+	ensureMobilidadeConductorUniqueIndex(t)
 
 	return vehicleSvc, conductorSvc, catalogSvc, cleanup
 }
 
-func ensureRioMobConductorUniqueIndex(t *testing.T) {
+func ensureMobilidadeConductorUniqueIndex(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	coll := config.MongoDB.Collection(config.AppConfig.RioMobConductorCollection)
+	coll := config.MongoDB.Collection(config.AppConfig.MobilidadeConductorCollection)
 	_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys: bson.D{
 			{Key: "vehicle_id", Value: 1},
 			{Key: "conductor_cpf", Value: 1},
 		},
 		Options: options.Index().
-			SetName("idx_riomob_conductors_vehicle_cpf_active").
+			SetName("idx_mobilidade_conductors_vehicle_cpf_active").
 			SetUnique(true).
 			SetPartialFilterExpression(bson.M{
 				"status": bson.M{"$in": bson.A{"pending", "accepted"}},
@@ -91,15 +91,15 @@ func ensureRioMobConductorUniqueIndex(t *testing.T) {
 	for cursor.Next(ctx) {
 		var idx bson.M
 		require.NoError(t, cursor.Decode(&idx))
-		if name, ok := idx["name"].(string); ok && name == "idx_riomob_conductors_vehicle_cpf_active" {
+		if name, ok := idx["name"].(string); ok && name == "idx_mobilidade_conductors_vehicle_cpf_active" {
 			found = true
 			break
 		}
 	}
-	require.True(t, found, "unique partial index idx_riomob_conductors_vehicle_cpf_active must exist")
+	require.True(t, found, "unique partial index idx_mobilidade_conductors_vehicle_cpf_active must exist")
 }
 
-func seedRioMobCitizen(t *testing.T, cpf, name string) {
+func seedMobilidadeCitizen(t *testing.T, cpf, name string) {
 	t.Helper()
 	ctx := context.Background()
 	coll := config.MongoDB.Collection(config.AppConfig.CitizenCollection)
@@ -112,11 +112,11 @@ func seedRioMobCitizen(t *testing.T, cpf, name string) {
 	require.NoError(t, err)
 }
 
-func seedRioMobCatalog(t *testing.T) {
+func seedMobilidadeCatalog(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	brands := config.MongoDB.Collection(config.AppConfig.RioMobBrandCollection)
-	modelsCol := config.MongoDB.Collection(config.AppConfig.RioMobModelCollection)
+	brands := config.MongoDB.Collection(config.AppConfig.MobilidadeBrandCollection)
+	modelsCol := config.MongoDB.Collection(config.AppConfig.MobilidadeModelCollection)
 
 	_, err := brands.InsertMany(ctx, []interface{}{
 		bson.M{"_id": "brand_caloi", "name": "Caloi", "is_other": false},
@@ -177,10 +177,10 @@ func otherCreateRequest() *models.VehicleCreateRequest {
 	}
 }
 
-func TestRioMobCatalog_ListBrands(t *testing.T) {
-	_, _, catalog, cleanup := setupRioMobVehicleServiceTest(t)
+func TestMobilidadeCatalog_ListBrands(t *testing.T) {
+	_, _, catalog, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
 	brands, err := catalog.ListBrands(context.Background())
 	require.NoError(t, err)
@@ -189,10 +189,10 @@ func TestRioMobCatalog_ListBrands(t *testing.T) {
 	assert.Equal(t, "Caloi", brands[0].Name)
 }
 
-func TestRioMobCatalog_ListModelsByBrand(t *testing.T) {
-	_, _, catalog, cleanup := setupRioMobVehicleServiceTest(t)
+func TestMobilidadeCatalog_ListModelsByBrand(t *testing.T) {
+	_, _, catalog, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
 	modelsList, err := catalog.ListModelsByBrand(context.Background(), "brand_caloi")
 	require.NoError(t, err)
@@ -201,17 +201,17 @@ func TestRioMobCatalog_ListModelsByBrand(t *testing.T) {
 	assert.Equal(t, "brand_caloi", modelsList[0].BrandID)
 }
 
-func TestRioMobCatalog_ListModelsByBrand_RequiresBrandID(t *testing.T) {
-	_, _, catalog, cleanup := setupRioMobVehicleServiceTest(t)
+func TestMobilidadeCatalog_ListModelsByBrand_RequiresBrandID(t *testing.T) {
+	_, _, catalog, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
 
 	_, err := catalog.ListModelsByBrand(context.Background(), "")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrRioMobInvalidInput)
+	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
 }
 
-func TestRioMobCatalog_ListColors(t *testing.T) {
-	_, _, catalog, cleanup := setupRioMobVehicleServiceTest(t)
+func TestMobilidadeCatalog_ListColors(t *testing.T) {
+	_, _, catalog, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
 
 	colors, err := catalog.ListColors(context.Background())
@@ -221,15 +221,15 @@ func TestRioMobCatalog_ListColors(t *testing.T) {
 }
 
 func TestVehicleService_CreateVehicle_CatalogFlow(t *testing.T) {
-	vehicleSvc, _, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 	require.NotNil(t, created)
 
-	assert.Equal(t, riomobOwnerCPF, created.OwnerCPF)
+	assert.Equal(t, mobilidadeOwnerCPF, created.OwnerCPF)
 	assert.Equal(t, "Bike do trabalho", created.DisplayName)
 	assert.Equal(t, models.VehicleTypeBicicletaEletrica, created.VehicleType)
 	assert.Equal(t, models.VehicleRoleOwner, created.Role)
@@ -241,10 +241,10 @@ func TestVehicleService_CreateVehicle_CatalogFlow(t *testing.T) {
 }
 
 func TestVehicleService_CreateVehicle_OtherFlow(t *testing.T) {
-	vehicleSvc, _, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, otherCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, otherCreateRequest())
 	require.NoError(t, err)
 	require.NotNil(t, created)
 	assert.Equal(t, models.VehicleTypeAutopropelido, created.VehicleType)
@@ -255,15 +255,15 @@ func TestVehicleService_CreateVehicle_OtherFlow(t *testing.T) {
 }
 
 func TestVehicleService_UpdateVehicle_InvoiceFields(t *testing.T) {
-	vehicleSvc, _, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
 	falseVal := false
-	updated, err := vehicleSvc.UpdateVehicle(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
+	updated, err := vehicleSvc.UpdateVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
 		HasInvoice: &falseVal,
 	})
 	require.NoError(t, err)
@@ -274,7 +274,7 @@ func TestVehicleService_UpdateVehicle_InvoiceFields(t *testing.T) {
 	newURL := "https://storage.googleapis.com/bucket/new-nf.pdf"
 	fileName := "new-nf.pdf"
 	fileSize := int64(2048)
-	updated, err = vehicleSvc.UpdateVehicle(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
+	updated, err = vehicleSvc.UpdateVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
 		HasInvoice:           &trueVal,
 		InvoicePhotoURL:      &newURL,
 		InvoicePhotoFileName: &fileName,
@@ -291,24 +291,24 @@ func TestVehicleService_UpdateVehicle_InvoiceFields(t *testing.T) {
 }
 
 func TestVehicleService_UpdateVehicle_ReResolvesTypeFromCatalog(t *testing.T) {
-	vehicleSvc, _, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 	assert.Equal(t, models.VehicleTypeBicicletaEletrica, created.VehicleType)
 
 	// Seed a ciclomotor model under Caloi for this test.
 	ctx := context.Background()
-	_, err = config.MongoDB.Collection(config.AppConfig.RioMobModelCollection).InsertOne(ctx, bson.M{
+	_, err = config.MongoDB.Collection(config.AppConfig.MobilidadeModelCollection).InsertOne(ctx, bson.M{
 		"_id": "model_ciclomotor", "brand_id": "brand_caloi", "name": "Ciclomotor X",
 		"vehicle_type": "ciclomotor", "is_other": false,
 	})
 	require.NoError(t, err)
 
 	modelID := "model_ciclomotor"
-	updated, err := vehicleSvc.UpdateVehicle(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
+	updated, err := vehicleSvc.UpdateVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
 		ModelID: &modelID,
 	})
 	require.NoError(t, err)
@@ -318,26 +318,26 @@ func TestVehicleService_UpdateVehicle_ReResolvesTypeFromCatalog(t *testing.T) {
 }
 
 func TestVehicleService_UpdateVehicle_RejectsIncompleteCatalogPatch(t *testing.T) {
-	vehicleSvc, _, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
 	empty := ""
-	_, err = vehicleSvc.UpdateVehicle(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
+	_, err = vehicleSvc.UpdateVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
 		BrandID: &empty,
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrRioMobInvalidInput)
+	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
 	assert.Contains(t, err.Error(), "incomplete")
 }
 
 func TestVehicleService_CreateVehicle_OtherCatalogRequiresFreeText(t *testing.T) {
-	vehicleSvc, _, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
 	brandID := "brand_other"
 	modelID := "model_other"
@@ -352,9 +352,9 @@ func TestVehicleService_CreateVehicle_OtherCatalogRequiresFreeText(t *testing.T)
 		HasInvoice:           false,
 		SelfDeclaration:      true,
 	}
-	_, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, req)
+	_, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrRioMobInvalidInput)
+	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
 
 	brandOther := "Minha Marca"
 	modelOther := "Meu Modelo"
@@ -362,7 +362,7 @@ func TestVehicleService_CreateVehicle_OtherCatalogRequiresFreeText(t *testing.T)
 	req.BrandOther = &brandOther
 	req.ModelOther = &modelOther
 	req.VehicleType = &vt
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, req)
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, req)
 	require.NoError(t, err)
 	assert.Equal(t, models.VehicleTypeCiclomotor, created.VehicleType)
 	require.NotNil(t, created.BrandOther)
@@ -370,58 +370,58 @@ func TestVehicleService_CreateVehicle_OtherCatalogRequiresFreeText(t *testing.T)
 }
 
 func TestVehicleConductorService_RespondInvitation_RejectsAfterRevoke(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
-	link, err := conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "c@example.com",
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "c@example.com",
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, conductorSvc.RemoveConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), link.ID.Hex()))
+	require.NoError(t, conductorSvc.RemoveConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), link.ID.Hex()))
 
-	_, err = conductorSvc.RespondInvitation(context.Background(), riomobConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
 		Status: models.ConductorStatusAccepted,
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrRioMobInvalidInput)
+	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
 }
 
 func TestVehicleConductorService_RespondInvitation_RejectsDeletedVehicle(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
-	link, err := conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "c@example.com",
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "c@example.com",
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, vehicleSvc.DeleteVehicle(context.Background(), riomobOwnerCPF, created.ID.Hex()))
+	require.NoError(t, vehicleSvc.DeleteVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex()))
 
-	_, err = conductorSvc.RespondInvitation(context.Background(), riomobConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
 		Status: models.ConductorStatusAccepted,
 	})
 	require.Error(t, err)
 }
 
 func TestVehicleService_ListVehicles_StableSort(t *testing.T) {
-	vehicleSvc, _, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	first, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	first, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 	time.Sleep(5 * time.Millisecond)
-	second, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, otherCreateRequest())
+	second, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, otherCreateRequest())
 	require.NoError(t, err)
 
-	list, err := vehicleSvc.ListVehicles(context.Background(), riomobOwnerCPF, 1, 10)
+	list, err := vehicleSvc.ListVehicles(context.Background(), mobilidadeOwnerCPF, 1, 10)
 	require.NoError(t, err)
 	require.Len(t, list.Data, 2)
 	assert.Equal(t, second.ID.Hex(), list.Data[0].ID)
@@ -429,45 +429,45 @@ func TestVehicleService_ListVehicles_StableSort(t *testing.T) {
 }
 
 func TestVehicleService_CreateVehicle_RejectsFalseSelfDeclaration(t *testing.T) {
-	vehicleSvc, _, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
 	req := catalogCreateRequest()
 	req.SelfDeclaration = false
-	_, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, req)
+	_, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrRioMobInvalidInput)
+	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
 }
 
 func TestVehicleService_ListVehicles_OwnerAndAcceptedConductor(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	owned, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	owned, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	shared, err := vehicleSvc.CreateVehicle(context.Background(), riomobOtherCPF, otherCreateRequest())
+	shared, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOtherCPF, otherCreateRequest())
 	require.NoError(t, err)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), riomobOtherCPF, shared.ID.Hex(), &models.InviteConductorRequest{
-		CPF:   riomobOwnerCPF,
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOtherCPF, shared.ID.Hex(), &models.InviteConductorRequest{
+		CPF:   mobilidadeOwnerCPF,
 		Name:  "Owner as guest",
 		Email: "guest@example.com",
 	})
 	require.NoError(t, err)
 
-	invites, err := conductorSvc.ListInvitations(context.Background(), riomobOwnerCPF)
+	invites, err := conductorSvc.ListInvitations(context.Background(), mobilidadeOwnerCPF)
 	require.NoError(t, err)
 	require.Len(t, invites.Data, 1)
 
-	_, err = conductorSvc.RespondInvitation(context.Background(), riomobOwnerCPF, invites.Data[0].ID, &models.RespondInvitationRequest{
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeOwnerCPF, invites.Data[0].ID, &models.RespondInvitationRequest{
 		Status: models.ConductorStatusAccepted,
 	})
 	require.NoError(t, err)
 
-	list, err := vehicleSvc.ListVehicles(context.Background(), riomobOwnerCPF, 1, 10)
+	list, err := vehicleSvc.ListVehicles(context.Background(), mobilidadeOwnerCPF, 1, 10)
 	require.NoError(t, err)
 	require.Equal(t, 2, list.Pagination.Total)
 
@@ -480,131 +480,131 @@ func TestVehicleService_ListVehicles_OwnerAndAcceptedConductor(t *testing.T) {
 }
 
 func TestVehicleService_ListVehicles_ExcludesPendingOnly(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	shared, err := vehicleSvc.CreateVehicle(context.Background(), riomobOtherCPF, catalogCreateRequest())
+	shared, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOtherCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), riomobOtherCPF, shared.ID.Hex(), &models.InviteConductorRequest{
-		CPF:   riomobOwnerCPF,
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOtherCPF, shared.ID.Hex(), &models.InviteConductorRequest{
+		CPF:   mobilidadeOwnerCPF,
 		Email: "pending@example.com",
 	})
 	require.NoError(t, err)
 
-	list, err := vehicleSvc.ListVehicles(context.Background(), riomobOwnerCPF, 1, 10)
+	list, err := vehicleSvc.ListVehicles(context.Background(), mobilidadeOwnerCPF, 1, 10)
 	require.NoError(t, err)
 	assert.Equal(t, 0, list.Pagination.Total)
 }
 
 func TestVehicleService_GetVehicle_OwnerAndConductor(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	detail, err := vehicleSvc.GetVehicle(context.Background(), riomobOwnerCPF, created.ID.Hex())
+	detail, err := vehicleSvc.GetVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
 	require.NoError(t, err)
 	assert.Equal(t, models.VehicleRoleOwner, detail.Role)
 	assert.Equal(t, "SN-ABC-123456", detail.SerialNumber)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "cond@example.com", Name: "João",
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "cond@example.com", Name: "João",
 	})
 	require.NoError(t, err)
-	invites, err := conductorSvc.ListInvitations(context.Background(), riomobConductorCPF)
+	invites, err := conductorSvc.ListInvitations(context.Background(), mobilidadeConductorCPF)
 	require.NoError(t, err)
-	_, err = conductorSvc.RespondInvitation(context.Background(), riomobConductorCPF, invites.Data[0].ID, &models.RespondInvitationRequest{
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, invites.Data[0].ID, &models.RespondInvitationRequest{
 		Status: models.ConductorStatusAccepted,
 	})
 	require.NoError(t, err)
 
-	asConductor, err := vehicleSvc.GetVehicle(context.Background(), riomobConductorCPF, created.ID.Hex())
+	asConductor, err := vehicleSvc.GetVehicle(context.Background(), mobilidadeConductorCPF, created.ID.Hex())
 	require.NoError(t, err)
 	assert.Equal(t, models.VehicleRoleConductor, asConductor.Role)
 }
 
 func TestVehicleService_GetVehicle_ForbiddenForStranger(t *testing.T) {
-	vehicleSvc, _, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	_, err = vehicleSvc.GetVehicle(context.Background(), riomobOtherCPF, created.ID.Hex())
+	_, err = vehicleSvc.GetVehicle(context.Background(), mobilidadeOtherCPF, created.ID.Hex())
 	require.Error(t, err)
 	// Privacy: 404 preferred; 403 also acceptable.
 	assert.True(t,
-		errors.Is(err, ErrVehicleNotFound) || errors.Is(err, ErrRioMobForbidden),
+		errors.Is(err, ErrVehicleNotFound) || errors.Is(err, ErrMobilidadeForbidden),
 		"want not found or forbidden, got %v", err,
 	)
 }
 
 func TestVehicleService_UpdateVehicle_OwnerOnly(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
 	newName := "Bike nova"
-	updated, err := vehicleSvc.UpdateVehicle(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
+	updated, err := vehicleSvc.UpdateVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
 		DisplayName: &newName,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "Bike nova", updated.DisplayName)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "c@example.com",
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "c@example.com",
 	})
 	require.NoError(t, err)
-	invites, _ := conductorSvc.ListInvitations(context.Background(), riomobConductorCPF)
-	_, _ = conductorSvc.RespondInvitation(context.Background(), riomobConductorCPF, invites.Data[0].ID, &models.RespondInvitationRequest{
+	invites, _ := conductorSvc.ListInvitations(context.Background(), mobilidadeConductorCPF)
+	_, _ = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, invites.Data[0].ID, &models.RespondInvitationRequest{
 		Status: models.ConductorStatusAccepted,
 	})
 
-	_, err = vehicleSvc.UpdateVehicle(context.Background(), riomobConductorCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
+	_, err = vehicleSvc.UpdateVehicle(context.Background(), mobilidadeConductorCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
 		DisplayName: &newName,
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrRioMobForbidden)
+	assert.ErrorIs(t, err, ErrMobilidadeForbidden)
 }
 
 func TestVehicleService_DeleteVehicle_CascadesConductors(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	link, err := conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "c@example.com",
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "c@example.com",
 	})
 	require.NoError(t, err)
-	_, err = conductorSvc.RespondInvitation(context.Background(), riomobConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
 		Status: models.ConductorStatusAccepted,
 	})
 	require.NoError(t, err)
 
-	err = vehicleSvc.DeleteVehicle(context.Background(), riomobOwnerCPF, created.ID.Hex())
+	err = vehicleSvc.DeleteVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
 	require.NoError(t, err)
 
-	_, err = vehicleSvc.GetVehicle(context.Background(), riomobOwnerCPF, created.ID.Hex())
+	_, err = vehicleSvc.GetVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
 	require.Error(t, err)
 
-	list, err := vehicleSvc.ListVehicles(context.Background(), riomobConductorCPF, 1, 10)
+	list, err := vehicleSvc.ListVehicles(context.Background(), mobilidadeConductorCPF, 1, 10)
 	require.NoError(t, err)
 	assert.Equal(t, 0, list.Pagination.Total)
 
 	// Conductor link should be revoked in storage
 	var stored models.VehicleConductor
-	err = config.MongoDB.Collection(config.AppConfig.RioMobConductorCollection).FindOne(
+	err = config.MongoDB.Collection(config.AppConfig.MobilidadeConductorCollection).FindOne(
 		context.Background(), bson.M{"_id": link.ID},
 	).Decode(&stored)
 	require.NoError(t, err)
@@ -612,46 +612,46 @@ func TestVehicleService_DeleteVehicle_CascadesConductors(t *testing.T) {
 }
 
 func TestVehicleConductorService_InviteRejectsSelfAndDuplicate(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobOwnerCPF, Email: "self@example.com",
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeOwnerCPF, Email: "self@example.com",
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrRioMobInvalidInput)
+	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "joao@example.com", Name: "João",
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João",
 	})
 	require.NoError(t, err)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "joao2@example.com",
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "joao2@example.com",
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrRioMobConflict)
+	assert.ErrorIs(t, err, ErrMobilidadeConflict)
 }
 
-func TestRioMobConductorUniqueIndex_RejectsDuplicateActiveLink(t *testing.T) {
-	vehicleSvc, _, _, cleanup := setupRioMobVehicleServiceTest(t)
+func TestMobilidadeConductorUniqueIndex_RejectsDuplicateActiveLink(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	coll := config.MongoDB.Collection(config.AppConfig.RioMobConductorCollection)
+	coll := config.MongoDB.Collection(config.AppConfig.MobilidadeConductorCollection)
 	now := time.Now().UTC()
 	first := models.VehicleConductor{
-		ID: primitive.NewObjectID(), VehicleID: created.ID, ConductorCPF: riomobConductorCPF,
+		ID: primitive.NewObjectID(), VehicleID: created.ID, ConductorCPF: mobilidadeConductorCPF,
 		NotifyEmail: "a@example.com", Status: models.ConductorStatusPending,
-		InvitedByCPF: riomobOwnerCPF, CreatedAt: now, UpdatedAt: now,
+		InvitedByCPF: mobilidadeOwnerCPF, CreatedAt: now, UpdatedAt: now,
 	}
 	_, err = coll.InsertOne(ctx, first)
 	require.NoError(t, err)
@@ -663,7 +663,7 @@ func TestRioMobConductorUniqueIndex_RejectsDuplicateActiveLink(t *testing.T) {
 	_, err = coll.InsertOne(ctx, second)
 	require.Error(t, err)
 	assert.True(t, mongo.IsDuplicateKeyError(err), "want duplicate key from unique index, got %v", err)
-	assert.ErrorIs(t, mapConductorInsertError(err), ErrRioMobConflict)
+	assert.ErrorIs(t, mapConductorInsertError(err), ErrMobilidadeConflict)
 
 	// Revoked links are outside the partial filter — a new pending invite is allowed.
 	_, err = coll.UpdateOne(ctx, bson.M{"_id": first.ID}, bson.M{"$set": bson.M{"status": models.ConductorStatusRevoked}})
@@ -673,11 +673,11 @@ func TestRioMobConductorUniqueIndex_RejectsDuplicateActiveLink(t *testing.T) {
 }
 
 func TestInviteConductor_ConcurrentDuplicateHitsUniqueIndex(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
 	// Barrier so both goroutines pass CountDocuments before either InsertOne commits.
@@ -689,8 +689,8 @@ func TestInviteConductor_ConcurrentDuplicateHitsUniqueIndex(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, inviteErr := conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-				CPF: riomobConductorCPF, Email: "race@example.com", Name: "Race",
+			_, inviteErr := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+				CPF: mobilidadeConductorCPF, Email: "race@example.com", Name: "Race",
 			})
 			errs <- inviteErr
 		}()
@@ -704,7 +704,7 @@ func TestInviteConductor_ConcurrentDuplicateHitsUniqueIndex(t *testing.T) {
 		switch {
 		case err == nil:
 			successes++
-		case errors.Is(err, ErrRioMobConflict):
+		case errors.Is(err, ErrMobilidadeConflict):
 			conflicts++
 		default:
 			t.Fatalf("unexpected error: %v", err)
@@ -713,11 +713,11 @@ func TestInviteConductor_ConcurrentDuplicateHitsUniqueIndex(t *testing.T) {
 	assert.Equal(t, 1, successes, "exactly one invite should succeed")
 	assert.Equal(t, 1, conflicts, "the other invite should hit unique index → conflict")
 
-	count, err := config.MongoDB.Collection(config.AppConfig.RioMobConductorCollection).CountDocuments(
+	count, err := config.MongoDB.Collection(config.AppConfig.MobilidadeConductorCollection).CountDocuments(
 		context.Background(),
 		bson.M{
 			"vehicle_id":    created.ID,
-			"conductor_cpf": riomobConductorCPF,
+			"conductor_cpf": mobilidadeConductorCPF,
 			"status":        models.ConductorStatusPending,
 		},
 	)
@@ -726,19 +726,19 @@ func TestInviteConductor_ConcurrentDuplicateHitsUniqueIndex(t *testing.T) {
 }
 
 func TestVehicleConductorService_ListInvitations_IncludesVehicleSummary(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "joao@example.com", Name: "João",
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João",
 	})
 	require.NoError(t, err)
 
-	invites, err := conductorSvc.ListInvitations(context.Background(), riomobConductorCPF)
+	invites, err := conductorSvc.ListInvitations(context.Background(), mobilidadeConductorCPF)
 	require.NoError(t, err)
 	require.Len(t, invites.Data, 1)
 	assert.Equal(t, models.ConductorStatusPending, invites.Data[0].Status)
@@ -748,117 +748,117 @@ func TestVehicleConductorService_ListInvitations_IncludesVehicleSummary(t *testi
 }
 
 func TestVehicleConductorService_RespondInvitation_AcceptAndReject(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	v1, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	v1, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
-	v2, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, otherCreateRequest())
+	v2, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, otherCreateRequest())
 	require.NoError(t, err)
 
-	link1, err := conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, v1.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "a@example.com",
+	link1, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, v1.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "a@example.com",
 	})
 	require.NoError(t, err)
-	link2, err := conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, v2.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "a@example.com",
+	link2, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, v2.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "a@example.com",
 	})
 	require.NoError(t, err)
 
-	accepted, err := conductorSvc.RespondInvitation(context.Background(), riomobConductorCPF, link1.ID.Hex(), &models.RespondInvitationRequest{
+	accepted, err := conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link1.ID.Hex(), &models.RespondInvitationRequest{
 		Status: models.ConductorStatusAccepted,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, models.ConductorStatusAccepted, accepted.Status)
 	require.NotNil(t, accepted.RespondedAt)
 
-	rejected, err := conductorSvc.RespondInvitation(context.Background(), riomobConductorCPF, link2.ID.Hex(), &models.RespondInvitationRequest{
+	rejected, err := conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link2.ID.Hex(), &models.RespondInvitationRequest{
 		Status: models.ConductorStatusRejected,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, models.ConductorStatusRejected, rejected.Status)
 
-	list, err := vehicleSvc.ListVehicles(context.Background(), riomobConductorCPF, 1, 10)
+	list, err := vehicleSvc.ListVehicles(context.Background(), mobilidadeConductorCPF, 1, 10)
 	require.NoError(t, err)
 	assert.Equal(t, 1, list.Pagination.Total)
 }
 
 func TestVehicleConductorService_ListConductors_OwnerOnly(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
-	_, err = conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "c@example.com",
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "c@example.com",
 	})
 	require.NoError(t, err)
 
-	list, err := conductorSvc.ListConductors(context.Background(), riomobOwnerCPF, created.ID.Hex())
+	list, err := conductorSvc.ListConductors(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
 	require.NoError(t, err)
 	require.Len(t, list.Data, 1)
 
-	_, err = conductorSvc.ListConductors(context.Background(), riomobConductorCPF, created.ID.Hex())
+	_, err = conductorSvc.ListConductors(context.Background(), mobilidadeConductorCPF, created.ID.Hex())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrRioMobForbidden)
+	assert.ErrorIs(t, err, ErrMobilidadeForbidden)
 }
 
 func TestVehicleConductorService_RemoveConductor_OwnerAndSelfLeave(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	link, err := conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "c@example.com",
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "c@example.com",
 	})
 	require.NoError(t, err)
-	_, err = conductorSvc.RespondInvitation(context.Background(), riomobConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
 		Status: models.ConductorStatusAccepted,
 	})
 	require.NoError(t, err)
 
-	err = conductorSvc.RemoveConductor(context.Background(), riomobConductorCPF, created.ID.Hex(), link.ID.Hex())
+	err = conductorSvc.RemoveConductor(context.Background(), mobilidadeConductorCPF, created.ID.Hex(), link.ID.Hex())
 	require.NoError(t, err)
 
-	list, err := vehicleSvc.ListVehicles(context.Background(), riomobConductorCPF, 1, 10)
+	list, err := vehicleSvc.ListVehicles(context.Background(), mobilidadeConductorCPF, 1, 10)
 	require.NoError(t, err)
 	assert.Equal(t, 0, list.Pagination.Total)
 
 	// Re-invite and owner revokes
-	link2, err := conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Email: "c@example.com",
+	link2, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "c@example.com",
 	})
 	require.NoError(t, err)
-	err = conductorSvc.RemoveConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), link2.ID.Hex())
+	err = conductorSvc.RemoveConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), link2.ID.Hex())
 	require.NoError(t, err)
 }
 
 func TestVehicleConductorService_InvitePersistsNotifyEmail(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupRioMobVehicleServiceTest(t)
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
-	seedRioMobCatalog(t)
+	seedMobilidadeCatalog(t)
 
-	created, err := vehicleSvc.CreateVehicle(context.Background(), riomobOwnerCPF, catalogCreateRequest())
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	link, err := conductorSvc.InviteConductor(context.Background(), riomobOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: riomobConductorCPF, Name: "João", Email: "form-email@example.com",
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Name: "João", Email: "form-email@example.com",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "form-email@example.com", link.NotifyEmail)
 	assert.Equal(t, models.ConductorStatusPending, link.Status)
-	assert.Equal(t, riomobOwnerCPF, link.InvitedByCPF)
+	assert.Equal(t, mobilidadeOwnerCPF, link.InvitedByCPF)
 	assert.False(t, link.ID.IsZero())
 	assert.NotEqual(t, primitive.NilObjectID, link.VehicleID)
 
 	// Document must exist immediately (no Redis write-buffer)
 	var stored models.VehicleConductor
-	err = config.MongoDB.Collection(config.AppConfig.RioMobConductorCollection).FindOne(
+	err = config.MongoDB.Collection(config.AppConfig.MobilidadeConductorCollection).FindOne(
 		context.Background(), bson.M{"_id": link.ID},
 	).Decode(&stored)
 	require.NoError(t, err)

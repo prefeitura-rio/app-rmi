@@ -58,7 +58,7 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 			"self_declared_escolaridade",
 			"self_declared_deficiencia",
 			"cf_lookup",
-			RioMobInviteEmailQueue,
+			MobilidadeInviteEmailQueue,
 		},
 	}
 }
@@ -421,9 +421,9 @@ func (w *SyncWorker) handleSpecialJobTypes(ctx context.Context, job *SyncJob) er
 		return w.handleCFLookupJob(ctx, job)
 	}
 
-	// RioMob conductor invite email
-	if job.Type == RioMobInviteEmailQueue || job.Collection == RioMobInviteEmailQueue {
-		return w.handleRioMobInviteEmailJob(ctx, job)
+	// Mobilidade conductor invite email
+	if job.Type == MobilidadeInviteEmailQueue || job.Collection == MobilidadeInviteEmailQueue {
+		return w.handleMobilidadeInviteEmailJob(ctx, job)
 	}
 
 	// Not a special job type
@@ -526,12 +526,12 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 	return nil
 }
 
-func (w *SyncWorker) handleRioMobInviteEmailJob(ctx context.Context, job *SyncJob) error {
-	w.logger.Info("processing riomob invite email job",
+func (w *SyncWorker) handleMobilidadeInviteEmailJob(ctx context.Context, job *SyncJob) error {
+	w.logger.Info("processing mobilidade invite email job",
 		zap.String("job_id", job.ID),
 		zap.String("key", job.Key))
 
-	payload, err := parseRioMobInviteEmailPayload(job.Data)
+	payload, err := parseMobilidadeInviteEmailPayload(job.Data)
 	if err != nil {
 		conductorID := job.Key
 		if conductorID == "" {
@@ -548,8 +548,8 @@ func (w *SyncWorker) handleRioMobInviteEmailJob(ctx context.Context, job *SyncJo
 		sender = NewLoggingEmailSender(w.logger)
 	}
 
-	if err := ProcessRioMobInviteEmail(ctx, sender, payload, DefaultRioMobInviteDeepLinkBase()); err != nil {
-		w.logger.Error("riomob invite email failed",
+	if err := ProcessMobilidadeInviteEmail(ctx, sender, payload, DefaultMobilidadeInviteDeepLinkBase()); err != nil {
+		w.logger.Error("mobilidade invite email failed",
 			zap.Error(err),
 			zap.String("job_id", job.ID),
 			zap.String("conductor_id", payload.ConductorID),
@@ -559,7 +559,7 @@ func (w *SyncWorker) handleRioMobInviteEmailJob(ctx context.Context, job *SyncJo
 	}
 
 	w.persistInviteEmailStatus(ctx, payload.ConductorID, models.InviteEmailStatusSent, "")
-	w.logger.Info("riomob invite email sent",
+	w.logger.Info("mobilidade invite email sent",
 		zap.String("job_id", job.ID),
 		zap.String("conductor_id", payload.ConductorID),
 		zap.String("notify_email", payload.NotifyEmail))
@@ -568,15 +568,15 @@ func (w *SyncWorker) handleRioMobInviteEmailJob(ctx context.Context, job *SyncJo
 
 func (w *SyncWorker) persistInviteEmailStatus(ctx context.Context, conductorID string, status models.InviteEmailStatus, lastError string) {
 	if err := SetConductorInviteEmailStatus(ctx, w.mongo, conductorID, status, lastError); err != nil {
-		w.logger.Warn("riomob invite email status update failed",
+		w.logger.Warn("mobilidade invite email status update failed",
 			zap.String("conductor_id", conductorID),
 			zap.String("email_status", string(status)),
 			zap.Error(err))
 	}
 }
 
-func parseRioMobInviteEmailPayload(data interface{}) (RioMobInviteEmailPayload, error) {
-	var payload RioMobInviteEmailPayload
+func parseMobilidadeInviteEmailPayload(data interface{}) (MobilidadeInviteEmailPayload, error) {
+	var payload MobilidadeInviteEmailPayload
 	raw, err := json.Marshal(data)
 	if err != nil {
 		return payload, fmt.Errorf("marshal invite email payload: %w", err)

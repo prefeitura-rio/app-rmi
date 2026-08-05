@@ -135,7 +135,7 @@ func TestNewSyncWorker(t *testing.T) {
 		"self_declared_escolaridade",
 		"self_declared_deficiencia",
 		"cf_lookup",
-		RioMobInviteEmailQueue,
+		MobilidadeInviteEmailQueue,
 	}
 
 	assert.Equal(t, len(expectedQueues), len(worker.queues))

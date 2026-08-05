@@ -65,11 +65,11 @@ type Config struct {
 	NotificationCategoryCollection string `json:"mongo_notification_category_collection"`
 	CNAECollection                 string `json:"mongo_cnae_collection"`
 	CPFSecretariaCollection        string `json:"mongo_cpf_secretaria_collection"`
-	RioMobVehicleCollection        string `json:"mongo_riomob_vehicle_collection"`
-	RioMobConductorCollection      string `json:"mongo_riomob_conductor_collection"`
-	RioMobBrandCollection          string `json:"mongo_riomob_brand_collection"`
-	RioMobModelCollection          string `json:"mongo_riomob_model_collection"`
-	RioMobInviteDeepLinkBase       string `json:"riomob_invite_deep_link_base"`
+	MobilidadeVehicleCollection        string `json:"mongo_mobilidade_vehicle_collection"`
+	MobilidadeConductorCollection      string `json:"mongo_mobilidade_conductor_collection"`
+	MobilidadeBrandCollection          string `json:"mongo_mobilidade_brand_collection"`
+	MobilidadeModelCollection          string `json:"mongo_mobilidade_model_collection"`
+	MobilidadeInviteDeepLinkBase       string `json:"mobilidade_invite_deep_link_base"`
 
 	// Data Relay (transactional email / mailman)
 	DataRelayBaseURL string        `json:"data_relay_base_url"`
@@ -442,11 +442,11 @@ func LoadConfig() error {
 		NotificationCategoryCollection: notificationCategoryCollection,
 		CNAECollection:                 cnaeCollection,
 		CPFSecretariaCollection:        getEnvOrDefault("MONGODB_CPF_SECRETARIA_COLLECTION", "cpf_secretaria_mappings"),
-		RioMobVehicleCollection:        getEnvOrDefault("MONGODB_RIOMOB_VEHICLE_COLLECTION", "riomob_vehicles"),
-		RioMobConductorCollection:      getEnvOrDefault("MONGODB_RIOMOB_CONDUCTOR_COLLECTION", "riomob_vehicle_conductors"),
-		RioMobBrandCollection:          getEnvOrDefault("MONGODB_RIOMOB_BRAND_COLLECTION", "riomob_vehicle_brands"),
-		RioMobModelCollection:          getEnvOrDefault("MONGODB_RIOMOB_MODEL_COLLECTION", "riomob_vehicle_models"),
-		RioMobInviteDeepLinkBase:       getEnvOrDefault("RIOMOB_INVITE_DEEP_LINK_BASE", "https://pref.rio"),
+		MobilidadeVehicleCollection:        getEnvOrDefault("MONGODB_MOBILIDADE_VEHICLE_COLLECTION", "mobilidade_vehicles"),
+		MobilidadeConductorCollection:      getEnvOrDefault("MONGODB_MOBILIDADE_CONDUCTOR_COLLECTION", "mobilidade_vehicle_conductors"),
+		MobilidadeBrandCollection:          getEnvOrDefault("MONGODB_MOBILIDADE_BRAND_COLLECTION", "mobilidade_vehicle_brands"),
+		MobilidadeModelCollection:          getEnvOrDefault("MONGODB_MOBILIDADE_MODEL_COLLECTION", "mobilidade_vehicle_models"),
+		MobilidadeInviteDeepLinkBase:       getEnvOrDefault("MOBILIDADE_INVITE_DEEP_LINK_BASE", "https://pref.rio"),
 
 		// Data Relay (optional — when unset, invite emails are logged only)
 		DataRelayBaseURL: getEnvOrDefault("DATA_RELAY_BASE_URL", ""),

@@ -412,13 +412,13 @@ func mapMobilidadeError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, services.ErrVehicleNotFound), errors.Is(err, services.ErrConductorNotFound):
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
-	case errors.Is(err, services.ErrRioMobForbidden):
+	case errors.Is(err, services.ErrMobilidadeForbidden):
 		c.JSON(http.StatusForbidden, ErrorResponse{Error: err.Error()})
-	case errors.Is(err, services.ErrRioMobConflict):
+	case errors.Is(err, services.ErrMobilidadeConflict):
 		c.JSON(http.StatusConflict, ErrorResponse{Error: err.Error()})
-	case errors.Is(err, services.ErrRioMobInvalidInput):
+	case errors.Is(err, services.ErrMobilidadeInvalidInput):
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-	case errors.Is(err, services.ErrRioMobNotImplemented):
+	case errors.Is(err, services.ErrMobilidadeNotImplemented):
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 	default:
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal error"})

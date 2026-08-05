@@ -20,24 +20,24 @@ import (
 )
 
 var (
-	// ErrRioMobNotImplemented is returned while RioMob services are under TDD (red phase).
-	ErrRioMobNotImplemented = errors.New("riomob: not implemented")
+	// ErrMobilidadeNotImplemented is returned while Mobilidade services are under TDD (red phase).
+	ErrMobilidadeNotImplemented = errors.New("mobilidade: not implemented")
 	// ErrVehicleNotFound is returned when a vehicle does not exist or is soft-deleted.
 	ErrVehicleNotFound = errors.New("vehicle not found")
 	// ErrConductorNotFound is returned when a conductor link does not exist.
 	ErrConductorNotFound = errors.New("conductor not found")
-	// ErrRioMobForbidden is returned when the caller lacks the required role.
-	ErrRioMobForbidden = errors.New("forbidden")
-	// ErrRioMobConflict is returned on duplicate pending/accepted conductor links.
-	ErrRioMobConflict = errors.New("conflict")
-	// ErrRioMobInvalidInput is returned for business-rule validation failures.
-	ErrRioMobInvalidInput = errors.New("invalid input")
+	// ErrMobilidadeForbidden is returned when the caller lacks the required role.
+	ErrMobilidadeForbidden = errors.New("forbidden")
+	// ErrMobilidadeConflict is returned on duplicate pending/accepted conductor links.
+	ErrMobilidadeConflict = errors.New("conflict")
+	// ErrMobilidadeInvalidInput is returned for business-rule validation failures.
+	ErrMobilidadeInvalidInput = errors.New("invalid input")
 )
 
 // VehicleServiceInstance is the process-wide vehicle service used by handlers.
 var VehicleServiceInstance *VehicleService
 
-// VehicleService handles RioMob vehicle CRUD and wallet listing.
+// VehicleService handles Mobilidade vehicle CRUD and wallet listing.
 type VehicleService struct {
 	database    *mongo.Database
 	dataManager *DataManager
@@ -57,19 +57,19 @@ func InitVehicleService() {
 }
 
 func (s *VehicleService) vehicles() *mongo.Collection {
-	return s.database.Collection(config.AppConfig.RioMobVehicleCollection)
+	return s.database.Collection(config.AppConfig.MobilidadeVehicleCollection)
 }
 
 func (s *VehicleService) conductors() *mongo.Collection {
-	return s.database.Collection(config.AppConfig.RioMobConductorCollection)
+	return s.database.Collection(config.AppConfig.MobilidadeConductorCollection)
 }
 
 func (s *VehicleService) models() *mongo.Collection {
-	return s.database.Collection(config.AppConfig.RioMobModelCollection)
+	return s.database.Collection(config.AppConfig.MobilidadeModelCollection)
 }
 
 func (s *VehicleService) brands() *mongo.Collection {
-	return s.database.Collection(config.AppConfig.RioMobBrandCollection)
+	return s.database.Collection(config.AppConfig.MobilidadeBrandCollection)
 }
 
 // ListVehicles returns vehicles where cpf is owner or accepted conductor.
@@ -188,10 +188,10 @@ func (s *VehicleService) GetVehicle(ctx context.Context, cpf, vehicleID string) 
 // CreateVehicle registers a new vehicle owned by cpf.
 func (s *VehicleService) CreateVehicle(ctx context.Context, cpf string, req *models.VehicleCreateRequest) (*models.VehicleDetail, error) {
 	if err := req.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrRioMobInvalidInput, err.Error())
+		return nil, fmt.Errorf("%w: %s", ErrMobilidadeInvalidInput, err.Error())
 	}
 	if !utils.ValidateCPF(cpf) {
-		return nil, fmt.Errorf("%w: invalid cpf", ErrRioMobInvalidInput)
+		return nil, fmt.Errorf("%w: invalid cpf", ErrMobilidadeInvalidInput)
 	}
 
 	vehicleType, brandID, brandOther, modelID, modelOther, err := s.resolveCreateCatalogFields(ctx, req)
@@ -243,10 +243,10 @@ func (s *VehicleService) UpdateVehicle(ctx context.Context, cpf, vehicleID strin
 		return nil, err
 	}
 	if v.OwnerCPF != cpf {
-		return nil, ErrRioMobForbidden
+		return nil, ErrMobilidadeForbidden
 	}
 	if err := req.Validate(v); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrRioMobInvalidInput, err.Error())
+		return nil, fmt.Errorf("%w: %s", ErrMobilidadeInvalidInput, err.Error())
 	}
 
 	update := bson.M{"updated_at": time.Now().UTC()}
@@ -318,7 +318,7 @@ func (s *VehicleService) DeleteVehicle(ctx context.Context, cpf, vehicleID strin
 		return err
 	}
 	if v.OwnerCPF != cpf {
-		return ErrRioMobForbidden
+		return ErrMobilidadeForbidden
 	}
 
 	now := time.Now().UTC()
@@ -435,7 +435,7 @@ func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *mo
 		var model models.VehicleModel
 		err := s.models().FindOne(ctx, bson.M{"_id": *req.ModelID, "brand_id": *req.BrandID}).Decode(&model)
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return "", nil, nil, nil, nil, fmt.Errorf("%w: model not found for brand", ErrRioMobInvalidInput)
+			return "", nil, nil, nil, nil, fmt.Errorf("%w: model not found for brand", ErrMobilidadeInvalidInput)
 		}
 		if err != nil {
 			return "", nil, nil, nil, nil, fmt.Errorf("load model: %w", err)
@@ -443,7 +443,7 @@ func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *mo
 		var brand models.VehicleBrand
 		err = s.brands().FindOne(ctx, bson.M{"_id": *req.BrandID}).Decode(&brand)
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return "", nil, nil, nil, nil, fmt.Errorf("%w: brand not found", ErrRioMobInvalidInput)
+			return "", nil, nil, nil, nil, fmt.Errorf("%w: brand not found", ErrMobilidadeInvalidInput)
 		}
 		if err != nil {
 			return "", nil, nil, nil, nil, fmt.Errorf("load brand: %w", err)
@@ -453,15 +453,15 @@ func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *mo
 		m := *req.ModelID
 		if brand.IsOther || model.IsOther {
 			if brand.IsOther && (req.BrandOther == nil || *req.BrandOther == "") {
-				return "", nil, nil, nil, nil, fmt.Errorf("%w: brand_other is required for Outro brand", ErrRioMobInvalidInput)
+				return "", nil, nil, nil, nil, fmt.Errorf("%w: brand_other is required for Outro brand", ErrMobilidadeInvalidInput)
 			}
 			if model.IsOther && (req.ModelOther == nil || *req.ModelOther == "") {
-				return "", nil, nil, nil, nil, fmt.Errorf("%w: model_other is required for Outro model", ErrRioMobInvalidInput)
+				return "", nil, nil, nil, nil, fmt.Errorf("%w: model_other is required for Outro model", ErrMobilidadeInvalidInput)
 			}
 			vt := model.VehicleType
 			if model.IsOther {
 				if req.VehicleType == nil || !models.IsValidVehicleType(*req.VehicleType) {
-					return "", nil, nil, nil, nil, fmt.Errorf("%w: vehicle_type is required for Outro model", ErrRioMobInvalidInput)
+					return "", nil, nil, nil, nil, fmt.Errorf("%w: vehicle_type is required for Outro model", ErrMobilidadeInvalidInput)
 				}
 				vt = *req.VehicleType
 			}
@@ -471,7 +471,7 @@ func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *mo
 	}
 
 	if req.VehicleType == nil || !models.IsValidVehicleType(*req.VehicleType) {
-		return "", nil, nil, nil, nil, fmt.Errorf("%w: vehicle_type is required for Outro flow", ErrRioMobInvalidInput)
+		return "", nil, nil, nil, nil, fmt.Errorf("%w: vehicle_type is required for Outro flow", ErrMobilidadeInvalidInput)
 	}
 	return *req.VehicleType, nil, req.BrandOther, nil, req.ModelOther, nil
 }
@@ -531,7 +531,7 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 		var model models.VehicleModel
 		err := s.models().FindOne(ctx, bson.M{"_id": *modelID, "brand_id": *brandID}).Decode(&model)
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return fmt.Errorf("%w: model not found for brand", ErrRioMobInvalidInput)
+			return fmt.Errorf("%w: model not found for brand", ErrMobilidadeInvalidInput)
 		}
 		if err != nil {
 			return fmt.Errorf("load model: %w", err)
@@ -539,7 +539,7 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 		var brand models.VehicleBrand
 		err = s.brands().FindOne(ctx, bson.M{"_id": *brandID}).Decode(&brand)
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return fmt.Errorf("%w: brand not found", ErrRioMobInvalidInput)
+			return fmt.Errorf("%w: brand not found", ErrMobilidadeInvalidInput)
 		}
 		if err != nil {
 			return fmt.Errorf("load brand: %w", err)
@@ -549,15 +549,15 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 		update["model_id"] = *modelID
 		if brand.IsOther || model.IsOther {
 			if brand.IsOther && (brandOther == nil || *brandOther == "") {
-				return fmt.Errorf("%w: brand_other is required for Outro brand", ErrRioMobInvalidInput)
+				return fmt.Errorf("%w: brand_other is required for Outro brand", ErrMobilidadeInvalidInput)
 			}
 			if model.IsOther && (modelOther == nil || *modelOther == "") {
-				return fmt.Errorf("%w: model_other is required for Outro model", ErrRioMobInvalidInput)
+				return fmt.Errorf("%w: model_other is required for Outro model", ErrMobilidadeInvalidInput)
 			}
 			vt := model.VehicleType
 			if model.IsOther {
 				if !models.IsValidVehicleType(vehicleType) {
-					return fmt.Errorf("%w: vehicle_type is required for Outro model", ErrRioMobInvalidInput)
+					return fmt.Errorf("%w: vehicle_type is required for Outro model", ErrMobilidadeInvalidInput)
 				}
 				vt = vehicleType
 			}
@@ -575,7 +575,7 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 	otherFlow := (brandOther != nil && *brandOther != "") || (modelOther != nil && *modelOther != "")
 	if otherFlow {
 		if !models.IsValidVehicleType(vehicleType) {
-			return fmt.Errorf("%w: vehicle_type is required for Outro flow", ErrRioMobInvalidInput)
+			return fmt.Errorf("%w: vehicle_type is required for Outro flow", ErrMobilidadeInvalidInput)
 		}
 		update["brand_id"] = nil
 		update["model_id"] = nil
@@ -591,13 +591,13 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 	if req.VehicleType != nil && currentOther && !currentCatalog &&
 		req.BrandID == nil && req.ModelID == nil && req.BrandOther == nil && req.ModelOther == nil {
 		if !models.IsValidVehicleType(*req.VehicleType) {
-			return fmt.Errorf("%w: invalid vehicle_type", ErrRioMobInvalidInput)
+			return fmt.Errorf("%w: invalid vehicle_type", ErrMobilidadeInvalidInput)
 		}
 		update["vehicle_type"] = *req.VehicleType
 		return nil
 	}
 
-	return fmt.Errorf("%w: incomplete brand/model update; provide catalog brand_id+model_id or Outro fields", ErrRioMobInvalidInput)
+	return fmt.Errorf("%w: incomplete brand/model update; provide catalog brand_id+model_id or Outro fields", ErrMobilidadeInvalidInput)
 }
 
 func (s *VehicleService) loadOwnerSnapshot(ctx context.Context, cpf string) (name, phone, email string) {
@@ -615,7 +615,7 @@ func (s *VehicleService) loadOwnerSnapshot(ctx context.Context, cpf string) (nam
 			break
 		}
 		if s.logger != nil {
-			s.logger.Warn("riomob owner snapshot miss",
+			s.logger.Warn("mobilidade owner snapshot miss",
 				zap.String("cpf", cpf),
 				zap.Int("attempt", attempt),
 				zap.Error(err),
@@ -710,7 +710,7 @@ func (s *VehicleService) enrichOwnerFields(ctx context.Context, v *models.Vehicl
 		}
 		if _, err := s.vehicles().UpdateOne(ctx, bson.M{"_id": v.ID}, bson.M{"$set": update}); err != nil {
 			if s.logger != nil {
-				s.logger.Warn("riomob owner backfill failed",
+				s.logger.Warn("mobilidade owner backfill failed",
 					zap.String("vehicle_id", v.ID.Hex()),
 					zap.Error(err),
 				)

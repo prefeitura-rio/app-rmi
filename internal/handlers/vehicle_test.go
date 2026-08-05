@@ -29,10 +29,10 @@ func setupMobilidadeHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	config.AppConfig.RioMobVehicleCollection = "test_riomob_vehicles_handlers"
-	config.AppConfig.RioMobConductorCollection = "test_riomob_conductors_handlers"
-	config.AppConfig.RioMobBrandCollection = "test_riomob_brands_handlers"
-	config.AppConfig.RioMobModelCollection = "test_riomob_models_handlers"
+	config.AppConfig.MobilidadeVehicleCollection = "test_mobilidade_vehicles_handlers"
+	config.AppConfig.MobilidadeConductorCollection = "test_mobilidade_conductors_handlers"
+	config.AppConfig.MobilidadeBrandCollection = "test_mobilidade_brands_handlers"
+	config.AppConfig.MobilidadeModelCollection = "test_mobilidade_models_handlers"
 
 	ctx := context.Background()
 	db := config.MongoDB
@@ -40,7 +40,7 @@ func setupMobilidadeHandlersTest(t *testing.T) (*gin.Engine, func()) {
 
 	services.VehicleServiceInstance = services.NewVehicleService(db, services.NewDataManager(config.Redis, db, logging.GetLogger()), logging.GetLogger())
 	services.VehicleConductorServiceInstance = services.NewVehicleConductorService(db, logging.GetLogger())
-	services.RioMobCatalogServiceInstance = services.NewRioMobCatalogService(db, logging.GetLogger())
+	services.MobilidadeCatalogServiceInstance = services.NewMobilidadeCatalogService(db, logging.GetLogger())
 
 	router := gin.New()
 	router.GET("/citizen/:cpf/vehicles", GetVehicles)
@@ -58,19 +58,19 @@ func setupMobilidadeHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	router.GET("/mobilidade/vehicle-colors", GetMobilidadeVehicleColors)
 
 	// Fresh collections for this test (do not nil service instances here).
-	_ = db.Collection(config.AppConfig.RioMobVehicleCollection).Drop(ctx)
-	_ = db.Collection(config.AppConfig.RioMobConductorCollection).Drop(ctx)
-	_ = db.Collection(config.AppConfig.RioMobBrandCollection).Drop(ctx)
-	_ = db.Collection(config.AppConfig.RioMobModelCollection).Drop(ctx)
+	_ = db.Collection(config.AppConfig.MobilidadeVehicleCollection).Drop(ctx)
+	_ = db.Collection(config.AppConfig.MobilidadeConductorCollection).Drop(ctx)
+	_ = db.Collection(config.AppConfig.MobilidadeBrandCollection).Drop(ctx)
+	_ = db.Collection(config.AppConfig.MobilidadeModelCollection).Drop(ctx)
 
 	cleanup := func() {
-		_ = db.Collection(config.AppConfig.RioMobVehicleCollection).Drop(ctx)
-		_ = db.Collection(config.AppConfig.RioMobConductorCollection).Drop(ctx)
-		_ = db.Collection(config.AppConfig.RioMobBrandCollection).Drop(ctx)
-		_ = db.Collection(config.AppConfig.RioMobModelCollection).Drop(ctx)
+		_ = db.Collection(config.AppConfig.MobilidadeVehicleCollection).Drop(ctx)
+		_ = db.Collection(config.AppConfig.MobilidadeConductorCollection).Drop(ctx)
+		_ = db.Collection(config.AppConfig.MobilidadeBrandCollection).Drop(ctx)
+		_ = db.Collection(config.AppConfig.MobilidadeModelCollection).Drop(ctx)
 		services.VehicleServiceInstance = nil
 		services.VehicleConductorServiceInstance = nil
-		services.RioMobCatalogServiceInstance = nil
+		services.MobilidadeCatalogServiceInstance = nil
 	}
 	seedHandlerCitizen(t, handlerOwnerCPF, "Ana Souza")
 
@@ -89,11 +89,11 @@ func seedHandlerCitizen(t *testing.T, cpf, name string) {
 func seedHandlerCatalog(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	_, err := config.MongoDB.Collection(config.AppConfig.RioMobBrandCollection).InsertMany(ctx, []interface{}{
+	_, err := config.MongoDB.Collection(config.AppConfig.MobilidadeBrandCollection).InsertMany(ctx, []interface{}{
 		bson.M{"_id": "brand_caloi", "name": "Caloi", "is_other": false},
 	})
 	require.NoError(t, err)
-	_, err = config.MongoDB.Collection(config.AppConfig.RioMobModelCollection).InsertMany(ctx, []interface{}{
+	_, err = config.MongoDB.Collection(config.AppConfig.MobilidadeModelCollection).InsertMany(ctx, []interface{}{
 		bson.M{
 			"_id": "model_e-vibe", "brand_id": "brand_caloi", "name": "E-Vibe",
 			"vehicle_type": "bicicleta_eletrica", "is_other": false,
@@ -310,13 +310,13 @@ func TestInviteVehicleConductor_DuplicateReturnsConflict(t *testing.T) {
 
 	// Ensure unique index exists on the handler test collection too.
 	ctx := context.Background()
-	_, _ = config.MongoDB.Collection(config.AppConfig.RioMobConductorCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
+	_, _ = config.MongoDB.Collection(config.AppConfig.MobilidadeConductorCollection).Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys: bson.D{
 			{Key: "vehicle_id", Value: 1},
 			{Key: "conductor_cpf", Value: 1},
 		},
 		Options: options.Index().
-			SetName("idx_riomob_conductors_vehicle_cpf_active").
+			SetName("idx_mobilidade_conductors_vehicle_cpf_active").
 			SetUnique(true).
 			SetPartialFilterExpression(bson.M{
 				"status": bson.M{"$in": bson.A{"pending", "accepted"}},

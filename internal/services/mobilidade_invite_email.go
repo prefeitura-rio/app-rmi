@@ -14,12 +14,12 @@ import (
 )
 
 const (
-	// RioMobInviteEmailQueue is the Redis sync queue name for conductor invite emails.
-	RioMobInviteEmailQueue = "riomob_invite_email"
+	// MobilidadeInviteEmailQueue is the Redis sync queue name for conductor invite emails.
+	MobilidadeInviteEmailQueue = "mobilidade_invite_email"
 )
 
-// RioMobInviteEmailPayload is the job data enqueued when a conductor is invited.
-type RioMobInviteEmailPayload struct {
+// MobilidadeInviteEmailPayload is the job data enqueued when a conductor is invited.
+type MobilidadeInviteEmailPayload struct {
 	ConductorID  string `json:"conductor_id"`
 	NotifyEmail  string `json:"notify_email"`
 	VehicleID    string `json:"vehicle_id"`
@@ -54,7 +54,7 @@ func NewLoggingEmailSender(logger *logging.SafeLogger) *LoggingEmailSender {
 // Send logs the invite email without calling an external provider.
 func (s *LoggingEmailSender) Send(ctx context.Context, msg EmailMessage) error {
 	if s.logger != nil {
-		s.logger.Info("riomob invite email (logging sender)",
+		s.logger.Info("mobilidade invite email (logging sender)",
 			zap.String("to", msg.To),
 			zap.String("subject", msg.Subject),
 			zap.Int("body_len", len(msg.Body)))
@@ -93,7 +93,7 @@ func (s *DataRelayEmailSender) Send(ctx context.Context, msg EmailMessage) error
 		return err
 	}
 	if s.logger != nil {
-		s.logger.Info("riomob invite email sent via data relay",
+		s.logger.Info("mobilidade invite email sent via data relay",
 			zap.String("to", to),
 			zap.String("subject", msg.Subject))
 	}
@@ -125,8 +125,8 @@ func (s *RecordingEmailSender) SentCount() int {
 	return len(s.Messages)
 }
 
-// BuildRioMobInviteEmail builds subject/body for a conductor invitation.
-func BuildRioMobInviteEmail(payload RioMobInviteEmailPayload, deepLinkBase string) EmailMessage {
+// BuildMobilidadeInviteEmail builds subject/body for a conductor invitation.
+func BuildMobilidadeInviteEmail(payload MobilidadeInviteEmailPayload, deepLinkBase string) EmailMessage {
 	owner := strings.TrimSpace(payload.OwnerName)
 	if owner == "" {
 		owner = "Alguém"
@@ -139,11 +139,11 @@ func BuildRioMobInviteEmail(payload RioMobInviteEmailPayload, deepLinkBase strin
 	if base == "" {
 		base = "https://pref.rio"
 	}
-	cta := base + "/carteira?riomob=true"
+	cta := base + "/carteira?mobilidade=true"
 
 	subject := fmt.Sprintf("%s convidou você para um veículo no pref.rio", owner)
 	body := fmt.Sprintf(
-		"%s convidou você para usar o veículo \"%s\" no pref.rio (RioMob).\n\n"+
+		"%s convidou você para usar o veículo \"%s\" no pref.rio (Mobilidade).\n\n"+
 			"Abra a carteira para aceitar ou recusar o convite:\n%s\n",
 		owner, vehicle, cta,
 	)
@@ -156,8 +156,8 @@ func BuildRioMobInviteEmail(payload RioMobInviteEmailPayload, deepLinkBase strin
 	}
 }
 
-// ProcessRioMobInviteEmail validates the payload and sends the invite email.
-func ProcessRioMobInviteEmail(ctx context.Context, sender EmailSender, payload RioMobInviteEmailPayload, deepLinkBase string) error {
+// ProcessMobilidadeInviteEmail validates the payload and sends the invite email.
+func ProcessMobilidadeInviteEmail(ctx context.Context, sender EmailSender, payload MobilidadeInviteEmailPayload, deepLinkBase string) error {
 	if sender == nil {
 		return fmt.Errorf("email sender is nil")
 	}
@@ -168,17 +168,17 @@ func ProcessRioMobInviteEmail(ctx context.Context, sender EmailSender, payload R
 		return fmt.Errorf("conductor_id is required")
 	}
 
-	msg := BuildRioMobInviteEmail(payload, deepLinkBase)
+	msg := BuildMobilidadeInviteEmail(payload, deepLinkBase)
 	if err := sender.Send(ctx, msg); err != nil {
 		return fmt.Errorf("send invite email: %w", err)
 	}
 	return nil
 }
 
-// DefaultRioMobInviteDeepLinkBase returns the configured pref.rio deep-link base.
-func DefaultRioMobInviteDeepLinkBase() string {
-	if config.AppConfig != nil && config.AppConfig.RioMobInviteDeepLinkBase != "" {
-		return config.AppConfig.RioMobInviteDeepLinkBase
+// DefaultMobilidadeInviteDeepLinkBase returns the configured pref.rio deep-link base.
+func DefaultMobilidadeInviteDeepLinkBase() string {
+	if config.AppConfig != nil && config.AppConfig.MobilidadeInviteDeepLinkBase != "" {
+		return config.AppConfig.MobilidadeInviteDeepLinkBase
 	}
 	return "https://pref.rio"
 }

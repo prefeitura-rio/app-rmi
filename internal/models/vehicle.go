@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// VehicleType is the fixed classification for RioMob vehicles.
+// VehicleType is the fixed classification for Mobilidade vehicles.
 type VehicleType string
 
 const (
@@ -45,7 +45,7 @@ const (
 	VehicleRoleConductor VehicleRole = "conductor"
 )
 
-// VehicleColors returns the fixed color catalog for RioMob forms.
+// VehicleColors returns the fixed color catalog for Mobilidade forms.
 func VehicleColors() []string {
 	return []string{
 		"Amarelo", "Azul", "Azul Claro", "Azul Escuro", "Bege", "Branco", "Bronze",
@@ -64,7 +64,7 @@ func IsValidVehicleColor(color string) bool {
 	return false
 }
 
-// allowedGCSHostSuffixes are accepted hosts for RioMob document/photo URLs.
+// allowedGCSHostSuffixes are accepted hosts for Mobilidade document/photo URLs.
 var allowedGCSHostSuffixes = []string{
 	"storage.googleapis.com",
 	"storage.cloud.google.com",
@@ -113,7 +113,7 @@ type VehicleModel struct {
 	IsOther     bool        `bson:"is_other" json:"is_other"`
 }
 
-// Vehicle is the persisted RioMob vehicle document.
+// Vehicle is the persisted Mobilidade vehicle document.
 type Vehicle struct {
 	ID                   primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	OwnerCPF             string             `bson:"owner_cpf" json:"owner_cpf"`
