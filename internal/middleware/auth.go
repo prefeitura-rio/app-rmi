@@ -11,6 +11,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.uber.org/zap"
 )
 
@@ -163,8 +164,13 @@ func RequireOwnCPF() gin.HandlerFunc {
 
 		// Get the CPF from the URL
 		requestedCPF := c.Param("cpf")
-		userCPF := jwtClaims.PreferredUsername
+		if !utils.ValidateCPF(requestedCPF) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid CPF format"})
+			c.Abort()
+			return
+		}
 
+		userCPF := jwtClaims.PreferredUsername
 		isAdmin := jwtClaims.HasRole(config.AppConfig.AdminGroup)
 
 		// Allow if user is admin or accessing their own data

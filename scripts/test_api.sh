@@ -158,8 +158,8 @@ make_request() {
         headers+=("-H" "Authorization: Bearer $BEARER_TOKEN")
     fi
     
-    # Add content type for POST/PUT requests
-    if [[ "$method" == "POST" || "$method" == "PUT" ]]; then
+    # Add content type for POST/PUT/PATCH requests
+    if [[ "$method" == "POST" || "$method" == "PUT" || "$method" == "PATCH" ]]; then
         headers+=("-H" "Content-Type: application/json")
     fi
     
@@ -181,9 +181,9 @@ make_request() {
     response_body=$(echo "$response" | sed '$d')
     
     # Check if status code is 2xx or 404 (acceptable for data not found)
-    # Also accept 409 (Conflict) for "already_opted_in" responses
+    # Also accept 409 (Conflict) for "already_opted_in" / Duplicate Conflict responses
     # Also accept 400 (Bad Request) for validation tests that expect errors
-    if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]] || [[ "$status_code" -eq 404 ]] || ([[ "$status_code" -eq 400 ]] && [[ "$test_name" == *"Invalid"* ]]); then
+    if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]] || [[ "$status_code" -eq 404 ]] || ([[ "$status_code" -eq 400 ]] && [[ "$test_name" == *"Invalid"* ]]) || ([[ "$status_code" -eq 409 ]] && [[ "$test_name" == *"Conflict"* || "$test_name" == *"Duplicate"* ]]); then
         print_result "$test_name" "PASS" "$response_body"
         # Store response body in a temporary file for verification
         if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]] || [[ "$test_name" == *"Create Beta Group"* ]] || [[ "$test_name" == *"Create Second Beta Group"* ]] || [[ "$test_name" == *"Double Test"* ]] || [[ "$test_name" == *"8-digit Number"* ]] || [[ "$test_name" == *"9-digit Number"* ]] || [[ "$test_name" == *"Address Verification"* ]] || [[ "$test_name" == *"Avatar"* ]] || [[ "$test_name" == *"avatar"* ]] || [[ "$test_name" == *"CF Data Verification"* ]] || [[ "$test_name" == *"CF Lookup Trigger"* ]] || [[ "$test_name" == *"CF Invalidation"* ]] || [[ "$test_name" == *"CF After Address Change"* ]] || [[ "$test_name" == *"With CF Data"* ]]; then
@@ -1859,6 +1859,135 @@ if [[ "$http_code" == "422" ]]; then
 else
     echo -e "${RED}❌ Did not reject invalid category (HTTP $http_code)${NC}"
     ((TESTS_FAILED++))
+fi
+
+# ==========================================
+# Mobilidade (vehicles / catalog)
+# ==========================================
+echo "=================================================="
+echo -e "${BLUE}🛵 Testing Mobilidade (vehicles) endpoints...${NC}"
+echo "=================================================="
+
+make_request "GET" "/mobilidade/vehicle-colors" "" "Get Mobilidade Vehicle Colors"
+make_request "GET" "/mobilidade/vehicle-brands" "" "Get Mobilidade Vehicle Brands"
+make_request "GET" "/mobilidade/vehicle-models?brand_id=brand_caloi" "" "Get Mobilidade Vehicle Models"
+make_request "GET" "/mobilidade/vehicle-models" "" "Get Mobilidade Vehicle Models Invalid Missing brand_id"
+
+vehicle_create_data=$(cat <<EOF
+{
+  "display_name": "Patinete API Test",
+  "brand_other": "Xiaomi",
+  "model_other": "Mi Electric Scooter Test",
+  "vehicle_type": "autopropelido",
+  "color": "Preto",
+  "serial_number": "API-TEST-SN-$RANDOM",
+  "serial_number_photo_url": "https://storage.googleapis.com/rmi-test/serial.jpg",
+  "vehicle_photo_url": "https://storage.googleapis.com/rmi-test/vehicle.jpg",
+  "has_invoice": false,
+  "invoice_photo_url": null,
+  "self_declaration": true
+}
+EOF
+)
+
+echo -e "${BLUE}Testing: Create Mobilidade Vehicle (Outro)${NC}"
+create_response=$(curl -s -w "\n%{http_code}" -X POST "$API_BASE_URL/citizen/$CPF/vehicles" \
+    -H "Authorization: Bearer $BEARER_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$vehicle_create_data" 2>/dev/null)
+create_status=$(echo "$create_response" | tail -n1)
+create_body=$(echo "$create_response" | sed '$d')
+MOBILIDADE_VEHICLE_ID=""
+if [[ "$create_status" -ge 200 && "$create_status" -lt 300 ]]; then
+    print_result "Create Mobilidade Vehicle (Outro)" "PASS" "$create_body"
+    if command -v jq >/dev/null 2>&1; then
+        MOBILIDADE_VEHICLE_ID=$(echo "$create_body" | jq -r '.id // empty')
+        if echo "$create_body" | jq -e '.registration_number | test("^RJ-E-[0-9]{6,}$")' >/dev/null 2>&1; then
+            print_result "Create Mobilidade Vehicle has registration_number" "PASS" "$(echo "$create_body" | jq -r '.registration_number')"
+        else
+            print_result "Create Mobilidade Vehicle has registration_number" "FAIL" "$create_body"
+        fi
+    fi
+else
+    print_result "Create Mobilidade Vehicle (Outro)" "FAIL" "Status: $create_status, Response: $create_body"
+fi
+
+# Typed catalog responses (Orval-friendly data arrays)
+if command -v jq >/dev/null 2>&1; then
+    brands_response=$(curl -s -w "\n%{http_code}" -X GET "$API_BASE_URL/mobilidade/vehicle-brands" \
+        -H "Authorization: Bearer $BEARER_TOKEN" 2>/dev/null)
+    brands_status=$(echo "$brands_response" | tail -n1)
+    brands_body=$(echo "$brands_response" | sed '$d')
+    if [[ "$brands_status" == "200" ]] && echo "$brands_body" | jq -e '.data | type == "array"' >/dev/null 2>&1; then
+        print_result "Get Mobilidade Vehicle Brands typed data[]" "PASS" "$brands_body"
+    else
+        print_result "Get Mobilidade Vehicle Brands typed data[]" "FAIL" "Status: $brands_status, Response: $brands_body"
+    fi
+fi
+
+if [[ -n "$MOBILIDADE_VEHICLE_ID" && "$MOBILIDADE_VEHICLE_ID" != "null" ]]; then
+    make_request "GET" "/citizen/$CPF/vehicles?page=1&per_page=10" "" "List Mobilidade Vehicles"
+    make_request "GET" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID" "" "Get Mobilidade Vehicle Detail"
+    make_request "PATCH" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID" '{"display_name":"Patinete API Test Updated"}' "Update Mobilidade Vehicle"
+    make_request "GET" "/citizen/$CPF/vehicle-invitations" "" "List Mobilidade Vehicle Invitations"
+    make_request "GET" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" "" "List Mobilidade Vehicle Conductors"
+
+    # Invite: missing email → 400; self-invite → 400; valid invite → 201; duplicate → 409
+    make_request "POST" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" \
+      '{"cpf":"11144477735"}' "Invite Mobilidade Conductor Invalid Missing Email"
+    make_request "POST" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" \
+      "{\"cpf\":\"$CPF\",\"email\":\"self@example.com\"}" "Invite Mobilidade Conductor Invalid Self"
+    invite_ok_data=$(cat <<EOF
+{
+  "cpf": "111.444.777-35",
+  "email": "condutor.api.test@example.com",
+  "name": "Condutor API",
+  "phone": "21999990000"
+}
+EOF
+)
+    make_request "POST" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" \
+      "$invite_ok_data" "Invite Mobilidade Conductor"
+    make_request "POST" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" \
+      "$invite_ok_data" "Invite Mobilidade Conductor Duplicate Conflict"
+
+    bad_invoice_data=$(cat <<EOF
+{
+  "display_name": "Bike Bad Invoice",
+  "brand_other": "Caloi",
+  "model_other": "Outro",
+  "vehicle_type": "bicicleta_eletrica",
+  "color": "Preto",
+  "serial_number": "BAD-NF-$RANDOM",
+  "serial_number_photo_url": "https://storage.googleapis.com/rmi-test/serial.jpg",
+  "vehicle_photo_url": "https://storage.googleapis.com/rmi-test/vehicle.jpg",
+  "has_invoice": true,
+  "self_declaration": true
+}
+EOF
+)
+    make_request "POST" "/citizen/$CPF/vehicles" "$bad_invoice_data" "Create Mobilidade Vehicle Invalid Missing Invoice"
+
+    bad_url_data=$(cat <<EOF
+{
+  "display_name": "Bike Bad URL",
+  "brand_other": "Caloi",
+  "model_other": "Outro",
+  "vehicle_type": "bicicleta_eletrica",
+  "color": "Preto",
+  "serial_number": "BAD-URL-$RANDOM",
+  "serial_number_photo_url": "https://example.com/serial.jpg",
+  "vehicle_photo_url": "https://storage.googleapis.com/rmi-test/vehicle.jpg",
+  "has_invoice": false,
+  "self_declaration": true
+}
+EOF
+)
+    make_request "POST" "/citizen/$CPF/vehicles" "$bad_url_data" "Create Mobilidade Vehicle Invalid Photo URL"
+
+    make_request "DELETE" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID" "" "Delete Mobilidade Vehicle"
+else
+    echo -e "${YELLOW}⚠️  Skipping mobilidade detail/update/delete tests (vehicle id unavailable)${NC}"
 fi
 
 echo "=================================================="

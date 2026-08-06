@@ -65,6 +65,16 @@ type Config struct {
 	NotificationCategoryCollection string `json:"mongo_notification_category_collection"`
 	CNAECollection                 string `json:"mongo_cnae_collection"`
 	CPFSecretariaCollection        string `json:"mongo_cpf_secretaria_collection"`
+	MobilidadeVehicleCollection        string `json:"mongo_mobilidade_vehicle_collection"`
+	MobilidadeConductorCollection      string `json:"mongo_mobilidade_conductor_collection"`
+	MobilidadeBrandCollection          string `json:"mongo_mobilidade_brand_collection"`
+	MobilidadeModelCollection          string `json:"mongo_mobilidade_model_collection"`
+	MobilidadeInviteDeepLinkBase       string `json:"mobilidade_invite_deep_link_base"`
+
+	// Data Relay (transactional email / mailman)
+	DataRelayBaseURL string        `json:"data_relay_base_url"`
+	DataRelayAPIKey  string        `json:"data_relay_api_key"`
+	DataRelayTimeout time.Duration `json:"data_relay_timeout"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -432,6 +442,16 @@ func LoadConfig() error {
 		NotificationCategoryCollection: notificationCategoryCollection,
 		CNAECollection:                 cnaeCollection,
 		CPFSecretariaCollection:        getEnvOrDefault("MONGODB_CPF_SECRETARIA_COLLECTION", "cpf_secretaria_mappings"),
+		MobilidadeVehicleCollection:        getEnvOrDefault("MONGODB_MOBILIDADE_VEHICLE_COLLECTION", "mobilidade_vehicles"),
+		MobilidadeConductorCollection:      getEnvOrDefault("MONGODB_MOBILIDADE_CONDUCTOR_COLLECTION", "mobilidade_vehicle_conductors"),
+		MobilidadeBrandCollection:          getEnvOrDefault("MONGODB_MOBILIDADE_BRAND_COLLECTION", "mobilidade_vehicle_brands"),
+		MobilidadeModelCollection:          getEnvOrDefault("MONGODB_MOBILIDADE_MODEL_COLLECTION", "mobilidade_vehicle_models"),
+		MobilidadeInviteDeepLinkBase:       getEnvOrDefault("MOBILIDADE_INVITE_DEEP_LINK_BASE", "https://pref.rio"),
+
+		// Data Relay (optional — when unset, invite emails are logged only)
+		DataRelayBaseURL: getEnvOrDefault("DATA_RELAY_BASE_URL", ""),
+		DataRelayAPIKey:  getEnvOrDefault("DATA_RELAY_API_KEY", ""),
+		DataRelayTimeout: getEnvAsDurationOrDefault("DATA_RELAY_TIMEOUT", 30*time.Second),
 
 		// Phone verification configuration
 		PhoneVerificationTTL:          phoneVerificationTTL,

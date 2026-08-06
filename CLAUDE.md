@@ -139,6 +139,12 @@ When asked to do the "commit thing":
 - **Production**: Redis cluster via `REDIS_CLUSTER_ENABLED=true`
 - **Environment Variables**: `REDIS_CLUSTER_ADDRS`, `REDIS_CLUSTER_PASSWORD`
 
+### Transactional Email (Data Relay)
+- **Client**: `internal/clients/data_relay_client.go` — `POST {DATA_RELAY_BASE_URL}/data/mailman` with `X-Api-Key`
+- **Sender**: Sync worker uses `DataRelayEmailSender` when `DATA_RELAY_BASE_URL` and `DATA_RELAY_API_KEY` are set; otherwise `LoggingEmailSender`
+- **Queue**: Mobilidade conductor invites enqueue `mobilidade_invite_email` jobs processed by the sync worker
+- **Status on link**: `email_status` (`pending|queued|sent|failed`) + `email_attempted_at` / `email_last_error` on `VehicleConductor`
+
 ### Performance-Critical Paths
 - **GetCitizenData**: Uses batched Redis operations via `getBatchedSelfDeclaredData()`
 - **UpdateSelfDeclared***: Field-specific queries vs full citizen data retrieval

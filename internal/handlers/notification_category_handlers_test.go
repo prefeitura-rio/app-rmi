@@ -47,7 +47,8 @@ func setupNotificationCategoryHandlersTest(t *testing.T) (*NotificationCategoryH
 			}
 		}
 
-		_ = database.Drop(ctx)
+		// Drop only this test's collection — never the whole rmi_test DB (shared across packages).
+		_ = database.Collection(config.AppConfig.NotificationCategoryCollection).Drop(ctx)
 	}
 }
 

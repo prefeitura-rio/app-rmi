@@ -3,14 +3,20 @@ package utils
 import (
 	"regexp"
 	"strconv"
+	"strings"
 )
+
+var nonDigitRE = regexp.MustCompile(`\D`)
+
+// NormalizeCPF strips non-digit characters from a CPF string.
+func NormalizeCPF(cpf string) string {
+	return nonDigitRE.ReplaceAllString(cpf, "")
+}
 
 // ValidateCPF validates a CPF number
 // It checks if the CPF has 11 digits and validates the check digits
 func ValidateCPF(cpf string) bool {
-	// Remove any non-digit characters
-	re := regexp.MustCompile(`\D`)
-	cpf = re.ReplaceAllString(cpf, "")
+	cpf = NormalizeCPF(cpf)
 
 	// Check if CPF has 11 digits
 	if len(cpf) != 11 {
@@ -68,12 +74,25 @@ func ValidateCPF(cpf string) bool {
 	return true
 }
 
+// MaskEmail redacts an email for logs (keeps domain).
+func MaskEmail(email string) string {
+	email = strings.TrimSpace(email)
+	at := strings.LastIndex(email, "@")
+	if at <= 0 || at == len(email)-1 {
+		return "***"
+	}
+	local, domain := email[:at], email[at+1:]
+	if len(local) <= 2 {
+		return "*@" + domain
+	}
+	return local[:1] + "***" + local[len(local)-1:] + "@" + domain
+}
+
 // ValidateCNPJ validates a CNPJ number
 // It checks if the CNPJ has 14 digits and validates the check digits
 func ValidateCNPJ(cnpj string) bool {
 	// Remove any non-digit characters
-	re := regexp.MustCompile(`\D`)
-	cnpj = re.ReplaceAllString(cnpj, "")
+	cnpj = nonDigitRE.ReplaceAllString(cnpj, "")
 
 	// Check if CNPJ has 14 digits
 	if len(cnpj) != 14 {
