@@ -10,6 +10,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/clients"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.uber.org/zap"
 )
 
@@ -55,7 +56,7 @@ func NewLoggingEmailSender(logger *logging.SafeLogger) *LoggingEmailSender {
 func (s *LoggingEmailSender) Send(ctx context.Context, msg EmailMessage) error {
 	if s.logger != nil {
 		s.logger.Info("mobilidade invite email (logging sender)",
-			zap.String("to", msg.To),
+			zap.String("to", utils.MaskEmail(msg.To)),
 			zap.String("subject", msg.Subject),
 			zap.Int("body_len", len(msg.Body)))
 	}
@@ -94,7 +95,7 @@ func (s *DataRelayEmailSender) Send(ctx context.Context, msg EmailMessage) error
 	}
 	if s.logger != nil {
 		s.logger.Info("mobilidade invite email sent via data relay",
-			zap.String("to", to),
+			zap.String("to", utils.MaskEmail(to)),
 			zap.String("subject", msg.Subject))
 	}
 	return nil

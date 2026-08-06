@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	handlerOwnerCPF     = "03561350712"
-	handlerConductorCPF = "45049725810"
+	handlerOwnerCPF     = "10000000019"
+	handlerConductorCPF = "10000000108"
 )
 
 func setupMobilidadeHandlersTest(t *testing.T) (*gin.Engine, func()) {
@@ -39,7 +39,7 @@ func setupMobilidadeHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	require.NotNil(t, db)
 
 	services.VehicleServiceInstance = services.NewVehicleService(db, services.NewDataManager(config.Redis, db, logging.GetLogger()), logging.GetLogger())
-	services.VehicleConductorServiceInstance = services.NewVehicleConductorService(db, logging.GetLogger())
+	services.VehicleConductorServiceInstance = services.NewVehicleConductorService(db, services.NewDataManager(config.Redis, db, logging.GetLogger()), logging.GetLogger())
 	services.MobilidadeCatalogServiceInstance = services.NewMobilidadeCatalogService(db, logging.GetLogger())
 
 	router := gin.New()
@@ -63,6 +63,10 @@ func setupMobilidadeHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	_ = db.Collection(config.AppConfig.MobilidadeBrandCollection).Drop(ctx)
 	_ = db.Collection(config.AppConfig.MobilidadeModelCollection).Drop(ctx)
 
+	seedHandlerCitizen(t, handlerOwnerCPF, "Ana Owner")
+	seedHandlerCitizen(t, handlerConductorCPF, "João Condutor")
+	seedHandlerCitizenEmail(t, handlerConductorCPF, "joao@example.com")
+
 	cleanup := func() {
 		_ = db.Collection(config.AppConfig.MobilidadeVehicleCollection).Drop(ctx)
 		_ = db.Collection(config.AppConfig.MobilidadeConductorCollection).Drop(ctx)
@@ -72,7 +76,6 @@ func setupMobilidadeHandlersTest(t *testing.T) (*gin.Engine, func()) {
 		services.VehicleConductorServiceInstance = nil
 		services.MobilidadeCatalogServiceInstance = nil
 	}
-	seedHandlerCitizen(t, handlerOwnerCPF, "Ana Souza")
 
 	return router, cleanup
 }
@@ -83,6 +86,15 @@ func seedHandlerCitizen(t *testing.T, cpf, name string) {
 	coll := config.MongoDB.Collection(config.AppConfig.CitizenCollection)
 	_, _ = coll.DeleteMany(ctx, bson.M{"cpf": cpf})
 	_, err := coll.InsertOne(ctx, bson.M{"_id": cpf, "cpf": cpf, "nome": name})
+	require.NoError(t, err)
+}
+
+func seedHandlerCitizenEmail(t *testing.T, cpf, email string) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := config.MongoDB.Collection(config.AppConfig.CitizenCollection).UpdateOne(ctx, bson.M{"cpf": cpf}, bson.M{
+		"$set": bson.M{"email": bson.M{"principal": bson.M{"valor": email}}},
+	})
 	require.NoError(t, err)
 }
 
@@ -184,6 +196,7 @@ func TestCreateVehicle_RejectsFalseSelfDeclaration(t *testing.T) {
 		"serial_number":           "SN-1",
 		"serial_number_photo_url": "https://storage.googleapis.com/s.jpg",
 		"vehicle_photo_url":       "https://storage.googleapis.com/v.jpg",
+		"has_invoice":             false,
 		"self_declaration":        false,
 	}
 	payload, _ := json.Marshal(body)
@@ -265,8 +278,8 @@ func TestConductorInviteAcceptFlow_HTTP(t *testing.T) {
 
 	inviteBody, _ := json.Marshal(map[string]string{
 		"cpf":   handlerConductorCPF,
-		"name":  "João",
-		"email": "joao@example.com",
+		"email": "condutor@example.com",
+		"name":  "Condutor Teste",
 	})
 	inviteReq := httptest.NewRequest(http.MethodPost, "/citizen/"+handlerOwnerCPF+"/vehicles/"+vehicle.ID.Hex()+"/conductors", bytes.NewReader(inviteBody))
 	inviteReq.Header.Set("Content-Type", "application/json")
@@ -345,8 +358,8 @@ func TestInviteVehicleConductor_DuplicateReturnsConflict(t *testing.T) {
 
 	inviteBody, _ := json.Marshal(map[string]string{
 		"cpf":   handlerConductorCPF,
-		"name":  "João",
-		"email": "joao@example.com",
+		"email": "condutor@example.com",
+		"name":  "Condutor Teste",
 	})
 	inviteURL := "/citizen/" + handlerOwnerCPF + "/vehicles/" + vehicle.ID.Hex() + "/conductors"
 
@@ -369,19 +382,20 @@ func TestUpdateVehicle_ConductorForbidden(t *testing.T) {
 	seedHandlerCatalog(t)
 
 	// Create as owner via service for setup speed
+	falseVal := false
 	created, err := services.VehicleServiceInstance.CreateVehicle(context.Background(), handlerOwnerCPF, &models.VehicleCreateRequest{
 		DisplayName: "Bike", BrandID: strPtr("brand_caloi"), ModelID: strPtr("model_e-vibe"),
 		Color: "Preto", SerialNumber: "SN", SerialNumberPhotoURL: "https://storage.googleapis.com/s.jpg", VehiclePhotoURL: "https://storage.googleapis.com/v.jpg",
-		SelfDeclaration: true,
+		HasInvoice: &falseVal, SelfDeclaration: true,
 	})
 	require.NoError(t, err)
 
 	link, err := services.VehicleConductorServiceInstance.InviteConductor(context.Background(), handlerOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: handlerConductorCPF, Email: "c@example.com",
+		CPF: handlerConductorCPF, Email: "condutor@example.com", Name: "Condutor",
 	})
 	require.NoError(t, err)
 	_, err = services.VehicleConductorServiceInstance.RespondInvitation(context.Background(), handlerConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
-		Status: models.ConductorStatusAccepted,
+		Status: models.InvitationResponseAccepted,
 	})
 	require.NoError(t, err)
 

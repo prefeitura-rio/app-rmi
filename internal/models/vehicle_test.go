@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func boolPtr(v bool) *bool { return &v }
+
 func TestIsValidVehicleType(t *testing.T) {
 	assert.True(t, IsValidVehicleType(VehicleTypeBicicletaEletrica))
 	assert.True(t, IsValidVehicleType(VehicleTypeAutopropelido))
@@ -47,7 +49,7 @@ func TestVehicleCreateRequest_Validate_CatalogFlow(t *testing.T) {
 		SerialNumber:         "SN-1",
 		SerialNumberPhotoURL: "https://storage.googleapis.com/serial.jpg",
 		VehiclePhotoURL:      "https://storage.googleapis.com/vehicle.jpg",
-		HasInvoice:           true,
+		HasInvoice:           boolPtr(true),
 		InvoicePhotoURL:      &invoiceURL,
 		SelfDeclaration:      true,
 	}
@@ -67,7 +69,7 @@ func TestVehicleCreateRequest_Validate_OtherFlow(t *testing.T) {
 		SerialNumber:         "XM-1",
 		SerialNumberPhotoURL: "https://storage.googleapis.com/serial.jpg",
 		VehiclePhotoURL:      "https://storage.googleapis.com/vehicle.jpg",
-		HasInvoice:           false,
+		HasInvoice:           boolPtr(false),
 		SelfDeclaration:      true,
 	}
 	assert.NoError(t, req.Validate())
@@ -85,7 +87,7 @@ func TestVehicleCreateRequest_Validate_HasInvoiceRequiresURL(t *testing.T) {
 		SerialNumber:         "SN-1",
 		SerialNumberPhotoURL: "https://storage.googleapis.com/s.jpg",
 		VehiclePhotoURL:      "https://storage.googleapis.com/v.jpg",
-		HasInvoice:           true,
+		HasInvoice:           boolPtr(true),
 		SelfDeclaration:      true,
 	}
 	err := req.Validate()
@@ -107,7 +109,7 @@ func TestVehicleCreateRequest_Validate_ClearsInvoiceWhenNoNF(t *testing.T) {
 		SerialNumber:         "SN-1",
 		SerialNumberPhotoURL: "https://storage.googleapis.com/s.jpg",
 		VehiclePhotoURL:      "https://storage.googleapis.com/v.jpg",
-		HasInvoice:           false,
+		HasInvoice:           boolPtr(false),
 		InvoicePhotoURL:      &junk,
 		InvoicePhotoFileName: &name,
 		InvoicePhotoFileSize: &size,
@@ -130,6 +132,7 @@ func TestVehicleCreateRequest_Validate_RejectsNonGCSPhotoURL(t *testing.T) {
 		SerialNumber:         "SN-1",
 		SerialNumberPhotoURL: "https://example.com/s.jpg",
 		VehiclePhotoURL:      "https://storage.googleapis.com/v.jpg",
+		HasInvoice:           boolPtr(false),
 		SelfDeclaration:      true,
 	}
 	err := req.Validate()
@@ -148,6 +151,7 @@ func TestVehicleCreateRequest_Validate_SelfDeclarationRequired(t *testing.T) {
 		SerialNumber:         "SN-1",
 		SerialNumberPhotoURL: "https://storage.googleapis.com/s.jpg",
 		VehiclePhotoURL:      "https://storage.googleapis.com/v.jpg",
+		HasInvoice:           boolPtr(false),
 		SelfDeclaration:      false,
 	}
 	err := req.Validate()
@@ -166,6 +170,7 @@ func TestVehicleCreateRequest_Validate_OtherFlowRequiresType(t *testing.T) {
 		SerialNumber:         "XM-1",
 		SerialNumberPhotoURL: "https://storage.googleapis.com/s.jpg",
 		VehiclePhotoURL:      "https://storage.googleapis.com/v.jpg",
+		HasInvoice:           boolPtr(false),
 		SelfDeclaration:      true,
 	}
 	err := req.Validate()
@@ -184,6 +189,7 @@ func TestVehicleCreateRequest_Validate_InvalidColor(t *testing.T) {
 		SerialNumber:         "SN-1",
 		SerialNumberPhotoURL: "https://storage.googleapis.com/s.jpg",
 		VehiclePhotoURL:      "https://storage.googleapis.com/v.jpg",
+		HasInvoice:           boolPtr(false),
 		SelfDeclaration:      true,
 	}
 	require.Error(t, req.Validate())
@@ -229,10 +235,16 @@ func TestVehicleUpdateRequest_Validate_InvoiceRules(t *testing.T) {
 }
 
 func TestRespondInvitationRequest_Validate(t *testing.T) {
-	assert.NoError(t, (&RespondInvitationRequest{Status: ConductorStatusAccepted}).Validate())
-	assert.NoError(t, (&RespondInvitationRequest{Status: ConductorStatusRejected}).Validate())
-	assert.Error(t, (&RespondInvitationRequest{Status: ConductorStatusPending}).Validate())
-	assert.Error(t, (&RespondInvitationRequest{Status: ConductorStatusRevoked}).Validate())
+	assert.NoError(t, (&RespondInvitationRequest{Status: InvitationResponseAccepted}).Validate())
+	assert.NoError(t, (&RespondInvitationRequest{Status: InvitationResponseRejected}).Validate())
+	assert.Error(t, (&RespondInvitationRequest{Status: InvitationResponseStatus(ConductorStatusPending)}).Validate())
+	assert.Error(t, (&RespondInvitationRequest{Status: InvitationResponseStatus(ConductorStatusRevoked)}).Validate())
+}
+
+func TestInviteConductorRequest_Validate(t *testing.T) {
+	assert.NoError(t, (&InviteConductorRequest{CPF: "x", Email: "a@b.co"}).Validate())
+	assert.Error(t, (&InviteConductorRequest{CPF: "x", Email: ""}).Validate())
+	assert.Error(t, (&InviteConductorRequest{CPF: "x", Email: "not-an-email"}).Validate())
 }
 
 func TestVehicleListItem_JSONSnakeCase(t *testing.T) {

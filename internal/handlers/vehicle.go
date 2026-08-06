@@ -5,9 +5,11 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
+	"go.uber.org/zap"
 )
 
 // GetVehicles godoc
@@ -54,7 +56,7 @@ func GetVehicles(c *gin.Context) {
 
 // GetVehicle godoc
 // @Summary Obter detalhe do veículo
-// @Description Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url e metadados de arquivos).
+// @Description Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url, metadados de arquivos e registration_number). owner_name/owner_phone/owner_email são enriquecidos ao vivo via RMI a partir de owner_cpf.
 // @Tags mobilidade
 // @Accept json
 // @Produce json
@@ -90,7 +92,7 @@ func GetVehicle(c *gin.Context) {
 
 // CreateVehicle godoc
 // @Summary Cadastrar veículo
-// @Description Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id) ou Outro (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é obrigatória.
+// @Description Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id) ou Outro (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é obrigatória. Contato do dono (nome/telefone/e-mail) é enriquecido ao vivo via RMI a partir do owner_cpf — não enviar owner_* no body. registration_number é gerado pelo backend (formato RJ-E-XXXXXX).
 // @Tags mobilidade
 // @Accept json
 // @Produce json
@@ -294,7 +296,7 @@ func RespondVehicleInvitation(c *gin.Context) {
 
 // GetVehicleConductors godoc
 // @Summary Listar condutores do veículo
-// @Description Lista vínculos pending e accepted (somente proprietário).
+// @Description Lista vínculos pending e accepted (somente proprietário). Pending devolve snapshot do convite; accepted enriquece nome/e-mail/celular ao vivo via RMI.
 // @Tags mobilidade
 // @Accept json
 // @Produce json
@@ -330,13 +332,13 @@ func GetVehicleConductors(c *gin.Context) {
 
 // InviteVehicleConductor godoc
 // @Summary Convidar condutor
-// @Description Cria vínculo pending e enfileira e-mail de convite (somente proprietário). Duplicata pending/accepted retorna 409.
+// @Description Cria vínculo pending e enfileira e-mail de convite via notify_email do body (somente proprietário). name/phone são hints opcionais enquanto pending. Duplicata pending/accepted retorna 409.
 // @Tags mobilidade
 // @Accept json
 // @Produce json
 // @Param cpf path string true "CPF do cidadão (11 dígitos)" minLength(11) maxLength(11)
 // @Param vehicle_id path string true "ID do veículo"
-// @Param body body models.InviteConductorRequest true "Dados do convidado"
+// @Param body body models.InviteConductorRequest true "CPF + e-mail do convidado (name/phone opcionais)"
 // @Security BearerAuth
 // @Success 201 {object} models.VehicleConductor "Convite criado"
 // @Failure 400 {object} ErrorResponse "Validação inválida"
@@ -421,6 +423,11 @@ func mapMobilidadeError(c *gin.Context, err error) {
 	case errors.Is(err, services.ErrMobilidadeNotImplemented):
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 	default:
+		logging.GetLogger().Error("mobilidade handler unexpected error",
+			zap.Error(err),
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.FullPath()),
+		)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal error"})
 	}
 }

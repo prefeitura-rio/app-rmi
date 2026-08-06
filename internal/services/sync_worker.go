@@ -10,6 +10,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -553,7 +554,7 @@ func (w *SyncWorker) handleMobilidadeInviteEmailJob(ctx context.Context, job *Sy
 			zap.Error(err),
 			zap.String("job_id", job.ID),
 			zap.String("conductor_id", payload.ConductorID),
-			zap.String("notify_email", payload.NotifyEmail))
+			zap.String("notify_email", utils.MaskEmail(payload.NotifyEmail)))
 		w.persistInviteEmailStatus(ctx, payload.ConductorID, models.InviteEmailStatusFailed, err.Error())
 		return err
 	}
@@ -562,7 +563,7 @@ func (w *SyncWorker) handleMobilidadeInviteEmailJob(ctx context.Context, job *Sy
 	w.logger.Info("mobilidade invite email sent",
 		zap.String("job_id", job.ID),
 		zap.String("conductor_id", payload.ConductorID),
-		zap.String("notify_email", payload.NotifyEmail))
+		zap.String("notify_email", utils.MaskEmail(payload.NotifyEmail)))
 	return nil
 }
 

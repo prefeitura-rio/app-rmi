@@ -196,7 +196,7 @@ func TestInviteConductor_EnqueuesSyncJobForEmail(t *testing.T) {
 	require.NoError(t, err)
 
 	link, err := conductorSvc.InviteConductor(ctx, mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Name: "João", Email: "form-email@example.com",
+		CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor",
 	})
 	require.NoError(t, err)
 
@@ -217,7 +217,7 @@ func TestInviteConductor_EnqueuesSyncJobForEmail(t *testing.T) {
 
 	payload, err := parseMobilidadeInviteEmailPayload(job.Data)
 	require.NoError(t, err)
-	assert.Equal(t, "form-email@example.com", payload.NotifyEmail)
+	assert.Equal(t, "joao@example.com", payload.NotifyEmail)
 	assert.Equal(t, link.ID.Hex(), payload.ConductorID)
 	assert.Equal(t, created.ID.Hex(), payload.VehicleID)
 	assert.Equal(t, "Ana Souza", payload.OwnerName)

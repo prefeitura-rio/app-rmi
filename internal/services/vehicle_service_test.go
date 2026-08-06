@@ -18,6 +18,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+func boolPtr(v bool) *bool { return &v }
+
 const (
 	mobilidadeOwnerCPF     = "03561350712"
 	mobilidadeConductorCPF = "45049725810"
@@ -41,7 +43,7 @@ func setupMobilidadeVehicleServiceTest(t *testing.T) (*VehicleService, *VehicleC
 	require.NotNil(t, db, "MongoDB must be initialized by TestMain")
 
 	vehicleSvc := NewVehicleService(db, NewDataManager(config.Redis, db, logging.GetLogger()), logging.GetLogger())
-	conductorSvc := NewVehicleConductorService(db, logging.GetLogger())
+	conductorSvc := NewVehicleConductorService(db, NewDataManager(config.Redis, db, logging.GetLogger()), logging.GetLogger())
 	catalogSvc := NewMobilidadeCatalogService(db, logging.GetLogger())
 
 	cleanup := func() {
@@ -49,12 +51,23 @@ func setupMobilidadeVehicleServiceTest(t *testing.T) (*VehicleService, *VehicleC
 		_ = db.Collection(config.AppConfig.MobilidadeConductorCollection).Drop(ctx)
 		_ = db.Collection(config.AppConfig.MobilidadeBrandCollection).Drop(ctx)
 		_ = db.Collection(config.AppConfig.MobilidadeModelCollection).Drop(ctx)
+		_ = db.Collection("mobilidade_registration_counters").Drop(ctx)
 	}
 	cleanup()
 
-	// Seed owner citizens so CreateVehicle can snapshot owner_name for invitation cards.
+	// Seed citizens so GET enriches owner/conductor contact live from RMI.
 	seedMobilidadeCitizen(t, mobilidadeOwnerCPF, "Ana Souza")
+	seedMobilidadeCitizenEmail(t, mobilidadeOwnerCPF, "ana@example.com")
 	seedMobilidadeCitizen(t, mobilidadeOtherCPF, "Outro Owner")
+	seedMobilidadeCitizen(t, mobilidadeConductorCPF, "João Condutor")
+	seedMobilidadeCitizenEmail(t, mobilidadeConductorCPF, "joao@example.com")
+	// Clear leftover self-declared overlays for these CPFs so citizen fields win by default.
+	_, _ = db.Collection(config.AppConfig.SelfDeclaredCollection).DeleteMany(ctx, bson.M{
+		"cpf": bson.M{"$in": []string{mobilidadeOwnerCPF, mobilidadeOtherCPF, mobilidadeConductorCPF}},
+	})
+	invalidateMobilidadeContactCache(t, mobilidadeOwnerCPF)
+	invalidateMobilidadeContactCache(t, mobilidadeOtherCPF)
+	invalidateMobilidadeContactCache(t, mobilidadeConductorCPF)
 	ensureMobilidadeConductorUniqueIndex(t)
 
 	return vehicleSvc, conductorSvc, catalogSvc, cleanup
@@ -102,6 +115,7 @@ func ensureMobilidadeConductorUniqueIndex(t *testing.T) {
 func seedMobilidadeCitizen(t *testing.T, cpf, name string) {
 	t.Helper()
 	ctx := context.Background()
+	invalidateMobilidadeContactCache(t, cpf)
 	coll := config.MongoDB.Collection(config.AppConfig.CitizenCollection)
 	_, _ = coll.DeleteMany(ctx, bson.M{"cpf": cpf})
 	_, err := coll.InsertOne(ctx, bson.M{
@@ -112,6 +126,59 @@ func seedMobilidadeCitizen(t *testing.T, cpf, name string) {
 	require.NoError(t, err)
 }
 
+func seedMobilidadeCitizenEmail(t *testing.T, cpf, email string) {
+	t.Helper()
+	ctx := context.Background()
+	invalidateMobilidadeContactCache(t, cpf)
+	coll := config.MongoDB.Collection(config.AppConfig.CitizenCollection)
+	_, err := coll.UpdateOne(ctx, bson.M{"cpf": cpf}, bson.M{
+		"$set": bson.M{
+			"email": bson.M{
+				"principal": bson.M{"valor": email},
+			},
+		},
+	})
+	require.NoError(t, err)
+}
+
+func seedMobilidadeSelfDeclaredContact(t *testing.T, cpf, displayName, email, ddi, ddd, phone string) {
+	t.Helper()
+	ctx := context.Background()
+	invalidateMobilidadeContactCache(t, cpf)
+	coll := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection)
+	_, _ = coll.DeleteMany(ctx, bson.M{"cpf": cpf})
+	_, err := coll.InsertOne(ctx, bson.M{
+		"cpf":           cpf,
+		"nome_exibicao": displayName,
+		"email": bson.M{
+			"principal": bson.M{"valor": email},
+		},
+		"telefone": bson.M{
+			"principal": bson.M{
+				"ddi":   ddi,
+				"ddd":   ddd,
+				"valor": phone,
+			},
+		},
+		"updated_at": time.Now().UTC(),
+	})
+	require.NoError(t, err)
+}
+
+func invalidateMobilidadeContactCache(t *testing.T, cpf string) {
+	t.Helper()
+	if config.Redis == nil {
+		return
+	}
+	ctx := context.Background()
+	_ = config.Redis.Del(ctx,
+		"citizen:cache:"+cpf,
+		"citizen:write:"+cpf,
+		"self_declared:cache:"+cpf,
+		"self_declared:write:"+cpf,
+	).Err()
+}
+
 func seedMobilidadeCatalog(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
@@ -120,7 +187,7 @@ func seedMobilidadeCatalog(t *testing.T) {
 
 	_, err := brands.InsertMany(ctx, []interface{}{
 		bson.M{"_id": "brand_caloi", "name": "Caloi", "is_other": false},
-		bson.M{"_id": "brand_other", "name": "Outro", "is_other": true},
+		bson.M{"_id": "brand_outro", "name": "Outro", "is_other": true},
 	})
 	require.NoError(t, err)
 
@@ -134,7 +201,7 @@ func seedMobilidadeCatalog(t *testing.T) {
 			"vehicle_type": "bicicleta_eletrica", "is_other": true,
 		},
 		bson.M{
-			"_id": "model_other", "brand_id": "brand_other", "name": "Outro",
+			"_id": "model_outro", "brand_id": "brand_outro", "name": "Outro",
 			"vehicle_type": "autopropelido", "is_other": true,
 		},
 	})
@@ -153,7 +220,7 @@ func catalogCreateRequest() *models.VehicleCreateRequest {
 		SerialNumber:         "SN-ABC-123456",
 		SerialNumberPhotoURL: "https://storage.googleapis.com/serial.jpg",
 		VehiclePhotoURL:      "https://storage.googleapis.com/vehicle.jpg",
-		HasInvoice:           true,
+		HasInvoice:           boolPtr(true),
 		InvoicePhotoURL:      &invoiceURL,
 		SelfDeclaration:      true,
 	}
@@ -172,7 +239,7 @@ func otherCreateRequest() *models.VehicleCreateRequest {
 		SerialNumber:         "XM-999888",
 		SerialNumberPhotoURL: "https://storage.googleapis.com/serial.jpg",
 		VehiclePhotoURL:      "https://storage.googleapis.com/scooter.jpg",
-		HasInvoice:           false,
+		HasInvoice:           boolPtr(false),
 		SelfDeclaration:      true,
 	}
 }
@@ -238,6 +305,19 @@ func TestVehicleService_CreateVehicle_CatalogFlow(t *testing.T) {
 	require.NotNil(t, created.InvoicePhotoURL)
 	assert.Equal(t, "https://storage.googleapis.com/bucket/nf.pdf", *created.InvoicePhotoURL)
 	assert.False(t, created.ID.IsZero())
+	assert.Regexp(t, `^RJ-E-\d{6}$`, created.RegistrationNumber)
+	assert.Equal(t, "Ana Souza", created.OwnerName)
+	assert.Equal(t, "ana@example.com", created.OwnerEmail)
+
+	// registration_number and owner_* are not frozen on the document for UI — owner contact is bson:"-".
+	var stored bson.M
+	err = config.MongoDB.Collection(config.AppConfig.MobilidadeVehicleCollection).FindOne(
+		context.Background(), bson.M{"_id": created.ID},
+	).Decode(&stored)
+	require.NoError(t, err)
+	assert.Equal(t, created.RegistrationNumber, stored["registration_number"])
+	_, hasOwnerName := stored["owner_name"]
+	assert.False(t, hasOwnerName)
 }
 
 func TestVehicleService_CreateVehicle_OtherFlow(t *testing.T) {
@@ -339,8 +419,8 @@ func TestVehicleService_CreateVehicle_OtherCatalogRequiresFreeText(t *testing.T)
 	defer cleanup()
 	seedMobilidadeCatalog(t)
 
-	brandID := "brand_other"
-	modelID := "model_other"
+	brandID := "brand_outro"
+	modelID := "model_outro"
 	req := &models.VehicleCreateRequest{
 		DisplayName:          "Custom",
 		BrandID:              &brandID,
@@ -349,7 +429,7 @@ func TestVehicleService_CreateVehicle_OtherCatalogRequiresFreeText(t *testing.T)
 		SerialNumber:         "SN-OTHER",
 		SerialNumberPhotoURL: "https://storage.googleapis.com/serial.jpg",
 		VehiclePhotoURL:      "https://storage.googleapis.com/vehicle.jpg",
-		HasInvoice:           false,
+		HasInvoice:           boolPtr(false),
 		SelfDeclaration:      true,
 	}
 	_, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, req)
@@ -376,15 +456,13 @@ func TestVehicleConductorService_RespondInvitation_RejectsAfterRevoke(t *testing
 
 	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
-	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "c@example.com",
-	})
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 
 	require.NoError(t, conductorSvc.RemoveConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), link.ID.Hex()))
 
 	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
-		Status: models.ConductorStatusAccepted,
+		Status: models.InvitationResponseAccepted,
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
@@ -397,15 +475,13 @@ func TestVehicleConductorService_RespondInvitation_RejectsDeletedVehicle(t *test
 
 	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
-	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "c@example.com",
-	})
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 
 	require.NoError(t, vehicleSvc.DeleteVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex()))
 
 	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
-		Status: models.ConductorStatusAccepted,
+		Status: models.InvitationResponseAccepted,
 	})
 	require.Error(t, err)
 }
@@ -451,11 +527,7 @@ func TestVehicleService_ListVehicles_OwnerAndAcceptedConductor(t *testing.T) {
 	shared, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOtherCPF, otherCreateRequest())
 	require.NoError(t, err)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOtherCPF, shared.ID.Hex(), &models.InviteConductorRequest{
-		CPF:   mobilidadeOwnerCPF,
-		Name:  "Owner as guest",
-		Email: "guest@example.com",
-	})
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOtherCPF, shared.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeOwnerCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 
 	invites, err := conductorSvc.ListInvitations(context.Background(), mobilidadeOwnerCPF)
@@ -463,7 +535,7 @@ func TestVehicleService_ListVehicles_OwnerAndAcceptedConductor(t *testing.T) {
 	require.Len(t, invites.Data, 1)
 
 	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeOwnerCPF, invites.Data[0].ID, &models.RespondInvitationRequest{
-		Status: models.ConductorStatusAccepted,
+		Status: models.InvitationResponseAccepted,
 	})
 	require.NoError(t, err)
 
@@ -487,10 +559,7 @@ func TestVehicleService_ListVehicles_ExcludesPendingOnly(t *testing.T) {
 	shared, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOtherCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOtherCPF, shared.ID.Hex(), &models.InviteConductorRequest{
-		CPF:   mobilidadeOwnerCPF,
-		Email: "pending@example.com",
-	})
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOtherCPF, shared.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeOwnerCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 
 	list, err := vehicleSvc.ListVehicles(context.Background(), mobilidadeOwnerCPF, 1, 10)
@@ -511,14 +580,12 @@ func TestVehicleService_GetVehicle_OwnerAndConductor(t *testing.T) {
 	assert.Equal(t, models.VehicleRoleOwner, detail.Role)
 	assert.Equal(t, "SN-ABC-123456", detail.SerialNumber)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "cond@example.com", Name: "João",
-	})
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 	invites, err := conductorSvc.ListInvitations(context.Background(), mobilidadeConductorCPF)
 	require.NoError(t, err)
 	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, invites.Data[0].ID, &models.RespondInvitationRequest{
-		Status: models.ConductorStatusAccepted,
+		Status: models.InvitationResponseAccepted,
 	})
 	require.NoError(t, err)
 
@@ -559,13 +626,11 @@ func TestVehicleService_UpdateVehicle_OwnerOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Bike nova", updated.DisplayName)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "c@example.com",
-	})
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 	invites, _ := conductorSvc.ListInvitations(context.Background(), mobilidadeConductorCPF)
 	_, _ = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, invites.Data[0].ID, &models.RespondInvitationRequest{
-		Status: models.ConductorStatusAccepted,
+		Status: models.InvitationResponseAccepted,
 	})
 
 	_, err = vehicleSvc.UpdateVehicle(context.Background(), mobilidadeConductorCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
@@ -583,12 +648,10 @@ func TestVehicleService_DeleteVehicle_CascadesConductors(t *testing.T) {
 	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "c@example.com",
-	})
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
-		Status: models.ConductorStatusAccepted,
+		Status: models.InvitationResponseAccepted,
 	})
 	require.NoError(t, err)
 
@@ -619,22 +682,75 @@ func TestVehicleConductorService_InviteRejectsSelfAndDuplicate(t *testing.T) {
 	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeOwnerCPF, Email: "self@example.com",
-	})
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeOwnerCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João",
-	})
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrMobilidadeConflict)
+}
+
+func TestVehicleConductorService_InviteNormalizesFormattedCPF(t *testing.T) {
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	// Formatted own CPF must still be rejected as self-invite.
 	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "joao2@example.com",
+		CPF: "035.613.507-12", Email: "self@example.com",
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
+	assert.Contains(t, err.Error(), "cannot invite vehicle owner")
+
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: "450.497.258-10", Email: "joao@example.com", Name: "João",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, mobilidadeConductorCPF, link.ConductorCPF)
+
+	// Digits-only duplicate of the formatted invite must conflict.
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "outro@example.com",
 	})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrMobilidadeConflict)
+
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
+		Status: models.InvitationResponseAccepted,
+	})
+	require.NoError(t, err)
+}
+
+func TestVehicleService_UpdateVehicle_ClearsStaleFileMetadataOnURLChange(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	req := catalogCreateRequest()
+	name := "serial-old.jpg"
+	size := int64(1234)
+	req.SerialNumberPhotoFileName = &name
+	req.SerialNumberPhotoFileSize = &size
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, req)
+	require.NoError(t, err)
+	require.NotNil(t, created.SerialNumberPhotoFileName)
+
+	newURL := "https://storage.googleapis.com/bucket/serial-new.jpg"
+	updated, err := vehicleSvc.UpdateVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.VehicleUpdateRequest{
+		SerialNumberPhotoURL: &newURL,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, newURL, updated.SerialNumberPhotoURL)
+	assert.Nil(t, updated.SerialNumberPhotoFileName)
+	assert.Nil(t, updated.SerialNumberPhotoFileSize)
 }
 
 func TestMobilidadeConductorUniqueIndex_RejectsDuplicateActiveLink(t *testing.T) {
@@ -689,9 +805,7 @@ func TestInviteConductor_ConcurrentDuplicateHitsUniqueIndex(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, inviteErr := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-				CPF: mobilidadeConductorCPF, Email: "race@example.com", Name: "Race",
-			})
+			_, inviteErr := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 			errs <- inviteErr
 		}()
 	}
@@ -733,9 +847,7 @@ func TestVehicleConductorService_ListInvitations_IncludesVehicleSummary(t *testi
 	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João",
-	})
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 
 	invites, err := conductorSvc.ListInvitations(context.Background(), mobilidadeConductorCPF)
@@ -757,24 +869,20 @@ func TestVehicleConductorService_RespondInvitation_AcceptAndReject(t *testing.T)
 	v2, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, otherCreateRequest())
 	require.NoError(t, err)
 
-	link1, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, v1.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "a@example.com",
-	})
+	link1, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, v1.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
-	link2, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, v2.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "a@example.com",
-	})
+	link2, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, v2.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 
 	accepted, err := conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link1.ID.Hex(), &models.RespondInvitationRequest{
-		Status: models.ConductorStatusAccepted,
+		Status: models.InvitationResponseAccepted,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, models.ConductorStatusAccepted, accepted.Status)
 	require.NotNil(t, accepted.RespondedAt)
 
 	rejected, err := conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link2.ID.Hex(), &models.RespondInvitationRequest{
-		Status: models.ConductorStatusRejected,
+		Status: models.InvitationResponseRejected,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, models.ConductorStatusRejected, rejected.Status)
@@ -791,9 +899,7 @@ func TestVehicleConductorService_ListConductors_OwnerOnly(t *testing.T) {
 
 	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
-	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "c@example.com",
-	})
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 
 	list, err := conductorSvc.ListConductors(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
@@ -813,12 +919,10 @@ func TestVehicleConductorService_RemoveConductor_OwnerAndSelfLeave(t *testing.T)
 	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
 	require.NoError(t, err)
 
-	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "c@example.com",
-	})
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
-		Status: models.ConductorStatusAccepted,
+		Status: models.InvitationResponseAccepted,
 	})
 	require.NoError(t, err)
 
@@ -830,15 +934,13 @@ func TestVehicleConductorService_RemoveConductor_OwnerAndSelfLeave(t *testing.T)
 	assert.Equal(t, 0, list.Pagination.Total)
 
 	// Re-invite and owner revokes
-	link2, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "c@example.com",
-	})
+	link2, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
 	err = conductorSvc.RemoveConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), link2.ID.Hex())
 	require.NoError(t, err)
 }
 
-func TestVehicleConductorService_InvitePersistsNotifyEmail(t *testing.T) {
+func TestVehicleConductorService_InvitePersistsFormSnapshot(t *testing.T) {
 	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
 	seedMobilidadeCatalog(t)
@@ -847,21 +949,58 @@ func TestVehicleConductorService_InvitePersistsNotifyEmail(t *testing.T) {
 	require.NoError(t, err)
 
 	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Name: "João", Email: "form-email@example.com",
+		CPF: mobilidadeConductorCPF, Email: "convite@example.com", Name: "Nome Digitado", Phone: "21999990000",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "form-email@example.com", link.NotifyEmail)
+	assert.Equal(t, "Nome Digitado", link.ConductorName)
+	assert.Equal(t, "convite@example.com", link.NotifyEmail)
+	assert.Equal(t, "21999990000", link.Phone)
 	assert.Equal(t, models.ConductorStatusPending, link.Status)
 	assert.Equal(t, mobilidadeOwnerCPF, link.InvitedByCPF)
 	assert.False(t, link.ID.IsZero())
-	assert.NotEqual(t, primitive.NilObjectID, link.VehicleID)
 
-	// Document must exist immediately (no Redis write-buffer)
-	var stored models.VehicleConductor
+	var stored bson.M
 	err = config.MongoDB.Collection(config.AppConfig.MobilidadeConductorCollection).FindOne(
 		context.Background(), bson.M{"_id": link.ID},
 	).Decode(&stored)
 	require.NoError(t, err)
-	assert.Equal(t, "form-email@example.com", stored.NotifyEmail)
-	assert.WithinDuration(t, time.Now(), stored.CreatedAt, 5*time.Second)
+	assert.Equal(t, mobilidadeConductorCPF, stored["conductor_cpf"])
+	assert.Equal(t, "Nome Digitado", stored["conductor_name"])
+	assert.Equal(t, "convite@example.com", stored["notify_email"])
+	assert.Equal(t, "21999990000", stored["phone"])
+
+	// Pending list uses invite snapshot, not RMI profile.
+	list, err := conductorSvc.ListConductors(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
+	require.NoError(t, err)
+	require.Len(t, list.Data, 1)
+	assert.Equal(t, "Nome Digitado", list.Data[0].ConductorName)
+	assert.Equal(t, "convite@example.com", list.Data[0].NotifyEmail)
+}
+
+func TestListConductors_AcceptedEnrichesLiveRMI(t *testing.T) {
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "convite@example.com", Name: "Nome Digitado",
+	})
+	require.NoError(t, err)
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
+		Status: models.InvitationResponseAccepted,
+	})
+	require.NoError(t, err)
+
+	seedMobilidadeSelfDeclaredContact(t, mobilidadeConductorCPF, "João Atualizado", "joao.novo@example.com", "+55", "21", "988887777")
+
+	list, err := conductorSvc.ListConductors(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
+	require.NoError(t, err)
+	require.Len(t, list.Data, 1)
+	assert.Equal(t, "João Atualizado", list.Data[0].ConductorName)
+	assert.Equal(t, "joao.novo@example.com", list.Data[0].NotifyEmail)
+	assert.NotEmpty(t, list.Data[0].Phone)
+	assert.Contains(t, list.Data[0].Phone, "988887777")
 }

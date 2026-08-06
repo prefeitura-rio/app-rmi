@@ -16,6 +16,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 )
 
@@ -186,6 +187,7 @@ func (s *VehicleService) GetVehicle(ctx context.Context, cpf, vehicleID string) 
 }
 
 // CreateVehicle registers a new vehicle owned by cpf.
+// Owner contact is not persisted; GET/201 responses enrich name/phone/email live from RMI.
 func (s *VehicleService) CreateVehicle(ctx context.Context, cpf string, req *models.VehicleCreateRequest) (*models.VehicleDetail, error) {
 	if err := req.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrMobilidadeInvalidInput, err.Error())
@@ -199,14 +201,15 @@ func (s *VehicleService) CreateVehicle(ctx context.Context, cpf string, req *mod
 		return nil, err
 	}
 
-	ownerName, ownerPhone, ownerEmail := s.loadOwnerSnapshot(ctx, cpf)
+	regNumber, err := s.nextRegistrationNumber(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC()
 	vehicle := models.Vehicle{
 		ID:                        primitive.NewObjectID(),
 		OwnerCPF:                  cpf,
-		OwnerName:                 ownerName,
-		OwnerPhone:                ownerPhone,
-		OwnerEmail:                ownerEmail,
 		DisplayName:               req.DisplayName,
 		BrandID:                   brandID,
 		BrandOther:                brandOther,
@@ -215,10 +218,11 @@ func (s *VehicleService) CreateVehicle(ctx context.Context, cpf string, req *mod
 		VehicleType:               vehicleType,
 		Color:                     req.Color,
 		SerialNumber:              req.SerialNumber,
+		RegistrationNumber:        regNumber,
 		SerialNumberPhotoURL:      req.SerialNumberPhotoURL,
 		VehiclePhotoURL:           req.VehiclePhotoURL,
 		InvoicePhotoURL:           req.InvoicePhotoURL,
-		HasInvoice:                req.HasInvoice,
+		HasInvoice:                req.HasInvoiceValue(),
 		SelfDeclaration:           true,
 		SerialNumberPhotoFileName: req.SerialNumberPhotoFileName,
 		SerialNumberPhotoFileSize: req.SerialNumberPhotoFileSize,
@@ -230,9 +234,22 @@ func (s *VehicleService) CreateVehicle(ctx context.Context, cpf string, req *mod
 		UpdatedAt:                 now,
 	}
 
-	if _, err := s.vehicles().InsertOne(ctx, vehicle); err != nil {
-		return nil, fmt.Errorf("insert vehicle: %w", err)
+	const maxInsertAttempts = 3
+	for attempt := 1; attempt <= maxInsertAttempts; attempt++ {
+		if _, err = s.vehicles().InsertOne(ctx, vehicle); err == nil {
+			break
+		}
+		if !mongo.IsDuplicateKeyError(err) || attempt == maxInsertAttempts {
+			return nil, fmt.Errorf("insert vehicle: %w", err)
+		}
+		regNumber, allocErr := s.nextRegistrationNumber(ctx)
+		if allocErr != nil {
+			return nil, allocErr
+		}
+		vehicle.RegistrationNumber = regNumber
+		vehicle.ID = primitive.NewObjectID()
 	}
+	s.enrichOwnerFields(ctx, &vehicle)
 	return &models.VehicleDetail{Vehicle: vehicle, Role: models.VehicleRoleOwner}, nil
 }
 
@@ -261,21 +278,50 @@ func (s *VehicleService) UpdateVehicle(ctx context.Context, cpf, vehicleID strin
 	}
 	if req.SerialNumberPhotoURL != nil {
 		update["serial_number_photo_url"] = *req.SerialNumberPhotoURL
+		// URL change without metadata would leave stale labels — clear unless replaced below.
+		if req.SerialNumberPhotoFileName == nil {
+			update["serial_number_photo_file_name"] = nil
+		}
+		if req.SerialNumberPhotoFileSize == nil {
+			update["serial_number_photo_file_size"] = nil
+		}
 	}
 	if req.VehiclePhotoURL != nil {
 		update["vehicle_photo_url"] = *req.VehiclePhotoURL
+		if req.VehiclePhotoFileName == nil {
+			update["vehicle_photo_file_name"] = nil
+		}
+		if req.VehiclePhotoFileSize == nil {
+			update["vehicle_photo_file_size"] = nil
+		}
 	}
 	if req.SerialNumberPhotoFileName != nil {
-		update["serial_number_photo_file_name"] = *req.SerialNumberPhotoFileName
+		if strings.TrimSpace(*req.SerialNumberPhotoFileName) == "" {
+			update["serial_number_photo_file_name"] = nil
+		} else {
+			update["serial_number_photo_file_name"] = *req.SerialNumberPhotoFileName
+		}
 	}
 	if req.SerialNumberPhotoFileSize != nil {
-		update["serial_number_photo_file_size"] = *req.SerialNumberPhotoFileSize
+		if *req.SerialNumberPhotoFileSize <= 0 {
+			update["serial_number_photo_file_size"] = nil
+		} else {
+			update["serial_number_photo_file_size"] = *req.SerialNumberPhotoFileSize
+		}
 	}
 	if req.VehiclePhotoFileName != nil {
-		update["vehicle_photo_file_name"] = *req.VehiclePhotoFileName
+		if strings.TrimSpace(*req.VehiclePhotoFileName) == "" {
+			update["vehicle_photo_file_name"] = nil
+		} else {
+			update["vehicle_photo_file_name"] = *req.VehiclePhotoFileName
+		}
 	}
 	if req.VehiclePhotoFileSize != nil {
-		update["vehicle_photo_file_size"] = *req.VehiclePhotoFileSize
+		if *req.VehiclePhotoFileSize <= 0 {
+			update["vehicle_photo_file_size"] = nil
+		} else {
+			update["vehicle_photo_file_size"] = *req.VehiclePhotoFileSize
+		}
 	}
 
 	hasInvoice := v.HasInvoice
@@ -290,12 +336,26 @@ func (s *VehicleService) UpdateVehicle(ctx context.Context, cpf, vehicleID strin
 	} else {
 		if req.InvoicePhotoURL != nil {
 			update["invoice_photo_url"] = *req.InvoicePhotoURL
+			if req.InvoicePhotoFileName == nil {
+				update["invoice_photo_file_name"] = nil
+			}
+			if req.InvoicePhotoFileSize == nil {
+				update["invoice_photo_file_size"] = nil
+			}
 		}
 		if req.InvoicePhotoFileName != nil {
-			update["invoice_photo_file_name"] = *req.InvoicePhotoFileName
+			if strings.TrimSpace(*req.InvoicePhotoFileName) == "" {
+				update["invoice_photo_file_name"] = nil
+			} else {
+				update["invoice_photo_file_name"] = *req.InvoicePhotoFileName
+			}
 		}
 		if req.InvoicePhotoFileSize != nil {
-			update["invoice_photo_file_size"] = *req.InvoicePhotoFileSize
+			if *req.InvoicePhotoFileSize <= 0 {
+				update["invoice_photo_file_size"] = nil
+			} else {
+				update["invoice_photo_file_size"] = *req.InvoicePhotoFileSize
+			}
 		}
 	}
 
@@ -601,22 +661,29 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 }
 
 func (s *VehicleService) loadOwnerSnapshot(ctx context.Context, cpf string) (name, phone, email string) {
+	return loadCitizenContactProfile(ctx, s.database, s.dataManager, s.logger, cpf)
+}
+
+// loadCitizenContactProfile resolves name/phone/email from citizen + self-declared overlay.
+func loadCitizenContactProfile(ctx context.Context, db *mongo.Database, dm *DataManager, logger *logging.SafeLogger, cpf string) (name, phone, email string) {
 	const maxAttempts = 3
 	var citizen models.Citizen
 	var err error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		if s.dataManager != nil {
-			err = s.dataManager.Read(ctx, cpf, config.AppConfig.CitizenCollection, "citizen", &citizen)
+		if dm != nil {
+			err = dm.Read(ctx, cpf, config.AppConfig.CitizenCollection, "citizen", &citizen)
+		} else if db != nil {
+			err = db.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
 		} else {
-			err = s.database.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
+			return "", "", ""
 		}
 		if err == nil {
 			break
 		}
-		if s.logger != nil {
-			s.logger.Warn("mobilidade owner snapshot miss",
-				zap.String("cpf", cpf),
+		if logger != nil {
+			logger.Warn("mobilidade citizen contact profile miss",
+				zap.String("cpf", utils.MaskCPF(cpf)),
 				zap.Int("attempt", attempt),
 				zap.Error(err),
 			)
@@ -640,13 +707,12 @@ func (s *VehicleService) loadOwnerSnapshot(ctx context.Context, cpf string) (nam
 		email = *citizen.Email.Principal.Valor
 	}
 
-	// Overlay self-declared display name / phone / email when present.
 	var sd models.SelfDeclaredData
-	sdErr := error(nil)
-	if s.dataManager != nil {
-		sdErr = s.dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared", &sd)
-	} else {
-		sdErr = s.database.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&sd)
+	var sdErr error
+	if dm != nil {
+		sdErr = dm.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared", &sd)
+	} else if db != nil {
+		sdErr = db.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&sd)
 	}
 	if sdErr == nil {
 		if sd.NomeExibicao != nil && *sd.NomeExibicao != "" {
@@ -680,56 +746,50 @@ func formatTelefonePrincipal(tel *models.Telefone) string {
 }
 
 func (s *VehicleService) enrichOwnerFields(ctx context.Context, v *models.Vehicle) {
-	if v.OwnerName != "" && v.OwnerPhone != "" && v.OwnerEmail != "" {
+	if v == nil || v.OwnerCPF == "" {
 		return
 	}
 	name, phone, email := s.loadOwnerSnapshot(ctx, v.OwnerCPF)
-	changed := false
-	if v.OwnerName == "" && name != "" {
-		v.OwnerName = name
-		changed = true
+	v.OwnerName = name
+	v.OwnerPhone = phone
+	v.OwnerEmail = email
+}
+
+// nextRegistrationNumber allocates a short unique wallet id (format RJ-E-XXXXXX).
+func (s *VehicleService) nextRegistrationNumber(ctx context.Context) (string, error) {
+	counters := s.database.Collection("mobilidade_registration_counters")
+	opts := options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After)
+	var result struct {
+		Seq int64 `bson:"seq"`
 	}
-	if v.OwnerPhone == "" && phone != "" {
-		v.OwnerPhone = phone
-		changed = true
+	err := counters.FindOneAndUpdate(
+		ctx,
+		bson.M{"_id": "vehicle"},
+		bson.M{"$inc": bson.M{"seq": 1}},
+		opts,
+	).Decode(&result)
+	if err != nil {
+		return "", fmt.Errorf("allocate registration_number: %w", err)
 	}
-	if v.OwnerEmail == "" && email != "" {
-		v.OwnerEmail = email
-		changed = true
+	// Prefer RJ-E-XXXXXX (6 digits); allow growth past 999999 without truncating uniqueness.
+	if result.Seq > 999999 {
+		return fmt.Sprintf("RJ-E-%d", result.Seq), nil
 	}
-	if changed {
-		update := bson.M{"updated_at": time.Now().UTC()}
-		if v.OwnerName != "" {
-			update["owner_name"] = v.OwnerName
-		}
-		if v.OwnerPhone != "" {
-			update["owner_phone"] = v.OwnerPhone
-		}
-		if v.OwnerEmail != "" {
-			update["owner_email"] = v.OwnerEmail
-		}
-		if _, err := s.vehicles().UpdateOne(ctx, bson.M{"_id": v.ID}, bson.M{"$set": update}); err != nil {
-			if s.logger != nil {
-				s.logger.Warn("mobilidade owner backfill failed",
-					zap.String("vehicle_id", v.ID.Hex()),
-					zap.Error(err),
-				)
-			}
-		}
-	}
+	return fmt.Sprintf("RJ-E-%06d", result.Seq), nil
 }
 
 func toListItem(v models.Vehicle, role models.VehicleRole) models.VehicleListItem {
 	return models.VehicleListItem{
-		ID:              v.ID.Hex(),
-		DisplayName:     v.DisplayName,
-		BrandID:         v.BrandID,
-		BrandOther:      v.BrandOther,
-		ModelID:         v.ModelID,
-		ModelOther:      v.ModelOther,
-		VehicleType:     v.VehicleType,
-		Color:           v.Color,
-		VehiclePhotoURL: v.VehiclePhotoURL,
-		Role:            role,
+		ID:                 v.ID.Hex(),
+		DisplayName:        v.DisplayName,
+		RegistrationNumber: v.RegistrationNumber,
+		BrandID:            v.BrandID,
+		BrandOther:         v.BrandOther,
+		ModelID:            v.ModelID,
+		ModelOther:         v.ModelOther,
+		VehicleType:        v.VehicleType,
+		Color:              v.Color,
+		VehiclePhotoURL:    v.VehiclePhotoURL,
+		Role:               role,
 	}
 }

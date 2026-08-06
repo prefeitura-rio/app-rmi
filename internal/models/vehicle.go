@@ -97,29 +97,52 @@ func IsAllowedGCSURL(rawURL string) bool {
 	return false
 }
 
+// Stable catalog sentinel IDs (seeded in every environment; not present in the CSV).
+const (
+	VehicleBrandOutroID = "brand_outro"
+	VehicleModelOutroID = "model_outro"
+)
+
 // VehicleBrand is a seeded catalog brand (Marca).
 type VehicleBrand struct {
-	ID      string `bson:"_id" json:"id"`
-	Name    string `bson:"name" json:"name"`
-	IsOther bool   `bson:"is_other" json:"is_other"`
+	ID      string `bson:"_id" json:"id" example:"brand_caloi"`
+	Name    string `bson:"name" json:"name" example:"Caloi"`
+	IsOther bool   `bson:"is_other" json:"is_other" example:"false"`
 }
 
 // VehicleModel is a seeded catalog model belonging to a brand.
 type VehicleModel struct {
-	ID          string      `bson:"_id" json:"id"`
-	BrandID     string      `bson:"brand_id" json:"brand_id"`
-	Name        string      `bson:"name" json:"name"`
+	ID          string      `bson:"_id" json:"id" example:"model_e-vibe"`
+	BrandID     string      `bson:"brand_id" json:"brand_id" example:"brand_caloi"`
+	Name        string      `bson:"name" json:"name" example:"E-Vibe"`
 	VehicleType VehicleType `bson:"vehicle_type" json:"vehicle_type"`
-	IsOther     bool        `bson:"is_other" json:"is_other"`
+	IsOther     bool        `bson:"is_other" json:"is_other" example:"false"`
+}
+
+// VehicleBrandsResponse wraps the brands catalog for Orval-typed clients.
+type VehicleBrandsResponse struct {
+	Data []VehicleBrand `json:"data"`
+}
+
+// VehicleModelsResponse wraps the models catalog for Orval-typed clients.
+type VehicleModelsResponse struct {
+	Data []VehicleModel `json:"data"`
+}
+
+// VehicleColorsResponse wraps the fixed color list for Orval-typed clients.
+type VehicleColorsResponse struct {
+	Data []string `json:"data" example:"Amarelo,Azul,Preto"`
 }
 
 // Vehicle is the persisted Mobilidade vehicle document.
+// OwnerName/OwnerPhone/OwnerEmail are response-only (enriched live from RMI via owner_cpf);
+// they are not written on create for UI purposes.
 type Vehicle struct {
 	ID                   primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	OwnerCPF             string             `bson:"owner_cpf" json:"owner_cpf"`
-	OwnerName            string             `bson:"owner_name" json:"owner_name"`
-	OwnerPhone           string             `bson:"owner_phone" json:"owner_phone"`
-	OwnerEmail           string             `bson:"owner_email" json:"owner_email"`
+	OwnerName            string             `bson:"-" json:"owner_name"`
+	OwnerPhone           string             `bson:"-" json:"owner_phone"`
+	OwnerEmail           string             `bson:"-" json:"owner_email"`
 	DisplayName          string             `bson:"display_name" json:"display_name"`
 	BrandID              *string            `bson:"brand_id,omitempty" json:"brand_id"`
 	BrandOther           *string            `bson:"brand_other,omitempty" json:"brand_other"`
@@ -128,9 +151,11 @@ type Vehicle struct {
 	VehicleType          VehicleType        `bson:"vehicle_type" json:"vehicle_type"`
 	Color                string             `bson:"color" json:"color"`
 	SerialNumber         string             `bson:"serial_number" json:"serial_number"`
+	// RegistrationNumber is a short wallet identifier generated on create (format RJ-E-XXXXXX). Not accepted in POST/PATCH.
+	RegistrationNumber   string             `bson:"registration_number" json:"registration_number" example:"RJ-E-000001"`
 	SerialNumberPhotoURL string             `bson:"serial_number_photo_url" json:"serial_number_photo_url"`
 	VehiclePhotoURL      string             `bson:"vehicle_photo_url" json:"vehicle_photo_url"`
-	InvoicePhotoURL      *string            `bson:"invoice_photo_url" json:"invoice_photo_url"`
+	InvoicePhotoURL      *string            `bson:"invoice_photo_url" json:"invoice_photo_url" extensions:"x-nullable"`
 	HasInvoice           bool               `bson:"has_invoice" json:"has_invoice"`
 	SelfDeclaration      bool               `bson:"self_declaration" json:"self_declaration"`
 
@@ -149,16 +174,17 @@ type Vehicle struct {
 
 // VehicleListItem is a card on the wallet / home list.
 type VehicleListItem struct {
-	ID              string      `json:"id"`
-	DisplayName     string      `json:"display_name"`
-	BrandID         *string     `json:"brand_id"`
-	BrandOther      *string     `json:"brand_other"`
-	ModelID         *string     `json:"model_id"`
-	ModelOther      *string     `json:"model_other"`
-	VehicleType     VehicleType `json:"vehicle_type"`
-	Color           string      `json:"color"`
-	VehiclePhotoURL string      `json:"vehicle_photo_url"`
-	Role            VehicleRole `json:"role"`
+	ID                 string      `json:"id"`
+	DisplayName        string      `json:"display_name"`
+	RegistrationNumber string      `json:"registration_number" example:"RJ-E-000001"`
+	BrandID            *string     `json:"brand_id"`
+	BrandOther         *string     `json:"brand_other"`
+	ModelID            *string     `json:"model_id"`
+	ModelOther         *string     `json:"model_other"`
+	VehicleType        VehicleType `json:"vehicle_type"`
+	Color              string      `json:"color"`
+	VehiclePhotoURL    string      `json:"vehicle_photo_url"`
+	Role               VehicleRole `json:"role"`
 }
 
 // VehicleDetail is the detail response including the caller's role.
@@ -179,6 +205,8 @@ type PaginatedVehicles struct {
 }
 
 // VehicleCreateRequest is the body for POST /citizen/{cpf}/vehicles.
+// Owner contact fields (owner_name/owner_phone/owner_email) are not accepted — ignored if sent.
+// registration_number is generated by the backend and must not be sent.
 type VehicleCreateRequest struct {
 	DisplayName          string       `json:"display_name" binding:"required"`
 	BrandID              *string      `json:"brand_id"`
@@ -190,8 +218,8 @@ type VehicleCreateRequest struct {
 	SerialNumber         string       `json:"serial_number" binding:"required"`
 	SerialNumberPhotoURL string       `json:"serial_number_photo_url" binding:"required"`
 	VehiclePhotoURL      string       `json:"vehicle_photo_url" binding:"required"`
-	InvoicePhotoURL      *string      `json:"invoice_photo_url"`
-	HasInvoice           bool         `json:"has_invoice"`
+	InvoicePhotoURL      *string      `json:"invoice_photo_url" extensions:"x-nullable"`
+	HasInvoice           *bool        `json:"has_invoice" binding:"required"`
 	SelfDeclaration      bool         `json:"self_declaration" binding:"required"`
 
 	SerialNumberPhotoFileName *string `json:"serial_number_photo_file_name"`
@@ -202,9 +230,14 @@ type VehicleCreateRequest struct {
 	InvoicePhotoFileSize      *int64  `json:"invoice_photo_file_size"`
 }
 
+// HasInvoiceValue returns the has_invoice flag (false when nil).
+func (r *VehicleCreateRequest) HasInvoiceValue() bool {
+	return r.HasInvoice != nil && *r.HasInvoice
+}
+
 // NormalizeInvoiceFields applies Apêndice A rules for has_invoice / invoice_photo_url.
 func (r *VehicleCreateRequest) NormalizeInvoiceFields() {
-	if !r.HasInvoice {
+	if !r.HasInvoiceValue() {
 		r.InvoicePhotoURL = nil
 		r.InvoicePhotoFileName = nil
 		r.InvoicePhotoFileSize = nil
@@ -213,6 +246,9 @@ func (r *VehicleCreateRequest) NormalizeInvoiceFields() {
 
 // Validate checks create-request business rules (catalog vs "Outro", docs, GCS URLs).
 func (r *VehicleCreateRequest) Validate() error {
+	if r.HasInvoice == nil {
+		return fmt.Errorf("has_invoice is required")
+	}
 	r.NormalizeInvoiceFields()
 
 	if !r.SelfDeclaration {
@@ -227,7 +263,7 @@ func (r *VehicleCreateRequest) Validate() error {
 	if !IsAllowedGCSURL(r.VehiclePhotoURL) {
 		return fmt.Errorf("vehicle_photo_url must be an https GCS URL")
 	}
-	if r.HasInvoice {
+	if r.HasInvoiceValue() {
 		if r.InvoicePhotoURL == nil || strings.TrimSpace(*r.InvoicePhotoURL) == "" {
 			return fmt.Errorf("invoice_photo_url is required when has_invoice is true")
 		}
@@ -263,7 +299,7 @@ type VehicleUpdateRequest struct {
 	SerialNumber         *string      `json:"serial_number"`
 	SerialNumberPhotoURL *string      `json:"serial_number_photo_url"`
 	VehiclePhotoURL      *string      `json:"vehicle_photo_url"`
-	InvoicePhotoURL      *string      `json:"invoice_photo_url"`
+	InvoicePhotoURL      *string      `json:"invoice_photo_url" extensions:"x-nullable"`
 	HasInvoice           *bool        `json:"has_invoice"`
 
 	SerialNumberPhotoFileName *string `json:"serial_number_photo_file_name"`

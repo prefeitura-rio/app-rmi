@@ -28,17 +28,15 @@ type VehicleConductorService struct {
 }
 
 // NewVehicleConductorService creates a VehicleConductorService.
-func NewVehicleConductorService(database *mongo.Database, logger *logging.SafeLogger) *VehicleConductorService {
-	return &VehicleConductorService{database: database, logger: logger}
+func NewVehicleConductorService(database *mongo.Database, dataManager *DataManager, logger *logging.SafeLogger) *VehicleConductorService {
+	return &VehicleConductorService{database: database, dataManager: dataManager, logger: logger}
 }
 
 // InitVehicleConductorService initializes VehicleConductorServiceInstance.
 func InitVehicleConductorService() {
 	logger := logging.GetLogger()
 	dm := NewDataManager(config.Redis, config.MongoDB, logger)
-	svc := NewVehicleConductorService(config.MongoDB, logger)
-	svc.dataManager = dm
-	VehicleConductorServiceInstance = svc
+	VehicleConductorServiceInstance = NewVehicleConductorService(config.MongoDB, dm, logger)
 }
 
 func (s *VehicleConductorService) vehicles() *mongo.Collection {
@@ -78,15 +76,23 @@ func (s *VehicleConductorService) ListInvitations(ctx context.Context, cpf strin
 		var v models.Vehicle
 		err := s.vehicles().FindOne(ctx, bson.M{"_id": link.VehicleID, "deleted_at": nil}).Decode(&v)
 		if err != nil {
+			if s.logger != nil {
+				s.logger.Warn("mobilidade invitation skipped: vehicle missing or deleted",
+					zap.String("conductor_id", link.ID.Hex()),
+					zap.String("vehicle_id", link.VehicleID.Hex()),
+					zap.Error(err),
+				)
+			}
 			continue
 		}
 		brandLabel, modelLabel := s.resolveBrandModelLabels(ctx, &v)
+		ownerName, _, _ := loadCitizenContactProfile(ctx, s.database, s.dataManager, s.logger, v.OwnerCPF)
 		items = append(items, models.VehicleInvitationItem{
 			ID:           link.ID.Hex(),
 			VehicleID:    v.ID.Hex(),
 			Status:       link.Status,
 			InvitedByCPF: link.InvitedByCPF,
-			OwnerName:    v.OwnerName,
+			OwnerName:    ownerName,
 			Vehicle: models.VehicleInvitationSummary{
 				DisplayName:     v.DisplayName,
 				BrandLabel:      brandLabel,
@@ -132,7 +138,7 @@ func (s *VehicleConductorService) RespondInvitation(ctx context.Context, cpf, co
 			"status":        models.ConductorStatusPending,
 		},
 		bson.M{"$set": bson.M{
-			"status":       req.Status,
+			"status":       req.AsConductorStatus(),
 			"responded_at": now,
 			"updated_at":   now,
 		}},
@@ -144,9 +150,10 @@ func (s *VehicleConductorService) RespondInvitation(ctx context.Context, cpf, co
 		return nil, fmt.Errorf("%w: invitation is not pending", ErrMobilidadeInvalidInput)
 	}
 
-	link.Status = req.Status
+	link.Status = req.AsConductorStatus()
 	link.RespondedAt = &now
 	link.UpdatedAt = now
+	s.enrichConductorForResponse(ctx, link)
 	return link, nil
 }
 
@@ -176,29 +183,33 @@ func (s *VehicleConductorService) ListConductors(ctx context.Context, cpf, vehic
 	if list == nil {
 		list = []models.VehicleConductor{}
 	}
+	for i := range list {
+		s.enrichConductorForResponse(ctx, &list[i])
+	}
 	return &models.ConductorsListResponse{Data: list}, nil
 }
 
-// InviteConductor creates a pending link and enqueues email notification; owner only.
+// InviteConductor creates a pending link and enqueues email using the form email (notify_email).
 func (s *VehicleConductorService) InviteConductor(ctx context.Context, cpf, vehicleID string, req *models.InviteConductorRequest) (*models.VehicleConductor, error) {
-	if !utils.ValidateCPF(req.CPF) {
-		return nil, fmt.Errorf("%w: invalid conductor cpf", ErrMobilidadeInvalidInput)
+	if err := req.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrMobilidadeInvalidInput, err.Error())
 	}
-	if req.Email == "" {
-		return nil, fmt.Errorf("%w: email is required", ErrMobilidadeInvalidInput)
+	conductorCPF := utils.NormalizeCPF(req.CPF)
+	if !utils.ValidateCPF(conductorCPF) {
+		return nil, fmt.Errorf("%w: invalid conductor cpf", ErrMobilidadeInvalidInput)
 	}
 
 	v, err := s.requireOwnerVehicle(ctx, cpf, vehicleID)
 	if err != nil {
 		return nil, err
 	}
-	if req.CPF == v.OwnerCPF {
+	if conductorCPF == v.OwnerCPF {
 		return nil, fmt.Errorf("%w: cannot invite vehicle owner", ErrMobilidadeInvalidInput)
 	}
 
 	existingCount, err := s.conductors().CountDocuments(ctx, bson.M{
 		"vehicle_id":    v.ID,
-		"conductor_cpf": req.CPF,
+		"conductor_cpf": conductorCPF,
 		"status": bson.M{"$in": []models.ConductorStatus{
 			models.ConductorStatusPending,
 			models.ConductorStatusAccepted,
@@ -211,18 +222,14 @@ func (s *VehicleConductorService) InviteConductor(ctx context.Context, cpf, vehi
 		return nil, ErrMobilidadeConflict
 	}
 
-	conductorName := req.Name
-	if conductorName == "" {
-		conductorName = s.lookupConductorName(ctx, req.CPF)
-	}
-
 	now := time.Now().UTC()
 	link := models.VehicleConductor{
 		ID:            primitive.NewObjectID(),
 		VehicleID:     v.ID,
-		ConductorCPF:  req.CPF,
-		ConductorName: conductorName,
+		ConductorCPF:  conductorCPF,
+		ConductorName: req.Name,
 		NotifyEmail:   req.Email,
+		Phone:         req.Phone,
 		Status:        models.ConductorStatusPending,
 		InvitedByCPF:  cpf,
 		EmailStatus:   models.InviteEmailStatusPending,
@@ -237,24 +244,24 @@ func (s *VehicleConductorService) InviteConductor(ctx context.Context, cpf, vehi
 	return &link, nil
 }
 
-func (s *VehicleConductorService) lookupConductorName(ctx context.Context, cpf string) string {
-	var citizen models.Citizen
-	var err error
-	if s.dataManager != nil {
-		err = s.dataManager.Read(ctx, cpf, config.AppConfig.CitizenCollection, "citizen", &citizen)
-	} else {
-		err = s.database.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
+// enrichConductorForResponse: pending keeps invite snapshot; accepted overlays live RMI profile.
+func (s *VehicleConductorService) enrichConductorForResponse(ctx context.Context, link *models.VehicleConductor) {
+	if link == nil || link.ConductorCPF == "" {
+		return
 	}
-	if err != nil {
-		if s.logger != nil {
-			s.logger.Warn("mobilidade conductor name lookup miss", zap.String("cpf", cpf), zap.Error(err))
-		}
-		return ""
+	if link.Status != models.ConductorStatusAccepted {
+		return
 	}
-	if citizen.Nome != nil {
-		return *citizen.Nome
+	name, phone, email := loadCitizenContactProfile(ctx, s.database, s.dataManager, s.logger, link.ConductorCPF)
+	if name != "" {
+		link.ConductorName = name
 	}
-	return ""
+	if email != "" {
+		link.NotifyEmail = email
+	}
+	if phone != "" {
+		link.Phone = phone
+	}
 }
 
 func mapConductorInsertError(err error) error {
@@ -367,11 +374,12 @@ func (s *VehicleConductorService) enqueueInviteEmail(ctx context.Context, link *
 		return
 	}
 
+	ownerName, _, _ := loadCitizenContactProfile(ctx, s.database, s.dataManager, s.logger, v.OwnerCPF)
 	payload := MobilidadeInviteEmailPayload{
 		ConductorID:  link.ID.Hex(),
 		NotifyEmail:  link.NotifyEmail,
 		VehicleID:    v.ID.Hex(),
-		OwnerName:    v.OwnerName,
+		OwnerName:    ownerName,
 		DisplayName:  v.DisplayName,
 		ConductorCPF: link.ConductorCPF,
 	}

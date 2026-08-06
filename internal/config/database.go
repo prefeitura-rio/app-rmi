@@ -2337,6 +2337,7 @@ func ensureMobilidadeVehicleIndex(ctx context.Context, logger *zap.Logger) error
 	collection := MongoDB.Collection(AppConfig.MobilidadeVehicleCollection)
 	requiredNames := []string{
 		"idx_mobilidade_vehicles_owner_active",
+		"idx_mobilidade_vehicles_registration_number",
 	}
 	requiredIndexes := []mongo.IndexModel{
 		// Wallet listing: vehicles owned by CPF that are not soft-deleted.
@@ -2344,6 +2345,14 @@ func ensureMobilidadeVehicleIndex(ctx context.Context, logger *zap.Logger) error
 			Keys: bson.D{{Key: "owner_cpf", Value: 1}},
 			Options: options.Index().
 				SetName("idx_mobilidade_vehicles_owner_active").
+				SetPartialFilterExpression(bson.M{"deleted_at": nil}),
+		},
+		// Short wallet registration number — unique among active vehicles.
+		{
+			Keys: bson.D{{Key: "registration_number", Value: 1}},
+			Options: options.Index().
+				SetName("idx_mobilidade_vehicles_registration_number").
+				SetUnique(true).
 				SetPartialFilterExpression(bson.M{"deleted_at": nil}),
 		},
 	}

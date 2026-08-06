@@ -4040,7 +4040,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id) ou Outro (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é obrigatória.",
+                "description": "Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id) ou Outro (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é obrigatória. Contato do dono (nome/telefone/e-mail) é enriquecido ao vivo via RMI a partir do owner_cpf — não enviar owner_* no body. registration_number é gerado pelo backend (formato RJ-E-XXXXXX).",
                 "consumes": [
                     "application/json"
                 ],
@@ -4112,7 +4112,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url e metadados de arquivos).",
+                "description": "Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url, metadados de arquivos e registration_number). owner_name/owner_phone/owner_email são enriquecidos ao vivo via RMI a partir de owner_cpf.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4342,7 +4342,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Lista vínculos pending e accepted (somente proprietário).",
+                "description": "Lista vínculos pending e accepted (somente proprietário). Pending devolve snapshot do convite; accepted enriquece nome/e-mail/celular ao vivo via RMI.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4416,7 +4416,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Cria vínculo pending e enfileira e-mail de convite (somente proprietário). Duplicata pending/accepted retorna 409.",
+                "description": "Cria vínculo pending e enfileira e-mail de convite via notify_email do body (somente proprietário). name/phone são hints opcionais enquanto pending. Duplicata pending/accepted retorna 409.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4445,7 +4445,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Dados do convidado",
+                        "description": "CPF + e-mail do convidado (name/phone opcionais)",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -5501,7 +5501,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Catálogo de marcas para o formulário de mobilidade (seed Mongo).",
+                "description": "Catálogo de marcas para o formulário de mobilidade (seed Mongo). Sentinel \"Outro\" usa id estável brand_outro com is_other=true.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5514,10 +5514,9 @@ const docTemplate = `{
                 "summary": "Listar marcas de veículos",
                 "responses": {
                     "200": {
-                        "description": "Lista de marcas em data",
+                        "description": "Lista tipada de marcas em data",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.VehicleBrandsResponse"
                         }
                     },
                     "401": {
@@ -5542,7 +5541,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Lista fixa de cores permitidas no formulário de mobilidade.",
+                "description": "Lista fixa de cores permitidas no formulário de mobilidade (fora do CSV de marcas/modelos).",
                 "consumes": [
                     "application/json"
                 ],
@@ -5555,10 +5554,9 @@ const docTemplate = `{
                 "summary": "Listar cores de veículos",
                 "responses": {
                     "200": {
-                        "description": "Lista de cores em data",
+                        "description": "Lista tipada de cores em data",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.VehicleColorsResponse"
                         }
                     },
                     "401": {
@@ -5583,7 +5581,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Modelos do catálogo filtrados por brand_id (obrigatório), incluindo vehicle_type.",
+                "description": "Modelos do catálogo filtrados por brand_id (obrigatório), incluindo vehicle_type. Sentinel \"Outro\" usa id estável model_outro com is_other=true.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5605,10 +5603,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Lista de modelos em data",
+                        "description": "Lista tipada de modelos em data",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.VehicleModelsResponse"
                         }
                     },
                     "400": {
@@ -7956,6 +7953,17 @@ const docTemplate = `{
                 }
             }
         },
+        "models.InvitationResponseStatus": {
+            "type": "string",
+            "enum": [
+                "accepted",
+                "rejected"
+            ],
+            "x-enum-varnames": [
+                "InvitationResponseAccepted",
+                "InvitationResponseRejected"
+            ]
+        },
         "models.InviteConductorRequest": {
             "type": "object",
             "required": [
@@ -7970,6 +7978,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "phone": {
                     "type": "string"
                 }
             }
@@ -8953,7 +8964,12 @@ const docTemplate = `{
             ],
             "properties": {
                 "status": {
-                    "$ref": "#/definitions/models.ConductorStatus"
+                    "description": "Status must be accepted or rejected (pending/revoked are rejected with 400).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.InvitationResponseStatus"
+                        }
+                    ]
                 }
             }
         },
@@ -9352,6 +9368,50 @@ const docTemplate = `{
                 }
             }
         },
+        "models.VehicleBrand": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "example": "brand_caloi"
+                },
+                "is_other": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Caloi"
+                }
+            }
+        },
+        "models.VehicleBrandsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.VehicleBrand"
+                    }
+                }
+            }
+        },
+        "models.VehicleColorsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "Amarelo",
+                        "Azul",
+                        "Preto"
+                    ]
+                }
+            }
+        },
         "models.VehicleConductor": {
             "type": "object",
             "properties": {
@@ -9359,6 +9419,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "conductor_name": {
+                    "description": "Invite snapshot (persisted). For accepted links, GET overlays live RMI contact on these JSON fields.",
                     "type": "string"
                 },
                 "created_at": {
@@ -9384,6 +9445,9 @@ const docTemplate = `{
                 "notify_email": {
                     "type": "string"
                 },
+                "phone": {
+                    "type": "string"
+                },
                 "responded_at": {
                     "type": "string"
                 },
@@ -9403,6 +9467,7 @@ const docTemplate = `{
             "required": [
                 "color",
                 "display_name",
+                "has_invoice",
                 "self_declaration",
                 "serial_number",
                 "serial_number_photo_url",
@@ -9431,7 +9496,8 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "invoice_photo_url": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_id": {
                     "type": "string"
@@ -9502,7 +9568,8 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "invoice_photo_url": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_id": {
                     "type": "string"
@@ -9521,6 +9588,11 @@ const docTemplate = `{
                 },
                 "owner_phone": {
                     "type": "string"
+                },
+                "registration_number": {
+                    "description": "RegistrationNumber is a short wallet identifier generated on create (format RJ-E-XXXXXX). Not accepted in POST/PATCH.",
+                    "type": "string",
+                    "example": "RJ-E-000001"
                 },
                 "role": {
                     "$ref": "#/definitions/models.VehicleRole"
@@ -9642,6 +9714,10 @@ const docTemplate = `{
                 "model_other": {
                     "type": "string"
                 },
+                "registration_number": {
+                    "type": "string",
+                    "example": "RJ-E-000001"
+                },
                 "role": {
                     "$ref": "#/definitions/models.VehicleRole"
                 },
@@ -9650,6 +9726,41 @@ const docTemplate = `{
                 },
                 "vehicle_type": {
                     "$ref": "#/definitions/models.VehicleType"
+                }
+            }
+        },
+        "models.VehicleModel": {
+            "type": "object",
+            "properties": {
+                "brand_id": {
+                    "type": "string",
+                    "example": "brand_caloi"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "model_e-vibe"
+                },
+                "is_other": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "name": {
+                    "type": "string",
+                    "example": "E-Vibe"
+                },
+                "vehicle_type": {
+                    "$ref": "#/definitions/models.VehicleType"
+                }
+            }
+        },
+        "models.VehicleModelsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.VehicleModel"
+                    }
                 }
             }
         },
@@ -9702,7 +9813,8 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "invoice_photo_url": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_id": {
                     "type": "string"

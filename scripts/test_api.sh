@@ -181,9 +181,9 @@ make_request() {
     response_body=$(echo "$response" | sed '$d')
     
     # Check if status code is 2xx or 404 (acceptable for data not found)
-    # Also accept 409 (Conflict) for "already_opted_in" responses
+    # Also accept 409 (Conflict) for "already_opted_in" / Duplicate Conflict responses
     # Also accept 400 (Bad Request) for validation tests that expect errors
-    if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]] || [[ "$status_code" -eq 404 ]] || ([[ "$status_code" -eq 400 ]] && [[ "$test_name" == *"Invalid"* ]]); then
+    if [[ "$status_code" -ge 200 && "$status_code" -lt 300 ]] || [[ "$status_code" -eq 404 ]] || ([[ "$status_code" -eq 400 ]] && [[ "$test_name" == *"Invalid"* ]]) || ([[ "$status_code" -eq 409 ]] && [[ "$test_name" == *"Conflict"* || "$test_name" == *"Duplicate"* ]]); then
         print_result "$test_name" "PASS" "$response_body"
         # Store response body in a temporary file for verification
         if [[ "$test_name" == *"(Original)"* ]] || [[ "$test_name" == *"(After Updates)"* ]] || [[ "$test_name" == *"(After Phone Verification)"* ]] || [[ "$test_name" == *"First Login Status"* ]] || [[ "$test_name" == *"Opt-In Status"* ]] || [[ "$test_name" == *"Opt-out"* ]] || [[ "$test_name" == *"(After Blocking)"* ]] || [[ "$test_name" == *"(After Non-blocking)"* ]] || [[ "$test_name" == *"Create Beta Group"* ]] || [[ "$test_name" == *"Create Second Beta Group"* ]] || [[ "$test_name" == *"Double Test"* ]] || [[ "$test_name" == *"8-digit Number"* ]] || [[ "$test_name" == *"9-digit Number"* ]] || [[ "$test_name" == *"Address Verification"* ]] || [[ "$test_name" == *"Avatar"* ]] || [[ "$test_name" == *"avatar"* ]] || [[ "$test_name" == *"CF Data Verification"* ]] || [[ "$test_name" == *"CF Lookup Trigger"* ]] || [[ "$test_name" == *"CF Invalidation"* ]] || [[ "$test_name" == *"CF After Address Change"* ]] || [[ "$test_name" == *"With CF Data"* ]]; then
@@ -1902,9 +1902,27 @@ if [[ "$create_status" -ge 200 && "$create_status" -lt 300 ]]; then
     print_result "Create Mobilidade Vehicle (Outro)" "PASS" "$create_body"
     if command -v jq >/dev/null 2>&1; then
         MOBILIDADE_VEHICLE_ID=$(echo "$create_body" | jq -r '.id // empty')
+        if echo "$create_body" | jq -e '.registration_number | test("^RJ-E-[0-9]{6,}$")' >/dev/null 2>&1; then
+            print_result "Create Mobilidade Vehicle has registration_number" "PASS" "$(echo "$create_body" | jq -r '.registration_number')"
+        else
+            print_result "Create Mobilidade Vehicle has registration_number" "FAIL" "$create_body"
+        fi
     fi
 else
     print_result "Create Mobilidade Vehicle (Outro)" "FAIL" "Status: $create_status, Response: $create_body"
+fi
+
+# Typed catalog responses (Orval-friendly data arrays)
+if command -v jq >/dev/null 2>&1; then
+    brands_response=$(curl -s -w "\n%{http_code}" -X GET "$API_BASE_URL/mobilidade/vehicle-brands" \
+        -H "Authorization: Bearer $BEARER_TOKEN" 2>/dev/null)
+    brands_status=$(echo "$brands_response" | tail -n1)
+    brands_body=$(echo "$brands_response" | sed '$d')
+    if [[ "$brands_status" == "200" ]] && echo "$brands_body" | jq -e '.data | type == "array"' >/dev/null 2>&1; then
+        print_result "Get Mobilidade Vehicle Brands typed data[]" "PASS" "$brands_body"
+    else
+        print_result "Get Mobilidade Vehicle Brands typed data[]" "FAIL" "Status: $brands_status, Response: $brands_body"
+    fi
 fi
 
 if [[ -n "$MOBILIDADE_VEHICLE_ID" && "$MOBILIDADE_VEHICLE_ID" != "null" ]]; then
@@ -1913,6 +1931,25 @@ if [[ -n "$MOBILIDADE_VEHICLE_ID" && "$MOBILIDADE_VEHICLE_ID" != "null" ]]; then
     make_request "PATCH" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID" '{"display_name":"Patinete API Test Updated"}' "Update Mobilidade Vehicle"
     make_request "GET" "/citizen/$CPF/vehicle-invitations" "" "List Mobilidade Vehicle Invitations"
     make_request "GET" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" "" "List Mobilidade Vehicle Conductors"
+
+    # Invite: missing email → 400; self-invite → 400; valid invite → 201; duplicate → 409
+    make_request "POST" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" \
+      '{"cpf":"11144477735"}' "Invite Mobilidade Conductor Invalid Missing Email"
+    make_request "POST" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" \
+      "{\"cpf\":\"$CPF\",\"email\":\"self@example.com\"}" "Invite Mobilidade Conductor Invalid Self"
+    invite_ok_data=$(cat <<EOF
+{
+  "cpf": "111.444.777-35",
+  "email": "condutor.api.test@example.com",
+  "name": "Condutor API",
+  "phone": "21999990000"
+}
+EOF
+)
+    make_request "POST" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" \
+      "$invite_ok_data" "Invite Mobilidade Conductor"
+    make_request "POST" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" \
+      "$invite_ok_data" "Invite Mobilidade Conductor Duplicate Conflict"
 
     bad_invoice_data=$(cat <<EOF
 {
