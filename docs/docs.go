@@ -7991,13 +7991,15 @@ const docTemplate = `{
                 "pending",
                 "queued",
                 "sent",
-                "failed"
+                "failed",
+                "skipped"
             ],
             "x-enum-varnames": [
                 "InviteEmailStatusPending",
                 "InviteEmailStatusQueued",
                 "InviteEmailStatusSent",
-                "InviteEmailStatusFailed"
+                "InviteEmailStatusFailed",
+                "InviteEmailStatusSkipped"
             ]
         },
         "models.LegalEntity": {

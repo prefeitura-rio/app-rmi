@@ -226,6 +226,33 @@ func TestRequireOwnCPF_OwnData(t *testing.T) {
 	}
 }
 
+func TestRequireOwnCPF_FormattedCPFOwnData(t *testing.T) {
+	config.AppConfig.AdminGroup = "go:admin"
+	const ownCPF = "03561350712"
+	const formattedPathCPF = "035.613.507-12"
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		claims := &models.JWTClaims{
+			PreferredUsername: ownCPF,
+		}
+		c.Set("claims", claims)
+		c.Next()
+	})
+	router.Use(RequireOwnCPF())
+	router.GET("/citizen/:cpf/data", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "own data"})
+	})
+
+	req, _ := http.NewRequest("GET", "/citizen/"+formattedPathCPF+"/data", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("RequireOwnCPF() formatted CPF own data status = %v, want %v; body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+}
+
 func TestRequireOwnCPF_OtherData(t *testing.T) {
 	config.AppConfig.AdminGroup = "go:admin"
 	const ownCPF = "03561350712"

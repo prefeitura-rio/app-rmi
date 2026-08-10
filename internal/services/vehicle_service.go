@@ -370,14 +370,20 @@ func (s *VehicleService) UpdateVehicle(ctx context.Context, cpf, vehicleID strin
 	return s.GetVehicle(ctx, cpf, vehicleID)
 }
 
-// DeleteVehicle soft-deletes a vehicle and revokes conductor links atomically; owner only.
-// Uses a Mongo transaction when available; falls back to revoke-then-delete on standalone.
+// DeleteVehicle soft-deletes a vehicle and revokes conductor links; owner only.
+// Uses a Mongo transaction when available. On standalone Mongo, soft-deletes first
+// then revokes conductors; the operation is idempotent so retries after partial failure
+// still ensure conductors are revoked.
 func (s *VehicleService) DeleteVehicle(ctx context.Context, cpf, vehicleID string) error {
-	v, err := s.findActiveVehicle(ctx, vehicleID)
+	v, err := s.findVehicleForOwnerDelete(ctx, vehicleID)
 	if err != nil {
 		return err
 	}
 	if v.OwnerCPF != cpf {
+		// Soft-deleted vehicles must not leak existence to non-owners (404, not 403).
+		if v.DeletedAt != nil {
+			return ErrVehicleNotFound
+		}
 		return ErrMobilidadeForbidden
 	}
 
@@ -405,6 +411,25 @@ func (s *VehicleService) deleteVehicleSequential(ctx context.Context, v *models.
 }
 
 func (s *VehicleService) deleteVehicleOps(ctx context.Context, v *models.Vehicle, now time.Time) error {
+	// Soft-delete first so the vehicle disappears from wallets even if revoke fails mid-way.
+	if v.DeletedAt == nil {
+		res, err := s.vehicles().UpdateOne(ctx,
+			bson.M{"_id": v.ID, "deleted_at": nil},
+			bson.M{"$set": bson.M{
+				"deleted_at": now,
+				"updated_at": now,
+			}},
+		)
+		if err != nil {
+			return fmt.Errorf("soft delete vehicle: %w", err)
+		}
+		// MatchedCount 0: concurrent delete already soft-deleted — continue to revoke.
+		if res.MatchedCount > 0 {
+			deletedAt := now
+			v.DeletedAt = &deletedAt
+		}
+	}
+
 	if _, err := s.conductors().UpdateMany(ctx,
 		bson.M{
 			"vehicle_id": v.ID,
@@ -419,20 +444,6 @@ func (s *VehicleService) deleteVehicleOps(ctx context.Context, v *models.Vehicle
 		}},
 	); err != nil {
 		return fmt.Errorf("revoke conductors: %w", err)
-	}
-
-	res, err := s.vehicles().UpdateOne(ctx,
-		bson.M{"_id": v.ID, "deleted_at": nil},
-		bson.M{"$set": bson.M{
-			"deleted_at": now,
-			"updated_at": now,
-		}},
-	)
-	if err != nil {
-		return fmt.Errorf("soft delete vehicle: %w", err)
-	}
-	if res.MatchedCount == 0 {
-		return ErrVehicleNotFound
 	}
 	return nil
 }
@@ -457,6 +468,23 @@ func (s *VehicleService) findActiveVehicle(ctx context.Context, vehicleID string
 	}
 	var v models.Vehicle
 	err = s.vehicles().FindOne(ctx, bson.M{"_id": oid, "deleted_at": nil}).Decode(&v)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, ErrVehicleNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find vehicle: %w", err)
+	}
+	return &v, nil
+}
+
+// findVehicleForOwnerDelete loads a vehicle by id including soft-deleted docs so delete is idempotent.
+func (s *VehicleService) findVehicleForOwnerDelete(ctx context.Context, vehicleID string) (*models.Vehicle, error) {
+	oid, err := primitive.ObjectIDFromHex(vehicleID)
+	if err != nil {
+		return nil, ErrVehicleNotFound
+	}
+	var v models.Vehicle
+	err = s.vehicles().FindOne(ctx, bson.M{"_id": oid}).Decode(&v)
 	if errors.Is(err, mongo.ErrNoDocuments) {
 		return nil, ErrVehicleNotFound
 	}

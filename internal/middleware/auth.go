@@ -145,7 +145,10 @@ func RequireAdmin() gin.HandlerFunc {
 	}
 }
 
-// RequireOwnCPF checks if the user is accessing their own data
+// RequireOwnCPF checks if the user is accessing their own data.
+// Path and token CPFs are normalized to digits before comparison so formatted
+// values (e.g. 123.456.789-09) still authorize correctly. Check-digit validation
+// stays in handlers/services — this middleware only enforces ownership.
 func RequireOwnCPF() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, exists := c.Get("claims")
@@ -162,15 +165,14 @@ func RequireOwnCPF() gin.HandlerFunc {
 			return
 		}
 
-		// Get the CPF from the URL
-		requestedCPF := c.Param("cpf")
-		if !utils.ValidateCPF(requestedCPF) {
+		requestedCPF := utils.NormalizeCPF(c.Param("cpf"))
+		if len(requestedCPF) != 11 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid CPF format"})
 			c.Abort()
 			return
 		}
 
-		userCPF := jwtClaims.PreferredUsername
+		userCPF := utils.NormalizeCPF(jwtClaims.PreferredUsername)
 		isAdmin := jwtClaims.HasRole(config.AppConfig.AdminGroup)
 
 		// Allow if user is admin or accessing their own data

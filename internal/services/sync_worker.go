@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -72,6 +74,7 @@ func (w *SyncWorker) SetEmailSender(sender EmailSender) {
 // Start starts the worker
 func (w *SyncWorker) Start() {
 	w.logger.Info("sync worker started", zap.Int("worker_id", w.id))
+	w.recoverInflightJobs()
 
 	// Use a ticker for more efficient timing instead of sleep
 	ticker := time.NewTicker(50 * time.Millisecond) // Reduced delay for better responsiveness
@@ -86,6 +89,126 @@ func (w *SyncWorker) Start() {
 			w.processQueuesParallel()
 		}
 	}
+}
+
+// recoverInflightJobs requeues jobs left in processing lists after a crash/restart.
+// Scoped to mobilidade invite email (reliable-queue path); other queues still use RPOP.
+func (w *SyncWorker) recoverInflightJobs() {
+	ctx := context.Background()
+	const maxRecover = 1000
+
+	for _, queue := range w.queues {
+		if !usesReliableQueue(queue) {
+			continue
+		}
+		w.migrateLegacyMobilidadeQueueKeys(ctx, queue)
+
+		processingKey := syncProcessingKey(queue)
+		queueKey := syncQueueKey(queue)
+		recovered := 0
+		for recovered < maxRecover {
+			result, err := w.redis.RPopLPush(ctx, processingKey, queueKey).Result()
+			if err != nil {
+				if errors.Is(err, redis.Nil) {
+					break
+				}
+				w.logger.Error("failed to recover inflight sync job",
+					zap.String("queue", queue),
+					zap.Error(err))
+				break
+			}
+			recovered++
+			w.logger.Warn("recovered stale inflight sync job",
+				zap.String("queue", queue),
+				zap.Int("payload_len", len(result)))
+		}
+		if recovered > 0 {
+			w.logger.Info("recovered inflight jobs into main queue",
+				zap.String("queue", queue),
+				zap.Int("count", recovered))
+		}
+		if recovered >= maxRecover {
+			w.logger.Error("inflight recovery hit cap; remaining jobs stay in processing until next start",
+				zap.String("queue", queue),
+				zap.Int("cap", maxRecover))
+		}
+	}
+}
+
+// migrateLegacyMobilidadeQueueKeys moves jobs from pre-hash-tag keys into cluster-safe keys.
+func (w *SyncWorker) migrateLegacyMobilidadeQueueKeys(ctx context.Context, queue string) {
+	if queue != MobilidadeInviteEmailQueue {
+		return
+	}
+	legacyQueue := fmt.Sprintf("sync:queue:%s", queue)
+	legacyProcessing := fmt.Sprintf("sync:processing:%s", queue)
+	modernQueue := syncQueueKey(queue)
+	modernProcessing := syncProcessingKey(queue)
+
+	moved := 0
+	for moved < 1000 {
+		result, err := w.redis.RPop(ctx, legacyQueue).Result()
+		if err != nil {
+			if errors.Is(err, redis.Nil) || err.Error() == "redis: nil" {
+				break
+			}
+			w.logger.Warn("legacy mobilidade queue migrate failed", zap.Error(err))
+			break
+		}
+		if err := w.redis.LPush(ctx, modernQueue, result).Err(); err != nil {
+			w.logger.Error("failed to rehome legacy mobilidade queue job", zap.Error(err))
+			_ = w.redis.LPush(ctx, legacyQueue, result).Err()
+			break
+		}
+		moved++
+	}
+	for moved < 1000 {
+		result, err := w.redis.RPop(ctx, legacyProcessing).Result()
+		if err != nil {
+			if errors.Is(err, redis.Nil) || err.Error() == "redis: nil" {
+				break
+			}
+			w.logger.Warn("legacy mobilidade processing migrate failed", zap.Error(err))
+			break
+		}
+		if err := w.redis.LPush(ctx, modernProcessing, result).Err(); err != nil {
+			w.logger.Error("failed to rehome legacy mobilidade processing job", zap.Error(err))
+			_ = w.redis.LPush(ctx, legacyProcessing, result).Err()
+			break
+		}
+		moved++
+	}
+	if moved > 0 {
+		w.logger.Info("migrated legacy mobilidade invite queue keys to hash-tagged keys",
+			zap.Int("moved", moved))
+	}
+}
+
+// usesReliableQueue reports whether the queue uses RPOPLPUSH + processing list (needs hash tags on cluster).
+func usesReliableQueue(queue string) bool {
+	return queue == MobilidadeInviteEmailQueue
+}
+
+func syncQueueKey(queue string) string {
+	if usesReliableQueue(queue) {
+		// Hash tag keeps queue + processing on the same Redis Cluster slot (RPOPLPUSH).
+		return fmt.Sprintf("sync:queue:{%s}", queue)
+	}
+	return fmt.Sprintf("sync:queue:%s", queue)
+}
+
+func syncProcessingKey(queue string) string {
+	if usesReliableQueue(queue) {
+		return fmt.Sprintf("sync:processing:{%s}", queue)
+	}
+	return fmt.Sprintf("sync:processing:%s", queue)
+}
+
+func syncDLQKey(queue string) string {
+	if usesReliableQueue(queue) {
+		return fmt.Sprintf("sync:dlq:{%s}", queue)
+	}
+	return fmt.Sprintf("sync:dlq:%s", queue)
 }
 
 // Stop stops the worker
@@ -137,28 +260,50 @@ func (w *SyncWorker) processQueuesParallel() {
 	}
 }
 
-// getJobNonBlocking gets a job from a specific queue without blocking
+// getJobNonBlocking gets a job from a specific queue without blocking.
+// Mobilidade invite email uses RPOPLPUSH into an inflight/processing list for at-least-once delivery.
 func (w *SyncWorker) getJobNonBlocking(queue string) (*SyncJob, error) {
-	queueKey := fmt.Sprintf("sync:queue:%s", queue)
+	ctx := context.Background()
+	queueKey := syncQueueKey(queue)
 
-	// Use RPOP (non-blocking) instead of BRPop
-	result, err := w.redis.RPop(context.Background(), queueKey).Result()
+	var (
+		result       string
+		err          error
+		fromInflight bool
+	)
+
+	if usesReliableQueue(queue) {
+		processingKey := syncProcessingKey(queue)
+		result, err = w.redis.RPopLPush(ctx, queueKey, processingKey).Result()
+		fromInflight = true
+	} else {
+		// Use RPOP (non-blocking) instead of BRPop for other queues
+		result, err = w.redis.RPop(ctx, queueKey).Result()
+	}
 	if err != nil {
-		if err.Error() == "redis: nil" {
+		if errors.Is(err, redis.Nil) || err.Error() == "redis: nil" {
 			return nil, nil // No jobs available
 		}
 		return nil, err
 	}
 
-	// Parse the job
 	var job SyncJob
 	if err := json.Unmarshal([]byte(result), &job); err != nil {
 		w.logger.Error("failed to unmarshal sync job",
 			zap.String("queue", queue),
 			zap.Error(err))
+		if fromInflight {
+			if remErr := w.redis.LRem(ctx, syncProcessingKey(queue), 1, result).Err(); remErr != nil {
+				w.logger.Error("failed to discard poison inflight job",
+					zap.String("queue", queue),
+					zap.Error(remErr))
+			}
+		}
 		return nil, err
 	}
 
+	job.rawRedisPayload = result
+	job.fromInflight = fromInflight
 	return &job, nil
 }
 
@@ -172,8 +317,24 @@ func (w *SyncWorker) processJob(job *SyncJob) {
 		zap.String("key", job.Key),
 		zap.String("collection", job.Collection))
 
-	// Try to sync to MongoDB
-	err := w.syncToMongoDB(job)
+	if !job.AvailableAt.IsZero() && time.Now().Before(job.AvailableAt) {
+		if err := w.returnJobToQueue(job); err != nil {
+			w.logger.Error("failed to defer sync job until available_at",
+				zap.String("job_id", job.ID),
+				zap.String("type", job.Type),
+				zap.Time("available_at", job.AvailableAt),
+				zap.Error(err))
+			// Keep inflight for recovery if we could not put the job back.
+			return
+		}
+		w.logger.Debug("deferred sync job until available_at",
+			zap.String("job_id", job.ID),
+			zap.String("type", job.Type),
+			zap.Time("available_at", job.AvailableAt))
+		return
+	}
+
+	writeBufferJob, err := w.syncToMongoDB(job)
 
 	duration := time.Since(start)
 
@@ -181,7 +342,11 @@ func (w *SyncWorker) processJob(job *SyncJob) {
 		w.handleSyncFailure(job, err)
 		w.metrics.IncrementSyncFailures(job.Type)
 	} else {
-		w.handleSyncSuccess(job)
+		// Special jobs (invite email, cf_lookup, avatar cleanup) must not touch write-buffer keys.
+		if writeBufferJob {
+			w.handleSyncSuccess(job)
+		}
+		w.ackInflightJob(job)
 		w.metrics.IncrementSyncOperations(job.Type)
 	}
 
@@ -193,32 +358,47 @@ func (w *SyncWorker) processJob(job *SyncJob) {
 		zap.Error(err))
 }
 
-// syncToMongoDB syncs a job to MongoDB
-func (w *SyncWorker) syncToMongoDB(job *SyncJob) error {
+// ackInflightJob removes a job from the processing list after success or successful requeue/DLQ.
+func (w *SyncWorker) ackInflightJob(job *SyncJob) {
+	if job == nil || !job.fromInflight || job.rawRedisPayload == "" {
+		return
+	}
+	ctx := context.Background()
+	processingKey := syncProcessingKey(job.Type)
+	if err := w.redis.LRem(ctx, processingKey, 1, job.rawRedisPayload).Err(); err != nil {
+		w.logger.Error("failed to ack inflight sync job",
+			zap.String("job_id", job.ID),
+			zap.String("type", job.Type),
+			zap.String("key", job.Key),
+			zap.Error(err))
+	}
+}
+
+// syncToMongoDB syncs a job to MongoDB.
+// writeBufferJob is true for normal Redis write-buffer → Mongo syncs that need handleSyncSuccess.
+func (w *SyncWorker) syncToMongoDB(job *SyncJob) (writeBufferJob bool, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	// Handle special job types
 	if err := w.handleSpecialJobTypes(ctx, job); err != nil {
-		if err.Error() == "not_special_job" {
-			// Continue with normal processing
-		} else {
-			return err
+		if err.Error() != "not_special_job" {
+			return false, err
 		}
 	} else {
-		// Special job was handled successfully
-		return nil
+		// Special job was handled successfully (no write-buffer/cache cleanup).
+		return false, nil
 	}
 
 	// Convert the job data to BSON
 	dataBytes, err := json.Marshal(job.Data)
 	if err != nil {
-		return fmt.Errorf("failed to marshal job data: %w", err)
+		return true, fmt.Errorf("failed to marshal job data: %w", err)
 	}
 
 	var bsonData bson.M
 	if err := json.Unmarshal(dataBytes, &bsonData); err != nil {
-		return fmt.Errorf("failed to unmarshal to BSON: %w", err)
+		return true, fmt.Errorf("failed to unmarshal to BSON: %w", err)
 	}
 
 	// Use appropriate filter based on collection type to match unique indexes
@@ -288,12 +468,12 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) error {
 				zap.String("key", job.Key),
 				zap.String("collection", job.Collection))
 			// Return nil because this is not an error - the data already exists
-			return nil
+			return true, nil
 		}
-		return fmt.Errorf("failed to sync to MongoDB: %w", err)
+		return true, fmt.Errorf("failed to sync to MongoDB: %w", err)
 	}
 
-	return nil
+	return true, nil
 }
 
 // handleSyncSuccess handles a successful sync
@@ -355,57 +535,141 @@ func (w *SyncWorker) handleSyncSuccess(job *SyncJob) {
 func (w *SyncWorker) handleSyncFailure(job *SyncJob, err error) {
 	job.RetryCount++
 
+	var persisted bool
 	if job.RetryCount >= job.MaxRetries {
 		// Move to dead letter queue
-		w.moveToDLQ(job, err)
+		persisted = w.moveToDLQ(job, err)
 	} else {
 		// Re-queue with backoff
-		w.requeueJob(job)
+		persisted = w.requeueJob(job)
+	}
+	// Ack inflight only after the job is safely back on a Redis list.
+	// If LPush failed, leave the payload in processing for Start recovery.
+	if persisted {
+		w.ackInflightJob(job)
 	}
 }
 
-// moveToDLQ moves a failed job to the dead letter queue
-func (w *SyncWorker) moveToDLQ(job *SyncJob, err error) {
+// moveToDLQ moves a failed job to the dead letter queue.
+// Returns true when the job was successfully written to the DLQ.
+func (w *SyncWorker) moveToDLQ(job *SyncJob, err error) bool {
 	dlqJob := DLQJob{
 		OriginalJob: *job,
 		Error:       err.Error(),
 		FailedAt:    time.Now(),
 	}
 
-	dlqBytes, _ := json.Marshal(dlqJob)
-	dlqKey := fmt.Sprintf("sync:dlq:%s", job.Type)
+	dlqBytes, marshalErr := json.Marshal(dlqJob)
+	if marshalErr != nil {
+		w.logger.Error("failed to marshal DLQ job",
+			zap.String("job_id", job.ID),
+			zap.String("type", job.Type),
+			zap.String("key", job.Key),
+			zap.Error(marshalErr))
+		w.markMobilidadeInviteQueuePersistFailure(job, fmt.Sprintf("dlq marshal failed: %v", marshalErr))
+		return false
+	}
+	dlqKey := syncDLQKey(job.Type)
 
-	w.redis.LPush(context.Background(), dlqKey, string(dlqBytes))
+	if pushErr := w.redis.LPush(context.Background(), dlqKey, string(dlqBytes)).Err(); pushErr != nil {
+		w.logger.Error("failed to move job to DLQ",
+			zap.String("job_id", job.ID),
+			zap.String("type", job.Type),
+			zap.String("key", job.Key),
+			zap.Error(pushErr))
+		if w.metrics != nil {
+			w.metrics.IncrementSyncFailures(job.Type)
+		}
+		w.markMobilidadeInviteQueuePersistFailure(job, fmt.Sprintf("dlq failed: %v", pushErr))
+		return false
+	}
 
 	w.logger.Error("job moved to DLQ",
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
 		zap.String("key", job.Key),
 		zap.Error(err))
+	return true
 }
 
-// requeueJob re-queues a job for retry
-func (w *SyncWorker) requeueJob(job *SyncJob) {
-	// Add exponential backoff delay
+// requeueJob re-queues a job for retry without blocking the worker goroutine.
+// Sets AvailableAt for deferred visibility; processJob returns the job to the queue until then.
+// Returns true when the job was successfully written back to the queue.
+func (w *SyncWorker) requeueJob(job *SyncJob) bool {
 	backoffDelay := time.Duration(job.RetryCount) * 5 * time.Second
 	if backoffDelay > 60*time.Second {
 		backoffDelay = 60 * time.Second
 	}
+	job.AvailableAt = time.Now().UTC().Add(backoffDelay)
 
-	// Re-queue with delay
-	time.Sleep(backoffDelay)
+	jobBytes, marshalErr := json.Marshal(job)
+	if marshalErr != nil {
+		w.logger.Error("failed to marshal job for requeue",
+			zap.String("job_id", job.ID),
+			zap.String("type", job.Type),
+			zap.String("key", job.Key),
+			zap.Error(marshalErr))
+		w.markMobilidadeInviteQueuePersistFailure(job, fmt.Sprintf("requeue marshal failed: %v", marshalErr))
+		return false
+	}
+	queueKey := syncQueueKey(job.Type)
 
-	jobBytes, _ := json.Marshal(job)
-	queueKey := fmt.Sprintf("sync:queue:%s", job.Type)
-
-	w.redis.LPush(context.Background(), queueKey, string(jobBytes))
+	if pushErr := w.redis.LPush(context.Background(), queueKey, string(jobBytes)).Err(); pushErr != nil {
+		w.logger.Error("failed to requeue job",
+			zap.String("job_id", job.ID),
+			zap.String("type", job.Type),
+			zap.String("key", job.Key),
+			zap.Int("retry_count", job.RetryCount),
+			zap.Error(pushErr))
+		if w.metrics != nil {
+			w.metrics.IncrementSyncFailures(job.Type)
+		}
+		w.markMobilidadeInviteQueuePersistFailure(job, fmt.Sprintf("requeue failed: %v", pushErr))
+		return false
+	}
 
 	w.logger.Info("job re-queued for retry",
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
 		zap.String("key", job.Key),
 		zap.Int("retry_count", job.RetryCount),
+		zap.Time("available_at", job.AvailableAt),
 		zap.Duration("backoff_delay", backoffDelay))
+	return true
+}
+
+// returnJobToQueue puts a not-yet-available job back on the main queue and acks inflight.
+func (w *SyncWorker) returnJobToQueue(job *SyncJob) error {
+	jobBytes, err := json.Marshal(job)
+	if err != nil {
+		return fmt.Errorf("marshal deferred job: %w", err)
+	}
+	queueKey := syncQueueKey(job.Type)
+	if err := w.redis.LPush(context.Background(), queueKey, string(jobBytes)).Err(); err != nil {
+		return fmt.Errorf("lpush deferred job: %w", err)
+	}
+	w.ackInflightJob(job)
+	return nil
+}
+
+// markMobilidadeInviteQueuePersistFailure records email_status=failed when requeue/DLQ cannot persist the job.
+func (w *SyncWorker) markMobilidadeInviteQueuePersistFailure(job *SyncJob, msg string) {
+	if job == nil {
+		return
+	}
+	if job.Type != MobilidadeInviteEmailQueue && job.Collection != MobilidadeInviteEmailQueue {
+		return
+	}
+	conductorID := job.Key
+	if conductorID == "" {
+		if payload, err := parseMobilidadeInviteEmailPayload(job.Data); err == nil {
+			conductorID = payload.ConductorID
+		}
+	}
+	if conductorID == "" {
+		return
+	}
+	w.persistInviteEmailStatus(context.Background(), conductorID, models.InviteEmailStatusFailed, msg)
 }
 
 // handleSpecialJobTypes handles special job types that don't follow normal MongoDB sync pattern
@@ -550,6 +814,14 @@ func (w *SyncWorker) handleMobilidadeInviteEmailJob(ctx context.Context, job *Sy
 	}
 
 	if err := ProcessMobilidadeInviteEmail(ctx, sender, payload, DefaultMobilidadeInviteDeepLinkBase()); err != nil {
+		if errors.Is(err, ErrEmailDeliverySkipped) {
+			w.persistInviteEmailStatus(ctx, payload.ConductorID, models.InviteEmailStatusSkipped, err.Error())
+			w.logger.Info("mobilidade invite email skipped (provider not configured)",
+				zap.String("job_id", job.ID),
+				zap.String("conductor_id", payload.ConductorID),
+				zap.String("notify_email", utils.MaskEmail(payload.NotifyEmail)))
+			return nil
+		}
 		w.logger.Error("mobilidade invite email failed",
 			zap.Error(err),
 			zap.String("job_id", job.ID),

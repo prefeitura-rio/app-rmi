@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -135,7 +136,7 @@ func TestSyncWorker_ProcessMobilidadeInviteEmailFromQueue(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	queueKey := "sync:queue:" + MobilidadeInviteEmailQueue
+	queueKey := syncQueueKey(MobilidadeInviteEmailQueue)
 	require.NoError(t, worker.redis.LPush(ctx, queueKey, raw).Err())
 
 	got, err := worker.getJobNonBlocking(MobilidadeInviteEmailQueue)
@@ -178,6 +179,142 @@ func TestSyncWorker_MobilidadeInviteEmailFailure(t *testing.T) {
 	assert.Equal(t, 0, sender.SentCount())
 }
 
+func TestSyncWorker_MobilidadeInviteEmailSkippedWhenLoggingSender(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	worker.SetEmailSender(NewLoggingEmailSender(nil))
+
+	job := &SyncJob{
+		ID:         "job-skip-1",
+		Type:       MobilidadeInviteEmailQueue,
+		Key:        "cond-skip",
+		Collection: MobilidadeInviteEmailQueue,
+		Data: MobilidadeInviteEmailPayload{
+			ConductorID: "cond-skip",
+			NotifyEmail: "skip@example.com",
+			OwnerName:   "Ana",
+			DisplayName: "Bike",
+		},
+		Timestamp:  time.Now().UTC(),
+		MaxRetries: 3,
+	}
+
+	err := worker.handleMobilidadeInviteEmailJob(context.Background(), job)
+	require.NoError(t, err, "skipped delivery must not retry as failure")
+}
+
+func TestSyncWorker_SpecialJobSkipsWriteBufferCleanup(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	sender := &RecordingEmailSender{}
+	worker.SetEmailSender(sender)
+
+	job := &SyncJob{
+		ID:         "job-no-wb",
+		Type:       MobilidadeInviteEmailQueue,
+		Key:        "cond-no-wb",
+		Collection: MobilidadeInviteEmailQueue,
+		Data: MobilidadeInviteEmailPayload{
+			ConductorID: "cond-no-wb",
+			NotifyEmail: "nowb@example.com",
+			OwnerName:   "Ana",
+			DisplayName: "Bike",
+		},
+		Timestamp:  time.Now().UTC(),
+		MaxRetries: 3,
+	}
+
+	ctx := context.Background()
+	cacheKey := fmt.Sprintf("%s:cache:%s", job.Type, job.Key)
+	_ = worker.redis.Del(ctx, cacheKey)
+
+	worker.processJob(job)
+	require.Equal(t, 1, sender.SentCount())
+
+	exists, err := worker.redis.Exists(ctx, cacheKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), exists, "invite email jobs must not write spurious cache keys")
+}
+
+func TestSyncWorker_MobilidadeInviteEmailInflightAck(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	sender := &RecordingEmailSender{}
+	worker.SetEmailSender(sender)
+
+	job := SyncJob{
+		ID:         "job-inflight-1",
+		Type:       MobilidadeInviteEmailQueue,
+		Key:        "cond-inflight",
+		Collection: MobilidadeInviteEmailQueue,
+		Data: map[string]interface{}{
+			"conductor_id":  "cond-inflight",
+			"notify_email":  "inflight@example.com",
+			"vehicle_id":    "veh-1",
+			"owner_name":    "Ana",
+			"display_name":  "Bike",
+			"conductor_cpf": "11144477735",
+		},
+		Timestamp:  time.Now().UTC(),
+		MaxRetries: 3,
+	}
+	raw, err := json.Marshal(job)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	queueKey := syncQueueKey(MobilidadeInviteEmailQueue)
+	processingKey := syncProcessingKey(MobilidadeInviteEmailQueue)
+	_ = worker.redis.Del(ctx, queueKey, processingKey)
+	require.NoError(t, worker.redis.LPush(ctx, queueKey, raw).Err())
+
+	got, err := worker.getJobNonBlocking(MobilidadeInviteEmailQueue)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.True(t, got.fromInflight)
+	assert.NotEmpty(t, got.rawRedisPayload)
+
+	processingLen, err := worker.redis.LLen(ctx, processingKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), processingLen)
+
+	queueLen, err := worker.redis.LLen(ctx, queueKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), queueLen)
+
+	worker.processJob(got)
+	require.Equal(t, 1, sender.SentCount())
+
+	processingLen, err = worker.redis.LLen(ctx, processingKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), processingLen)
+}
+
+func TestSyncWorker_RecoverInflightMobilidadeInviteJobs(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queueKey := syncQueueKey(MobilidadeInviteEmailQueue)
+	processingKey := syncProcessingKey(MobilidadeInviteEmailQueue)
+	_ = worker.redis.Del(ctx, queueKey, processingKey)
+
+	payload := `{"id":"stale-1","type":"mobilidade_invite_email","key":"cond-stale"}`
+	require.NoError(t, worker.redis.LPush(ctx, processingKey, payload).Err())
+
+	worker.recoverInflightJobs()
+
+	processingLen, err := worker.redis.LLen(ctx, processingKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), processingLen)
+
+	queueLen, err := worker.redis.LLen(ctx, queueKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), queueLen)
+}
+
 func TestInviteConductor_EnqueuesSyncJobForEmail(t *testing.T) {
 	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
@@ -189,7 +326,7 @@ func TestInviteConductor_EnqueuesSyncJobForEmail(t *testing.T) {
 	_ = logging.InitLogger()
 
 	ctx := context.Background()
-	queueKey := "sync:queue:" + MobilidadeInviteEmailQueue
+	queueKey := syncQueueKey(MobilidadeInviteEmailQueue)
 	_ = config.Redis.Del(ctx, queueKey)
 
 	created, err := vehicleSvc.CreateVehicle(ctx, mobilidadeOwnerCPF, catalogCreateRequest())

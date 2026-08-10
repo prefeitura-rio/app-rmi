@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -18,6 +19,10 @@ const (
 	// MobilidadeInviteEmailQueue is the Redis sync queue name for conductor invite emails.
 	MobilidadeInviteEmailQueue = "mobilidade_invite_email"
 )
+
+// ErrEmailDeliverySkipped is returned when outbound email is intentionally not delivered
+// (e.g. Data Relay unset). Callers must not treat this as a successful send.
+var ErrEmailDeliverySkipped = errors.New("email delivery skipped: outbound provider not configured")
 
 // MobilidadeInviteEmailPayload is the job data enqueued when a conductor is invited.
 type MobilidadeInviteEmailPayload struct {
@@ -42,7 +47,7 @@ type EmailSender interface {
 	Send(ctx context.Context, msg EmailMessage) error
 }
 
-// LoggingEmailSender logs the message and succeeds. Used when outbound email is disabled.
+// LoggingEmailSender logs the message and reports delivery as skipped (no provider).
 type LoggingEmailSender struct {
 	logger *logging.SafeLogger
 }
@@ -52,15 +57,15 @@ func NewLoggingEmailSender(logger *logging.SafeLogger) *LoggingEmailSender {
 	return &LoggingEmailSender{logger: logger}
 }
 
-// Send logs the invite email without calling an external provider.
+// Send logs the invite email and returns ErrEmailDeliverySkipped (not a successful delivery).
 func (s *LoggingEmailSender) Send(ctx context.Context, msg EmailMessage) error {
 	if s.logger != nil {
-		s.logger.Info("mobilidade invite email (logging sender)",
+		s.logger.Info("mobilidade invite email (logging sender; not delivered)",
 			zap.String("to", utils.MaskEmail(msg.To)),
 			zap.String("subject", msg.Subject),
 			zap.Int("body_len", len(msg.Body)))
 	}
-	return nil
+	return ErrEmailDeliverySkipped
 }
 
 // DataRelayEmailSender sends mail via Data Relay POST /data/mailman.

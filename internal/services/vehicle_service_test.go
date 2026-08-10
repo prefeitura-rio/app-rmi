@@ -674,6 +674,55 @@ func TestVehicleService_DeleteVehicle_CascadesConductors(t *testing.T) {
 	assert.Equal(t, models.ConductorStatusRevoked, stored.Status)
 }
 
+func TestVehicleService_DeleteVehicle_IdempotentRevokesConductors(t *testing.T) {
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor",
+	})
+	require.NoError(t, err)
+
+	// Simulate partial failure: vehicle already soft-deleted, conductor still pending.
+	now := time.Now().UTC()
+	_, err = config.MongoDB.Collection(config.AppConfig.MobilidadeVehicleCollection).UpdateOne(
+		context.Background(),
+		bson.M{"_id": created.ID},
+		bson.M{"$set": bson.M{"deleted_at": now, "updated_at": now}},
+	)
+	require.NoError(t, err)
+
+	err = vehicleSvc.DeleteVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
+	require.NoError(t, err)
+
+	var stored models.VehicleConductor
+	err = config.MongoDB.Collection(config.AppConfig.MobilidadeConductorCollection).FindOne(
+		context.Background(), bson.M{"_id": link.ID},
+	).Decode(&stored)
+	require.NoError(t, err)
+	assert.Equal(t, models.ConductorStatusRevoked, stored.Status)
+}
+
+func TestVehicleService_DeleteVehicle_SoftDeletedNonOwnerGetsNotFound(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	require.NoError(t, vehicleSvc.DeleteVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex()))
+
+	err = vehicleSvc.DeleteVehicle(context.Background(), mobilidadeOtherCPF, created.ID.Hex())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrVehicleNotFound)
+	assert.NotErrorIs(t, err, ErrMobilidadeForbidden)
+}
+
 func TestVehicleConductorService_InviteRejectsSelfAndDuplicate(t *testing.T) {
 	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()

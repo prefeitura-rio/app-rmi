@@ -404,7 +404,7 @@ func (s *VehicleConductorService) enqueueInviteEmail(ctx context.Context, link *
 		return
 	}
 
-	queueKey := fmt.Sprintf("sync:queue:%s", MobilidadeInviteEmailQueue)
+	queueKey := syncQueueKey(MobilidadeInviteEmailQueue)
 	if err := config.Redis.LPush(ctx, queueKey, jobBytes).Err(); err != nil {
 		if s.logger != nil {
 			s.logger.Warn("mobilidade invite email enqueue failed", zap.Error(err), zap.String("queue", queueKey))

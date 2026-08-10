@@ -45,6 +45,8 @@ const (
 	InviteEmailStatusQueued  InviteEmailStatus = "queued"
 	InviteEmailStatusSent    InviteEmailStatus = "sent"
 	InviteEmailStatusFailed  InviteEmailStatus = "failed"
+	// InviteEmailStatusSkipped means no outbound provider was configured (logging-only); not a delivery success.
+	InviteEmailStatusSkipped InviteEmailStatus = "skipped"
 )
 
 // VehicleConductor is the invite/active-conductor link for a vehicle.
