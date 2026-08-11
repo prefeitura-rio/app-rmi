@@ -241,6 +241,19 @@ func TestRespondInvitationRequest_Validate(t *testing.T) {
 	assert.Error(t, (&RespondInvitationRequest{Status: InvitationResponseStatus(ConductorStatusRevoked)}).Validate())
 }
 
+func TestIsValidConductorStatus(t *testing.T) {
+	assert.True(t, IsValidConductorStatus(ConductorStatusPending))
+	assert.True(t, IsValidConductorStatus(ConductorStatusAccepted))
+	assert.True(t, IsValidConductorStatus(ConductorStatusRejected))
+	assert.True(t, IsValidConductorStatus(ConductorStatusRevoked))
+	assert.False(t, IsValidConductorStatus(ConductorStatus("nope")))
+}
+
+func TestRespondInvitationRequest_AsConductorStatus(t *testing.T) {
+	assert.Equal(t, ConductorStatusAccepted, (&RespondInvitationRequest{Status: InvitationResponseAccepted}).AsConductorStatus())
+	assert.Equal(t, ConductorStatusRejected, (&RespondInvitationRequest{Status: InvitationResponseRejected}).AsConductorStatus())
+}
+
 func TestInviteConductorRequest_Validate(t *testing.T) {
 	assert.NoError(t, (&InviteConductorRequest{CPF: "x", Email: "a@b.co"}).Validate())
 	assert.Error(t, (&InviteConductorRequest{CPF: "x", Email: ""}).Validate())

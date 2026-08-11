@@ -406,3 +406,118 @@ func TestUpdateVehicle_ConductorForbidden(t *testing.T) {
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
+
+func TestGetVehicle_AndDeleteVehicle_HTTP(t *testing.T) {
+	router, cleanup := setupMobilidadeHandlersTest(t)
+	defer cleanup()
+	seedHandlerCatalog(t)
+
+	falseVal := false
+	created, err := services.VehicleServiceInstance.CreateVehicle(context.Background(), handlerOwnerCPF, &models.VehicleCreateRequest{
+		DisplayName: "Bike", BrandID: strPtr("brand_caloi"), ModelID: strPtr("model_e-vibe"),
+		Color: "Preto", SerialNumber: "SN", SerialNumberPhotoURL: "https://storage.googleapis.com/s.jpg", VehiclePhotoURL: "https://storage.googleapis.com/v.jpg",
+		HasInvoice: &falseVal, SelfDeclaration: true,
+	})
+	require.NoError(t, err)
+
+	getReq := httptest.NewRequest(http.MethodGet, "/citizen/"+handlerOwnerCPF+"/vehicles/"+created.ID.Hex(), nil)
+	getW := httptest.NewRecorder()
+	router.ServeHTTP(getW, getReq)
+	require.Equal(t, http.StatusOK, getW.Code, "body: %s", getW.Body.String())
+
+	var detail models.VehicleDetail
+	require.NoError(t, json.Unmarshal(getW.Body.Bytes(), &detail))
+	assert.Equal(t, created.ID.Hex(), detail.ID.Hex())
+	assert.Equal(t, models.VehicleRoleOwner, detail.Role)
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/citizen/"+handlerOwnerCPF+"/vehicles/"+created.ID.Hex(), nil)
+	delW := httptest.NewRecorder()
+	router.ServeHTTP(delW, delReq)
+	require.Equal(t, http.StatusNoContent, delW.Code)
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/citizen/"+handlerOwnerCPF+"/vehicles/"+created.ID.Hex(), nil)
+	missingW := httptest.NewRecorder()
+	router.ServeHTTP(missingW, missingReq)
+	assert.Equal(t, http.StatusNotFound, missingW.Code)
+}
+
+func TestGetAndRemoveVehicleConductors_HTTP(t *testing.T) {
+	router, cleanup := setupMobilidadeHandlersTest(t)
+	defer cleanup()
+	seedHandlerCatalog(t)
+
+	falseVal := false
+	created, err := services.VehicleServiceInstance.CreateVehicle(context.Background(), handlerOwnerCPF, &models.VehicleCreateRequest{
+		DisplayName: "Bike", BrandID: strPtr("brand_caloi"), ModelID: strPtr("model_e-vibe"),
+		Color: "Preto", SerialNumber: "SN", SerialNumberPhotoURL: "https://storage.googleapis.com/s.jpg", VehiclePhotoURL: "https://storage.googleapis.com/v.jpg",
+		HasInvoice: &falseVal, SelfDeclaration: true,
+	})
+	require.NoError(t, err)
+
+	link, err := services.VehicleConductorServiceInstance.InviteConductor(context.Background(), handlerOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: handlerConductorCPF, Email: "condutor@example.com", Name: "Condutor",
+	})
+	require.NoError(t, err)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/citizen/"+handlerOwnerCPF+"/vehicles/"+created.ID.Hex()+"/conductors", nil)
+	listW := httptest.NewRecorder()
+	router.ServeHTTP(listW, listReq)
+	require.Equal(t, http.StatusOK, listW.Code, "body: %s", listW.Body.String())
+	var list models.ConductorsListResponse
+	require.NoError(t, json.Unmarshal(listW.Body.Bytes(), &list))
+	require.Len(t, list.Data, 1)
+	assert.Equal(t, link.ID.Hex(), list.Data[0].ID.Hex())
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/citizen/"+handlerOwnerCPF+"/vehicles/"+created.ID.Hex()+"/conductors/"+link.ID.Hex(), nil)
+	delW := httptest.NewRecorder()
+	router.ServeHTTP(delW, delReq)
+	require.Equal(t, http.StatusNoContent, delW.Code)
+
+	listReq2 := httptest.NewRequest(http.MethodGet, "/citizen/"+handlerOwnerCPF+"/vehicles/"+created.ID.Hex()+"/conductors", nil)
+	listW2 := httptest.NewRecorder()
+	router.ServeHTTP(listW2, listReq2)
+	require.Equal(t, http.StatusOK, listW2.Code)
+	var list2 models.ConductorsListResponse
+	require.NoError(t, json.Unmarshal(listW2.Body.Bytes(), &list2))
+	assert.Empty(t, list2.Data)
+}
+
+func TestMapMobilidadeError_Branches(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []struct {
+		name string
+		err  error
+		code int
+	}{
+		{"not_found", services.ErrVehicleNotFound, http.StatusNotFound},
+		{"conductor_not_found", services.ErrConductorNotFound, http.StatusNotFound},
+		{"forbidden", services.ErrMobilidadeForbidden, http.StatusForbidden},
+		{"conflict", services.ErrMobilidadeConflict, http.StatusConflict},
+		{"invalid", services.ErrMobilidadeInvalidInput, http.StatusBadRequest},
+		{"not_implemented", services.ErrMobilidadeNotImplemented, http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/x", nil)
+			mapMobilidadeError(c, tc.err)
+			assert.Equal(t, tc.code, w.Code)
+		})
+	}
+}
+
+func TestGetVehicleModels_WithBrand(t *testing.T) {
+	router, cleanup := setupMobilidadeHandlersTest(t)
+	defer cleanup()
+	seedHandlerCatalog(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/mobilidade/vehicle-models?brand_id=brand_caloi", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+	var resp models.VehicleModelsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 1)
+	assert.Equal(t, "E-Vibe", resp.Data[0].Name)
+}
