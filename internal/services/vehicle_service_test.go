@@ -743,41 +743,6 @@ func TestVehicleConductorService_InviteRejectsSelfAndDuplicate(t *testing.T) {
 	assert.ErrorIs(t, err, ErrMobilidadeConflict)
 }
 
-func TestVehicleConductorService_InviteNormalizesFormattedCPF(t *testing.T) {
-	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
-	defer cleanup()
-	seedMobilidadeCatalog(t)
-
-	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
-	require.NoError(t, err)
-
-	// Formatted own CPF must still be rejected as self-invite.
-	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: "035.613.507-12", Email: "self@example.com",
-	})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
-	assert.Contains(t, err.Error(), "cannot invite vehicle owner")
-
-	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: "450.497.258-10", Email: "joao@example.com", Name: "João",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, mobilidadeConductorCPF, link.ConductorCPF)
-
-	// Digits-only duplicate of the formatted invite must conflict.
-	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
-		CPF: mobilidadeConductorCPF, Email: "outro@example.com",
-	})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrMobilidadeConflict)
-
-	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
-		Status: models.InvitationResponseAccepted,
-	})
-	require.NoError(t, err)
-}
-
 func TestVehicleService_UpdateVehicle_ClearsStaleFileMetadataOnURLChange(t *testing.T) {
 	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()

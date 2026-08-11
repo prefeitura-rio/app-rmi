@@ -74,11 +74,12 @@ func (w *SyncWorker) SetEmailSender(sender EmailSender) {
 // Start starts the worker
 func (w *SyncWorker) Start() {
 	w.logger.Info("sync worker started", zap.Int("worker_id", w.id))
-	w.recoverInflightJobs()
+	w.recoverStaleInflightJobs()
 
-	// Use a ticker for more efficient timing instead of sleep
 	ticker := time.NewTicker(50 * time.Millisecond) // Reduced delay for better responsiveness
+	recoverTicker := time.NewTicker(inflightRecoverInterval)
 	defer ticker.Stop()
+	defer recoverTicker.Stop()
 
 	for {
 		select {
@@ -87,13 +88,23 @@ func (w *SyncWorker) Start() {
 			return
 		case <-ticker.C:
 			w.processQueuesParallel()
+		case <-recoverTicker.C:
+			w.recoverStaleInflightJobs()
 		}
 	}
 }
 
-// recoverInflightJobs requeues jobs left in processing lists after a crash/restart.
-// Scoped to mobilidade invite email (reliable-queue path); other queues still use RPOP.
-func (w *SyncWorker) recoverInflightJobs() {
+// inflightVisibilityTimeout is how long a claimed invite-email job may stay in processing
+// before another worker may requeue it. Must exceed typical send latency so rolling deploys
+// do not duplicate active work.
+var inflightVisibilityTimeout = 5 * time.Minute
+
+// inflightRecoverInterval is how often workers attempt stale inflight recovery.
+var inflightRecoverInterval = 1 * time.Minute
+
+// recoverStaleInflightJobs requeues only processing jobs older than the visibility timeout.
+// A short Redis lock prevents concurrent recoverers from double-moving the same payload.
+func (w *SyncWorker) recoverStaleInflightJobs() {
 	ctx := context.Background()
 	const maxRecover = 1000
 
@@ -101,86 +112,117 @@ func (w *SyncWorker) recoverInflightJobs() {
 		if !usesReliableQueue(queue) {
 			continue
 		}
-		w.migrateLegacyMobilidadeQueueKeys(ctx, queue)
 
-		processingKey := syncProcessingKey(queue)
-		queueKey := syncQueueKey(queue)
-		recovered := 0
-		for recovered < maxRecover {
-			result, err := w.redis.RPopLPush(ctx, processingKey, queueKey).Result()
-			if err != nil {
-				if errors.Is(err, redis.Nil) {
-					break
+		lockKey := syncInflightRecoverLockKey(queue)
+		acquired, err := w.redis.SetNX(ctx, lockKey, fmt.Sprintf("worker-%d", w.id), 30*time.Second).Result()
+		if err != nil {
+			w.logger.Warn("inflight recover lock failed",
+				zap.String("queue", queue),
+				zap.Error(err))
+			continue
+		}
+		if !acquired {
+			continue
+		}
+
+		func() {
+			defer func() {
+				if delErr := w.redis.Del(ctx, lockKey).Err(); delErr != nil {
+					w.logger.Debug("inflight recover lock release failed",
+						zap.String("queue", queue),
+						zap.Error(delErr))
 				}
-				w.logger.Error("failed to recover inflight sync job",
+			}()
+
+			processingKey := syncProcessingKey(queue)
+			queueKey := syncQueueKey(queue)
+			claimKey := syncProcessingClaimKey(queue)
+
+			items, err := w.redis.LRange(ctx, processingKey, 0, -1).Result()
+			if err != nil {
+				w.logger.Error("failed to list inflight sync jobs",
 					zap.String("queue", queue),
 					zap.Error(err))
-				break
+				return
 			}
-			recovered++
-			w.logger.Warn("recovered stale inflight sync job",
-				zap.String("queue", queue),
-				zap.Int("payload_len", len(result)))
-		}
-		if recovered > 0 {
-			w.logger.Info("recovered inflight jobs into main queue",
-				zap.String("queue", queue),
-				zap.Int("count", recovered))
-		}
-		if recovered >= maxRecover {
-			w.logger.Error("inflight recovery hit cap; remaining jobs stay in processing until next start",
-				zap.String("queue", queue),
-				zap.Int("cap", maxRecover))
-		}
+
+			cutoff := time.Now().Add(-inflightVisibilityTimeout).Unix()
+			recovered := 0
+			for _, item := range items {
+				if recovered >= maxRecover {
+					w.logger.Error("inflight recovery hit cap; remaining stale jobs wait for next cycle",
+						zap.String("queue", queue),
+						zap.Int("cap", maxRecover))
+					break
+				}
+				if !w.isInflightClaimStale(ctx, claimKey, item, cutoff) {
+					continue
+				}
+				removed, remErr := w.redis.LRem(ctx, processingKey, 1, item).Result()
+				if remErr != nil {
+					w.logger.Error("failed to remove stale inflight job",
+						zap.String("queue", queue),
+						zap.Error(remErr))
+					continue
+				}
+				_ = w.redis.ZRem(ctx, claimKey, item).Err()
+				if removed == 0 {
+					continue // another worker already moved/acked it
+				}
+				if pushErr := w.redis.LPush(ctx, queueKey, item).Err(); pushErr != nil {
+					w.logger.Error("failed to requeue stale inflight job",
+						zap.String("queue", queue),
+						zap.Error(pushErr))
+					// Best-effort put back into processing to avoid silent loss.
+					_ = w.redis.LPush(ctx, processingKey, item).Err()
+					_ = w.redis.ZAdd(ctx, claimKey, redis.Z{Score: float64(cutoff), Member: item}).Err()
+					continue
+				}
+				recovered++
+				w.logger.Warn("recovered stale inflight sync job",
+					zap.String("queue", queue),
+					zap.Int("payload_len", len(item)))
+			}
+			if recovered > 0 {
+				w.logger.Info("recovered stale inflight jobs into main queue",
+					zap.String("queue", queue),
+					zap.Int("count", recovered))
+			}
+		}()
 	}
 }
 
-// migrateLegacyMobilidadeQueueKeys moves jobs from pre-hash-tag keys into cluster-safe keys.
-func (w *SyncWorker) migrateLegacyMobilidadeQueueKeys(ctx context.Context, queue string) {
-	if queue != MobilidadeInviteEmailQueue {
-		return
+func (w *SyncWorker) isInflightClaimStale(ctx context.Context, claimKey, item string, cutoffUnix int64) bool {
+	score, err := w.redis.ZScore(ctx, claimKey, item).Result()
+	if err != nil {
+		// Missing claim metadata (e.g. crash between RPOPLPUSH and ZADD): treat as stale.
+		if errors.Is(err, redis.Nil) || err.Error() == "redis: nil" {
+			return true
+		}
+		w.logger.Warn("inflight claim score lookup failed; skipping item",
+			zap.String("claim_key", claimKey),
+			zap.Error(err))
+		return false
 	}
-	legacyQueue := fmt.Sprintf("sync:queue:%s", queue)
-	legacyProcessing := fmt.Sprintf("sync:processing:%s", queue)
-	modernQueue := syncQueueKey(queue)
-	modernProcessing := syncProcessingKey(queue)
+	return int64(score) <= cutoffUnix
+}
 
-	moved := 0
-	for moved < 1000 {
-		result, err := w.redis.RPop(ctx, legacyQueue).Result()
-		if err != nil {
-			if errors.Is(err, redis.Nil) || err.Error() == "redis: nil" {
-				break
-			}
-			w.logger.Warn("legacy mobilidade queue migrate failed", zap.Error(err))
-			break
-		}
-		if err := w.redis.LPush(ctx, modernQueue, result).Err(); err != nil {
-			w.logger.Error("failed to rehome legacy mobilidade queue job", zap.Error(err))
-			_ = w.redis.LPush(ctx, legacyQueue, result).Err()
-			break
-		}
-		moved++
+func (w *SyncWorker) trackInflightClaim(ctx context.Context, queue, payload string) {
+	if err := w.redis.ZAdd(ctx, syncProcessingClaimKey(queue), redis.Z{
+		Score:  float64(time.Now().Unix()),
+		Member: payload,
+	}).Err(); err != nil {
+		w.logger.Error("failed to track inflight claim timestamp",
+			zap.String("queue", queue),
+			zap.Error(err))
 	}
-	for moved < 1000 {
-		result, err := w.redis.RPop(ctx, legacyProcessing).Result()
-		if err != nil {
-			if errors.Is(err, redis.Nil) || err.Error() == "redis: nil" {
-				break
-			}
-			w.logger.Warn("legacy mobilidade processing migrate failed", zap.Error(err))
-			break
-		}
-		if err := w.redis.LPush(ctx, modernProcessing, result).Err(); err != nil {
-			w.logger.Error("failed to rehome legacy mobilidade processing job", zap.Error(err))
-			_ = w.redis.LPush(ctx, legacyProcessing, result).Err()
-			break
-		}
-		moved++
-	}
-	if moved > 0 {
-		w.logger.Info("migrated legacy mobilidade invite queue keys to hash-tagged keys",
-			zap.Int("moved", moved))
+}
+
+func (w *SyncWorker) clearInflightClaim(ctx context.Context, queue, payload string) {
+	if err := w.redis.ZRem(ctx, syncProcessingClaimKey(queue), payload).Err(); err != nil {
+		w.logger.Warn("failed to clear inflight claim timestamp",
+			zap.String("queue", queue),
+			zap.Error(err))
 	}
 }
 
@@ -202,6 +244,20 @@ func syncProcessingKey(queue string) string {
 		return fmt.Sprintf("sync:processing:{%s}", queue)
 	}
 	return fmt.Sprintf("sync:processing:%s", queue)
+}
+
+func syncProcessingClaimKey(queue string) string {
+	if usesReliableQueue(queue) {
+		return fmt.Sprintf("sync:processing:claimed:{%s}", queue)
+	}
+	return fmt.Sprintf("sync:processing:claimed:%s", queue)
+}
+
+func syncInflightRecoverLockKey(queue string) string {
+	if usesReliableQueue(queue) {
+		return fmt.Sprintf("sync:lock:recover_inflight:{%s}", queue)
+	}
+	return fmt.Sprintf("sync:lock:recover_inflight:%s", queue)
 }
 
 func syncDLQKey(queue string) string {
@@ -276,6 +332,9 @@ func (w *SyncWorker) getJobNonBlocking(queue string) (*SyncJob, error) {
 		processingKey := syncProcessingKey(queue)
 		result, err = w.redis.RPopLPush(ctx, queueKey, processingKey).Result()
 		fromInflight = true
+		if err == nil {
+			w.trackInflightClaim(ctx, queue, result)
+		}
 	} else {
 		// Use RPOP (non-blocking) instead of BRPop for other queues
 		result, err = w.redis.RPop(ctx, queueKey).Result()
@@ -293,6 +352,7 @@ func (w *SyncWorker) getJobNonBlocking(queue string) (*SyncJob, error) {
 			zap.String("queue", queue),
 			zap.Error(err))
 		if fromInflight {
+			w.clearInflightClaim(ctx, queue, result)
 			if remErr := w.redis.LRem(ctx, syncProcessingKey(queue), 1, result).Err(); remErr != nil {
 				w.logger.Error("failed to discard poison inflight job",
 					zap.String("queue", queue),
@@ -364,6 +424,7 @@ func (w *SyncWorker) ackInflightJob(job *SyncJob) {
 		return
 	}
 	ctx := context.Background()
+	w.clearInflightClaim(ctx, job.Type, job.rawRedisPayload)
 	processingKey := syncProcessingKey(job.Type)
 	if err := w.redis.LRem(ctx, processingKey, 1, job.rawRedisPayload).Err(); err != nil {
 		w.logger.Error("failed to ack inflight sync job",

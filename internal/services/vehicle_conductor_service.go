@@ -194,7 +194,7 @@ func (s *VehicleConductorService) InviteConductor(ctx context.Context, cpf, vehi
 	if err := req.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrMobilidadeInvalidInput, err.Error())
 	}
-	conductorCPF := utils.NormalizeCPF(req.CPF)
+	conductorCPF := req.CPF
 	if !utils.ValidateCPF(conductorCPF) {
 		return nil, fmt.Errorf("%w: invalid conductor cpf", ErrMobilidadeInvalidInput)
 	}

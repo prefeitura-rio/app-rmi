@@ -14,6 +14,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
@@ -292,27 +293,75 @@ func TestSyncWorker_MobilidadeInviteEmailInflightAck(t *testing.T) {
 	assert.Equal(t, int64(0), processingLen)
 }
 
-func TestSyncWorker_RecoverInflightMobilidadeInviteJobs(t *testing.T) {
+func TestSyncWorker_RecoverStaleInflightMobilidadeInviteJobs(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	prevTimeout := inflightVisibilityTimeout
+	inflightVisibilityTimeout = time.Minute
+	defer func() { inflightVisibilityTimeout = prevTimeout }()
+
+	ctx := context.Background()
+	queueKey := syncQueueKey(MobilidadeInviteEmailQueue)
+	processingKey := syncProcessingKey(MobilidadeInviteEmailQueue)
+	claimKey := syncProcessingClaimKey(MobilidadeInviteEmailQueue)
+	_ = worker.redis.Del(ctx, queueKey, processingKey, claimKey)
+
+	stalePayload := `{"id":"stale-1","type":"mobilidade_invite_email","key":"cond-stale"}`
+	freshPayload := `{"id":"fresh-1","type":"mobilidade_invite_email","key":"cond-fresh"}`
+	require.NoError(t, worker.redis.LPush(ctx, processingKey, stalePayload, freshPayload).Err())
+
+	// Fresh claim (now) must not be stolen; stale claim (older than visibility) must be requeued.
+	require.NoError(t, worker.redis.ZAdd(ctx, claimKey,
+		redis.Z{Score: float64(time.Now().Unix()), Member: freshPayload},
+		redis.Z{Score: float64(time.Now().Add(-2 * time.Minute).Unix()), Member: stalePayload},
+	).Err())
+
+	worker.recoverStaleInflightJobs()
+
+	processingLen, err := worker.redis.LLen(ctx, processingKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), processingLen, "fresh in-flight job must stay in processing")
+
+	queueLen, err := worker.redis.LLen(ctx, queueKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), queueLen, "only stale job should be requeued")
+
+	queued, err := worker.redis.RPop(ctx, queueKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, stalePayload, queued)
+
+	stillProcessing, err := worker.redis.LRange(ctx, processingKey, 0, -1).Result()
+	require.NoError(t, err)
+	require.Len(t, stillProcessing, 1)
+	assert.Equal(t, freshPayload, stillProcessing[0])
+}
+
+func TestSyncWorker_RecoverInflightSkipsFreshClaimsOnStart(t *testing.T) {
 	worker, _, cleanup := setupSyncWorkerTest(t)
 	defer cleanup()
 
 	ctx := context.Background()
 	queueKey := syncQueueKey(MobilidadeInviteEmailQueue)
 	processingKey := syncProcessingKey(MobilidadeInviteEmailQueue)
-	_ = worker.redis.Del(ctx, queueKey, processingKey)
+	claimKey := syncProcessingClaimKey(MobilidadeInviteEmailQueue)
+	_ = worker.redis.Del(ctx, queueKey, processingKey, claimKey)
 
-	payload := `{"id":"stale-1","type":"mobilidade_invite_email","key":"cond-stale"}`
+	payload := `{"id":"active-1","type":"mobilidade_invite_email","key":"cond-active"}`
 	require.NoError(t, worker.redis.LPush(ctx, processingKey, payload).Err())
+	require.NoError(t, worker.redis.ZAdd(ctx, claimKey, redis.Z{
+		Score: float64(time.Now().Unix()), Member: payload,
+	}).Err())
 
-	worker.recoverInflightJobs()
+	worker.recoverStaleInflightJobs()
 
 	processingLen, err := worker.redis.LLen(ctx, processingKey).Result()
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), processingLen)
+	assert.Equal(t, int64(1), processingLen)
 
 	queueLen, err := worker.redis.LLen(ctx, queueKey).Result()
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), queueLen)
+	assert.Equal(t, int64(0), queueLen)
 }
 
 func TestInviteConductor_EnqueuesSyncJobForEmail(t *testing.T) {
