@@ -32,6 +32,10 @@ type MobilidadeInviteEmailPayload struct {
 	OwnerName    string `json:"owner_name"`
 	DisplayName  string `json:"display_name"`
 	ConductorCPF string `json:"conductor_cpf"`
+
+	// DeliveryOutcome is set after the provider call succeeds (sent) or is skipped, so retries
+	// can persist email_status without re-sending. Values: "sent" | "skipped".
+	DeliveryOutcome string `json:"delivery_outcome,omitempty"`
 }
 
 // EmailMessage is a transactional email to be delivered by an EmailSender.

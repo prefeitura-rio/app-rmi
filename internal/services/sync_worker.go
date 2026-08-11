@@ -135,8 +135,6 @@ func (w *SyncWorker) recoverStaleInflightJobs() {
 			}()
 
 			processingKey := syncProcessingKey(queue)
-			queueKey := syncQueueKey(queue)
-			claimKey := syncProcessingClaimKey(queue)
 
 			items, err := w.redis.LRange(ctx, processingKey, 0, -1).Result()
 			if err != nil {
@@ -155,27 +153,14 @@ func (w *SyncWorker) recoverStaleInflightJobs() {
 						zap.Int("cap", maxRecover))
 					break
 				}
-				if !w.isInflightClaimStale(ctx, claimKey, item, cutoff) {
+				moved, recErr := w.recoverStaleInflightItem(ctx, queue, item, cutoff)
+				if recErr != nil {
+					w.logger.Error("failed to recover stale inflight job",
+						zap.String("queue", queue),
+						zap.Error(recErr))
 					continue
 				}
-				removed, remErr := w.redis.LRem(ctx, processingKey, 1, item).Result()
-				if remErr != nil {
-					w.logger.Error("failed to remove stale inflight job",
-						zap.String("queue", queue),
-						zap.Error(remErr))
-					continue
-				}
-				_ = w.redis.ZRem(ctx, claimKey, item).Err()
-				if removed == 0 {
-					continue // another worker already moved/acked it
-				}
-				if pushErr := w.redis.LPush(ctx, queueKey, item).Err(); pushErr != nil {
-					w.logger.Error("failed to requeue stale inflight job",
-						zap.String("queue", queue),
-						zap.Error(pushErr))
-					// Best-effort put back into processing to avoid silent loss.
-					_ = w.redis.LPush(ctx, processingKey, item).Err()
-					_ = w.redis.ZAdd(ctx, claimKey, redis.Z{Score: float64(cutoff), Member: item}).Err()
+				if !moved {
 					continue
 				}
 				recovered++
@@ -189,40 +174,6 @@ func (w *SyncWorker) recoverStaleInflightJobs() {
 					zap.Int("count", recovered))
 			}
 		}()
-	}
-}
-
-func (w *SyncWorker) isInflightClaimStale(ctx context.Context, claimKey, item string, cutoffUnix int64) bool {
-	score, err := w.redis.ZScore(ctx, claimKey, item).Result()
-	if err != nil {
-		// Missing claim metadata (e.g. crash between RPOPLPUSH and ZADD): treat as stale.
-		if errors.Is(err, redis.Nil) || err.Error() == "redis: nil" {
-			return true
-		}
-		w.logger.Warn("inflight claim score lookup failed; skipping item",
-			zap.String("claim_key", claimKey),
-			zap.Error(err))
-		return false
-	}
-	return int64(score) <= cutoffUnix
-}
-
-func (w *SyncWorker) trackInflightClaim(ctx context.Context, queue, payload string) {
-	if err := w.redis.ZAdd(ctx, syncProcessingClaimKey(queue), redis.Z{
-		Score:  float64(time.Now().Unix()),
-		Member: payload,
-	}).Err(); err != nil {
-		w.logger.Error("failed to track inflight claim timestamp",
-			zap.String("queue", queue),
-			zap.Error(err))
-	}
-}
-
-func (w *SyncWorker) clearInflightClaim(ctx context.Context, queue, payload string) {
-	if err := w.redis.ZRem(ctx, syncProcessingClaimKey(queue), payload).Err(); err != nil {
-		w.logger.Warn("failed to clear inflight claim timestamp",
-			zap.String("queue", queue),
-			zap.Error(err))
 	}
 }
 
@@ -317,7 +268,7 @@ func (w *SyncWorker) processQueuesParallel() {
 }
 
 // getJobNonBlocking gets a job from a specific queue without blocking.
-// Mobilidade invite email uses RPOPLPUSH into an inflight/processing list for at-least-once delivery.
+// Mobilidade invite email uses atomic RPOPLPUSH+ZADD into an inflight/processing list.
 func (w *SyncWorker) getJobNonBlocking(queue string) (*SyncJob, error) {
 	ctx := context.Background()
 	queueKey := syncQueueKey(queue)
@@ -329,11 +280,10 @@ func (w *SyncWorker) getJobNonBlocking(queue string) (*SyncJob, error) {
 	)
 
 	if usesReliableQueue(queue) {
-		processingKey := syncProcessingKey(queue)
-		result, err = w.redis.RPopLPush(ctx, queueKey, processingKey).Result()
+		result, err = w.claimReliableJob(ctx, queue)
 		fromInflight = true
-		if err == nil {
-			w.trackInflightClaim(ctx, queue, result)
+		if err == nil && result == "" {
+			return nil, nil
 		}
 	} else {
 		// Use RPOP (non-blocking) instead of BRPop for other queues
@@ -352,8 +302,7 @@ func (w *SyncWorker) getJobNonBlocking(queue string) (*SyncJob, error) {
 			zap.String("queue", queue),
 			zap.Error(err))
 		if fromInflight {
-			w.clearInflightClaim(ctx, queue, result)
-			if remErr := w.redis.LRem(ctx, syncProcessingKey(queue), 1, result).Err(); remErr != nil {
+			if remErr := w.ackReliableJob(ctx, queue, result); remErr != nil {
 				w.logger.Error("failed to discard poison inflight job",
 					zap.String("queue", queue),
 					zap.Error(remErr))
@@ -424,9 +373,7 @@ func (w *SyncWorker) ackInflightJob(job *SyncJob) {
 		return
 	}
 	ctx := context.Background()
-	w.clearInflightClaim(ctx, job.Type, job.rawRedisPayload)
-	processingKey := syncProcessingKey(job.Type)
-	if err := w.redis.LRem(ctx, processingKey, 1, job.rawRedisPayload).Err(); err != nil {
+	if err := w.ackReliableJob(ctx, job.Type, job.rawRedisPayload); err != nil {
 		w.logger.Error("failed to ack inflight sync job",
 			zap.String("job_id", job.ID),
 			zap.String("type", job.Type),
@@ -604,9 +551,9 @@ func (w *SyncWorker) handleSyncFailure(job *SyncJob, err error) {
 		// Re-queue with backoff
 		persisted = w.requeueJob(job)
 	}
-	// Ack inflight only after the job is safely back on a Redis list.
-	// If LPush failed, leave the payload in processing for Start recovery.
-	if persisted {
+	// Reliable-queue requeue/DLQ already removes processing+claim atomically.
+	// For other paths, ack only after the job is safely back on a Redis list.
+	if persisted && !(job.fromInflight && usesReliableQueue(job.Type)) {
 		w.ackInflightJob(job)
 	}
 }
@@ -631,8 +578,31 @@ func (w *SyncWorker) moveToDLQ(job *SyncJob, err error) bool {
 		return false
 	}
 	dlqKey := syncDLQKey(job.Type)
+	ctx := context.Background()
 
-	if pushErr := w.redis.LPush(context.Background(), dlqKey, string(dlqBytes)).Err(); pushErr != nil {
+	if job.fromInflight && usesReliableQueue(job.Type) && job.rawRedisPayload != "" {
+		moved, moveErr := w.completeReliableJobToList(ctx, job.Type, dlqKey, job.rawRedisPayload, string(dlqBytes))
+		if moveErr != nil {
+			w.logger.Error("failed to move job to DLQ",
+				zap.String("job_id", job.ID),
+				zap.String("type", job.Type),
+				zap.String("key", job.Key),
+				zap.Error(moveErr))
+			if w.metrics != nil {
+				w.metrics.IncrementSyncFailures(job.Type)
+			}
+			w.markMobilidadeInviteQueuePersistFailure(job, fmt.Sprintf("dlq failed: %v", moveErr))
+			return false
+		}
+		if !moved {
+			w.logger.Error("failed to move job to DLQ: inflight payload missing",
+				zap.String("job_id", job.ID),
+				zap.String("type", job.Type),
+				zap.String("key", job.Key))
+			w.markMobilidadeInviteQueuePersistFailure(job, "dlq failed: inflight payload missing")
+			return false
+		}
+	} else if pushErr := w.redis.LPush(ctx, dlqKey, string(dlqBytes)).Err(); pushErr != nil {
 		w.logger.Error("failed to move job to DLQ",
 			zap.String("job_id", job.ID),
 			zap.String("type", job.Type),
@@ -674,8 +644,32 @@ func (w *SyncWorker) requeueJob(job *SyncJob) bool {
 		return false
 	}
 	queueKey := syncQueueKey(job.Type)
+	ctx := context.Background()
 
-	if pushErr := w.redis.LPush(context.Background(), queueKey, string(jobBytes)).Err(); pushErr != nil {
+	if job.fromInflight && usesReliableQueue(job.Type) && job.rawRedisPayload != "" {
+		moved, moveErr := w.completeReliableJobToList(ctx, job.Type, queueKey, job.rawRedisPayload, string(jobBytes))
+		if moveErr != nil {
+			w.logger.Error("failed to requeue job",
+				zap.String("job_id", job.ID),
+				zap.String("type", job.Type),
+				zap.String("key", job.Key),
+				zap.Int("retry_count", job.RetryCount),
+				zap.Error(moveErr))
+			if w.metrics != nil {
+				w.metrics.IncrementSyncFailures(job.Type)
+			}
+			w.markMobilidadeInviteQueuePersistFailure(job, fmt.Sprintf("requeue failed: %v", moveErr))
+			return false
+		}
+		if !moved {
+			w.logger.Error("failed to requeue job: inflight payload missing",
+				zap.String("job_id", job.ID),
+				zap.String("type", job.Type),
+				zap.String("key", job.Key))
+			w.markMobilidadeInviteQueuePersistFailure(job, "requeue failed: inflight payload missing")
+			return false
+		}
+	} else if pushErr := w.redis.LPush(ctx, queueKey, string(jobBytes)).Err(); pushErr != nil {
 		w.logger.Error("failed to requeue job",
 			zap.String("job_id", job.ID),
 			zap.String("type", job.Type),
@@ -706,7 +700,20 @@ func (w *SyncWorker) returnJobToQueue(job *SyncJob) error {
 		return fmt.Errorf("marshal deferred job: %w", err)
 	}
 	queueKey := syncQueueKey(job.Type)
-	if err := w.redis.LPush(context.Background(), queueKey, string(jobBytes)).Err(); err != nil {
+	ctx := context.Background()
+
+	if job.fromInflight && usesReliableQueue(job.Type) && job.rawRedisPayload != "" {
+		moved, moveErr := w.completeReliableJobToList(ctx, job.Type, queueKey, job.rawRedisPayload, string(jobBytes))
+		if moveErr != nil {
+			return fmt.Errorf("return deferred job: %w", moveErr)
+		}
+		if !moved {
+			return fmt.Errorf("return deferred job: inflight payload missing")
+		}
+		return nil
+	}
+
+	if err := w.redis.LPush(ctx, queueKey, string(jobBytes)).Err(); err != nil {
 		return fmt.Errorf("lpush deferred job: %w", err)
 	}
 	w.ackInflightJob(job)
@@ -864,49 +871,94 @@ func (w *SyncWorker) handleMobilidadeInviteEmailJob(ctx context.Context, job *Sy
 			conductorID = payload.ConductorID
 		}
 		if conductorID != "" {
-			w.persistInviteEmailStatus(ctx, conductorID, models.InviteEmailStatusFailed, err.Error())
+			_ = w.persistInviteEmailStatus(ctx, conductorID, models.InviteEmailStatusFailed, err.Error())
 		}
 		return err
 	}
 
-	sender := w.emailSender
-	if sender == nil {
-		sender = NewLoggingEmailSender(w.logger)
-	}
+	outcome := payload.DeliveryOutcome
+	if outcome == "" {
+		sender := w.emailSender
+		if sender == nil {
+			sender = NewLoggingEmailSender(w.logger)
+		}
 
-	if err := ProcessMobilidadeInviteEmail(ctx, sender, payload, DefaultMobilidadeInviteDeepLinkBase()); err != nil {
-		if errors.Is(err, ErrEmailDeliverySkipped) {
-			w.persistInviteEmailStatus(ctx, payload.ConductorID, models.InviteEmailStatusSkipped, err.Error())
-			w.logger.Info("mobilidade invite email skipped (provider not configured)",
+		if err := ProcessMobilidadeInviteEmail(ctx, sender, payload, DefaultMobilidadeInviteDeepLinkBase()); err != nil {
+			if errors.Is(err, ErrEmailDeliverySkipped) {
+				outcome = string(models.InviteEmailStatusSkipped)
+				w.logger.Info("mobilidade invite email skipped (provider not configured)",
+					zap.String("job_id", job.ID),
+					zap.String("conductor_id", payload.ConductorID),
+					zap.String("notify_email", utils.MaskEmail(payload.NotifyEmail)))
+			} else {
+				w.logger.Error("mobilidade invite email failed",
+					zap.Error(err),
+					zap.String("job_id", job.ID),
+					zap.String("conductor_id", payload.ConductorID),
+					zap.String("notify_email", utils.MaskEmail(payload.NotifyEmail)))
+				_ = w.persistInviteEmailStatus(ctx, payload.ConductorID, models.InviteEmailStatusFailed, err.Error())
+				return err
+			}
+		} else {
+			outcome = string(models.InviteEmailStatusSent)
+			w.logger.Info("mobilidade invite email sent",
 				zap.String("job_id", job.ID),
 				zap.String("conductor_id", payload.ConductorID),
 				zap.String("notify_email", utils.MaskEmail(payload.NotifyEmail)))
-			return nil
 		}
-		w.logger.Error("mobilidade invite email failed",
-			zap.Error(err),
-			zap.String("job_id", job.ID),
-			zap.String("conductor_id", payload.ConductorID),
-			zap.String("notify_email", utils.MaskEmail(payload.NotifyEmail)))
-		w.persistInviteEmailStatus(ctx, payload.ConductorID, models.InviteEmailStatusFailed, err.Error())
-		return err
+
+		payload.DeliveryOutcome = outcome
+		job.Data = payload
+		if err := w.checkpointInviteDeliveryOutcome(ctx, job, payload); err != nil {
+			// Still try to persist status; if that also fails the requeue carries DeliveryOutcome.
+			w.logger.Warn("failed to checkpoint invite delivery outcome on inflight payload",
+				zap.String("job_id", job.ID),
+				zap.String("conductor_id", payload.ConductorID),
+				zap.Error(err))
+		}
 	}
 
-	w.persistInviteEmailStatus(ctx, payload.ConductorID, models.InviteEmailStatusSent, "")
-	w.logger.Info("mobilidade invite email sent",
-		zap.String("job_id", job.ID),
-		zap.String("conductor_id", payload.ConductorID),
-		zap.String("notify_email", utils.MaskEmail(payload.NotifyEmail)))
+	status := models.InviteEmailStatus(outcome)
+	lastError := ""
+	if status == models.InviteEmailStatusSkipped {
+		lastError = ErrEmailDeliverySkipped.Error()
+	}
+	if err := w.persistInviteEmailStatus(ctx, payload.ConductorID, status, lastError); err != nil {
+		// Keep job retryable without re-sending: DeliveryOutcome is already on job.Data
+		// (and preferably checkpointed on the inflight Redis payload).
+		return fmt.Errorf("persist invite email status (%s): %w", status, err)
+	}
 	return nil
 }
 
-func (w *SyncWorker) persistInviteEmailStatus(ctx context.Context, conductorID string, status models.InviteEmailStatus, lastError string) {
+// checkpointInviteDeliveryOutcome rewrites the inflight Redis payload so a crash/recovery
+// after provider success does not re-send the email.
+func (w *SyncWorker) checkpointInviteDeliveryOutcome(ctx context.Context, job *SyncJob, payload MobilidadeInviteEmailPayload) error {
+	if job == nil || !job.fromInflight || job.rawRedisPayload == "" || !usesReliableQueue(job.Type) {
+		return nil
+	}
+	job.Data = payload
+	jobBytes, err := json.Marshal(job)
+	if err != nil {
+		return err
+	}
+	newPayload := string(jobBytes)
+	if err := w.replaceReliableInflightPayload(ctx, job.Type, job.rawRedisPayload, newPayload); err != nil {
+		return err
+	}
+	job.rawRedisPayload = newPayload
+	return nil
+}
+
+func (w *SyncWorker) persistInviteEmailStatus(ctx context.Context, conductorID string, status models.InviteEmailStatus, lastError string) error {
 	if err := SetConductorInviteEmailStatus(ctx, w.mongo, conductorID, status, lastError); err != nil {
 		w.logger.Warn("mobilidade invite email status update failed",
 			zap.String("conductor_id", conductorID),
 			zap.String("email_status", string(status)),
 			zap.Error(err))
+		return err
 	}
+	return nil
 }
 
 func parseMobilidadeInviteEmailPayload(data interface{}) (MobilidadeInviteEmailPayload, error) {
