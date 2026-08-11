@@ -50,6 +50,9 @@ import (
 // @tag.name citizen
 // @tag.description Operações relacionadas a cidadãos, incluindo consulta e atualização de dados autodeclarados
 
+// @tag.name mobilidade
+// @tag.description Carteira de veículos (bicicleta elétrica, autopropelido, ciclomotor), condutores e catálogo
+
 // @tag.name departments
 // @tag.description Operações relacionadas a departamentos/unidades administrativas (UA)
 
@@ -111,6 +114,11 @@ func main() {
 
 	// Initialize pet service for pets queries
 	services.InitPetService()
+
+	// Initialize Mobilidade (vehicles / conductors / catalog)
+	services.InitVehicleService()
+	services.InitVehicleConductorService()
+	services.InitMobilidadeCatalogService()
 
 	// Initialize department service for department/UA queries
 	services.InitDepartmentService()
@@ -199,9 +207,30 @@ func main() {
 			citizen.GET("/:cpf/pets/:pet_id", middleware.RequireOwnCPF(), handlers.GetPet)
 			citizen.GET("/:cpf/pets/stats", middleware.RequireOwnCPF(), handlers.GetPetStats)
 
+			// Mobilidade vehicles
+			citizen.GET("/:cpf/vehicles", middleware.RequireOwnCPF(), handlers.GetVehicles)
+			citizen.POST("/:cpf/vehicles", middleware.RequireOwnCPF(), handlers.CreateVehicle)
+			citizen.GET("/:cpf/vehicles/:vehicle_id", middleware.RequireOwnCPF(), handlers.GetVehicle)
+			citizen.PATCH("/:cpf/vehicles/:vehicle_id", middleware.RequireOwnCPF(), handlers.UpdateVehicle)
+			citizen.DELETE("/:cpf/vehicles/:vehicle_id", middleware.RequireOwnCPF(), handlers.DeleteVehicle)
+			citizen.GET("/:cpf/vehicle-invitations", middleware.RequireOwnCPF(), handlers.GetVehicleInvitations)
+			citizen.PATCH("/:cpf/vehicle-invitations/:conductor_id", middleware.RequireOwnCPF(), handlers.RespondVehicleInvitation)
+			citizen.GET("/:cpf/vehicles/:vehicle_id/conductors", middleware.RequireOwnCPF(), handlers.GetVehicleConductors)
+			citizen.POST("/:cpf/vehicles/:vehicle_id/conductors", middleware.RequireOwnCPF(), handlers.InviteVehicleConductor)
+			citizen.DELETE("/:cpf/vehicles/:vehicle_id/conductors/:conductor_id", middleware.RequireOwnCPF(), handlers.RemoveVehicleConductor)
+
 			// Avatar endpoints
 			citizen.GET("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.GetUserAvatar)
 			citizen.PUT("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.UpdateUserAvatar)
+		}
+
+		// Mobilidade catalog (authenticated read-only)
+		mobilidade := v1.Group("/mobilidade")
+		mobilidade.Use(middleware.AuthMiddleware())
+		{
+			mobilidade.GET("/vehicle-brands", handlers.GetMobilidadeVehicleBrands)
+			mobilidade.GET("/vehicle-models", handlers.GetMobilidadeVehicleModels)
+			mobilidade.GET("/vehicle-colors", handlers.GetMobilidadeVehicleColors)
 		}
 
 		// Public citizen endpoints (no auth required)

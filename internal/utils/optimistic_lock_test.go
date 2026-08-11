@@ -26,27 +26,46 @@ func setupOptimisticLockTest(t *testing.T) func() {
 
 	_ = logging.InitLogger()
 
-	// Initialize config
+	// Initialize config — do not replace AppConfig (shared across the package).
 	if config.AppConfig == nil {
 		config.AppConfig = &config.Config{}
 	}
-	config.AppConfig.SelfDeclaredCollection = "test_self_declared"
-	config.AppConfig.UserConfigCollection = "test_user_config"
+	origSelfDeclared := config.AppConfig.SelfDeclaredCollection
+	origUserConfig := config.AppConfig.UserConfigCollection
+	config.AppConfig.SelfDeclaredCollection = "utils_opt_lock_self_declared"
+	config.AppConfig.UserConfigCollection = "utils_opt_lock_user_config"
 
-	// MongoDB setup
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-	require.NoError(t, err, "Failed to connect to MongoDB")
+	ownsClient := false
+	var client *mongo.Client
 
-	err = client.Ping(ctx, nil)
-	require.NoError(t, err, "Failed to ping MongoDB")
+	if config.MongoDB != nil {
+		if err := config.MongoDB.Client().Ping(ctx, nil); err != nil {
+			config.MongoDB = nil
+		}
+	}
 
-	config.MongoDB = client.Database("rmi_test")
+	if config.MongoDB == nil {
+		var err error
+		client, err = mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
+		require.NoError(t, err, "Failed to connect to MongoDB")
+		require.NoError(t, client.Ping(ctx, nil), "Failed to ping MongoDB")
+		config.MongoDB = client.Database("rmi_test")
+		ownsClient = true
+	}
+
+	// Isolate from other packages: only clear our collections, never Drop the whole DB.
+	_ = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).Drop(ctx)
+	_ = config.MongoDB.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
 
 	return func() {
-		// Clean up MongoDB
-		_ = config.MongoDB.Drop(ctx)
-		_ = client.Disconnect(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
+		config.AppConfig.SelfDeclaredCollection = origSelfDeclared
+		config.AppConfig.UserConfigCollection = origUserConfig
+		if ownsClient && client != nil {
+			_ = client.Disconnect(ctx)
+		}
 	}
 }
 
@@ -109,7 +128,7 @@ func TestUpdateWithOptimisticLock_SuccessfulUpdate(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	collection := "test_self_declared"
+	collection := config.AppConfig.SelfDeclaredCollection
 	cpf := "12345678901"
 
 	// Create initial document with version 1
@@ -144,7 +163,7 @@ func TestUpdateWithOptimisticLock_VersionConflict(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	collection := "test_self_declared"
+	collection := config.AppConfig.SelfDeclaredCollection
 	cpf := "12345678902"
 
 	// Create initial document with version 2
@@ -181,7 +200,7 @@ func TestUpdateWithOptimisticLock_DocumentNotFound(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	collection := "test_self_declared"
+	collection := config.AppConfig.SelfDeclaredCollection
 	cpf := "99999999999" // Non-existent document
 
 	filter := bson.M{"cpf": cpf}
@@ -203,7 +222,7 @@ func TestUpdateWithOptimisticLock_ConcurrentUpdates(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	collection := "test_self_declared"
+	collection := config.AppConfig.SelfDeclaredCollection
 	cpf := "12345678903"
 
 	// Create initial document with version 1
@@ -262,7 +281,7 @@ func TestUpdateWithOptimisticLock_UpdateWithoutSetOperation(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	collection := "test_self_declared"
+	collection := config.AppConfig.SelfDeclaredCollection
 	cpf := "12345678904"
 
 	// Create initial document with version 1
@@ -295,7 +314,7 @@ func TestGetDocumentVersion_Success(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	collection := "test_self_declared"
+	collection := config.AppConfig.SelfDeclaredCollection
 	cpf := "12345678905"
 
 	// Create document with version 5
@@ -314,7 +333,7 @@ func TestGetDocumentVersion_NotFound(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	collection := "test_self_declared"
+	collection := config.AppConfig.SelfDeclaredCollection
 
 	// Try to get version of non-existent document
 	filter := bson.M{"cpf": "99999999999"}
@@ -330,7 +349,7 @@ func TestGetDocumentVersion_NoVersionField(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	collection := "test_self_declared"
+	collection := config.AppConfig.SelfDeclaredCollection
 	cpf := "12345678906"
 
 	// Create document without version field
@@ -437,7 +456,7 @@ func TestInitializeDocumentVersion(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	collection := "test_self_declared"
+	collection := config.AppConfig.SelfDeclaredCollection
 
 	// Create documents without version field
 	docs := []interface{}{
@@ -486,7 +505,7 @@ func TestInitializeDocumentVersion_WithFilter(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	collection := "test_self_declared"
+	collection := config.AppConfig.SelfDeclaredCollection
 
 	// Create documents with different types
 	docs := []interface{}{
@@ -668,7 +687,7 @@ func TestRetryWithOptimisticLock_RealWorldScenario(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	collection := "test_self_declared"
+	collection := config.AppConfig.SelfDeclaredCollection
 	cpf := "12345678999"
 
 	// Create initial document

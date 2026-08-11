@@ -72,8 +72,14 @@ debug-cache:
 test-cpf cpf:
     go test -v ./... -cpf={{cpf}}
 
-# Run tests with default CPF
+# Run tests with default CPF (isolate from .env MONGODB_DATABASE=rmi / CF_LOOKUP=true)
 test:
+    #!/usr/bin/env sh
+    MONGODB_DATABASE=rmi_test \
+    CF_LOOKUP_ENABLED=false \
+    CF_LOOKUP_V2_ENABLED=false \
+    WHATSAPP_ENABLED=false \
+    SFMC_ENABLED=false \
     go test -v ./...
 
 # Run tests with coverage

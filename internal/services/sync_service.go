@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
@@ -79,10 +78,25 @@ func (s *SyncService) monitorDLQ() {
 
 	for range ticker.C {
 		// Check all DLQ sizes
-		queues := []string{"citizen", "phone_mapping", "user_config", "opt_in_history", "beta_group", "phone_verification", "maintenance_request", "self_declared_address", "self_declared_email", "self_declared_phone", "self_declared_raca", "self_declared_nome_exibicao", "cf_lookup"}
+		queues := []string{
+			"citizen",
+			"phone_mapping",
+			"user_config",
+			"opt_in_history",
+			"beta_group",
+			"phone_verification",
+			"maintenance_request",
+			"self_declared_address",
+			"self_declared_email",
+			"self_declared_phone",
+			"self_declared_raca",
+			"self_declared_nome_exibicao",
+			"cf_lookup",
+			MobilidadeInviteEmailQueue,
+		}
 
 		for _, queue := range queues {
-			dlqKey := fmt.Sprintf("sync:dlq:%s", queue)
+			dlqKey := syncDLQKey(queue)
 			dlqSize, err := s.redis.LLen(context.Background(), dlqKey).Result()
 			if err != nil {
 				continue
@@ -91,6 +105,7 @@ func (s *SyncService) monitorDLQ() {
 			if dlqSize > 0 {
 				s.logger.Warn("DLQ has failed jobs",
 					zap.String("queue", queue),
+					zap.String("dlq_key", dlqKey),
 					zap.Int64("dlq_size", dlqSize))
 
 				// Update metrics - record DLQ size

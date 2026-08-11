@@ -135,6 +135,7 @@ func TestNewSyncWorker(t *testing.T) {
 		"self_declared_escolaridade",
 		"self_declared_deficiencia",
 		"cf_lookup",
+		MobilidadeInviteEmailQueue,
 	}
 
 	assert.Equal(t, len(expectedQueues), len(worker.queues))
@@ -361,7 +362,7 @@ func TestSyncWorker_SyncToMongoDB_CitizenSuccess(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.syncToMongoDB(testJob)
+	_, err := worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify data was written to MongoDB
@@ -394,7 +395,7 @@ func TestSyncWorker_SyncToMongoDB_PhoneMappingSuccess(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.syncToMongoDB(testJob)
+	_, err := worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify data was written to MongoDB
@@ -439,7 +440,7 @@ func TestSyncWorker_SyncToMongoDB_SelfDeclaredFieldSpecific(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err = worker.syncToMongoDB(testJob)
+	_, err = worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify only email was updated, other fields preserved
@@ -494,7 +495,7 @@ func TestSyncWorker_SyncToMongoDB_AllSelfDeclaredFields(t *testing.T) {
 				MaxRetries: 3,
 			}
 
-			err := worker.syncToMongoDB(testJob)
+			_, err := worker.syncToMongoDB(testJob)
 			assert.NoError(t, err)
 
 			// Verify field was written
@@ -528,7 +529,7 @@ func TestSyncWorker_SyncToMongoDB_DuplicateKey(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.syncToMongoDB(testJob)
+	_, err := worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Second sync with same key - should not error (upsert)
@@ -537,7 +538,7 @@ func TestSyncWorker_SyncToMongoDB_DuplicateKey(t *testing.T) {
 		"nome": "Updated User",
 	}
 
-	err = worker.syncToMongoDB(testJob)
+	_, err = worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify data was updated
@@ -564,7 +565,7 @@ func TestSyncWorker_SyncToMongoDB_InvalidData(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.syncToMongoDB(testJob)
+	_, err := worker.syncToMongoDB(testJob)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to marshal job data")
 }
@@ -740,10 +741,8 @@ func TestSyncWorker_MoveToDLQ(t *testing.T) {
 	assert.Equal(t, int64(1), dlqLen)
 }
 
-// TestSyncWorker_RequeueJob tests job requeuing with backoff
+// TestSyncWorker_RequeueJob tests job requeuing sets AvailableAt without blocking.
 func TestSyncWorker_RequeueJob(t *testing.T) {
-	t.Skip("Skipping timing-dependent test - requires 5+ second backoff delay")
-
 	worker, _, cleanup := setupSyncWorkerTest(t)
 	defer cleanup()
 
@@ -764,23 +763,23 @@ func TestSyncWorker_RequeueJob(t *testing.T) {
 	}
 
 	start := time.Now()
-	worker.requeueJob(testJob)
+	ok := worker.requeueJob(testJob)
 	duration := time.Since(start)
 
-	// Should have backoff delay of 5 seconds (1 * 5s)
-	assert.True(t, duration >= 5*time.Second)
+	require.True(t, ok)
+	assert.Less(t, duration, 500*time.Millisecond, "requeue must not sleep on the worker goroutine")
+	assert.False(t, testJob.AvailableAt.IsZero())
+	assert.True(t, testJob.AvailableAt.After(time.Now().Add(4*time.Second)))
+	assert.True(t, testJob.AvailableAt.Before(time.Now().Add(6*time.Second)))
 
-	// Verify job in queue
-	queueKey := fmt.Sprintf("sync:queue:%s", testJob.Type)
+	queueKey := syncQueueKey(testJob.Type)
 	queueLen, err := worker.redis.LLen(ctx, queueKey).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), queueLen)
 }
 
-// TestSyncWorker_RequeueJob_BackoffCap tests backoff cap at 60 seconds
+// TestSyncWorker_RequeueJob_BackoffCap tests AvailableAt backoff cap at 60 seconds.
 func TestSyncWorker_RequeueJob_BackoffCap(t *testing.T) {
-	t.Skip("Skipping long-running backoff test in CI - takes 60+ seconds")
-
 	worker, _, cleanup := setupSyncWorkerTest(t)
 	defer cleanup()
 
@@ -801,18 +800,25 @@ func TestSyncWorker_RequeueJob_BackoffCap(t *testing.T) {
 	}
 
 	start := time.Now()
-	worker.requeueJob(testJob)
+	ok := worker.requeueJob(testJob)
 	duration := time.Since(start)
 
-	// Should be capped at 60 seconds
-	assert.True(t, duration >= 60*time.Second)
-	assert.True(t, duration < 65*time.Second)
+	require.True(t, ok)
+	assert.Less(t, duration, 500*time.Millisecond)
+	assert.True(t, testJob.AvailableAt.After(time.Now().Add(59*time.Second)))
+	assert.True(t, testJob.AvailableAt.Before(time.Now().Add(61*time.Second)))
 
-	// Verify job in queue
-	queueKey := fmt.Sprintf("sync:queue:%s", testJob.Type)
+	queueKey := syncQueueKey(testJob.Type)
 	queueLen, err := worker.redis.LLen(ctx, queueKey).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), queueLen)
+}
+
+func TestSyncQueueKeys_HashTaggedForReliableQueue(t *testing.T) {
+	assert.Equal(t, "sync:queue:{mobilidade_invite_email}", syncQueueKey(MobilidadeInviteEmailQueue))
+	assert.Equal(t, "sync:processing:{mobilidade_invite_email}", syncProcessingKey(MobilidadeInviteEmailQueue))
+	assert.Equal(t, "sync:dlq:{mobilidade_invite_email}", syncDLQKey(MobilidadeInviteEmailQueue))
+	assert.Equal(t, "sync:queue:citizen", syncQueueKey("citizen"))
 }
 
 // TestSyncWorker_ProcessJob_Success tests successful job processing
@@ -916,7 +922,7 @@ func TestSyncWorker_HandleAvatarCleanup(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err = worker.syncToMongoDB(testJob)
+	_, err = worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify avatar_id was removed from affected users
@@ -1277,7 +1283,7 @@ func TestSyncWorker_DataValidation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := worker.syncToMongoDB(tc.job)
+			_, err := worker.syncToMongoDB(tc.job)
 			if tc.shouldError {
 				assert.Error(t, err)
 			} else {
@@ -1305,7 +1311,7 @@ func TestSyncWorker_EmptyDataHandling(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.syncToMongoDB(testJob)
+	_, err := worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify empty document was created
@@ -1508,7 +1514,7 @@ func TestSyncWorker_AllCollectionTypes(t *testing.T) {
 				MaxRetries: 3,
 			}
 
-			err := worker.syncToMongoDB(testJob)
+			_, err := worker.syncToMongoDB(testJob)
 			assert.NoError(t, err)
 
 			// Verify data was written

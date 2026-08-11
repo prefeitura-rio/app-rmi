@@ -201,10 +201,13 @@ func TestRequireAdmin_NotAdmin(t *testing.T) {
 }
 
 func TestRequireOwnCPF_OwnData(t *testing.T) {
+	config.AppConfig.AdminGroup = "go:admin"
+	const ownCPF = "03561350712"
+
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		claims := &models.JWTClaims{
-			PreferredUsername: "12345678901",
+			PreferredUsername: ownCPF,
 		}
 		c.Set("claims", claims)
 		c.Next()
@@ -214,7 +217,7 @@ func TestRequireOwnCPF_OwnData(t *testing.T) {
 		c.JSON(http.StatusOK, gin.H{"message": "own data"})
 	})
 
-	req, _ := http.NewRequest("GET", "/citizen/12345678901/data", nil)
+	req, _ := http.NewRequest("GET", "/citizen/"+ownCPF+"/data", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -224,10 +227,14 @@ func TestRequireOwnCPF_OwnData(t *testing.T) {
 }
 
 func TestRequireOwnCPF_OtherData(t *testing.T) {
+	config.AppConfig.AdminGroup = "go:admin"
+	const ownCPF = "03561350712"
+	const otherCPF = "45049725810"
+
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		claims := &models.JWTClaims{
-			PreferredUsername: "12345678901",
+			PreferredUsername: ownCPF,
 		}
 		c.Set("claims", claims)
 		c.Next()
@@ -237,7 +244,7 @@ func TestRequireOwnCPF_OtherData(t *testing.T) {
 		c.JSON(http.StatusOK, gin.H{"message": "other data"})
 	})
 
-	req, _ := http.NewRequest("GET", "/citizen/99999999999/data", nil)
+	req, _ := http.NewRequest("GET", "/citizen/"+otherCPF+"/data", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -247,10 +254,14 @@ func TestRequireOwnCPF_OtherData(t *testing.T) {
 }
 
 func TestRequireOwnCPF_AdminAccess(t *testing.T) {
+	config.AppConfig.AdminGroup = "go:admin"
+	const ownCPF = "03561350712"
+	const otherCPF = "45049725810"
+
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		claims := &models.JWTClaims{
-			PreferredUsername: "12345678901",
+			PreferredUsername: ownCPF,
 		}
 		claims.ResourceAccess = map[string]models.ClientAccess{
 			"superapp.apps.rio.gov.br": {Roles: []string{"go:admin"}},
@@ -263,7 +274,7 @@ func TestRequireOwnCPF_AdminAccess(t *testing.T) {
 		c.JSON(http.StatusOK, gin.H{"message": "admin access to other data"})
 	})
 
-	req, _ := http.NewRequest("GET", "/citizen/99999999999/data", nil)
+	req, _ := http.NewRequest("GET", "/citizen/"+otherCPF+"/data", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

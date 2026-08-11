@@ -313,10 +313,11 @@ func TestSyncService_MonitorDLQ_AllQueues(t *testing.T) {
 		"self_declared_raca",
 		"self_declared_nome_exibicao",
 		"cf_lookup",
+		MobilidadeInviteEmailQueue,
 	}
 
 	for _, queue := range allQueues {
-		dlqKey := fmt.Sprintf("sync:dlq:%s", queue)
+		dlqKey := syncDLQKey(queue)
 		testJob := DLQJob{
 			OriginalJob: SyncJob{
 				ID:         uuid.New().String(),
@@ -341,12 +342,12 @@ func TestSyncService_MonitorDLQ_AllQueues(t *testing.T) {
 	// Let it run briefly
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify all DLQs still have jobs
+	// Verify all DLQs still have jobs (including hash-tagged Mobilidade DLQ)
 	for _, queue := range allQueues {
-		dlqKey := fmt.Sprintf("sync:dlq:%s", queue)
+		dlqKey := syncDLQKey(queue)
 		dlqLen, err := redisClient.LLen(ctx, dlqKey).Result()
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), dlqLen, "DLQ %s should have 1 job", queue)
+		assert.Equal(t, int64(1), dlqLen, "DLQ %s (%s) should have 1 job", queue, dlqKey)
 	}
 }
 
