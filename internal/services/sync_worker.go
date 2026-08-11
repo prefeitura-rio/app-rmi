@@ -553,7 +553,7 @@ func (w *SyncWorker) handleSyncFailure(job *SyncJob, err error) {
 	}
 	// Reliable-queue requeue/DLQ already removes processing+claim atomically.
 	// For other paths, ack only after the job is safely back on a Redis list.
-	if persisted && !(job.fromInflight && usesReliableQueue(job.Type)) {
+	if persisted && (!job.fromInflight || !usesReliableQueue(job.Type)) {
 		w.ackInflightJob(job)
 	}
 }
@@ -737,7 +737,7 @@ func (w *SyncWorker) markMobilidadeInviteQueuePersistFailure(job *SyncJob, msg s
 	if conductorID == "" {
 		return
 	}
-	w.persistInviteEmailStatus(context.Background(), conductorID, models.InviteEmailStatusFailed, msg)
+	_ = w.persistInviteEmailStatus(context.Background(), conductorID, models.InviteEmailStatusFailed, msg)
 }
 
 // handleSpecialJobTypes handles special job types that don't follow normal MongoDB sync pattern
