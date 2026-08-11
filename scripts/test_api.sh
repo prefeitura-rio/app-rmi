@@ -1932,14 +1932,16 @@ if [[ -n "$MOBILIDADE_VEHICLE_ID" && "$MOBILIDADE_VEHICLE_ID" != "null" ]]; then
     make_request "GET" "/citizen/$CPF/vehicle-invitations" "" "List Mobilidade Vehicle Invitations"
     make_request "GET" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" "" "List Mobilidade Vehicle Conductors"
 
-    # Invite: missing email → 400; self-invite → 400; valid invite → 201; duplicate → 409
+    # Invite: missing email → 400; formatted CPF → 400; self-invite → 400; valid invite → 201; duplicate → 409
     make_request "POST" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" \
       '{"cpf":"11144477735"}' "Invite Mobilidade Conductor Invalid Missing Email"
+    make_request "POST" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" \
+      '{"cpf":"111.444.777-35","email":"formatted@example.com"}' "Invite Mobilidade Conductor Invalid Formatted CPF"
     make_request "POST" "/citizen/$CPF/vehicles/$MOBILIDADE_VEHICLE_ID/conductors" \
       "{\"cpf\":\"$CPF\",\"email\":\"self@example.com\"}" "Invite Mobilidade Conductor Invalid Self"
     invite_ok_data=$(cat <<EOF
 {
-  "cpf": "111.444.777-35",
+  "cpf": "11144477735",
   "email": "condutor.api.test@example.com",
   "name": "Condutor API",
   "phone": "21999990000"

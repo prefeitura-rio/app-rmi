@@ -78,17 +78,29 @@ type VehicleConductor struct {
 // InviteConductorRequest is the body for POST .../conductors.
 // email is required for messaging (notify_email); name/phone are optional display hints while pending.
 type InviteConductorRequest struct {
-	CPF   string `json:"cpf" binding:"required"`
+	// CPF must be exactly 11 digits (no punctuation), matching RMI/JWT form.
+	CPF   string `json:"cpf" binding:"required" example:"11144477735"`
 	Email string `json:"email" binding:"required"`
 	Name  string `json:"name"`
 	Phone string `json:"phone"`
 }
 
 // Validate checks invite body rules.
+// CPF must be exactly 11 digits (literal RMI form) — formatted values like
+// "111.444.777-35" are rejected so stored conductor_cpf matches JWT/path lookups.
 func (r *InviteConductorRequest) Validate() error {
+	r.CPF = strings.TrimSpace(r.CPF)
 	r.Email = strings.TrimSpace(r.Email)
 	r.Name = strings.TrimSpace(r.Name)
 	r.Phone = strings.TrimSpace(r.Phone)
+	if len(r.CPF) != 11 {
+		return fmt.Errorf("cpf must be exactly 11 digits")
+	}
+	for _, c := range r.CPF {
+		if c < '0' || c > '9' {
+			return fmt.Errorf("cpf must be exactly 11 digits")
+		}
+	}
 	if r.Email == "" {
 		return fmt.Errorf("email is required")
 	}

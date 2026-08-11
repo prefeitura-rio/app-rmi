@@ -255,9 +255,11 @@ func TestRespondInvitationRequest_AsConductorStatus(t *testing.T) {
 }
 
 func TestInviteConductorRequest_Validate(t *testing.T) {
-	assert.NoError(t, (&InviteConductorRequest{CPF: "x", Email: "a@b.co"}).Validate())
-	assert.Error(t, (&InviteConductorRequest{CPF: "x", Email: ""}).Validate())
-	assert.Error(t, (&InviteConductorRequest{CPF: "x", Email: "not-an-email"}).Validate())
+	assert.NoError(t, (&InviteConductorRequest{CPF: "11144477735", Email: "a@b.co"}).Validate())
+	assert.Error(t, (&InviteConductorRequest{CPF: "111.444.777-35", Email: "a@b.co"}).Validate(), "formatted CPF must be rejected")
+	assert.Error(t, (&InviteConductorRequest{CPF: "1114447773", Email: "a@b.co"}).Validate(), "short CPF must be rejected")
+	assert.Error(t, (&InviteConductorRequest{CPF: "11144477735", Email: ""}).Validate())
+	assert.Error(t, (&InviteConductorRequest{CPF: "11144477735", Email: "not-an-email"}).Validate())
 }
 
 func TestVehicleListItem_JSONSnakeCase(t *testing.T) {

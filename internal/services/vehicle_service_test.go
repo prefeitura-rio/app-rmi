@@ -743,6 +743,24 @@ func TestVehicleConductorService_InviteRejectsSelfAndDuplicate(t *testing.T) {
 	assert.ErrorIs(t, err, ErrMobilidadeConflict)
 }
 
+func TestVehicleConductorService_InviteRejectsFormattedCPF(t *testing.T) {
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF:   "111.444.777-35",
+		Email: "joao@example.com",
+		Name:  "João Condutor",
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
+	assert.Contains(t, err.Error(), "11 digits")
+}
+
 func TestVehicleService_UpdateVehicle_ClearsStaleFileMetadataOnURLChange(t *testing.T) {
 	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()

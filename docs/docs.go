@@ -7972,7 +7972,9 @@ const docTemplate = `{
             ],
             "properties": {
                 "cpf": {
-                    "type": "string"
+                    "description": "CPF must be exactly 11 digits (no punctuation), matching RMI/JWT form.",
+                    "type": "string",
+                    "example": "11144477735"
                 },
                 "email": {
                     "type": "string"

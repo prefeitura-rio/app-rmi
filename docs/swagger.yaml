@@ -818,6 +818,9 @@ definitions:
   models.InviteConductorRequest:
     properties:
       cpf:
+        description: CPF must be exactly 11 digits (no punctuation), matching RMI/JWT
+          form.
+        example: "11144477735"
         type: string
       email:
         type: string
