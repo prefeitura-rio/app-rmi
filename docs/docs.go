@@ -1100,6 +1100,546 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/mobilidade/vehicle-brands": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista completa de marcas do catálogo, incluindo soft-deleted (admin).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Listar marcas (admin)",
+                "responses": {
+                    "200": {
+                        "description": "Lista tipada de marcas em data",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleBrandsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cadastra uma marca no catálogo. ID gerado no backend (brand_\u0026lt;slug\u0026gt;); is_other=false.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Criar marca (admin)",
+                "parameters": [
+                    {
+                        "description": "Nome da marca",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleBrandCreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Marca criada",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleBrand"
+                        }
+                    },
+                    "400": {
+                        "description": "Validação inválida",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Nome ou ID já existente",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/mobilidade/vehicle-brands/{brand_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete de marca. 409 se houver modelos ativos ou veículos referenciando. Sentinel brand_outro não pode ser excluída.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Excluir marca (admin, soft-delete)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da marca",
+                        "name": "brand_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Marca excluída"
+                    },
+                    "400": {
+                        "description": "Sentinel ou validação",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Marca não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Modelos ativos ou veículos referenciando",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza o nome de uma marca ativa. Sentinel brand_outro não pode ser alterada. 409 se referenciada por veículo.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Atualizar marca (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da marca",
+                        "name": "brand_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Campos a atualizar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleBrandUpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Marca atualizada",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleBrand"
+                        }
+                    },
+                    "400": {
+                        "description": "Validação inválida ou sentinel",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Marca não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflito (nome duplicado ou veículo referenciando)",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/mobilidade/vehicle-models": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista completa de modelos, incluindo soft-deleted. Filtro opcional por brand_id.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Listar modelos (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filtrar por ID da marca",
+                        "name": "brand_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista tipada de modelos em data",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleModelsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cadastra um modelo vinculado a brand_id com vehicle_type. ID gerado no backend; is_other=false.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Criar modelo (admin)",
+                "parameters": [
+                    {
+                        "description": "Dados do modelo",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleModelCreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Modelo criado",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Validação inválida",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Marca não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Nome ou ID já existente",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/mobilidade/vehicle-models/{model_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft-delete de modelo. 409 se veículos referenciarem. Sentinel model_outro não pode ser excluído.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Excluir modelo (admin, soft-delete)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do modelo",
+                        "name": "model_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Modelo excluído"
+                    },
+                    "400": {
+                        "description": "Sentinel ou validação",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Modelo não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Veículos referenciando",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza nome, vehicle_type e/ou brand_id de um modelo ativo. Sentinel model_outro não pode ser alterado. 409 se referenciado por veículo.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mobilidade"
+                ],
+                "summary": "Atualizar modelo (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do modelo",
+                        "name": "model_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Campos a atualizar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleModelUpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Modelo atualizado",
+                        "schema": {
+                            "$ref": "#/definitions/models.VehicleModel"
+                        }
+                    },
+                    "400": {
+                        "description": "Validação inválida ou sentinel",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Não autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Modelo ou marca não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflito (nome duplicado ou veículo referenciando)",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/notification-categories": {
             "post": {
                 "security": [
@@ -3964,7 +4504,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna veículos em que o CPF é proprietário ou condutor aceito, com role em cada item.",
+                "description": "Retorna veículos em que o CPF é proprietário ou condutor aceito, com role em cada item. Quando role=conductor, inclui conductor_id (id do vínculo aceito).",
                 "consumes": [
                     "application/json"
                 ],
@@ -4112,7 +4652,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url, metadados de arquivos e registration_number). owner_name/owner_phone/owner_email são enriquecidos ao vivo via RMI a partir de owner_cpf.",
+                "description": "Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url, metadados de arquivos e registration_number). Quando role=conductor, inclui conductor_id (id do vínculo aceito). owner_name/owner_phone/owner_email são enriquecidos ao vivo via RMI a partir de owner_cpf.",
                 "consumes": [
                     "application/json"
                 ],
@@ -9375,6 +9915,9 @@ const docTemplate = `{
         "models.VehicleBrand": {
             "type": "object",
             "properties": {
+                "deleted_at": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string",
                     "example": "brand_caloi"
@@ -9383,6 +9926,30 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": false
                 },
+                "name": {
+                    "type": "string",
+                    "example": "Caloi"
+                }
+            }
+        },
+        "models.VehicleBrandCreateRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "example": "Caloi"
+                }
+            }
+        },
+        "models.VehicleBrandUpdateRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
                 "name": {
                     "type": "string",
                     "example": "Caloi"
@@ -9550,6 +10117,10 @@ const docTemplate = `{
                 "color": {
                     "type": "string"
                 },
+                "conductor_id": {
+                    "description": "ConductorID is the accepted VehicleConductor link id when Role is conductor (same id used in DELETE/PATCH paths).",
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -9706,6 +10277,10 @@ const docTemplate = `{
                 "color": {
                     "type": "string"
                 },
+                "conductor_id": {
+                    "description": "ConductorID is the accepted VehicleConductor link id when Role is conductor (same id used in DELETE/PATCH paths).",
+                    "type": "string"
+                },
                 "display_name": {
                     "type": "string"
                 },
@@ -9740,6 +10315,9 @@ const docTemplate = `{
                     "type": "string",
                     "example": "brand_caloi"
                 },
+                "deleted_at": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string",
                     "example": "model_e-vibe"
@@ -9751,6 +10329,46 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "example": "E-Vibe"
+                },
+                "vehicle_type": {
+                    "$ref": "#/definitions/models.VehicleType"
+                }
+            }
+        },
+        "models.VehicleModelCreateRequest": {
+            "type": "object",
+            "required": [
+                "brand_id",
+                "name",
+                "vehicle_type"
+            ],
+            "properties": {
+                "brand_id": {
+                    "type": "string",
+                    "example": "brand_caloi"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "E-Vibe"
+                },
+                "vehicle_type": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.VehicleType"
+                        }
+                    ],
+                    "example": "bicicleta_eletrica"
+                }
+            }
+        },
+        "models.VehicleModelUpdateRequest": {
+            "type": "object",
+            "properties": {
+                "brand_id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 },
                 "vehicle_type": {
                     "$ref": "#/definitions/models.VehicleType"

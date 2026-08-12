@@ -185,6 +185,8 @@ func extractResourceFromPath(path string) string {
 			return utils.AuditResourceBetaWhitelist
 		case strings.HasPrefix(path, "admin/notification-categories") || strings.HasPrefix(path, "notification-categories"):
 			return utils.AuditResourceNotificationCategory
+		case strings.HasPrefix(path, "admin/mobilidade/"):
+			return "mobilidade_catalog"
 		default:
 			return resource
 		}
@@ -209,6 +211,12 @@ func extractResourceID(c *gin.Context, path string) string {
 		return id
 	}
 	if id := c.Param("category_id"); id != "" {
+		return id
+	}
+	if id := c.Param("brand_id"); id != "" {
+		return id
+	}
+	if id := c.Param("model_id"); id != "" {
 		return id
 	}
 	if id := c.Param("pet_id"); id != "" {

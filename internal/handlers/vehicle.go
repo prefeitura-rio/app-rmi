@@ -14,7 +14,7 @@ import (
 
 // GetVehicles godoc
 // @Summary Listar veículos da carteira (mobilidade)
-// @Description Retorna veículos em que o CPF é proprietário ou condutor aceito, com role em cada item.
+// @Description Retorna veículos em que o CPF é proprietário ou condutor aceito, com role em cada item. Quando role=conductor, inclui conductor_id (id do vínculo aceito).
 // @Tags mobilidade
 // @Accept json
 // @Produce json
@@ -56,7 +56,7 @@ func GetVehicles(c *gin.Context) {
 
 // GetVehicle godoc
 // @Summary Obter detalhe do veículo
-// @Description Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url, metadados de arquivos e registration_number). owner_name/owner_phone/owner_email são enriquecidos ao vivo via RMI a partir de owner_cpf.
+// @Description Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url, metadados de arquivos e registration_number). Quando role=conductor, inclui conductor_id (id do vínculo aceito). owner_name/owner_phone/owner_email são enriquecidos ao vivo via RMI a partir de owner_cpf.
 // @Tags mobilidade
 // @Accept json
 // @Produce json
@@ -413,6 +413,8 @@ func RemoveVehicleConductor(c *gin.Context) {
 func mapMobilidadeError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, services.ErrVehicleNotFound), errors.Is(err, services.ErrConductorNotFound):
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
+	case errors.Is(err, services.ErrCatalogBrandNotFound), errors.Is(err, services.ErrCatalogModelNotFound):
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
 	case errors.Is(err, services.ErrMobilidadeForbidden):
 		c.JSON(http.StatusForbidden, ErrorResponse{Error: err.Error()})

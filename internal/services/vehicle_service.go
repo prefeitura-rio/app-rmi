@@ -33,6 +33,10 @@ var (
 	ErrMobilidadeConflict = errors.New("conflict")
 	// ErrMobilidadeInvalidInput is returned for business-rule validation failures.
 	ErrMobilidadeInvalidInput = errors.New("invalid input")
+	// ErrCatalogBrandNotFound is returned when a catalog brand does not exist or is soft-deleted.
+	ErrCatalogBrandNotFound = errors.New("vehicle brand not found")
+	// ErrCatalogModelNotFound is returned when a catalog model does not exist or is soft-deleted.
+	ErrCatalogModelNotFound = errors.New("vehicle model not found")
 )
 
 // VehicleServiceInstance is the process-wide vehicle service used by handlers.
@@ -104,7 +108,7 @@ func (s *VehicleService) ListVehicles(ctx context.Context, cpf string, page, per
 	itemsByID := map[string]walletEntry{}
 	for _, v := range owned {
 		itemsByID[v.ID.Hex()] = walletEntry{
-			item:      toListItem(v, models.VehicleRoleOwner),
+			item:      toListItem(v, models.VehicleRoleOwner, ""),
 			createdAt: v.CreatedAt,
 			id:        v.ID.Hex(),
 		}
@@ -123,7 +127,7 @@ func (s *VehicleService) ListVehicles(ctx context.Context, cpf string, page, per
 			return nil, fmt.Errorf("load shared vehicle: %w", err)
 		}
 		itemsByID[v.ID.Hex()] = walletEntry{
-			item:      toListItem(v, models.VehicleRoleConductor),
+			item:      toListItem(v, models.VehicleRoleConductor, link.ID.Hex()),
 			createdAt: v.CreatedAt,
 			id:        v.ID.Hex(),
 		}
@@ -177,13 +181,13 @@ func (s *VehicleService) GetVehicle(ctx context.Context, cpf, vehicleID string) 
 		return nil, err
 	}
 
-	role, err := s.resolveRole(ctx, cpf, v)
+	role, conductorID, err := s.resolveRole(ctx, cpf, v)
 	if err != nil {
 		return nil, err
 	}
 
 	s.enrichOwnerFields(ctx, v)
-	return &models.VehicleDetail{Vehicle: *v, Role: role}, nil
+	return &models.VehicleDetail{Vehicle: *v, Role: role, ConductorID: conductorID}, nil
 }
 
 // CreateVehicle registers a new vehicle owned by cpf.
@@ -494,9 +498,9 @@ func (s *VehicleService) findVehicleForOwnerDelete(ctx context.Context, vehicleI
 	return &v, nil
 }
 
-func (s *VehicleService) resolveRole(ctx context.Context, cpf string, v *models.Vehicle) (models.VehicleRole, error) {
+func (s *VehicleService) resolveRole(ctx context.Context, cpf string, v *models.Vehicle) (models.VehicleRole, string, error) {
 	if v.OwnerCPF == cpf {
-		return models.VehicleRoleOwner, nil
+		return models.VehicleRoleOwner, "", nil
 	}
 	var link models.VehicleConductor
 	err := s.conductors().FindOne(ctx, bson.M{
@@ -505,12 +509,12 @@ func (s *VehicleService) resolveRole(ctx context.Context, cpf string, v *models.
 		"status":        models.ConductorStatusAccepted,
 	}).Decode(&link)
 	if errors.Is(err, mongo.ErrNoDocuments) {
-		return "", ErrVehicleNotFound
+		return "", "", ErrVehicleNotFound
 	}
 	if err != nil {
-		return "", fmt.Errorf("resolve role: %w", err)
+		return "", "", fmt.Errorf("resolve role: %w", err)
 	}
-	return models.VehicleRoleConductor, nil
+	return models.VehicleRoleConductor, link.ID.Hex(), nil
 }
 
 func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *models.VehicleCreateRequest) (
@@ -521,7 +525,7 @@ func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *mo
 	catalogFlow := req.BrandID != nil && *req.BrandID != "" && req.ModelID != nil && *req.ModelID != ""
 	if catalogFlow {
 		var model models.VehicleModel
-		err := s.models().FindOne(ctx, bson.M{"_id": *req.ModelID, "brand_id": *req.BrandID}).Decode(&model)
+		err := s.models().FindOne(ctx, withCatalogActive(bson.M{"_id": *req.ModelID, "brand_id": *req.BrandID})).Decode(&model)
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return "", nil, nil, nil, nil, fmt.Errorf("%w: model not found for brand", ErrMobilidadeInvalidInput)
 		}
@@ -529,7 +533,7 @@ func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *mo
 			return "", nil, nil, nil, nil, fmt.Errorf("load model: %w", err)
 		}
 		var brand models.VehicleBrand
-		err = s.brands().FindOne(ctx, bson.M{"_id": *req.BrandID}).Decode(&brand)
+		err = s.brands().FindOne(ctx, withCatalogActive(bson.M{"_id": *req.BrandID})).Decode(&brand)
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return "", nil, nil, nil, nil, fmt.Errorf("%w: brand not found", ErrMobilidadeInvalidInput)
 		}
@@ -617,7 +621,7 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 	catalogFlow := brandID != nil && *brandID != "" && modelID != nil && *modelID != ""
 	if catalogFlow {
 		var model models.VehicleModel
-		err := s.models().FindOne(ctx, bson.M{"_id": *modelID, "brand_id": *brandID}).Decode(&model)
+		err := s.models().FindOne(ctx, withCatalogActive(bson.M{"_id": *modelID, "brand_id": *brandID})).Decode(&model)
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return fmt.Errorf("%w: model not found for brand", ErrMobilidadeInvalidInput)
 		}
@@ -625,7 +629,7 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 			return fmt.Errorf("load model: %w", err)
 		}
 		var brand models.VehicleBrand
-		err = s.brands().FindOne(ctx, bson.M{"_id": *brandID}).Decode(&brand)
+		err = s.brands().FindOne(ctx, withCatalogActive(bson.M{"_id": *brandID})).Decode(&brand)
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return fmt.Errorf("%w: brand not found", ErrMobilidadeInvalidInput)
 		}
@@ -806,7 +810,7 @@ func (s *VehicleService) nextRegistrationNumber(ctx context.Context) (string, er
 	return fmt.Sprintf("RJ-E-%06d", result.Seq), nil
 }
 
-func toListItem(v models.Vehicle, role models.VehicleRole) models.VehicleListItem {
+func toListItem(v models.Vehicle, role models.VehicleRole, conductorID string) models.VehicleListItem {
 	return models.VehicleListItem{
 		ID:                 v.ID.Hex(),
 		DisplayName:        v.DisplayName,
@@ -819,5 +823,6 @@ func toListItem(v models.Vehicle, role models.VehicleRole) models.VehicleListIte
 		Color:              v.Color,
 		VehiclePhotoURL:    v.VehiclePhotoURL,
 		Role:               role,
+		ConductorID:        conductorID,
 	}
 }

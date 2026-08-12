@@ -544,11 +544,15 @@ func TestVehicleService_ListVehicles_OwnerAndAcceptedConductor(t *testing.T) {
 	require.Equal(t, 2, list.Pagination.Total)
 
 	roles := map[string]models.VehicleRole{}
+	conductorIDs := map[string]string{}
 	for _, item := range list.Data {
 		roles[item.ID] = item.Role
+		conductorIDs[item.ID] = item.ConductorID
 	}
 	assert.Equal(t, models.VehicleRoleOwner, roles[owned.ID.Hex()])
+	assert.Empty(t, conductorIDs[owned.ID.Hex()])
 	assert.Equal(t, models.VehicleRoleConductor, roles[shared.ID.Hex()])
+	assert.Equal(t, invites.Data[0].ID, conductorIDs[shared.ID.Hex()])
 }
 
 func TestVehicleService_ListVehicles_ExcludesPendingOnly(t *testing.T) {
@@ -578,6 +582,7 @@ func TestVehicleService_GetVehicle_OwnerAndConductor(t *testing.T) {
 	detail, err := vehicleSvc.GetVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
 	require.NoError(t, err)
 	assert.Equal(t, models.VehicleRoleOwner, detail.Role)
+	assert.Empty(t, detail.ConductorID)
 	assert.Equal(t, "SN-ABC-123456", detail.SerialNumber)
 
 	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
@@ -592,6 +597,7 @@ func TestVehicleService_GetVehicle_OwnerAndConductor(t *testing.T) {
 	asConductor, err := vehicleSvc.GetVehicle(context.Background(), mobilidadeConductorCPF, created.ID.Hex())
 	require.NoError(t, err)
 	assert.Equal(t, models.VehicleRoleConductor, asConductor.Role)
+	assert.Equal(t, invites.Data[0].ID, asConductor.ConductorID)
 }
 
 func TestVehicleService_GetVehicle_ForbiddenForStranger(t *testing.T) {
@@ -1007,6 +1013,35 @@ func TestVehicleConductorService_InvitePersistsFormSnapshot(t *testing.T) {
 	require.Len(t, list.Data, 1)
 	assert.Equal(t, "Nome Digitado", list.Data[0].ConductorName)
 	assert.Equal(t, "convite@example.com", list.Data[0].NotifyEmail)
+	assert.Equal(t, "21999990000", list.Data[0].Phone)
+}
+
+func TestListConductors_AcceptedReplacesInviteSnapshotWithCitizenProfile(t *testing.T) {
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "convite@example.com", Name: "Nome Digitado", Phone: "21999990000",
+	})
+	require.NoError(t, err)
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
+		Status: models.InvitationResponseAccepted,
+	})
+	require.NoError(t, err)
+
+	list, err := conductorSvc.ListConductors(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
+	require.NoError(t, err)
+	require.Len(t, list.Data, 1)
+	assert.Equal(t, models.ConductorStatusAccepted, list.Data[0].Status)
+	assert.Equal(t, "João Condutor", list.Data[0].ConductorName)
+	assert.Equal(t, "joao@example.com", list.Data[0].NotifyEmail)
+	assert.Empty(t, list.Data[0].Phone)
+	assert.NotEqual(t, "Nome Digitado", list.Data[0].ConductorName)
+	assert.NotEqual(t, "convite@example.com", list.Data[0].NotifyEmail)
 }
 
 func TestListConductors_AcceptedEnrichesLiveRMI(t *testing.T) {
@@ -1035,4 +1070,37 @@ func TestListConductors_AcceptedEnrichesLiveRMI(t *testing.T) {
 	assert.Equal(t, "joao.novo@example.com", list.Data[0].NotifyEmail)
 	assert.NotEmpty(t, list.Data[0].Phone)
 	assert.Contains(t, list.Data[0].Phone, "988887777")
+}
+
+func TestListConductors_AcceptedClearsSnapshotWhenRMIEmpty(t *testing.T) {
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "convite@example.com", Name: "Nome Digitado", Phone: "21999990000",
+	})
+	require.NoError(t, err)
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
+		Status: models.InvitationResponseAccepted,
+	})
+	require.NoError(t, err)
+
+	// Remove citizen so live profile is empty — response must not fall back to invite snapshot.
+	_, err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).DeleteMany(context.Background(), bson.M{"cpf": mobilidadeConductorCPF})
+	require.NoError(t, err)
+	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).DeleteMany(context.Background(), bson.M{"cpf": mobilidadeConductorCPF})
+	require.NoError(t, err)
+	invalidateMobilidadeContactCache(t, mobilidadeConductorCPF)
+
+	list, err := conductorSvc.ListConductors(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
+	require.NoError(t, err)
+	require.Len(t, list.Data, 1)
+	assert.Equal(t, models.ConductorStatusAccepted, list.Data[0].Status)
+	assert.Empty(t, list.Data[0].ConductorName)
+	assert.Empty(t, list.Data[0].NotifyEmail)
+	assert.Empty(t, list.Data[0].Phone)
 }

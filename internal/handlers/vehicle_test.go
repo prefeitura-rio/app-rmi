@@ -314,6 +314,26 @@ func TestConductorInviteAcceptFlow_HTTP(t *testing.T) {
 	require.NoError(t, json.Unmarshal(listW.Body.Bytes(), &list))
 	require.Equal(t, 1, list.Pagination.Total)
 	assert.Equal(t, models.VehicleRoleConductor, list.Data[0].Role)
+	assert.Equal(t, link.ID.Hex(), list.Data[0].ConductorID)
+
+	detailReq := httptest.NewRequest(http.MethodGet, "/citizen/"+handlerConductorCPF+"/vehicles/"+vehicle.ID.Hex(), nil)
+	detailW := httptest.NewRecorder()
+	router.ServeHTTP(detailW, detailReq)
+	require.Equal(t, http.StatusOK, detailW.Code, "body: %s", detailW.Body.String())
+	var detail models.VehicleDetail
+	require.NoError(t, json.Unmarshal(detailW.Body.Bytes(), &detail))
+	assert.Equal(t, models.VehicleRoleConductor, detail.Role)
+	assert.Equal(t, link.ID.Hex(), detail.ConductorID)
+
+	ownerListReq := httptest.NewRequest(http.MethodGet, "/citizen/"+handlerOwnerCPF+"/vehicles?page=1&per_page=10", nil)
+	ownerListW := httptest.NewRecorder()
+	router.ServeHTTP(ownerListW, ownerListReq)
+	require.Equal(t, http.StatusOK, ownerListW.Code)
+	var ownerList models.PaginatedVehicles
+	require.NoError(t, json.Unmarshal(ownerListW.Body.Bytes(), &ownerList))
+	require.Equal(t, 1, ownerList.Pagination.Total)
+	assert.Equal(t, models.VehicleRoleOwner, ownerList.Data[0].Role)
+	assert.Empty(t, ownerList.Data[0].ConductorID)
 }
 
 func TestInviteVehicleConductor_DuplicateReturnsConflict(t *testing.T) {
@@ -467,6 +487,29 @@ func TestGetAndRemoveVehicleConductors_HTTP(t *testing.T) {
 	require.NoError(t, json.Unmarshal(listW.Body.Bytes(), &list))
 	require.Len(t, list.Data, 1)
 	assert.Equal(t, link.ID.Hex(), list.Data[0].ID.Hex())
+	assert.Equal(t, models.ConductorStatusPending, list.Data[0].Status)
+	assert.Equal(t, "Condutor", list.Data[0].ConductorName)
+	assert.Equal(t, "condutor@example.com", list.Data[0].NotifyEmail)
+
+	patchBody, _ := json.Marshal(models.RespondInvitationRequest{Status: models.InvitationResponseAccepted})
+	patchReq := httptest.NewRequest(http.MethodPatch, "/citizen/"+handlerConductorCPF+"/vehicle-invitations/"+link.ID.Hex(), bytes.NewReader(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchW := httptest.NewRecorder()
+	router.ServeHTTP(patchW, patchReq)
+	require.Equal(t, http.StatusOK, patchW.Code, "body: %s", patchW.Body.String())
+
+	listReqAccepted := httptest.NewRequest(http.MethodGet, "/citizen/"+handlerOwnerCPF+"/vehicles/"+created.ID.Hex()+"/conductors", nil)
+	listWAccepted := httptest.NewRecorder()
+	router.ServeHTTP(listWAccepted, listReqAccepted)
+	require.Equal(t, http.StatusOK, listWAccepted.Code, "body: %s", listWAccepted.Body.String())
+	var listAccepted models.ConductorsListResponse
+	require.NoError(t, json.Unmarshal(listWAccepted.Body.Bytes(), &listAccepted))
+	require.Len(t, listAccepted.Data, 1)
+	assert.Equal(t, models.ConductorStatusAccepted, listAccepted.Data[0].Status)
+	assert.Equal(t, "João Condutor", listAccepted.Data[0].ConductorName)
+	assert.Equal(t, "joao@example.com", listAccepted.Data[0].NotifyEmail)
+	assert.NotEqual(t, "Condutor", listAccepted.Data[0].ConductorName)
+	assert.NotEqual(t, "condutor@example.com", listAccepted.Data[0].NotifyEmail)
 
 	delReq := httptest.NewRequest(http.MethodDelete, "/citizen/"+handlerOwnerCPF+"/vehicles/"+created.ID.Hex()+"/conductors/"+link.ID.Hex(), nil)
 	delW := httptest.NewRecorder()
@@ -491,6 +534,8 @@ func TestMapMobilidadeError_Branches(t *testing.T) {
 	}{
 		{"not_found", services.ErrVehicleNotFound, http.StatusNotFound},
 		{"conductor_not_found", services.ErrConductorNotFound, http.StatusNotFound},
+		{"brand_not_found", services.ErrCatalogBrandNotFound, http.StatusNotFound},
+		{"model_not_found", services.ErrCatalogModelNotFound, http.StatusNotFound},
 		{"forbidden", services.ErrMobilidadeForbidden, http.StatusForbidden},
 		{"conflict", services.ErrMobilidadeConflict, http.StatusConflict},
 		{"invalid", services.ErrMobilidadeInvalidInput, http.StatusBadRequest},

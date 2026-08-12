@@ -105,9 +105,10 @@ const (
 
 // VehicleBrand is a seeded catalog brand (Marca).
 type VehicleBrand struct {
-	ID      string `bson:"_id" json:"id" example:"brand_caloi"`
-	Name    string `bson:"name" json:"name" example:"Caloi"`
-	IsOther bool   `bson:"is_other" json:"is_other" example:"false"`
+	ID        string     `bson:"_id" json:"id" example:"brand_caloi"`
+	Name      string     `bson:"name" json:"name" example:"Caloi"`
+	IsOther   bool       `bson:"is_other" json:"is_other" example:"false"`
+	DeletedAt *time.Time `bson:"deleted_at,omitempty" json:"deleted_at,omitempty"`
 }
 
 // VehicleModel is a seeded catalog model belonging to a brand.
@@ -117,6 +118,7 @@ type VehicleModel struct {
 	Name        string      `bson:"name" json:"name" example:"E-Vibe"`
 	VehicleType VehicleType `bson:"vehicle_type" json:"vehicle_type"`
 	IsOther     bool        `bson:"is_other" json:"is_other" example:"false"`
+	DeletedAt   *time.Time  `bson:"deleted_at,omitempty" json:"deleted_at,omitempty"`
 }
 
 // VehicleBrandsResponse wraps the brands catalog for Orval-typed clients.
@@ -138,26 +140,26 @@ type VehicleColorsResponse struct {
 // OwnerName/OwnerPhone/OwnerEmail are response-only (enriched live from RMI via owner_cpf);
 // they are not written on create for UI purposes.
 type Vehicle struct {
-	ID                   primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	OwnerCPF             string             `bson:"owner_cpf" json:"owner_cpf"`
-	OwnerName            string             `bson:"-" json:"owner_name"`
-	OwnerPhone           string             `bson:"-" json:"owner_phone"`
-	OwnerEmail           string             `bson:"-" json:"owner_email"`
-	DisplayName          string             `bson:"display_name" json:"display_name"`
-	BrandID              *string            `bson:"brand_id,omitempty" json:"brand_id"`
-	BrandOther           *string            `bson:"brand_other,omitempty" json:"brand_other"`
-	ModelID              *string            `bson:"model_id,omitempty" json:"model_id"`
-	ModelOther           *string            `bson:"model_other,omitempty" json:"model_other"`
-	VehicleType          VehicleType        `bson:"vehicle_type" json:"vehicle_type"`
-	Color                string             `bson:"color" json:"color"`
-	SerialNumber         string             `bson:"serial_number" json:"serial_number"`
+	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	OwnerCPF     string             `bson:"owner_cpf" json:"owner_cpf"`
+	OwnerName    string             `bson:"-" json:"owner_name"`
+	OwnerPhone   string             `bson:"-" json:"owner_phone"`
+	OwnerEmail   string             `bson:"-" json:"owner_email"`
+	DisplayName  string             `bson:"display_name" json:"display_name"`
+	BrandID      *string            `bson:"brand_id,omitempty" json:"brand_id"`
+	BrandOther   *string            `bson:"brand_other,omitempty" json:"brand_other"`
+	ModelID      *string            `bson:"model_id,omitempty" json:"model_id"`
+	ModelOther   *string            `bson:"model_other,omitempty" json:"model_other"`
+	VehicleType  VehicleType        `bson:"vehicle_type" json:"vehicle_type"`
+	Color        string             `bson:"color" json:"color"`
+	SerialNumber string             `bson:"serial_number" json:"serial_number"`
 	// RegistrationNumber is a short wallet identifier generated on create (format RJ-E-XXXXXX). Not accepted in POST/PATCH.
-	RegistrationNumber   string             `bson:"registration_number" json:"registration_number" example:"RJ-E-000001"`
-	SerialNumberPhotoURL string             `bson:"serial_number_photo_url" json:"serial_number_photo_url"`
-	VehiclePhotoURL      string             `bson:"vehicle_photo_url" json:"vehicle_photo_url"`
-	InvoicePhotoURL      *string            `bson:"invoice_photo_url" json:"invoice_photo_url" extensions:"x-nullable"`
-	HasInvoice           bool               `bson:"has_invoice" json:"has_invoice"`
-	SelfDeclaration      bool               `bson:"self_declaration" json:"self_declaration"`
+	RegistrationNumber   string  `bson:"registration_number" json:"registration_number" example:"RJ-E-000001"`
+	SerialNumberPhotoURL string  `bson:"serial_number_photo_url" json:"serial_number_photo_url"`
+	VehiclePhotoURL      string  `bson:"vehicle_photo_url" json:"vehicle_photo_url"`
+	InvoicePhotoURL      *string `bson:"invoice_photo_url" json:"invoice_photo_url" extensions:"x-nullable"`
+	HasInvoice           bool    `bson:"has_invoice" json:"has_invoice"`
+	SelfDeclaration      bool    `bson:"self_declaration" json:"self_declaration"`
 
 	// Optional file metadata for UI detail (Apêndice A.4).
 	SerialNumberPhotoFileName *string `bson:"serial_number_photo_file_name,omitempty" json:"serial_number_photo_file_name,omitempty"`
@@ -185,12 +187,14 @@ type VehicleListItem struct {
 	Color              string      `json:"color"`
 	VehiclePhotoURL    string      `json:"vehicle_photo_url"`
 	Role               VehicleRole `json:"role"`
+	ConductorID        string      `json:"conductor_id,omitempty"`
 }
 
 // VehicleDetail is the detail response including the caller's role.
 type VehicleDetail struct {
 	Vehicle
-	Role VehicleRole `json:"role"`
+	Role        VehicleRole `json:"role"`
+	ConductorID string      `json:"conductor_id,omitempty"`
 }
 
 // PaginatedVehicles is the paginated list response (pets pagination shape).

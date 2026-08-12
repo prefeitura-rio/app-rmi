@@ -244,7 +244,7 @@ func (s *VehicleConductorService) InviteConductor(ctx context.Context, cpf, vehi
 	return &link, nil
 }
 
-// enrichConductorForResponse: pending keeps invite snapshot; accepted overlays live RMI profile.
+// enrichConductorForResponse: pending keeps invite snapshot; accepted replaces name/email/phone with live RMI profile.
 func (s *VehicleConductorService) enrichConductorForResponse(ctx context.Context, link *models.VehicleConductor) {
 	if link == nil || link.ConductorCPF == "" {
 		return
@@ -253,15 +253,9 @@ func (s *VehicleConductorService) enrichConductorForResponse(ctx context.Context
 		return
 	}
 	name, phone, email := loadCitizenContactProfile(ctx, s.database, s.dataManager, s.logger, link.ConductorCPF)
-	if name != "" {
-		link.ConductorName = name
-	}
-	if email != "" {
-		link.NotifyEmail = email
-	}
-	if phone != "" {
-		link.Phone = phone
-	}
+	link.ConductorName = name
+	link.NotifyEmail = email
+	link.Phone = phone
 }
 
 func mapConductorInsertError(err error) error {
