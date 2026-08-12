@@ -46,6 +46,14 @@ func catalogActiveFilter() bson.M {
 	}
 }
 
+// withCatalogActive merges base with the active-catalog filter (excludes soft-deleted).
+func withCatalogActive(base bson.M) bson.M {
+	out := bson.M{}
+	maps.Copy(out, base)
+	maps.Copy(out, catalogActiveFilter())
+	return out
+}
+
 func (s *MobilidadeCatalogService) brandsColl() *mongo.Collection {
 	return s.database.Collection(config.AppConfig.MobilidadeBrandCollection)
 }

@@ -19,13 +19,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"regexp"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -57,7 +56,7 @@ func main() {
 	upsertOpts := options.Update().SetUpsert(true)
 
 	for _, row := range rows {
-		brandID := "brand_" + slugify(row.marca)
+		brandID := "brand_" + utils.MobilidadeSlugify(row.marca)
 		if _, err := brands.UpdateOne(ctx, bson.M{"_id": brandID}, bson.M{"$set": bson.M{
 			"name":     row.marca,
 			"is_other": false,
@@ -65,7 +64,7 @@ func main() {
 			log.Fatalf("upsert brand %s: %v", brandID, err)
 		}
 
-		modelID := "model_" + slugify(row.marca) + "_" + slugify(row.modelo)
+		modelID := "model_" + utils.MobilidadeSlugify(row.marca) + "_" + utils.MobilidadeSlugify(row.modelo)
 		if _, err := modelsCol.UpdateOne(ctx, bson.M{"_id": modelID}, bson.M{"$set": bson.M{
 			"brand_id":     brandID,
 			"name":         row.modelo,
@@ -138,19 +137,4 @@ func readCatalogCSV(path string) ([]catalogRow, error) {
 		})
 	}
 	return rows, nil
-}
-
-var nonAlnum = regexp.MustCompile(`[^a-z0-9]+`)
-
-func slugify(s string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(strings.TrimSpace(s)) {
-		switch {
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			b.WriteRune(r)
-		case unicode.IsSpace(r) || r == '-' || r == '_':
-			b.WriteByte('_')
-		}
-	}
-	return strings.Trim(nonAlnum.ReplaceAllString(b.String(), "_"), "_")
 }

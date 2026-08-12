@@ -525,7 +525,7 @@ func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *mo
 	catalogFlow := req.BrandID != nil && *req.BrandID != "" && req.ModelID != nil && *req.ModelID != ""
 	if catalogFlow {
 		var model models.VehicleModel
-		err := s.models().FindOne(ctx, bson.M{"_id": *req.ModelID, "brand_id": *req.BrandID}).Decode(&model)
+		err := s.models().FindOne(ctx, withCatalogActive(bson.M{"_id": *req.ModelID, "brand_id": *req.BrandID})).Decode(&model)
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return "", nil, nil, nil, nil, fmt.Errorf("%w: model not found for brand", ErrMobilidadeInvalidInput)
 		}
@@ -533,7 +533,7 @@ func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *mo
 			return "", nil, nil, nil, nil, fmt.Errorf("load model: %w", err)
 		}
 		var brand models.VehicleBrand
-		err = s.brands().FindOne(ctx, bson.M{"_id": *req.BrandID}).Decode(&brand)
+		err = s.brands().FindOne(ctx, withCatalogActive(bson.M{"_id": *req.BrandID})).Decode(&brand)
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return "", nil, nil, nil, nil, fmt.Errorf("%w: brand not found", ErrMobilidadeInvalidInput)
 		}
@@ -621,7 +621,7 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 	catalogFlow := brandID != nil && *brandID != "" && modelID != nil && *modelID != ""
 	if catalogFlow {
 		var model models.VehicleModel
-		err := s.models().FindOne(ctx, bson.M{"_id": *modelID, "brand_id": *brandID}).Decode(&model)
+		err := s.models().FindOne(ctx, withCatalogActive(bson.M{"_id": *modelID, "brand_id": *brandID})).Decode(&model)
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return fmt.Errorf("%w: model not found for brand", ErrMobilidadeInvalidInput)
 		}
@@ -629,7 +629,7 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 			return fmt.Errorf("load model: %w", err)
 		}
 		var brand models.VehicleBrand
-		err = s.brands().FindOne(ctx, bson.M{"_id": *brandID}).Decode(&brand)
+		err = s.brands().FindOne(ctx, withCatalogActive(bson.M{"_id": *brandID})).Decode(&brand)
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return fmt.Errorf("%w: brand not found", ErrMobilidadeInvalidInput)
 		}

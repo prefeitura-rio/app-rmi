@@ -174,6 +174,48 @@ func TestMobilidadeCatalogAdmin_BlockMutationsWhenReferencedByVehicle(t *testing
 	assert.ErrorIs(t, err, ErrMobilidadeConflict)
 }
 
+func TestVehicleService_RejectsSoftDeletedCatalogOnCreateAndUpdate(t *testing.T) {
+	catalog, vehicleSvc, cleanup := setupMobilidadeCatalogAdminTest(t)
+	defer cleanup()
+	seedMobilidadeCitizen(t, mobilidadeOwnerCPF, "Ana Souza")
+
+	brand, err := catalog.CreateBrand(context.Background(), &models.VehicleBrandCreateRequest{Name: "Temp Brand"})
+	require.NoError(t, err)
+	model, err := catalog.CreateModel(context.Background(), &models.VehicleModelCreateRequest{
+		BrandID: brand.ID, Name: "Temp Model", VehicleType: models.VehicleTypeBicicletaEletrica,
+	})
+	require.NoError(t, err)
+	require.NoError(t, catalog.DeleteModel(context.Background(), model.ID))
+
+	createReq := catalogCreateRequest()
+	createReq.BrandID = &brand.ID
+	createReq.ModelID = &model.ID
+	_, err = vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, createReq)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
+
+	require.NoError(t, catalog.DeleteBrand(context.Background(), brand.ID))
+	_, err = vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, createReq)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
+
+	owned, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	ghostModel, err := catalog.CreateModel(context.Background(), &models.VehicleModelCreateRequest{
+		BrandID: "brand_caloi", Name: "Ghost", VehicleType: models.VehicleTypeCiclomotor,
+	})
+	require.NoError(t, err)
+	require.NoError(t, catalog.DeleteModel(context.Background(), ghostModel.ID))
+
+	_, err = vehicleSvc.UpdateVehicle(context.Background(), mobilidadeOwnerCPF, owned.ID.Hex(), &models.VehicleUpdateRequest{
+		BrandID: strPtr("brand_caloi"),
+		ModelID: &ghostModel.ID,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrMobilidadeInvalidInput)
+}
+
 func TestMobilidadeCatalogAdmin_DeleteBrandAfterModelsRemoved(t *testing.T) {
 	catalog, _, cleanup := setupMobilidadeCatalogAdminTest(t)
 	defer cleanup()
