@@ -233,6 +233,21 @@ func main() {
 			mobilidade.GET("/vehicle-colors", handlers.GetMobilidadeVehicleColors)
 		}
 
+		// Mobilidade catalog admin (protected)
+		adminMobilidade := v1.Group("/admin/mobilidade")
+		adminMobilidade.Use(middleware.AuthMiddleware(), middleware.RequireAdmin())
+		{
+			adminMobilidade.GET("/vehicle-brands", handlers.AdminListMobilidadeVehicleBrands)
+			adminMobilidade.POST("/vehicle-brands", handlers.CreateMobilidadeVehicleBrand)
+			adminMobilidade.PATCH("/vehicle-brands/:brand_id", handlers.UpdateMobilidadeVehicleBrand)
+			adminMobilidade.DELETE("/vehicle-brands/:brand_id", handlers.DeleteMobilidadeVehicleBrand)
+
+			adminMobilidade.GET("/vehicle-models", handlers.AdminListMobilidadeVehicleModels)
+			adminMobilidade.POST("/vehicle-models", handlers.CreateMobilidadeVehicleModel)
+			adminMobilidade.PATCH("/vehicle-models/:model_id", handlers.UpdateMobilidadeVehicleModel)
+			adminMobilidade.DELETE("/vehicle-models/:model_id", handlers.DeleteMobilidadeVehicleModel)
+		}
+
 		// Public citizen endpoints (no auth required)
 		public := v1.Group("/citizen")
 		{
