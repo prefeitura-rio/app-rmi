@@ -149,8 +149,12 @@ type Vehicle struct {
 	DisplayName  string             `bson:"display_name" json:"display_name"`
 	BrandID      *string            `bson:"brand_id,omitempty" json:"brand_id"`
 	BrandOther   *string            `bson:"brand_other,omitempty" json:"brand_other"`
-	ModelID      *string            `bson:"model_id,omitempty" json:"model_id"`
-	ModelOther   *string            `bson:"model_other,omitempty" json:"model_other"`
+	// BrandName is response-only: catalog brand name when brand_id is set and brand_other is empty.
+	BrandName  *string `bson:"-" json:"brand_name"`
+	ModelID    *string `bson:"model_id,omitempty" json:"model_id"`
+	ModelOther *string `bson:"model_other,omitempty" json:"model_other"`
+	// ModelName is response-only: catalog model name when model_id is set and model_other is empty.
+	ModelName    *string            `bson:"-" json:"model_name"`
 	VehicleType  VehicleType        `bson:"vehicle_type" json:"vehicle_type"`
 	Color        string             `bson:"color" json:"color"`
 	SerialNumber string             `bson:"serial_number" json:"serial_number"`
@@ -182,8 +186,10 @@ type VehicleListItem struct {
 	RegistrationNumber string      `json:"registration_number" example:"RJ-E-000001"`
 	BrandID            *string     `json:"brand_id"`
 	BrandOther         *string     `json:"brand_other"`
+	BrandName          *string     `json:"brand_name"`
 	ModelID            *string     `json:"model_id"`
 	ModelOther         *string     `json:"model_other"`
+	ModelName          *string     `json:"model_name"`
 	VehicleType        VehicleType `json:"vehicle_type"`
 	Color              string      `json:"color"`
 	VehiclePhotoURL    string      `json:"vehicle_photo_url"`
@@ -279,11 +285,14 @@ func (r *VehicleCreateRequest) Validate() error {
 
 	catalogFlow := r.BrandID != nil && *r.BrandID != "" && r.ModelID != nil && *r.ModelID != ""
 	otherFlow := (r.BrandOther != nil && *r.BrandOther != "") || (r.ModelOther != nil && *r.ModelOther != "")
+	// Hybrid: catalog brand + free-text model (model_id omitted/empty).
+	hybridBrandModelOther := r.BrandID != nil && *r.BrandID != "" && (r.ModelID == nil || *r.ModelID == "") &&
+		r.ModelOther != nil && *r.ModelOther != ""
 
 	if catalogFlow {
 		return nil
 	}
-	if otherFlow {
+	if hybridBrandModelOther || otherFlow {
 		if r.VehicleType == nil || !IsValidVehicleType(*r.VehicleType) {
 			return fmt.Errorf("vehicle_type is required for Outro flow")
 		}

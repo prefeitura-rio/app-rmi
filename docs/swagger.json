@@ -4502,7 +4502,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna veículos em que o CPF é proprietário ou condutor aceito, com role em cada item. Quando role=conductor, inclui conductor_id (id do vínculo aceito).",
+                "description": "Retorna veículos em que o CPF é proprietário ou condutor aceito, com role em cada item. Quando role=conductor, inclui conductor_id (id do vínculo aceito). brand_name/model_name são resolvidos do catálogo quando há brand_id/model_id e não há brand_other/model_other.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4650,7 +4650,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url, metadados de arquivos e registration_number). Quando role=conductor, inclui conductor_id (id do vínculo aceito). owner_name/owner_phone/owner_email são enriquecidos ao vivo via RMI a partir de owner_cpf.",
+                "description": "Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url, metadados de arquivos e registration_number). Quando role=conductor, inclui conductor_id (id do vínculo aceito). owner_name/owner_phone/owner_email são enriquecidos ao vivo via RMI a partir de owner_cpf. brand_name/model_name vêm do catálogo quando há brand_id/model_id e não há texto livre (*_other).",
                 "consumes": [
                     "application/json"
                 ],
@@ -4795,7 +4795,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Atualiza campos do veículo (somente proprietário). Em mudança de marca/modelo do catálogo, vehicle_type é rederivado do modelo.",
+                "description": "Atualiza campos do veículo (somente proprietário). Em mudança de marca/modelo do catálogo, vehicle_type é rederivado do modelo. Para trocar para fluxo Outro (texto livre), envie brand_id/model_id como null (ou \"\") junto com brand_other/model_other e vehicle_type; campo omitido não altera o valor atual.",
                 "consumes": [
                     "application/json"
                 ],
@@ -10109,6 +10109,10 @@
                 "brand_id": {
                     "type": "string"
                 },
+                "brand_name": {
+                    "description": "BrandName is response-only: catalog brand name when brand_id is set and brand_other is empty.",
+                    "type": "string"
+                },
                 "brand_other": {
                     "type": "string"
                 },
@@ -10116,7 +10120,6 @@
                     "type": "string"
                 },
                 "conductor_id": {
-                    "description": "ConductorID is the accepted VehicleConductor link id when Role is conductor (same id used in DELETE/PATCH paths).",
                     "type": "string"
                 },
                 "created_at": {
@@ -10145,6 +10148,10 @@
                     "x-nullable": true
                 },
                 "model_id": {
+                    "type": "string"
+                },
+                "model_name": {
+                    "description": "ModelName is response-only: catalog model name when model_id is set and model_other is empty.",
                     "type": "string"
                 },
                 "model_other": {
@@ -10269,6 +10276,9 @@
                 "brand_id": {
                     "type": "string"
                 },
+                "brand_name": {
+                    "type": "string"
+                },
                 "brand_other": {
                     "type": "string"
                 },
@@ -10276,7 +10286,6 @@
                     "type": "string"
                 },
                 "conductor_id": {
-                    "description": "ConductorID is the accepted VehicleConductor link id when Role is conductor (same id used in DELETE/PATCH paths).",
                     "type": "string"
                 },
                 "display_name": {
@@ -10286,6 +10295,9 @@
                     "type": "string"
                 },
                 "model_id": {
+                    "type": "string"
+                },
+                "model_name": {
                     "type": "string"
                 },
                 "model_other": {

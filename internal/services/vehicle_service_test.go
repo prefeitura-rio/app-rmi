@@ -624,6 +624,10 @@ func TestVehicleService_GetVehicle_OwnerAndConductor(t *testing.T) {
 	assert.Equal(t, models.VehicleRoleOwner, detail.Role)
 	assert.Empty(t, detail.ConductorID)
 	assert.Equal(t, "SN-ABC-123456", detail.SerialNumber)
+	require.NotNil(t, detail.BrandName)
+	assert.Equal(t, "Caloi", *detail.BrandName)
+	require.NotNil(t, detail.ModelName)
+	assert.Equal(t, "E-Vibe", *detail.ModelName)
 
 	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
@@ -638,6 +642,121 @@ func TestVehicleService_GetVehicle_OwnerAndConductor(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.VehicleRoleConductor, asConductor.Role)
 	assert.Equal(t, invites.Data[0].ID, asConductor.ConductorID)
+	require.NotNil(t, asConductor.BrandName)
+	assert.Equal(t, "Caloi", *asConductor.BrandName)
+}
+
+func TestVehicleService_ListAndGet_CatalogNamesNullForOther(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, otherCreateRequest())
+	require.NoError(t, err)
+	assert.Nil(t, created.BrandName)
+	assert.Nil(t, created.ModelName)
+
+	detail, err := vehicleSvc.GetVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
+	require.NoError(t, err)
+	assert.Nil(t, detail.BrandName)
+	assert.Nil(t, detail.ModelName)
+
+	list, err := vehicleSvc.ListVehicles(context.Background(), mobilidadeOwnerCPF, 1, 10)
+	require.NoError(t, err)
+	require.NotEmpty(t, list.Data)
+	assert.Nil(t, list.Data[0].BrandName)
+	assert.Nil(t, list.Data[0].ModelName)
+}
+
+func TestVehicleService_ListVehicles_IncludesCatalogNames(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	_, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	list, err := vehicleSvc.ListVehicles(context.Background(), mobilidadeOwnerCPF, 1, 10)
+	require.NoError(t, err)
+	require.Len(t, list.Data, 1)
+	require.NotNil(t, list.Data[0].BrandName)
+	assert.Equal(t, "Caloi", *list.Data[0].BrandName)
+	require.NotNil(t, list.Data[0].ModelName)
+	assert.Equal(t, "E-Vibe", *list.Data[0].ModelName)
+}
+
+func TestVehicleService_GetVehicle_CatalogNamesNullWhenOutroSentinelHasFreeText(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	brandID := "brand_outro"
+	modelID := "model_outro"
+	brandOther := "Minha Marca"
+	modelOther := "Meu Modelo"
+	vt := models.VehicleTypeCiclomotor
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, &models.VehicleCreateRequest{
+		DisplayName: "Custom", BrandID: &brandID, ModelID: &modelID,
+		BrandOther: &brandOther, ModelOther: &modelOther, VehicleType: &vt,
+		Color: "Preto", SerialNumber: "SN-OUTRO-1",
+		SerialNumberPhotoURL: "https://storage.googleapis.com/serial.jpg",
+		VehiclePhotoURL:      "https://storage.googleapis.com/vehicle.jpg",
+		HasInvoice:           boolPtr(false), SelfDeclaration: true,
+	})
+	require.NoError(t, err)
+	assert.Nil(t, created.BrandName, "front uses brand_other when present")
+	assert.Nil(t, created.ModelName)
+}
+
+func TestVehicleService_CreateAndUpdate_HybridBrandIDKeepsCatalogBrand(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	brandID := "brand_caloi"
+	modelOther := "Meu Modelo Custom"
+	vt := models.VehicleTypeCiclomotor
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, &models.VehicleCreateRequest{
+		DisplayName: "Híbrido", BrandID: &brandID, ModelOther: &modelOther, VehicleType: &vt,
+		Color: "Preto", SerialNumber: "SN-HYBRID-1",
+		SerialNumberPhotoURL: "https://storage.googleapis.com/serial.jpg",
+		VehiclePhotoURL:      "https://storage.googleapis.com/vehicle.jpg",
+		HasInvoice:           boolPtr(false), SelfDeclaration: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created.BrandID)
+	assert.Equal(t, "brand_caloi", *created.BrandID)
+	assert.Nil(t, created.ModelID)
+	require.NotNil(t, created.ModelOther)
+	assert.Equal(t, "Meu Modelo Custom", *created.ModelOther)
+	assert.Nil(t, created.BrandOther)
+	require.NotNil(t, created.BrandName)
+	assert.Equal(t, "Caloi", *created.BrandName)
+	assert.Nil(t, created.ModelName)
+	assert.Equal(t, models.VehicleTypeCiclomotor, created.VehicleType)
+
+	// PATCH: catalog vehicle → hybrid (model_id null + model_other), keep brand_id.
+	full, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	var patch models.VehicleUpdateRequest
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"brand_id": "brand_caloi",
+		"model_id": null,
+		"model_other": "Modelo Digitado",
+		"vehicle_type": "ciclomotor"
+	}`), &patch))
+
+	updated, err := vehicleSvc.UpdateVehicle(context.Background(), mobilidadeOwnerCPF, full.ID.Hex(), &patch)
+	require.NoError(t, err)
+	require.NotNil(t, updated.BrandID)
+	assert.Equal(t, "brand_caloi", *updated.BrandID)
+	assert.Nil(t, updated.ModelID)
+	require.NotNil(t, updated.ModelOther)
+	assert.Equal(t, "Modelo Digitado", *updated.ModelOther)
+	require.NotNil(t, updated.BrandName)
+	assert.Equal(t, "Caloi", *updated.BrandName)
+	assert.Nil(t, updated.ModelName)
 }
 
 func TestVehicleService_GetVehicle_ForbiddenForStranger(t *testing.T) {

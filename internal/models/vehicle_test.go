@@ -318,6 +318,8 @@ func TestVehicleListItem_JSONSnakeCase(t *testing.T) {
 	assert.Contains(t, string(b), `"display_name"`)
 	assert.Contains(t, string(b), `"vehicle_type"`)
 	assert.Contains(t, string(b), `"brand_id"`)
+	assert.Contains(t, string(b), `"brand_name"`)
+	assert.Contains(t, string(b), `"model_name"`)
 	assert.NotContains(t, string(b), `"DisplayName"`)
 }
 
