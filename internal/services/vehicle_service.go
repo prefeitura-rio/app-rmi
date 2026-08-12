@@ -570,8 +570,11 @@ func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *mo
 
 // applyUpdateCatalogFields merges PATCH catalog fields and, for catalog flow,
 // re-derives vehicle_type from the model (same resilience as create).
+// Explicit JSON null (or "") on brand_id/model_id clears catalog IDs so a switch
+// to free-text Outro (brand_other/model_other) is not overridden by stale IDs.
 func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *models.Vehicle, req *models.VehicleUpdateRequest, update bson.M) error {
-	catalogTouched := req.BrandID != nil || req.ModelID != nil || req.BrandOther != nil || req.ModelOther != nil || req.VehicleType != nil
+	catalogTouched := req.BrandIDProvided() || req.ModelIDProvided() || req.BrandOtherProvided() ||
+		req.ModelOtherProvided() || req.VehicleTypeProvided()
 	if !catalogTouched {
 		return nil
 	}
@@ -582,39 +585,39 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 	modelOther := current.ModelOther
 	vehicleType := current.VehicleType
 
-	if req.BrandID != nil {
-		if *req.BrandID == "" {
+	if req.BrandIDProvided() {
+		if req.BrandID == nil || *req.BrandID == "" {
 			brandID = nil
 		} else {
 			b := *req.BrandID
 			brandID = &b
 		}
 	}
-	if req.ModelID != nil {
-		if *req.ModelID == "" {
+	if req.ModelIDProvided() {
+		if req.ModelID == nil || *req.ModelID == "" {
 			modelID = nil
 		} else {
 			m := *req.ModelID
 			modelID = &m
 		}
 	}
-	if req.BrandOther != nil {
-		if *req.BrandOther == "" {
+	if req.BrandOtherProvided() {
+		if req.BrandOther == nil || *req.BrandOther == "" {
 			brandOther = nil
 		} else {
 			b := *req.BrandOther
 			brandOther = &b
 		}
 	}
-	if req.ModelOther != nil {
-		if *req.ModelOther == "" {
+	if req.ModelOtherProvided() {
+		if req.ModelOther == nil || *req.ModelOther == "" {
 			modelOther = nil
 		} else {
 			m := *req.ModelOther
 			modelOther = &m
 		}
 	}
-	if req.VehicleType != nil {
+	if req.VehicleTypeProvided() && req.VehicleType != nil {
 		vehicleType = *req.VehicleType
 	}
 
@@ -680,8 +683,8 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 	// Type-only change is allowed only when vehicle is already on free-text Outro flow.
 	currentOther := (current.BrandOther != nil && *current.BrandOther != "") || (current.ModelOther != nil && *current.ModelOther != "")
 	currentCatalog := current.BrandID != nil && *current.BrandID != "" && current.ModelID != nil && *current.ModelID != ""
-	if req.VehicleType != nil && currentOther && !currentCatalog &&
-		req.BrandID == nil && req.ModelID == nil && req.BrandOther == nil && req.ModelOther == nil {
+	if req.VehicleTypeProvided() && req.VehicleType != nil && currentOther && !currentCatalog &&
+		!req.BrandIDProvided() && !req.ModelIDProvided() && !req.BrandOtherProvided() && !req.ModelOtherProvided() {
 		if !models.IsValidVehicleType(*req.VehicleType) {
 			return fmt.Errorf("%w: invalid vehicle_type", ErrMobilidadeInvalidInput)
 		}
@@ -698,40 +701,20 @@ func (s *VehicleService) loadOwnerSnapshot(ctx context.Context, cpf string) (nam
 
 // loadCitizenContactProfile resolves name/phone/email from citizen + self-declared overlay.
 func loadCitizenContactProfile(ctx context.Context, db *mongo.Database, dm *DataManager, logger *logging.SafeLogger, cpf string) (name, phone, email string) {
-	const maxAttempts = 3
-	var citizen models.Citizen
-	var err error
-
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		if dm != nil {
-			err = dm.Read(ctx, cpf, config.AppConfig.CitizenCollection, "citizen", &citizen)
-		} else if db != nil {
-			err = db.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
-		} else {
-			return "", "", ""
-		}
-		if err == nil {
-			break
-		}
-		if logger != nil {
-			logger.Warn("mobilidade citizen contact profile miss",
-				zap.String("cpf", utils.MaskCPF(cpf)),
-				zap.Int("attempt", attempt),
-				zap.Error(err),
-			)
-		}
-		if attempt < maxAttempts {
-			select {
-			case <-ctx.Done():
-				return "", "", ""
-			case <-time.After(100 * time.Millisecond):
-			}
-		}
+	cpf = utils.NormalizeCPF(cpf)
+	if cpf == "" {
+		return "", "", ""
 	}
+
+	citizen, err := readCitizenContact(ctx, db, dm, logger, cpf)
 	if err != nil {
 		return "", "", ""
 	}
-	if citizen.Nome != nil {
+	if citizen.NomeExibicao != nil && *citizen.NomeExibicao != "" {
+		name = *citizen.NomeExibicao
+	} else if citizen.NomeSocial != nil && *citizen.NomeSocial != "" {
+		name = *citizen.NomeSocial
+	} else if citizen.Nome != nil {
 		name = *citizen.Nome
 	}
 	phone = formatTelefonePrincipal(citizen.Telefone)
@@ -758,6 +741,47 @@ func loadCitizenContactProfile(ctx context.Context, db *mongo.Database, dm *Data
 		}
 	}
 	return name, phone, email
+}
+
+func readCitizenContact(ctx context.Context, db *mongo.Database, dm *DataManager, logger *logging.SafeLogger, cpf string) (*models.Citizen, error) {
+	const maxAttempts = 3
+	var citizen models.Citizen
+	var err error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if dm != nil {
+			err = dm.Read(ctx, cpf, config.AppConfig.CitizenCollection, "citizen", &citizen)
+		} else if db != nil {
+			err = db.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
+		} else {
+			return nil, fmt.Errorf("no data source")
+		}
+		if err == nil {
+			return &citizen, nil
+		}
+		if logger != nil {
+			logger.Warn("mobilidade citizen contact profile miss",
+				zap.String("cpf", utils.MaskCPF(cpf)),
+				zap.Int("attempt", attempt),
+				zap.Error(err),
+			)
+		}
+		if attempt < maxAttempts {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}
+
+	if db != nil {
+		var byID models.Citizen
+		if idErr := db.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"_id": cpf}).Decode(&byID); idErr == nil {
+			return &byID, nil
+		}
+	}
+	return nil, err
 }
 
 func formatTelefonePrincipal(tel *models.Telefone) string {

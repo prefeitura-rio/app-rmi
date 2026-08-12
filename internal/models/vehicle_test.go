@@ -262,6 +262,47 @@ func TestInviteConductorRequest_Validate(t *testing.T) {
 	assert.Error(t, (&InviteConductorRequest{CPF: "11144477735", Email: "not-an-email"}).Validate())
 }
 
+func TestVehicleUpdateRequest_UnmarshalJSON_NullClearsCatalogIDs(t *testing.T) {
+	var req VehicleUpdateRequest
+	err := json.Unmarshal([]byte(`{
+		"display_name": "Coelho",
+		"brand_id": null,
+		"brand_other": "teste",
+		"model_id": null,
+		"model_other": "teste",
+		"vehicle_type": "ciclomotor"
+	}`), &req)
+	require.NoError(t, err)
+
+	assert.True(t, req.BrandIDProvided())
+	assert.Nil(t, req.BrandID)
+	assert.True(t, req.ModelIDProvided())
+	assert.Nil(t, req.ModelID)
+	assert.True(t, req.BrandOtherProvided())
+	require.NotNil(t, req.BrandOther)
+	assert.Equal(t, "teste", *req.BrandOther)
+	assert.True(t, req.ModelOtherProvided())
+	require.NotNil(t, req.ModelOther)
+	assert.Equal(t, "teste", *req.ModelOther)
+	assert.True(t, req.VehicleTypeProvided())
+	require.NotNil(t, req.VehicleType)
+	assert.Equal(t, VehicleTypeCiclomotor, *req.VehicleType)
+}
+
+func TestVehicleUpdateRequest_UnmarshalJSON_OmittedLeavesCatalogUnset(t *testing.T) {
+	var req VehicleUpdateRequest
+	err := json.Unmarshal([]byte(`{"display_name": "Só nome", "color": "Amarelo"}`), &req)
+	require.NoError(t, err)
+
+	assert.False(t, req.BrandIDProvided())
+	assert.False(t, req.ModelIDProvided())
+	assert.False(t, req.BrandOtherProvided())
+	assert.False(t, req.ModelOtherProvided())
+	assert.False(t, req.VehicleTypeProvided())
+	require.NotNil(t, req.DisplayName)
+	assert.Equal(t, "Só nome", *req.DisplayName)
+}
+
 func TestVehicleListItem_JSONSnakeCase(t *testing.T) {
 	brandID := "brand_caloi"
 	item := VehicleListItem{

@@ -69,7 +69,6 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | DATA_RELAY_BASE_URL | URL base da API Data Relay (envio de e-mail via mailman) | - | Não* |
 | DATA_RELAY_API_KEY | API key do Data Relay (`X-Api-Key`) | - | Não* |
 | DATA_RELAY_TIMEOUT | Timeout HTTP do Data Relay | 30s | Não |
-| MOBILIDADE_INVITE_DEEP_LINK_BASE | Base do deep link de convite Mobilidade | https://pref.rio | Não |
 | CF_LOOKUP_COLLECTION | Nome da coleção de lookups de CF | cf_lookups | Não |
 | CF_LOOKUP_CACHE_TTL | TTL do cache de CF lookups (ex: "24h") | 24h | Não |
 | CF_LOOKUP_RATE_LIMIT | Rate limit por CPF para CF lookups (ex: "1h") | 1h | Não |

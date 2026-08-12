@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -292,6 +293,8 @@ func (r *VehicleCreateRequest) Validate() error {
 }
 
 // VehicleUpdateRequest is the body for PATCH /citizen/{cpf}/vehicles/{vehicle_id}.
+// JSON null on brand_id/model_id/brand_other/model_other clears those fields;
+// omitted keys leave the current vehicle values unchanged.
 type VehicleUpdateRequest struct {
 	DisplayName          *string      `json:"display_name"`
 	BrandID              *string      `json:"brand_id"`
@@ -312,6 +315,59 @@ type VehicleUpdateRequest struct {
 	VehiclePhotoFileSize      *int64  `json:"vehicle_photo_file_size"`
 	InvoicePhotoFileName      *string `json:"invoice_photo_file_name"`
 	InvoicePhotoFileSize      *int64  `json:"invoice_photo_file_size"`
+
+	// Presence flags: encoding/json sets *T to nil for both omitted and null.
+	// UnmarshalJSON records which catalog keys were present so null can clear them.
+	brandIDPresent     bool
+	brandOtherPresent  bool
+	modelIDPresent     bool
+	modelOtherPresent  bool
+	vehicleTypePresent bool
+}
+
+// UnmarshalJSON tracks which catalog fields were explicitly present (including null).
+func (r *VehicleUpdateRequest) UnmarshalJSON(data []byte) error {
+	type alias VehicleUpdateRequest
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*r = VehicleUpdateRequest(a)
+	_, r.brandIDPresent = raw["brand_id"]
+	_, r.brandOtherPresent = raw["brand_other"]
+	_, r.modelIDPresent = raw["model_id"]
+	_, r.modelOtherPresent = raw["model_other"]
+	_, r.vehicleTypePresent = raw["vehicle_type"]
+	return nil
+}
+
+// BrandIDProvided reports whether brand_id was set in JSON (incl. null) or in-memory.
+func (r *VehicleUpdateRequest) BrandIDProvided() bool {
+	return r != nil && (r.brandIDPresent || r.BrandID != nil)
+}
+
+// BrandOtherProvided reports whether brand_other was set in JSON (incl. null) or in-memory.
+func (r *VehicleUpdateRequest) BrandOtherProvided() bool {
+	return r != nil && (r.brandOtherPresent || r.BrandOther != nil)
+}
+
+// ModelIDProvided reports whether model_id was set in JSON (incl. null) or in-memory.
+func (r *VehicleUpdateRequest) ModelIDProvided() bool {
+	return r != nil && (r.modelIDPresent || r.ModelID != nil)
+}
+
+// ModelOtherProvided reports whether model_other was set in JSON (incl. null) or in-memory.
+func (r *VehicleUpdateRequest) ModelOtherProvided() bool {
+	return r != nil && (r.modelOtherPresent || r.ModelOther != nil)
+}
+
+// VehicleTypeProvided reports whether vehicle_type was set in JSON (incl. null) or in-memory.
+func (r *VehicleUpdateRequest) VehicleTypeProvided() bool {
+	return r != nil && (r.vehicleTypePresent || r.VehicleType != nil)
 }
 
 // Validate checks PATCH document rules against the current vehicle state.

@@ -23,25 +23,67 @@ import (
 
 func TestBuildMobilidadeInviteEmail(t *testing.T) {
 	msg := BuildMobilidadeInviteEmail(MobilidadeInviteEmailPayload{
-		NotifyEmail: "joao@example.com",
-		OwnerName:   "Ana Souza",
-		DisplayName: "Bike do trabalho",
+		NotifyEmail:   "joao@example.com",
+		OwnerName:     "Ana Souza",
+		ConductorName: "João Condutor",
+		DisplayName:   "Bike do trabalho",
+		BrandLabel:    "Caloi",
+		ModelLabel:    "E-Vibe",
 	}, "https://pref.rio/")
 
 	assert.Equal(t, "joao@example.com", msg.To)
-	assert.Contains(t, msg.Subject, "Ana Souza")
-	assert.Contains(t, msg.Body, "Bike do trabalho")
-	assert.Contains(t, msg.Body, "https://pref.rio/carteira?mobilidade=true")
+	assert.True(t, msg.IsHTMLBody)
+	assert.Equal(t, "Ana Souza convidou você para ser condutor no CadMicro", msg.Subject)
+	assert.Contains(t, msg.Body, "Olá João Condutor,")
+	assert.Contains(t, msg.Body, "Ana Souza")
+	assert.Contains(t, msg.Body, "CadMicro")
+	assert.Contains(t, msg.Body, "Bike do trabalho, Caloi E-Vibe")
+	assert.Contains(t, msg.Body, `href="https://pref.rio/carteira?mobilidade=true"`)
+	assert.Contains(t, msg.Body, ">Pref Rio</a>")
 }
 
 func TestBuildMobilidadeInviteEmail_Defaults(t *testing.T) {
+	prev := config.AppConfig
+	t.Cleanup(func() { config.AppConfig = prev })
+	config.AppConfig = &config.Config{Environment: "production"}
+
 	msg := BuildMobilidadeInviteEmail(MobilidadeInviteEmailPayload{
 		NotifyEmail: "x@example.com",
 	}, "")
 
-	assert.Contains(t, msg.Subject, "Alguém")
+	assert.Equal(t, "Alguém convidou você para ser condutor no CadMicro", msg.Subject)
+	assert.Contains(t, msg.Body, "Olá,")
 	assert.Contains(t, msg.Body, "um veículo")
-	assert.Contains(t, msg.Body, "https://pref.rio/carteira?mobilidade=true")
+	assert.Contains(t, msg.Body, `href="https://pref.rio/carteira?mobilidade=true"`)
+	assert.True(t, msg.IsHTMLBody)
+}
+
+func TestBuildMobilidadeInviteEmail_StagingDeepLink(t *testing.T) {
+	msg := BuildMobilidadeInviteEmail(MobilidadeInviteEmailPayload{
+		NotifyEmail: "x@example.com",
+		OwnerName:   "Ana",
+		DisplayName: "Bike",
+	}, "https://staging.app.dados.rio")
+
+	assert.Contains(t, msg.Body, `href="https://staging.app.dados.rio/carteira?mobilidade=true"`)
+	assert.Contains(t, msg.Body, ">Pref Rio</a>")
+}
+
+func TestDefaultMobilidadeInviteDeepLinkBase_NonProductionUsesStaging(t *testing.T) {
+	prev := config.AppConfig
+	t.Cleanup(func() { config.AppConfig = prev })
+
+	config.AppConfig = &config.Config{Environment: "development"}
+	assert.Equal(t, "https://staging.app.dados.rio", DefaultMobilidadeInviteDeepLinkBase())
+
+	config.AppConfig = &config.Config{Environment: "preview"}
+	assert.Equal(t, "https://staging.app.dados.rio", DefaultMobilidadeInviteDeepLinkBase())
+
+	config.AppConfig = &config.Config{Environment: "production"}
+	assert.Equal(t, "https://pref.rio", DefaultMobilidadeInviteDeepLinkBase())
+
+	config.AppConfig = nil
+	assert.Equal(t, "https://staging.app.dados.rio", DefaultMobilidadeInviteDeepLinkBase())
 }
 
 func TestProcessMobilidadeInviteEmail_Success(t *testing.T) {
@@ -729,6 +771,10 @@ func TestInviteConductor_EnqueuesSyncJobForEmail(t *testing.T) {
 	assert.Equal(t, link.ID.Hex(), payload.ConductorID)
 	assert.Equal(t, created.ID.Hex(), payload.VehicleID)
 	assert.Equal(t, "Ana Souza", payload.OwnerName)
+	assert.Equal(t, "João Condutor", payload.ConductorName)
+	assert.Equal(t, "Bike do trabalho", payload.DisplayName)
+	assert.Equal(t, "Caloi", payload.BrandLabel)
+	assert.Equal(t, "E-Vibe", payload.ModelLabel)
 }
 
 func TestResolveDefaultEmailSender_LoggingWhenUnconfigured(t *testing.T) {

@@ -137,7 +137,7 @@ func CreateVehicle(c *gin.Context) {
 
 // UpdateVehicle godoc
 // @Summary Atualizar veículo
-// @Description Atualiza campos do veículo (somente proprietário). Em mudança de marca/modelo do catálogo, vehicle_type é rederivado do modelo.
+// @Description Atualiza campos do veículo (somente proprietário). Em mudança de marca/modelo do catálogo, vehicle_type é rederivado do modelo. Para trocar para fluxo Outro (texto livre), envie brand_id/model_id como null (ou "") junto com brand_other/model_other e vehicle_type; campo omitido não altera o valor atual.
 // @Tags mobilidade
 // @Accept json
 // @Produce json

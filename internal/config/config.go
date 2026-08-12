@@ -69,7 +69,6 @@ type Config struct {
 	MobilidadeConductorCollection      string `json:"mongo_mobilidade_conductor_collection"`
 	MobilidadeBrandCollection          string `json:"mongo_mobilidade_brand_collection"`
 	MobilidadeModelCollection          string `json:"mongo_mobilidade_model_collection"`
-	MobilidadeInviteDeepLinkBase       string `json:"mobilidade_invite_deep_link_base"`
 
 	// Data Relay (transactional email / mailman)
 	DataRelayBaseURL string        `json:"data_relay_base_url"`
@@ -446,7 +445,6 @@ func LoadConfig() error {
 		MobilidadeConductorCollection:      getEnvOrDefault("MONGODB_MOBILIDADE_CONDUCTOR_COLLECTION", "mobilidade_vehicle_conductors"),
 		MobilidadeBrandCollection:          getEnvOrDefault("MONGODB_MOBILIDADE_BRAND_COLLECTION", "mobilidade_vehicle_brands"),
 		MobilidadeModelCollection:          getEnvOrDefault("MONGODB_MOBILIDADE_MODEL_COLLECTION", "mobilidade_vehicle_models"),
-		MobilidadeInviteDeepLinkBase:       getEnvOrDefault("MOBILIDADE_INVITE_DEEP_LINK_BASE", "https://pref.rio"),
 
 		// Data Relay (optional — when unset, invite emails are logged only)
 		DataRelayBaseURL: getEnvOrDefault("DATA_RELAY_BASE_URL", ""),
