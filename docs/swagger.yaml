@@ -1829,8 +1829,10 @@ definitions:
     properties:
       brand_id:
         type: string
+        x-nullable: true
       brand_other:
         type: string
+        x-nullable: true
       color:
         type: string
       display_name:
@@ -1846,8 +1848,10 @@ definitions:
         x-nullable: true
       model_id:
         type: string
+        x-nullable: true
       model_other:
         type: string
+        x-nullable: true
       self_declaration:
         type: boolean
       serial_number:
@@ -1879,12 +1883,15 @@ definitions:
     properties:
       brand_id:
         type: string
+        x-nullable: true
       brand_name:
         description: 'BrandName is response-only: catalog brand name when brand_id
           is set and brand_other is empty.'
         type: string
+        x-nullable: true
       brand_other:
         type: string
+        x-nullable: true
       color:
         type: string
       conductor_id:
@@ -1908,12 +1915,15 @@ definitions:
         x-nullable: true
       model_id:
         type: string
+        x-nullable: true
       model_name:
         description: 'ModelName is response-only: catalog model name when model_id
           is set and model_other is empty.'
         type: string
+        x-nullable: true
       model_other:
         type: string
+        x-nullable: true
       owner_cpf:
         type: string
       owner_email:
@@ -1994,10 +2004,13 @@ definitions:
     properties:
       brand_id:
         type: string
+        x-nullable: true
       brand_name:
         type: string
+        x-nullable: true
       brand_other:
         type: string
+        x-nullable: true
       color:
         type: string
       conductor_id:
@@ -2008,10 +2021,13 @@ definitions:
         type: string
       model_id:
         type: string
+        x-nullable: true
       model_name:
         type: string
+        x-nullable: true
       model_other:
         type: string
+        x-nullable: true
       registration_number:
         example: RJ-E-000001
         type: string
@@ -2096,8 +2112,10 @@ definitions:
     properties:
       brand_id:
         type: string
+        x-nullable: true
       brand_other:
         type: string
+        x-nullable: true
       color:
         type: string
       display_name:
@@ -2113,8 +2131,10 @@ definitions:
         x-nullable: true
       model_id:
         type: string
+        x-nullable: true
       model_other:
         type: string
+        x-nullable: true
       serial_number:
         type: string
       serial_number_photo_file_name:
@@ -5040,12 +5060,12 @@ paths:
     post:
       consumes:
       - application/json
-      description: Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id)
-        ou Outro (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS
-        GCS. Se has_invoice=true, invoice_photo_url é obrigatória. Contato do dono
-        (nome/telefone/e-mail) é enriquecido ao vivo via RMI a partir do owner_cpf
-        — não enviar owner_* no body. registration_number é gerado pelo backend (formato
-        RJ-E-XXXXXX).
+      description: Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id),
+        híbrido (brand_id + model_other sem model_id) ou Outro livre (brand_other/model_other+vehicle_type).
+        URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é
+        obrigatória. Contato do dono (nome/telefone/e-mail) é enriquecido ao vivo
+        via RMI a partir do owner_cpf — não enviar owner_* no body. registration_number
+        é gerado pelo backend (formato RJ-E-XXXXXX).
       parameters:
       - description: CPF do cidadão (11 dígitos)
         in: path

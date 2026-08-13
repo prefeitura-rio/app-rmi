@@ -4580,7 +4580,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id) ou Outro (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é obrigatória. Contato do dono (nome/telefone/e-mail) é enriquecido ao vivo via RMI a partir do owner_cpf — não enviar owner_* no body. registration_number é gerado pelo backend (formato RJ-E-XXXXXX).",
+                "description": "Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id), híbrido (brand_id + model_other sem model_id) ou Outro livre (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é obrigatória. Contato do dono (nome/telefone/e-mail) é enriquecido ao vivo via RMI a partir do owner_cpf — não enviar owner_* no body. registration_number é gerado pelo backend (formato RJ-E-XXXXXX).",
                 "consumes": [
                     "application/json"
                 ],
@@ -10046,10 +10046,12 @@ const docTemplate = `{
             ],
             "properties": {
                 "brand_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "brand_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "color": {
                     "type": "string"
@@ -10071,10 +10073,12 @@ const docTemplate = `{
                     "x-nullable": true
                 },
                 "model_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "self_declaration": {
                     "type": "boolean"
@@ -10109,14 +10113,17 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "brand_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "brand_name": {
                     "description": "BrandName is response-only: catalog brand name when brand_id is set and brand_other is empty.",
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "brand_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "color": {
                     "type": "string"
@@ -10150,14 +10157,17 @@ const docTemplate = `{
                     "x-nullable": true
                 },
                 "model_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_name": {
                     "description": "ModelName is response-only: catalog model name when model_id is set and model_other is empty.",
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "owner_cpf": {
                     "type": "string"
@@ -10276,13 +10286,16 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "brand_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "brand_name": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "brand_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "color": {
                     "type": "string"
@@ -10297,13 +10310,16 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "model_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_name": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "registration_number": {
                     "type": "string",
@@ -10426,10 +10442,12 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "brand_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "brand_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "color": {
                     "type": "string"
@@ -10451,10 +10469,12 @@ const docTemplate = `{
                     "x-nullable": true
                 },
                 "model_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "serial_number": {
                     "type": "string"
