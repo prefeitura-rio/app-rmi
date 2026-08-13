@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -118,6 +119,7 @@ func seedMobilidadeCitizen(t *testing.T, cpf, name string) {
 	invalidateMobilidadeContactCache(t, cpf)
 	coll := config.MongoDB.Collection(config.AppConfig.CitizenCollection)
 	_, _ = coll.DeleteMany(ctx, bson.M{"cpf": cpf})
+	_, _ = coll.DeleteMany(ctx, bson.M{"_id": cpf})
 	_, err := coll.InsertOne(ctx, bson.M{
 		"_id":  cpf,
 		"cpf":  cpf,
@@ -414,6 +416,44 @@ func TestVehicleService_UpdateVehicle_RejectsIncompleteCatalogPatch(t *testing.T
 	assert.Contains(t, err.Error(), "incomplete")
 }
 
+func TestVehicleService_UpdateVehicle_CatalogToOtherViaJSONNull(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+	require.NotNil(t, created.BrandID)
+	assert.Equal(t, models.VehicleTypeBicicletaEletrica, created.VehicleType)
+
+	// Client sends brand_id/model_id as JSON null when switching to free-text Outro.
+	var req models.VehicleUpdateRequest
+	err = json.Unmarshal([]byte(`{
+		"display_name": "Coelho",
+		"brand_id": null,
+		"brand_other": "teste",
+		"model_id": null,
+		"model_other": "teste",
+		"vehicle_type": "ciclomotor",
+		"color": "Amarelo",
+		"serial_number": "TESTE"
+	}`), &req)
+	require.NoError(t, err)
+
+	updated, err := vehicleSvc.UpdateVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &req)
+	require.NoError(t, err)
+	assert.Equal(t, "Coelho", updated.DisplayName)
+	assert.Equal(t, "Amarelo", updated.Color)
+	assert.Equal(t, "TESTE", updated.SerialNumber)
+	assert.Equal(t, models.VehicleTypeCiclomotor, updated.VehicleType)
+	assert.Nil(t, updated.BrandID)
+	assert.Nil(t, updated.ModelID)
+	require.NotNil(t, updated.BrandOther)
+	assert.Equal(t, "teste", *updated.BrandOther)
+	require.NotNil(t, updated.ModelOther)
+	assert.Equal(t, "teste", *updated.ModelOther)
+}
+
 func TestVehicleService_CreateVehicle_OtherCatalogRequiresFreeText(t *testing.T) {
 	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
@@ -584,6 +624,10 @@ func TestVehicleService_GetVehicle_OwnerAndConductor(t *testing.T) {
 	assert.Equal(t, models.VehicleRoleOwner, detail.Role)
 	assert.Empty(t, detail.ConductorID)
 	assert.Equal(t, "SN-ABC-123456", detail.SerialNumber)
+	require.NotNil(t, detail.BrandName)
+	assert.Equal(t, "Caloi", *detail.BrandName)
+	require.NotNil(t, detail.ModelName)
+	assert.Equal(t, "E-Vibe", *detail.ModelName)
 
 	_, err = conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{CPF: mobilidadeConductorCPF, Email: "joao@example.com", Name: "João Condutor"})
 	require.NoError(t, err)
@@ -598,6 +642,121 @@ func TestVehicleService_GetVehicle_OwnerAndConductor(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.VehicleRoleConductor, asConductor.Role)
 	assert.Equal(t, invites.Data[0].ID, asConductor.ConductorID)
+	require.NotNil(t, asConductor.BrandName)
+	assert.Equal(t, "Caloi", *asConductor.BrandName)
+}
+
+func TestVehicleService_ListAndGet_CatalogNamesNullForOther(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, otherCreateRequest())
+	require.NoError(t, err)
+	assert.Nil(t, created.BrandName)
+	assert.Nil(t, created.ModelName)
+
+	detail, err := vehicleSvc.GetVehicle(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
+	require.NoError(t, err)
+	assert.Nil(t, detail.BrandName)
+	assert.Nil(t, detail.ModelName)
+
+	list, err := vehicleSvc.ListVehicles(context.Background(), mobilidadeOwnerCPF, 1, 10)
+	require.NoError(t, err)
+	require.NotEmpty(t, list.Data)
+	assert.Nil(t, list.Data[0].BrandName)
+	assert.Nil(t, list.Data[0].ModelName)
+}
+
+func TestVehicleService_ListVehicles_IncludesCatalogNames(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	_, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	list, err := vehicleSvc.ListVehicles(context.Background(), mobilidadeOwnerCPF, 1, 10)
+	require.NoError(t, err)
+	require.Len(t, list.Data, 1)
+	require.NotNil(t, list.Data[0].BrandName)
+	assert.Equal(t, "Caloi", *list.Data[0].BrandName)
+	require.NotNil(t, list.Data[0].ModelName)
+	assert.Equal(t, "E-Vibe", *list.Data[0].ModelName)
+}
+
+func TestVehicleService_GetVehicle_CatalogNamesNullWhenOutroSentinelHasFreeText(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	brandID := "brand_outro"
+	modelID := "model_outro"
+	brandOther := "Minha Marca"
+	modelOther := "Meu Modelo"
+	vt := models.VehicleTypeCiclomotor
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, &models.VehicleCreateRequest{
+		DisplayName: "Custom", BrandID: &brandID, ModelID: &modelID,
+		BrandOther: &brandOther, ModelOther: &modelOther, VehicleType: &vt,
+		Color: "Preto", SerialNumber: "SN-OUTRO-1",
+		SerialNumberPhotoURL: "https://storage.googleapis.com/serial.jpg",
+		VehiclePhotoURL:      "https://storage.googleapis.com/vehicle.jpg",
+		HasInvoice:           boolPtr(false), SelfDeclaration: true,
+	})
+	require.NoError(t, err)
+	assert.Nil(t, created.BrandName, "front uses brand_other when present")
+	assert.Nil(t, created.ModelName)
+}
+
+func TestVehicleService_CreateAndUpdate_HybridBrandIDKeepsCatalogBrand(t *testing.T) {
+	vehicleSvc, _, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	brandID := "brand_caloi"
+	modelOther := "Meu Modelo Custom"
+	vt := models.VehicleTypeCiclomotor
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, &models.VehicleCreateRequest{
+		DisplayName: "Híbrido", BrandID: &brandID, ModelOther: &modelOther, VehicleType: &vt,
+		Color: "Preto", SerialNumber: "SN-HYBRID-1",
+		SerialNumberPhotoURL: "https://storage.googleapis.com/serial.jpg",
+		VehiclePhotoURL:      "https://storage.googleapis.com/vehicle.jpg",
+		HasInvoice:           boolPtr(false), SelfDeclaration: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created.BrandID)
+	assert.Equal(t, "brand_caloi", *created.BrandID)
+	assert.Nil(t, created.ModelID)
+	require.NotNil(t, created.ModelOther)
+	assert.Equal(t, "Meu Modelo Custom", *created.ModelOther)
+	assert.Nil(t, created.BrandOther)
+	require.NotNil(t, created.BrandName)
+	assert.Equal(t, "Caloi", *created.BrandName)
+	assert.Nil(t, created.ModelName)
+	assert.Equal(t, models.VehicleTypeCiclomotor, created.VehicleType)
+
+	// PATCH: catalog vehicle → hybrid (model_id null + model_other), keep brand_id.
+	full, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	var patch models.VehicleUpdateRequest
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"brand_id": "brand_caloi",
+		"model_id": null,
+		"model_other": "Modelo Digitado",
+		"vehicle_type": "ciclomotor"
+	}`), &patch))
+
+	updated, err := vehicleSvc.UpdateVehicle(context.Background(), mobilidadeOwnerCPF, full.ID.Hex(), &patch)
+	require.NoError(t, err)
+	require.NotNil(t, updated.BrandID)
+	assert.Equal(t, "brand_caloi", *updated.BrandID)
+	assert.Nil(t, updated.ModelID)
+	require.NotNil(t, updated.ModelOther)
+	assert.Equal(t, "Modelo Digitado", *updated.ModelOther)
+	require.NotNil(t, updated.BrandName)
+	assert.Equal(t, "Caloi", *updated.BrandName)
+	assert.Nil(t, updated.ModelName)
 }
 
 func TestVehicleService_GetVehicle_ForbiddenForStranger(t *testing.T) {
@@ -1039,7 +1198,7 @@ func TestListConductors_AcceptedReplacesInviteSnapshotWithCitizenProfile(t *test
 	assert.Equal(t, models.ConductorStatusAccepted, list.Data[0].Status)
 	assert.Equal(t, "João Condutor", list.Data[0].ConductorName)
 	assert.Equal(t, "joao@example.com", list.Data[0].NotifyEmail)
-	assert.Empty(t, list.Data[0].Phone)
+	assert.Equal(t, "21999990000", list.Data[0].Phone) // RMI sem telefone → mantém snapshot
 	assert.NotEqual(t, "Nome Digitado", list.Data[0].ConductorName)
 	assert.NotEqual(t, "convite@example.com", list.Data[0].NotifyEmail)
 }
@@ -1072,7 +1231,7 @@ func TestListConductors_AcceptedEnrichesLiveRMI(t *testing.T) {
 	assert.Contains(t, list.Data[0].Phone, "988887777")
 }
 
-func TestListConductors_AcceptedClearsSnapshotWhenRMIEmpty(t *testing.T) {
+func TestListConductors_AcceptedKeepsSnapshotWhenRMIEmpty(t *testing.T) {
 	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
 	defer cleanup()
 	seedMobilidadeCatalog(t)
@@ -1089,7 +1248,7 @@ func TestListConductors_AcceptedClearsSnapshotWhenRMIEmpty(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Remove citizen so live profile is empty — response must not fall back to invite snapshot.
+	// Remove citizen so live profile is empty — overlay must keep invite snapshot fields.
 	_, err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).DeleteMany(context.Background(), bson.M{"cpf": mobilidadeConductorCPF})
 	require.NoError(t, err)
 	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).DeleteMany(context.Background(), bson.M{"cpf": mobilidadeConductorCPF})
@@ -1100,7 +1259,88 @@ func TestListConductors_AcceptedClearsSnapshotWhenRMIEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list.Data, 1)
 	assert.Equal(t, models.ConductorStatusAccepted, list.Data[0].Status)
-	assert.Empty(t, list.Data[0].ConductorName)
-	assert.Empty(t, list.Data[0].NotifyEmail)
-	assert.Empty(t, list.Data[0].Phone)
+	assert.Equal(t, "Nome Digitado", list.Data[0].ConductorName)
+	assert.Equal(t, "convite@example.com", list.Data[0].NotifyEmail)
+	assert.Equal(t, "21999990000", list.Data[0].Phone)
+}
+
+func TestListConductors_AcceptedOverlaysPartialRMI(t *testing.T) {
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "convite@example.com", Name: "Nome Digitado", Phone: "21999990000",
+	})
+	require.NoError(t, err)
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
+		Status: models.InvitationResponseAccepted,
+	})
+	require.NoError(t, err)
+
+	// Citizen has name but no email/phone — RMI name overlays; invite email/phone remain.
+	invalidateMobilidadeContactCache(t, mobilidadeConductorCPF)
+	_, err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).UpdateOne(context.Background(), bson.M{"cpf": mobilidadeConductorCPF}, bson.M{
+		"$unset": bson.M{"email": "", "telefone": ""},
+		"$set":   bson.M{"nome": "João Condutor"},
+	})
+	require.NoError(t, err)
+	_, err = config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).DeleteMany(context.Background(), bson.M{"cpf": mobilidadeConductorCPF})
+	require.NoError(t, err)
+	invalidateMobilidadeContactCache(t, mobilidadeConductorCPF)
+
+	list, err := conductorSvc.ListConductors(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
+	require.NoError(t, err)
+	require.Len(t, list.Data, 1)
+	assert.Equal(t, "João Condutor", list.Data[0].ConductorName)
+	assert.Equal(t, "convite@example.com", list.Data[0].NotifyEmail)
+	assert.Equal(t, "21999990000", list.Data[0].Phone)
+}
+
+func TestListConductors_AcceptedReadsCitizenByIDFallback(t *testing.T) {
+	vehicleSvc, conductorSvc, _, cleanup := setupMobilidadeVehicleServiceTest(t)
+	defer cleanup()
+	seedMobilidadeCatalog(t)
+
+	created, err := vehicleSvc.CreateVehicle(context.Background(), mobilidadeOwnerCPF, catalogCreateRequest())
+	require.NoError(t, err)
+
+	link, err := conductorSvc.InviteConductor(context.Background(), mobilidadeOwnerCPF, created.ID.Hex(), &models.InviteConductorRequest{
+		CPF: mobilidadeConductorCPF, Email: "convite@example.com", Name: "Nome Digitado",
+	})
+	require.NoError(t, err)
+	_, err = conductorSvc.RespondInvitation(context.Background(), mobilidadeConductorCPF, link.ID.Hex(), &models.RespondInvitationRequest{
+		Status: models.InvitationResponseAccepted,
+	})
+	require.NoError(t, err)
+
+	invalidateMobilidadeContactCache(t, mobilidadeConductorCPF)
+	coll := config.MongoDB.Collection(config.AppConfig.CitizenCollection)
+	_, err = coll.DeleteMany(context.Background(), bson.M{"cpf": mobilidadeConductorCPF})
+	require.NoError(t, err)
+	_, err = coll.DeleteMany(context.Background(), bson.M{"_id": mobilidadeConductorCPF})
+	require.NoError(t, err)
+	_, err = coll.InsertOne(context.Background(), bson.M{
+		"_id":  mobilidadeConductorCPF,
+		"nome": "Só Pelo ID",
+		"email": bson.M{
+			"principal": bson.M{"valor": "id@example.com"},
+		},
+	})
+	require.NoError(t, err)
+	invalidateMobilidadeContactCache(t, mobilidadeConductorCPF)
+
+	list, err := conductorSvc.ListConductors(context.Background(), mobilidadeOwnerCPF, created.ID.Hex())
+	require.NoError(t, err)
+	require.Len(t, list.Data, 1)
+	assert.Equal(t, "Só Pelo ID", list.Data[0].ConductorName)
+	assert.Equal(t, "id@example.com", list.Data[0].NotifyEmail)
+
+	// Restore a normal citizen doc so later tests in the same process are not polluted.
+	_, _ = coll.DeleteMany(context.Background(), bson.M{"_id": mobilidadeConductorCPF})
+	seedMobilidadeCitizen(t, mobilidadeConductorCPF, "João Condutor")
+	seedMobilidadeCitizenEmail(t, mobilidadeConductorCPF, "joao@example.com")
 }

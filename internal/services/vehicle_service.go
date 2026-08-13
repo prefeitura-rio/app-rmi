@@ -159,6 +159,7 @@ func (s *VehicleService) ListVehicles(ctx context.Context, cpf string, page, per
 	for _, entry := range all[start:end] {
 		pageItems = append(pageItems, entry.item)
 	}
+	s.enrichListCatalogNames(ctx, pageItems)
 
 	resp := &models.PaginatedVehicles{Data: pageItems}
 	resp.Pagination.Page = page
@@ -187,6 +188,7 @@ func (s *VehicleService) GetVehicle(ctx context.Context, cpf, vehicleID string) 
 	}
 
 	s.enrichOwnerFields(ctx, v)
+	s.enrichVehicleCatalogNames(ctx, v)
 	return &models.VehicleDetail{Vehicle: *v, Role: role, ConductorID: conductorID}, nil
 }
 
@@ -254,6 +256,7 @@ func (s *VehicleService) CreateVehicle(ctx context.Context, cpf string, req *mod
 		vehicle.ID = primitive.NewObjectID()
 	}
 	s.enrichOwnerFields(ctx, &vehicle)
+	s.enrichVehicleCatalogNames(ctx, &vehicle)
 	return &models.VehicleDetail{Vehicle: vehicle, Role: models.VehicleRoleOwner}, nil
 }
 
@@ -562,6 +565,32 @@ func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *mo
 		return model.VehicleType, &b, nil, &m, nil, nil
 	}
 
+	if req.BrandID != nil && *req.BrandID != "" && (req.ModelID == nil || *req.ModelID == "") {
+		if req.ModelOther == nil || strings.TrimSpace(*req.ModelOther) == "" {
+			return "", nil, nil, nil, nil, fmt.Errorf("%w: model_other is required when model_id is empty", ErrMobilidadeInvalidInput)
+		}
+		if req.VehicleType == nil || !models.IsValidVehicleType(*req.VehicleType) {
+			return "", nil, nil, nil, nil, fmt.Errorf("%w: vehicle_type is required for Outro flow", ErrMobilidadeInvalidInput)
+		}
+		var brand models.VehicleBrand
+		err := s.brands().FindOne(ctx, withCatalogActive(bson.M{"_id": *req.BrandID})).Decode(&brand)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return "", nil, nil, nil, nil, fmt.Errorf("%w: brand not found", ErrMobilidadeInvalidInput)
+		}
+		if err != nil {
+			return "", nil, nil, nil, nil, fmt.Errorf("load brand: %w", err)
+		}
+		b := *req.BrandID
+		if brand.IsOther && (req.BrandOther == nil || *req.BrandOther == "") {
+			return "", nil, nil, nil, nil, fmt.Errorf("%w: brand_other is required for Outro brand", ErrMobilidadeInvalidInput)
+		}
+		keptBrandOther := req.BrandOther
+		if !brand.IsOther {
+			keptBrandOther = nil
+		}
+		return *req.VehicleType, &b, keptBrandOther, nil, req.ModelOther, nil
+	}
+
 	if req.VehicleType == nil || !models.IsValidVehicleType(*req.VehicleType) {
 		return "", nil, nil, nil, nil, fmt.Errorf("%w: vehicle_type is required for Outro flow", ErrMobilidadeInvalidInput)
 	}
@@ -570,8 +599,11 @@ func (s *VehicleService) resolveCreateCatalogFields(ctx context.Context, req *mo
 
 // applyUpdateCatalogFields merges PATCH catalog fields and, for catalog flow,
 // re-derives vehicle_type from the model (same resilience as create).
+// Explicit JSON null (or "") on brand_id/model_id clears catalog IDs so a switch
+// to free-text Outro (brand_other/model_other) is not overridden by stale IDs.
 func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *models.Vehicle, req *models.VehicleUpdateRequest, update bson.M) error {
-	catalogTouched := req.BrandID != nil || req.ModelID != nil || req.BrandOther != nil || req.ModelOther != nil || req.VehicleType != nil
+	catalogTouched := req.BrandIDProvided() || req.ModelIDProvided() || req.BrandOtherProvided() ||
+		req.ModelOtherProvided() || req.VehicleTypeProvided()
 	if !catalogTouched {
 		return nil
 	}
@@ -582,39 +614,39 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 	modelOther := current.ModelOther
 	vehicleType := current.VehicleType
 
-	if req.BrandID != nil {
-		if *req.BrandID == "" {
+	if req.BrandIDProvided() {
+		if req.BrandID == nil || *req.BrandID == "" {
 			brandID = nil
 		} else {
 			b := *req.BrandID
 			brandID = &b
 		}
 	}
-	if req.ModelID != nil {
-		if *req.ModelID == "" {
+	if req.ModelIDProvided() {
+		if req.ModelID == nil || *req.ModelID == "" {
 			modelID = nil
 		} else {
 			m := *req.ModelID
 			modelID = &m
 		}
 	}
-	if req.BrandOther != nil {
-		if *req.BrandOther == "" {
+	if req.BrandOtherProvided() {
+		if req.BrandOther == nil || *req.BrandOther == "" {
 			brandOther = nil
 		} else {
 			b := *req.BrandOther
 			brandOther = &b
 		}
 	}
-	if req.ModelOther != nil {
-		if *req.ModelOther == "" {
+	if req.ModelOtherProvided() {
+		if req.ModelOther == nil || *req.ModelOther == "" {
 			modelOther = nil
 		} else {
 			m := *req.ModelOther
 			modelOther = &m
 		}
 	}
-	if req.VehicleType != nil {
+	if req.VehicleTypeProvided() && req.VehicleType != nil {
 		vehicleType = *req.VehicleType
 	}
 
@@ -664,6 +696,36 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 		return nil
 	}
 
+	if brandID != nil && *brandID != "" && (modelID == nil || *modelID == "") {
+		if modelOther == nil || strings.TrimSpace(*modelOther) == "" {
+			return fmt.Errorf("%w: model_other is required when model_id is empty", ErrMobilidadeInvalidInput)
+		}
+		if !models.IsValidVehicleType(vehicleType) {
+			return fmt.Errorf("%w: vehicle_type is required for Outro flow", ErrMobilidadeInvalidInput)
+		}
+		var brand models.VehicleBrand
+		err := s.brands().FindOne(ctx, withCatalogActive(bson.M{"_id": *brandID})).Decode(&brand)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return fmt.Errorf("%w: brand not found", ErrMobilidadeInvalidInput)
+		}
+		if err != nil {
+			return fmt.Errorf("load brand: %w", err)
+		}
+		if brand.IsOther && (brandOther == nil || *brandOther == "") {
+			return fmt.Errorf("%w: brand_other is required for Outro brand", ErrMobilidadeInvalidInput)
+		}
+		update["brand_id"] = *brandID
+		update["model_id"] = nil
+		if brand.IsOther {
+			update["brand_other"] = brandOther
+		} else {
+			update["brand_other"] = nil
+		}
+		update["model_other"] = modelOther
+		update["vehicle_type"] = vehicleType
+		return nil
+	}
+
 	otherFlow := (brandOther != nil && *brandOther != "") || (modelOther != nil && *modelOther != "")
 	if otherFlow {
 		if !models.IsValidVehicleType(vehicleType) {
@@ -680,8 +742,8 @@ func (s *VehicleService) applyUpdateCatalogFields(ctx context.Context, current *
 	// Type-only change is allowed only when vehicle is already on free-text Outro flow.
 	currentOther := (current.BrandOther != nil && *current.BrandOther != "") || (current.ModelOther != nil && *current.ModelOther != "")
 	currentCatalog := current.BrandID != nil && *current.BrandID != "" && current.ModelID != nil && *current.ModelID != ""
-	if req.VehicleType != nil && currentOther && !currentCatalog &&
-		req.BrandID == nil && req.ModelID == nil && req.BrandOther == nil && req.ModelOther == nil {
+	if req.VehicleTypeProvided() && req.VehicleType != nil && currentOther && !currentCatalog &&
+		!req.BrandIDProvided() && !req.ModelIDProvided() && !req.BrandOtherProvided() && !req.ModelOtherProvided() {
 		if !models.IsValidVehicleType(*req.VehicleType) {
 			return fmt.Errorf("%w: invalid vehicle_type", ErrMobilidadeInvalidInput)
 		}
@@ -698,40 +760,20 @@ func (s *VehicleService) loadOwnerSnapshot(ctx context.Context, cpf string) (nam
 
 // loadCitizenContactProfile resolves name/phone/email from citizen + self-declared overlay.
 func loadCitizenContactProfile(ctx context.Context, db *mongo.Database, dm *DataManager, logger *logging.SafeLogger, cpf string) (name, phone, email string) {
-	const maxAttempts = 3
-	var citizen models.Citizen
-	var err error
-
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		if dm != nil {
-			err = dm.Read(ctx, cpf, config.AppConfig.CitizenCollection, "citizen", &citizen)
-		} else if db != nil {
-			err = db.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
-		} else {
-			return "", "", ""
-		}
-		if err == nil {
-			break
-		}
-		if logger != nil {
-			logger.Warn("mobilidade citizen contact profile miss",
-				zap.String("cpf", utils.MaskCPF(cpf)),
-				zap.Int("attempt", attempt),
-				zap.Error(err),
-			)
-		}
-		if attempt < maxAttempts {
-			select {
-			case <-ctx.Done():
-				return "", "", ""
-			case <-time.After(100 * time.Millisecond):
-			}
-		}
+	cpf = utils.NormalizeCPF(cpf)
+	if cpf == "" {
+		return "", "", ""
 	}
+
+	citizen, err := readCitizenContact(ctx, db, dm, logger, cpf)
 	if err != nil {
 		return "", "", ""
 	}
-	if citizen.Nome != nil {
+	if citizen.NomeExibicao != nil && *citizen.NomeExibicao != "" {
+		name = *citizen.NomeExibicao
+	} else if citizen.NomeSocial != nil && *citizen.NomeSocial != "" {
+		name = *citizen.NomeSocial
+	} else if citizen.Nome != nil {
 		name = *citizen.Nome
 	}
 	phone = formatTelefonePrincipal(citizen.Telefone)
@@ -760,6 +802,47 @@ func loadCitizenContactProfile(ctx context.Context, db *mongo.Database, dm *Data
 	return name, phone, email
 }
 
+func readCitizenContact(ctx context.Context, db *mongo.Database, dm *DataManager, logger *logging.SafeLogger, cpf string) (*models.Citizen, error) {
+	const maxAttempts = 3
+	var citizen models.Citizen
+	var err error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if dm != nil {
+			err = dm.Read(ctx, cpf, config.AppConfig.CitizenCollection, "citizen", &citizen)
+		} else if db != nil {
+			err = db.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
+		} else {
+			return nil, fmt.Errorf("no data source")
+		}
+		if err == nil {
+			return &citizen, nil
+		}
+		if logger != nil {
+			logger.Warn("mobilidade citizen contact profile miss",
+				zap.String("cpf", utils.MaskCPF(cpf)),
+				zap.Int("attempt", attempt),
+				zap.Error(err),
+			)
+		}
+		if attempt < maxAttempts {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}
+
+	if db != nil {
+		var byID models.Citizen
+		if idErr := db.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"_id": cpf}).Decode(&byID); idErr == nil {
+			return &byID, nil
+		}
+	}
+	return nil, err
+}
+
 func formatTelefonePrincipal(tel *models.Telefone) string {
 	if tel == nil || tel.Principal == nil || tel.Principal.Valor == nil || *tel.Principal.Valor == "" {
 		return ""
@@ -785,6 +868,123 @@ func (s *VehicleService) enrichOwnerFields(ctx context.Context, v *models.Vehicl
 	v.OwnerName = name
 	v.OwnerPhone = phone
 	v.OwnerEmail = email
+}
+
+// enrichVehicleCatalogNames fills brand_name/model_name from the catalog when IDs are set
+// and free-text Outro fields are empty (front uses *_other when present).
+func (s *VehicleService) enrichVehicleCatalogNames(ctx context.Context, v *models.Vehicle) {
+	if v == nil {
+		return
+	}
+	v.BrandName, v.ModelName = s.resolveCatalogNames(ctx, v.BrandID, v.BrandOther, v.ModelID, v.ModelOther)
+}
+
+func (s *VehicleService) enrichListCatalogNames(ctx context.Context, items []models.VehicleListItem) {
+	if len(items) == 0 {
+		return
+	}
+	brandIDs := make([]string, 0, len(items))
+	modelIDs := make([]string, 0, len(items))
+	seenBrand := map[string]struct{}{}
+	seenModel := map[string]struct{}{}
+	for i := range items {
+		if items[i].BrandID != nil && *items[i].BrandID != "" && !hasFreeText(items[i].BrandOther) {
+			id := *items[i].BrandID
+			if _, ok := seenBrand[id]; !ok {
+				seenBrand[id] = struct{}{}
+				brandIDs = append(brandIDs, id)
+			}
+		}
+		if items[i].ModelID != nil && *items[i].ModelID != "" && !hasFreeText(items[i].ModelOther) {
+			id := *items[i].ModelID
+			if _, ok := seenModel[id]; !ok {
+				seenModel[id] = struct{}{}
+				modelIDs = append(modelIDs, id)
+			}
+		}
+	}
+	brandNames := s.loadBrandNames(ctx, brandIDs)
+	modelNames := s.loadModelNames(ctx, modelIDs)
+	for i := range items {
+		if items[i].BrandID != nil && !hasFreeText(items[i].BrandOther) {
+			if name, ok := brandNames[*items[i].BrandID]; ok {
+				n := name
+				items[i].BrandName = &n
+			}
+		}
+		if items[i].ModelID != nil && !hasFreeText(items[i].ModelOther) {
+			if name, ok := modelNames[*items[i].ModelID]; ok {
+				n := name
+				items[i].ModelName = &n
+			}
+		}
+	}
+}
+
+func (s *VehicleService) resolveCatalogNames(ctx context.Context, brandID, brandOther, modelID, modelOther *string) (brandName, modelName *string) {
+	if brandID != nil && *brandID != "" && !hasFreeText(brandOther) {
+		names := s.loadBrandNames(ctx, []string{*brandID})
+		if name, ok := names[*brandID]; ok {
+			n := name
+			brandName = &n
+		}
+	}
+	if modelID != nil && *modelID != "" && !hasFreeText(modelOther) {
+		names := s.loadModelNames(ctx, []string{*modelID})
+		if name, ok := names[*modelID]; ok {
+			n := name
+			modelName = &n
+		}
+	}
+	return brandName, modelName
+}
+
+func hasFreeText(other *string) bool {
+	return other != nil && strings.TrimSpace(*other) != ""
+}
+
+func (s *VehicleService) loadBrandNames(ctx context.Context, ids []string) map[string]string {
+	out := map[string]string{}
+	if len(ids) == 0 {
+		return out
+	}
+	cursor, err := s.brands().Find(ctx, bson.M{"_id": bson.M{"$in": ids}})
+	if err != nil {
+		return out
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	var brands []models.VehicleBrand
+	if err := cursor.All(ctx, &brands); err != nil {
+		return out
+	}
+	for _, b := range brands {
+		if b.Name != "" {
+			out[b.ID] = b.Name
+		}
+	}
+	return out
+}
+
+func (s *VehicleService) loadModelNames(ctx context.Context, ids []string) map[string]string {
+	out := map[string]string{}
+	if len(ids) == 0 {
+		return out
+	}
+	cursor, err := s.models().Find(ctx, bson.M{"_id": bson.M{"$in": ids}})
+	if err != nil {
+		return out
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	var modelsList []models.VehicleModel
+	if err := cursor.All(ctx, &modelsList); err != nil {
+		return out
+	}
+	for _, m := range modelsList {
+		if m.Name != "" {
+			out[m.ID] = m.Name
+		}
+	}
+	return out
 }
 
 // nextRegistrationNumber allocates a short unique wallet id (format RJ-E-XXXXXX).
@@ -817,8 +1017,10 @@ func toListItem(v models.Vehicle, role models.VehicleRole, conductorID string) m
 		RegistrationNumber: v.RegistrationNumber,
 		BrandID:            v.BrandID,
 		BrandOther:         v.BrandOther,
+		BrandName:          nil,
 		ModelID:            v.ModelID,
 		ModelOther:         v.ModelOther,
+		ModelName:          nil,
 		VehicleType:        v.VehicleType,
 		Color:              v.Color,
 		VehiclePhotoURL:    v.VehiclePhotoURL,

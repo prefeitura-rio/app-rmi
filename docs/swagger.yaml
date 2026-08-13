@@ -1829,8 +1829,10 @@ definitions:
     properties:
       brand_id:
         type: string
+        x-nullable: true
       brand_other:
         type: string
+        x-nullable: true
       color:
         type: string
       display_name:
@@ -1846,8 +1848,10 @@ definitions:
         x-nullable: true
       model_id:
         type: string
+        x-nullable: true
       model_other:
         type: string
+        x-nullable: true
       self_declaration:
         type: boolean
       serial_number:
@@ -1879,13 +1883,18 @@ definitions:
     properties:
       brand_id:
         type: string
+        x-nullable: true
+      brand_name:
+        description: 'BrandName is response-only: catalog brand name when brand_id
+          is set and brand_other is empty.'
+        type: string
+        x-nullable: true
       brand_other:
         type: string
+        x-nullable: true
       color:
         type: string
       conductor_id:
-        description: ConductorID is the accepted VehicleConductor link id when Role
-          is conductor (same id used in DELETE/PATCH paths).
         type: string
       created_at:
         type: string
@@ -1906,8 +1915,15 @@ definitions:
         x-nullable: true
       model_id:
         type: string
+        x-nullable: true
+      model_name:
+        description: 'ModelName is response-only: catalog model name when model_id
+          is set and model_other is empty.'
+        type: string
+        x-nullable: true
       model_other:
         type: string
+        x-nullable: true
       owner_cpf:
         type: string
       owner_email:
@@ -1988,13 +2004,16 @@ definitions:
     properties:
       brand_id:
         type: string
+        x-nullable: true
+      brand_name:
+        type: string
+        x-nullable: true
       brand_other:
         type: string
+        x-nullable: true
       color:
         type: string
       conductor_id:
-        description: ConductorID is the accepted VehicleConductor link id when Role
-          is conductor (same id used in DELETE/PATCH paths).
         type: string
       display_name:
         type: string
@@ -2002,8 +2021,13 @@ definitions:
         type: string
       model_id:
         type: string
+        x-nullable: true
+      model_name:
+        type: string
+        x-nullable: true
       model_other:
         type: string
+        x-nullable: true
       registration_number:
         example: RJ-E-000001
         type: string
@@ -2088,8 +2112,10 @@ definitions:
     properties:
       brand_id:
         type: string
+        x-nullable: true
       brand_other:
         type: string
+        x-nullable: true
       color:
         type: string
       display_name:
@@ -2105,8 +2131,10 @@ definitions:
         x-nullable: true
       model_id:
         type: string
+        x-nullable: true
       model_other:
         type: string
+        x-nullable: true
       serial_number:
         type: string
       serial_number_photo_file_name:
@@ -4980,7 +5008,8 @@ paths:
       - application/json
       description: Retorna veículos em que o CPF é proprietário ou condutor aceito,
         com role em cada item. Quando role=conductor, inclui conductor_id (id do vínculo
-        aceito).
+        aceito). brand_name/model_name são resolvidos do catálogo quando há brand_id/model_id
+        e não há brand_other/model_other.
       parameters:
       - description: CPF do cidadão (11 dígitos)
         in: path
@@ -5031,12 +5060,12 @@ paths:
     post:
       consumes:
       - application/json
-      description: Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id)
-        ou Outro (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS
-        GCS. Se has_invoice=true, invoice_photo_url é obrigatória. Contato do dono
-        (nome/telefone/e-mail) é enriquecido ao vivo via RMI a partir do owner_cpf
-        — não enviar owner_* no body. registration_number é gerado pelo backend (formato
-        RJ-E-XXXXXX).
+      description: Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id),
+        híbrido (brand_id + model_other sem model_id) ou Outro livre (brand_other/model_other+vehicle_type).
+        URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é
+        obrigatória. Contato do dono (nome/telefone/e-mail) é enriquecido ao vivo
+        via RMI a partir do owner_cpf — não enviar owner_* no body. registration_number
+        é gerado pelo backend (formato RJ-E-XXXXXX).
       parameters:
       - description: CPF do cidadão (11 dígitos)
         in: path
@@ -5134,7 +5163,8 @@ paths:
       description: Retorna o detalhe do veículo para proprietário ou condutor aceito
         (inclui invoice_photo_url, metadados de arquivos e registration_number). Quando
         role=conductor, inclui conductor_id (id do vínculo aceito). owner_name/owner_phone/owner_email
-        são enriquecidos ao vivo via RMI a partir de owner_cpf.
+        são enriquecidos ao vivo via RMI a partir de owner_cpf. brand_name/model_name
+        vêm do catálogo quando há brand_id/model_id e não há texto livre (*_other).
       parameters:
       - description: CPF do cidadão (11 dígitos)
         in: path
@@ -5184,7 +5214,10 @@ paths:
       consumes:
       - application/json
       description: Atualiza campos do veículo (somente proprietário). Em mudança de
-        marca/modelo do catálogo, vehicle_type é rederivado do modelo.
+        marca/modelo do catálogo, vehicle_type é rederivado do modelo. Para trocar
+        para fluxo Outro (texto livre), envie brand_id/model_id como null (ou "")
+        junto com brand_other/model_other e vehicle_type; campo omitido não altera
+        o valor atual.
       parameters:
       - description: CPF do cidadão (11 dígitos)
         in: path

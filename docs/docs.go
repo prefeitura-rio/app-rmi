@@ -4504,7 +4504,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna veículos em que o CPF é proprietário ou condutor aceito, com role em cada item. Quando role=conductor, inclui conductor_id (id do vínculo aceito).",
+                "description": "Retorna veículos em que o CPF é proprietário ou condutor aceito, com role em cada item. Quando role=conductor, inclui conductor_id (id do vínculo aceito). brand_name/model_name são resolvidos do catálogo quando há brand_id/model_id e não há brand_other/model_other.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4580,7 +4580,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id) ou Outro (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é obrigatória. Contato do dono (nome/telefone/e-mail) é enriquecido ao vivo via RMI a partir do owner_cpf — não enviar owner_* no body. registration_number é gerado pelo backend (formato RJ-E-XXXXXX).",
+                "description": "Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id), híbrido (brand_id + model_other sem model_id) ou Outro livre (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é obrigatória. Contato do dono (nome/telefone/e-mail) é enriquecido ao vivo via RMI a partir do owner_cpf — não enviar owner_* no body. registration_number é gerado pelo backend (formato RJ-E-XXXXXX).",
                 "consumes": [
                     "application/json"
                 ],
@@ -4652,7 +4652,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url, metadados de arquivos e registration_number). Quando role=conductor, inclui conductor_id (id do vínculo aceito). owner_name/owner_phone/owner_email são enriquecidos ao vivo via RMI a partir de owner_cpf.",
+                "description": "Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url, metadados de arquivos e registration_number). Quando role=conductor, inclui conductor_id (id do vínculo aceito). owner_name/owner_phone/owner_email são enriquecidos ao vivo via RMI a partir de owner_cpf. brand_name/model_name vêm do catálogo quando há brand_id/model_id e não há texto livre (*_other).",
                 "consumes": [
                     "application/json"
                 ],
@@ -4797,7 +4797,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Atualiza campos do veículo (somente proprietário). Em mudança de marca/modelo do catálogo, vehicle_type é rederivado do modelo.",
+                "description": "Atualiza campos do veículo (somente proprietário). Em mudança de marca/modelo do catálogo, vehicle_type é rederivado do modelo. Para trocar para fluxo Outro (texto livre), envie brand_id/model_id como null (ou \"\") junto com brand_other/model_other e vehicle_type; campo omitido não altera o valor atual.",
                 "consumes": [
                     "application/json"
                 ],
@@ -10046,10 +10046,12 @@ const docTemplate = `{
             ],
             "properties": {
                 "brand_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "brand_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "color": {
                     "type": "string"
@@ -10071,10 +10073,12 @@ const docTemplate = `{
                     "x-nullable": true
                 },
                 "model_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "self_declaration": {
                     "type": "boolean"
@@ -10109,16 +10113,22 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "brand_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "brand_name": {
+                    "description": "BrandName is response-only: catalog brand name when brand_id is set and brand_other is empty.",
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "brand_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "color": {
                     "type": "string"
                 },
                 "conductor_id": {
-                    "description": "ConductorID is the accepted VehicleConductor link id when Role is conductor (same id used in DELETE/PATCH paths).",
                     "type": "string"
                 },
                 "created_at": {
@@ -10147,10 +10157,17 @@ const docTemplate = `{
                     "x-nullable": true
                 },
                 "model_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "model_name": {
+                    "description": "ModelName is response-only: catalog model name when model_id is set and model_other is empty.",
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "owner_cpf": {
                     "type": "string"
@@ -10269,16 +10286,21 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "brand_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "brand_name": {
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "brand_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "color": {
                     "type": "string"
                 },
                 "conductor_id": {
-                    "description": "ConductorID is the accepted VehicleConductor link id when Role is conductor (same id used in DELETE/PATCH paths).",
                     "type": "string"
                 },
                 "display_name": {
@@ -10288,10 +10310,16 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "model_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "model_name": {
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "registration_number": {
                     "type": "string",
@@ -10414,10 +10442,12 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "brand_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "brand_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "color": {
                     "type": "string"
@@ -10439,10 +10469,12 @@ const docTemplate = `{
                     "x-nullable": true
                 },
                 "model_id": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "model_other": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "serial_number": {
                     "type": "string"

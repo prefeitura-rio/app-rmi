@@ -244,7 +244,8 @@ func (s *VehicleConductorService) InviteConductor(ctx context.Context, cpf, vehi
 	return &link, nil
 }
 
-// enrichConductorForResponse: pending keeps invite snapshot; accepted replaces name/email/phone with live RMI profile.
+// enrichConductorForResponse: pending keeps invite snapshot; accepted overlays live RMI
+// contact field-by-field (non-empty RMI values replace snapshot; empty RMI keeps snapshot).
 func (s *VehicleConductorService) enrichConductorForResponse(ctx context.Context, link *models.VehicleConductor) {
 	if link == nil || link.ConductorCPF == "" {
 		return
@@ -253,9 +254,15 @@ func (s *VehicleConductorService) enrichConductorForResponse(ctx context.Context
 		return
 	}
 	name, phone, email := loadCitizenContactProfile(ctx, s.database, s.dataManager, s.logger, link.ConductorCPF)
-	link.ConductorName = name
-	link.NotifyEmail = email
-	link.Phone = phone
+	if name != "" {
+		link.ConductorName = name
+	}
+	if email != "" {
+		link.NotifyEmail = email
+	}
+	if phone != "" {
+		link.Phone = phone
+	}
 }
 
 func mapConductorInsertError(err error) error {
@@ -369,13 +376,17 @@ func (s *VehicleConductorService) enqueueInviteEmail(ctx context.Context, link *
 	}
 
 	ownerName, _, _ := loadCitizenContactProfile(ctx, s.database, s.dataManager, s.logger, v.OwnerCPF)
+	brandLabel, modelLabel := s.resolveBrandModelLabels(ctx, v)
 	payload := MobilidadeInviteEmailPayload{
-		ConductorID:  link.ID.Hex(),
-		NotifyEmail:  link.NotifyEmail,
-		VehicleID:    v.ID.Hex(),
-		OwnerName:    ownerName,
-		DisplayName:  v.DisplayName,
-		ConductorCPF: link.ConductorCPF,
+		ConductorID:   link.ID.Hex(),
+		NotifyEmail:   link.NotifyEmail,
+		VehicleID:     v.ID.Hex(),
+		OwnerName:     ownerName,
+		ConductorName: link.ConductorName,
+		DisplayName:   v.DisplayName,
+		BrandLabel:    brandLabel,
+		ModelLabel:    modelLabel,
+		ConductorCPF:  link.ConductorCPF,
 	}
 
 	job := SyncJob{
