@@ -65,15 +65,21 @@ type Config struct {
 	NotificationCategoryCollection string `json:"mongo_notification_category_collection"`
 	CNAECollection                 string `json:"mongo_cnae_collection"`
 	CPFSecretariaCollection        string `json:"mongo_cpf_secretaria_collection"`
-	MobilidadeVehicleCollection        string `json:"mongo_mobilidade_vehicle_collection"`
-	MobilidadeConductorCollection      string `json:"mongo_mobilidade_conductor_collection"`
-	MobilidadeBrandCollection          string `json:"mongo_mobilidade_brand_collection"`
-	MobilidadeModelCollection          string `json:"mongo_mobilidade_model_collection"`
+	MobilidadeVehicleCollection    string `json:"mongo_mobilidade_vehicle_collection"`
+	MobilidadeConductorCollection  string `json:"mongo_mobilidade_conductor_collection"`
+	MobilidadeBrandCollection      string `json:"mongo_mobilidade_brand_collection"`
+	MobilidadeModelCollection      string `json:"mongo_mobilidade_model_collection"`
 
 	// Data Relay (transactional email / mailman)
 	DataRelayBaseURL string        `json:"data_relay_base_url"`
 	DataRelayAPIKey  string        `json:"data_relay_api_key"`
 	DataRelayTimeout time.Duration `json:"data_relay_timeout"`
+
+	// Salesforce CRM (Person Account sync) — optional; JWT-only auth (no OAuth)
+	SalesforceBaseURL string        `json:"salesforce_base_url"`
+	SalesforceTimeout time.Duration `json:"salesforce_timeout"`
+	// SalesforceWebhookClients are Keycloak client_ids (azp) allowed to call the SF→RMI webhook.
+	SalesforceWebhookClients []string `json:"salesforce_webhook_clients"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -441,15 +447,20 @@ func LoadConfig() error {
 		NotificationCategoryCollection: notificationCategoryCollection,
 		CNAECollection:                 cnaeCollection,
 		CPFSecretariaCollection:        getEnvOrDefault("MONGODB_CPF_SECRETARIA_COLLECTION", "cpf_secretaria_mappings"),
-		MobilidadeVehicleCollection:        getEnvOrDefault("MONGODB_MOBILIDADE_VEHICLE_COLLECTION", "mobilidade_vehicles"),
-		MobilidadeConductorCollection:      getEnvOrDefault("MONGODB_MOBILIDADE_CONDUCTOR_COLLECTION", "mobilidade_vehicle_conductors"),
-		MobilidadeBrandCollection:          getEnvOrDefault("MONGODB_MOBILIDADE_BRAND_COLLECTION", "mobilidade_vehicle_brands"),
-		MobilidadeModelCollection:          getEnvOrDefault("MONGODB_MOBILIDADE_MODEL_COLLECTION", "mobilidade_vehicle_models"),
+		MobilidadeVehicleCollection:    getEnvOrDefault("MONGODB_MOBILIDADE_VEHICLE_COLLECTION", "mobilidade_vehicles"),
+		MobilidadeConductorCollection:  getEnvOrDefault("MONGODB_MOBILIDADE_CONDUCTOR_COLLECTION", "mobilidade_vehicle_conductors"),
+		MobilidadeBrandCollection:      getEnvOrDefault("MONGODB_MOBILIDADE_BRAND_COLLECTION", "mobilidade_vehicle_brands"),
+		MobilidadeModelCollection:      getEnvOrDefault("MONGODB_MOBILIDADE_MODEL_COLLECTION", "mobilidade_vehicle_models"),
 
 		// Data Relay (optional — when unset, invite emails are logged only)
 		DataRelayBaseURL: getEnvOrDefault("DATA_RELAY_BASE_URL", ""),
 		DataRelayAPIKey:  getEnvOrDefault("DATA_RELAY_API_KEY", ""),
 		DataRelayTimeout: getEnvAsDurationOrDefault("DATA_RELAY_TIMEOUT", 30*time.Second),
+
+		// Salesforce CRM (optional — Bearer JWT only; no OAuth client-credentials)
+		SalesforceBaseURL:        getEnvOrDefault("SALESFORCE_BASE_URL", ""),
+		SalesforceTimeout:        getEnvAsDurationOrDefault("SALESFORCE_TIMEOUT", 30*time.Second),
+		SalesforceWebhookClients: parseCommaSeparatedList(getEnvOrDefault("SALESFORCE_WEBHOOK_CLIENTS", "")),
 
 		// Phone verification configuration
 		PhoneVerificationTTL:          phoneVerificationTTL,

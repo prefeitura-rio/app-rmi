@@ -145,6 +145,14 @@ When asked to do the "commit thing":
 - **Queue**: Mobilidade conductor invites enqueue `mobilidade_invite_email` jobs processed by the sync worker
 - **Status on link**: `email_status` (`pending|queued|sent|failed`) + `email_attempted_at` / `email_last_error` on `VehicleConductor`
 
+### Salesforce Person Account Sync (bidirectional)
+- **Client**: `internal/clients/salesforce_client.go` — `POST/GET/PATCH {SALESFORCE_BASE_URL}/api/private/cidadao` with `Authorization: Bearer` only (same JWT as RMI; no OAuth). `/api/private` is a fixed client base path.
+- **Auth**: login/proxies forward the user JWT; outbound push reuses the JWT stored on the sync job from `AuthMiddleware` → `DataManager.Write`. Webhook accepts only Keycloak JWTs whose `azp` is in `SALESFORCE_WEBHOOK_CLIENTS` (Salesforce service client).
+- **Login sync**: `GET /v1/auth/validate` — GET SF → match / silent email PATCH / POST create on 404 (`contaOrigem: Portal Pref.Rio`); uses CPF/name/email from JWT (not `phone_number`). Phone DDI `55` prefix still applies on outbound push from self_declared data.
+- **Outbound (RMI → SF)**: after successful citizen/self_declared sync (`handleSyncSuccess`), enqueue `salesforce_push` unless `origin=salesforce` (requires bearer on job)
+- **Inbound (SF → RMI)**: webhook `{cpf, dados}` (changed Person Account fields) → enqueue `salesforce_sync` → worker upserts `self_declared` (no GET back to SF; no push back)
+- **Proxies (user JWT, additive under `/v1/salesforce`)**: consentimento, exportar, anonimizar (+ polling), chamados list/detail — do not alter `/v1/citizen` behavior
+
 ### Performance-Critical Paths
 - **GetCitizenData**: Uses batched Redis operations via `getBatchedSelfDeclaredData()`
 - **UpdateSelfDeclared***: Field-specific queries vs full citizen data retrieval

@@ -30,6 +30,7 @@ type SyncWorker struct {
 	stopChan     chan struct{}
 	queues       []string
 	emailSender  EmailSender
+	salesforce   SalesforceCidadaoAPI
 }
 
 // NewSyncWorker creates a new sync worker
@@ -43,6 +44,7 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 		degradedMode: degradedMode,
 		stopChan:     make(chan struct{}),
 		emailSender:  ResolveDefaultEmailSender(logger),
+		salesforce:   nil,
 		queues: []string{
 			"citizen",
 			"phone_mapping",
@@ -62,6 +64,8 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 			"self_declared_deficiencia",
 			"cf_lookup",
 			MobilidadeInviteEmailQueue,
+			SalesforceSyncQueue,
+			SalesforcePushQueue,
 		},
 	}
 }
@@ -69,6 +73,11 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 // SetEmailSender overrides the email sender (used by tests).
 func (w *SyncWorker) SetEmailSender(sender EmailSender) {
 	w.emailSender = sender
+}
+
+// SetSalesforceClient overrides the Salesforce client (used by tests).
+func (w *SyncWorker) SetSalesforceClient(client SalesforceCidadaoAPI) {
+	w.salesforce = client
 }
 
 // Start starts the worker
@@ -537,6 +546,8 @@ func (w *SyncWorker) handleSyncSuccess(job *SyncJob) {
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
 		zap.String("key", job.Key))
+
+	w.maybeEnqueueSalesforcePush(job)
 }
 
 // handleSyncFailure handles a failed sync
@@ -757,6 +768,14 @@ func (w *SyncWorker) handleSpecialJobTypes(ctx context.Context, job *SyncJob) er
 	// Mobilidade conductor invite email
 	if job.Type == MobilidadeInviteEmailQueue || job.Collection == MobilidadeInviteEmailQueue {
 		return w.handleMobilidadeInviteEmailJob(ctx, job)
+	}
+
+	if job.Type == SalesforceSyncQueue || job.Collection == SalesforceSyncQueue {
+		return w.handleSalesforceSyncJob(ctx, job)
+	}
+
+	if job.Type == SalesforcePushQueue || job.Collection == SalesforcePushQueue {
+		return w.handleSalesforcePushJob(ctx, job)
 	}
 
 	// Not a special job type

@@ -69,6 +69,9 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | DATA_RELAY_BASE_URL | URL base da API Data Relay (envio de e-mail via mailman) | - | Não* |
 | DATA_RELAY_API_KEY | API key do Data Relay (`X-Api-Key`) | - | Não* |
 | DATA_RELAY_TIMEOUT | Timeout HTTP do Data Relay | 30s | Não |
+| SALESFORCE_BASE_URL | URL base da API Salesforce CRM (host; o client acrescenta `/api/private/...`) | - | Não* |
+| SALESFORCE_TIMEOUT | Timeout HTTP do Salesforce CRM | 30s | Não |
+| SALESFORCE_WEBHOOK_CLIENTS | Client IDs Keycloak (`azp`) autorizados no webhook SF→RMI (lista separada por vírgula) | - | Não* |
 | CF_LOOKUP_COLLECTION | Nome da coleção de lookups de CF | cf_lookups | Não |
 | CF_LOOKUP_CACHE_TTL | TTL do cache de CF lookups (ex: "24h") | 24h | Não |
 | CF_LOOKUP_RATE_LIMIT | Rate limit por CPF para CF lookups (ex: "1h") | 1h | Não |
@@ -90,6 +93,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 **Notas:**
 - `*` MCP_AUTH_TOKEN é obrigatório apenas se a funcionalidade de CF lookup estiver habilitada
 - `*` DATA_RELAY_BASE_URL e DATA_RELAY_API_KEY devem ser ambos definidos para envio real de e-mails (convites Mobilidade). Sem eles, o sync worker apenas registra o e-mail em log.
+- `*` SALESFORCE_BASE_URL habilita a integração. Proxies `/v1/salesforce/*` e push usam o JWT do usuário. O webhook `POST /v1/webhooks/salesforce/cidadao` exige JWT Keycloak cujo `azp` está em `SALESFORCE_WEBHOOK_CLIENTS` (token do client Salesforce) e recebe `cpf` + `dados` alterados (sem GET de volta ao SF). Proxies são aditivos e não alteram `/v1/citizen`.
 
 ## 🏥 **CF (Clínica da Família) Lookup - Nova Funcionalidade**
 

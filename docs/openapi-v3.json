@@ -7282,6 +7282,294 @@
           }
         ]
       }
+    },
+    "/webhooks/salesforce/cidadao": {
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Webhook inbound do Salesforce: recebe CPF + dados alterados do Person Account, autenticado com Bearer JWT Keycloak cujo azp está em SALESFORCE_WEBHOOK_CLIENTS. Enfileira sync (origem=salesforce) sem GET de volta ao Salesforce.",
+        "tags": [
+          "Salesforce"
+        ],
+        "summary": "Webhook Salesforce cidadão",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "cpf",
+                  "dados"
+                ],
+                "properties": {
+                  "cpf": {
+                    "type": "string",
+                    "example": "52998224725"
+                  },
+                  "dados": {
+                    "type": "object",
+                    "description": "Campos alterados do Person Account (mesmo shape do GET cidadao)",
+                    "properties": {
+                      "email": {"type": "string"},
+                      "telefone1": {"type": "string"},
+                      "genero": {"type": "string"},
+                      "accountId": {"type": "string"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job de sync enfileirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "cpf": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "CPF inválido ou dados ausentes"
+          },
+          "401": {
+            "description": "JWT inválido ou ausente"
+          },
+          "403": {
+            "description": "azp do JWT não está em SALESFORCE_WEBHOOK_CLIENTS"
+          },
+          "503": {
+            "description": "Integração Salesforce ou SALESFORCE_WEBHOOK_CLIENTS não configurados"
+          }
+        }
+      }
+    },
+    "/salesforce/cidadao/{cpf}/consentimento": {
+      "patch": {
+        "security": [{"bearerAuth": []}],
+        "tags": ["Salesforce"],
+        "summary": "Atualizar consentimento no Salesforce",
+        "description": "Proxy para PATCH /api/private/cidadao/{cpf}/consentimento. Encaminha o JWT do usuário. motivo obrigatório quando acao=optout. 200 sem corpo.",
+        "parameters": [
+          {"name": "cpf", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["categoria", "acao"],
+                "properties": {
+                  "categoria": {"type": "string", "example": "PREF_Lembrete_Pagamento"},
+                  "acao": {"type": "string", "example": "optout"},
+                  "motivo": {"type": "string", "example": "Too_Many_Messages"},
+                  "origem": {"type": "string", "example": "Portal Pref.Rio"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Consentimento atualizado (sem corpo)"},
+          "400": {"description": "Validação (ex.: motivo ausente em optout)"},
+          "401": {"description": "JWT inválido ou ausente"},
+          "403": {"description": "CPF não pertence ao usuário"},
+          "404": {"description": "Cidadão não encontrado no Salesforce"},
+          "409": {"description": "Conflito no Salesforce"},
+          "502": {"description": "Falha ao chamar Salesforce"},
+          "503": {"description": "Integração não configurada"}
+        }
+      }
+    },
+    "/salesforce/cidadao/{cpf}/exportar": {
+      "get": {
+        "security": [{"bearerAuth": []}],
+        "tags": ["Salesforce"],
+        "summary": "Exportar dados pessoais (LGPD) do Salesforce",
+        "description": "Proxy síncrono para GET /api/private/cidadao/{cpf}/exportar.",
+        "parameters": [
+          {"name": "cpf", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot de portabilidade",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cpf": {"type": "string"},
+                    "dataExportacao": {"type": "string"},
+                    "dadosPessoais": {"type": "object"},
+                    "relacionados": {"type": "object"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"description": "JWT inválido ou ausente"},
+          "403": {"description": "CPF não pertence ao usuário"},
+          "404": {"description": "Não encontrado"},
+          "502": {"description": "Falha ao chamar Salesforce"},
+          "503": {"description": "Integração não configurada"}
+        }
+      }
+    },
+    "/salesforce/cidadao/{cpf}/anonimizar": {
+      "post": {
+        "security": [{"bearerAuth": []}],
+        "tags": ["Salesforce"],
+        "summary": "Solicitar anonimização no Salesforce",
+        "description": "Proxy para POST /api/private/cidadao/{cpf}/anonimizar (assíncrono). 202 enfileirado; 409 se já houver solicitação aberta.",
+        "parameters": [
+          {"name": "cpf", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "202": {
+            "description": "Solicitação enfileirada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "numeroSolicitacao": {"type": "string"},
+                    "cpf": {"type": "string"},
+                    "status": {"type": "string"},
+                    "dataSolicitacao": {"type": "string"},
+                    "dataConclusao": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Já existe solicitação em aberto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "numeroSolicitacao": {"type": "string"},
+                    "cpf": {"type": "string"},
+                    "status": {"type": "string"},
+                    "dataSolicitacao": {"type": "string"},
+                    "dataConclusao": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"description": "JWT inválido ou ausente"},
+          "403": {"description": "CPF não pertence ao usuário"},
+          "502": {"description": "Falha ao chamar Salesforce"},
+          "503": {"description": "Integração não configurada"}
+        }
+      }
+    },
+    "/salesforce/anonimizacao/{numeroSolicitacao}": {
+      "get": {
+        "security": [{"bearerAuth": []}],
+        "tags": ["Salesforce"],
+        "summary": "Consultar status de anonimização",
+        "description": "Proxy para GET /api/private/anonimizacao/{numeroSolicitacao} (polling até estado final).",
+        "parameters": [
+          {"name": "numeroSolicitacao", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Status da solicitação",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "numeroSolicitacao": {"type": "string"},
+                    "cpf": {"type": "string"},
+                    "status": {"type": "string"},
+                    "dataSolicitacao": {"type": "string"},
+                    "dataConclusao": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"description": "JWT inválido ou ausente"},
+          "404": {"description": "Solicitação não encontrada"},
+          "502": {"description": "Falha ao chamar Salesforce"},
+          "503": {"description": "Integração não configurada"}
+        }
+      }
+    },
+    "/salesforce/chamados": {
+      "get": {
+        "security": [{"bearerAuth": []}],
+        "tags": ["Salesforce"],
+        "summary": "Listar chamados do usuário no Salesforce",
+        "description": "Proxy para GET /api/private/chamados. O AccountId é resolvido no Salesforce via Community User do JWT (sem CPF na URL).",
+        "responses": {
+          "200": {
+            "description": "Lista de protocolos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "protocolos": {"type": "array", "items": {"type": "object"}}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"description": "JWT inválido ou ausente"},
+          "502": {"description": "Falha ao chamar Salesforce"},
+          "503": {"description": "Integração não configurada"}
+        }
+      }
+    },
+    "/salesforce/chamados/{protocolo}": {
+      "get": {
+        "security": [{"bearerAuth": []}],
+        "tags": ["Salesforce"],
+        "summary": "Detalhe de chamado no Salesforce",
+        "description": "Proxy para GET /api/private/chamados/{protocolo}.",
+        "parameters": [
+          {"name": "protocolo", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalhe do protocolo",
+            "content": {
+              "application/json": {
+                "schema": {"type": "object"}
+              }
+            }
+          },
+          "401": {"description": "JWT inválido ou ausente"},
+          "404": {"description": "Protocolo não encontrado"},
+          "502": {"description": "Falha ao chamar Salesforce"},
+          "503": {"description": "Integração não configurada"}
+        }
+      }
     }
   },
   "tags": [

@@ -97,14 +97,15 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 
 	// 2. Queue sync job
 	syncJob := SyncJob{
-		ID:         utils.GenerateUUID(),
-		Type:       op.GetType(),
-		Key:        op.GetKey(),
-		Collection: op.GetCollection(),
-		Data:       op.GetData(),
-		Timestamp:  time.Now(),
-		RetryCount: 0,
-		MaxRetries: 3,
+		ID:          utils.GenerateUUID(),
+		Type:        op.GetType(),
+		Key:         op.GetKey(),
+		Collection:  op.GetCollection(),
+		Data:        op.GetData(),
+		Timestamp:   time.Now(),
+		RetryCount:  0,
+		MaxRetries:  3,
+		BearerToken: utils.BearerTokenFromContext(ctx),
 	}
 
 	jobBytes, err := json.Marshal(syncJob)

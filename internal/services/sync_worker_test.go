@@ -136,6 +136,8 @@ func TestNewSyncWorker(t *testing.T) {
 		"self_declared_deficiencia",
 		"cf_lookup",
 		MobilidadeInviteEmailQueue,
+		SalesforceSyncQueue,
+		SalesforcePushQueue,
 	}
 
 	assert.Equal(t, len(expectedQueues), len(worker.queues))
