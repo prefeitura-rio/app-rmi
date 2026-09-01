@@ -44,10 +44,10 @@ func SyncSalesforceOnLogin(ctx context.Context, sf SalesforceCidadaoAPI, claims 
 		}
 		// Silent update when email diverged. PatchCidadao re-GETs when SF returns
 		// only camposAtualizados, so the returned DTO is the post-update Person Account.
-		updated, patchErr := sf.PatchCidadao(ctx, cpf, &clients.SalesforceCidadaoPatchRequest{
-			Email:       email,
-			ContaOrigem: contaOrigem,
-		})
+		patch := clients.NewSalesforcePatch()
+		patch.PutIfNonempty("email", email)
+		patch.Put("contaOrigem", contaOrigem)
+		updated, patchErr := sf.PatchCidadao(ctx, cpf, patch)
 		if patchErr != nil {
 			return nil, fmt.Errorf("salesforce silent email update failed: %w", patchErr)
 		}
@@ -68,7 +68,7 @@ func SyncSalesforceOnLogin(ctx context.Context, sf SalesforceCidadaoAPI, claims 
 		Nome:        nome,
 		Email:       email,
 		ContaOrigem: contaOrigem,
-		Idioma:      "Portugues_Brasil",
+		Idioma:      []string{"Portugues_Brasil"},
 	})
 	if createErr != nil {
 		return nil, fmt.Errorf("salesforce create cidadao failed: %w", createErr)

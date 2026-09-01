@@ -49,6 +49,11 @@ func TestMapSalesforceGeneroToRMI(t *testing.T) {
 
 func TestMapRMIRacaToSalesforce(t *testing.T) {
 	assert.Equal(t, "Parda", mapRMIRacaToSalesforce("parda"))
+	assert.Equal(t, "Branca", mapRMIRacaToSalesforce("branca"))
+	assert.Equal(t, "Preta", mapRMIRacaToSalesforce("preta"))
+	assert.Equal(t, "Amarela", mapRMIRacaToSalesforce("amarela"))
+	assert.Equal(t, "Indigena", mapRMIRacaToSalesforce("indigena"))
+	assert.Equal(t, "Outra", mapRMIRacaToSalesforce("outra"))
 	assert.Equal(t, "", mapRMIRacaToSalesforce(""))
 }
 
@@ -83,7 +88,24 @@ func TestMapSalesforceCidadaoToSelfDeclared(t *testing.T) {
 	assert.Equal(t, "parda", *raca)
 }
 
-func TestBuildSalesforcePatch(t *testing.T) {
+func TestMapSalesforceConsentimentoToOptIn(t *testing.T) {
+	optIn, cats := mapSalesforceConsentimentoToOptIn([]clients.SalesforceConsentimento{
+		{Categoria: "Comunicacao", Status: "IN"},
+		{Categoria: "Marketing", Acao: "optout", Motivo: "nao quero"},
+	})
+	assert.True(t, optIn)
+	assert.True(t, cats["Comunicacao"])
+	assert.False(t, cats["Marketing"])
+}
+
+func TestNormalizeSalesforceWebhookEvento(t *testing.T) {
+	assert.Equal(t, SalesforceWebhookEventAtualizacao, NormalizeSalesforceWebhookEvento(""))
+	assert.Equal(t, SalesforceWebhookEventAtualizacao, NormalizeSalesforceWebhookEvento("atualizacao"))
+	assert.Equal(t, SalesforceWebhookEventAnonimizacao, NormalizeSalesforceWebhookEvento("anonimizacao"))
+	assert.Equal(t, "", NormalizeSalesforceWebhookEvento("foo"))
+}
+
+func TestBuildSalesforceSnapshotPatch(t *testing.T) {
 	nome := "Maria Silva"
 	email := "maria@test.com"
 	genero := "Homem cisgênero"
@@ -104,15 +126,86 @@ func TestBuildSalesforcePatch(t *testing.T) {
 		Telefone: &models.Telefone{
 			Principal: &models.TelefonePrincipal{DDI: &ddi, DDD: &ddd, Valor: &valor},
 		},
+		Idioma: []string{"Portugues_Brasil"},
 	}
 
-	patch := buildSalesforcePatch(citizen, sd)
-	assert.Equal(t, "maria@test.com", patch.Email)
-	assert.Equal(t, "5521988888888", patch.Telefone1)
-	assert.Equal(t, "Homem_cisgenero", patch.Genero)
-	assert.Equal(t, "Parda", patch.Raca)
-	assert.Equal(t, "Maria", patch.PrimeiroNome)
-	assert.Equal(t, "Portugues_Brasil", patch.Idioma)
+	patch := buildSalesforceSnapshotPatch(citizen, sd, nil, true, true)
+	fields := patch.Fields()
+	assert.Equal(t, "maria@test.com", fields["email"])
+	assert.Equal(t, "5521988888888", fields["telefone1"])
+	assert.Equal(t, "Homem_cisgenero", fields["genero"])
+	assert.Equal(t, "Parda", fields["raca"])
+	assert.Equal(t, "Maria", fields["primeiroNome"])
+	assert.Equal(t, []string{"Portugues_Brasil"}, fields["idioma"])
+	assert.Equal(t, SalesforceContaOrigem, fields["contaOrigem"])
+}
+
+func TestBuildSalesforceSnapshotPatch_OmitsIdiomaWhenUnset(t *testing.T) {
+	sd := &models.SelfDeclaredData{CPF: "14202478754"}
+	patch := buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
+	fields := patch.Fields()
+	assert.NotContains(t, fields, "idioma")
+	assert.NotContains(t, fields, "isTourist")
+}
+
+func TestBuildSalesforceSnapshotPatch_IncludesConsentimentoFromUserConfig(t *testing.T) {
+	uc := &models.UserConfig{
+		CPF: "14202478754",
+		SalesforceConsentimentos: map[string]models.SalesforceConsentimentoEntry{
+			"PREF_X|Portal Pref.Rio": {
+				Categoria: "PREF_X",
+				Status:    "IN",
+				Canal:     "Portal Pref.Rio",
+				OptIn:     true,
+			},
+		},
+	}
+	patch := buildSalesforceSnapshotPatch(nil, nil, uc, false, false)
+	fields := patch.Fields()
+	items, ok := fields["consentimento"].([]clients.SalesforceConsentimento)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+	assert.Equal(t, "PREF_X", items[0].Categoria)
+	assert.Equal(t, "IN", items[0].Status)
+}
+
+func TestBuildSalesforceSnapshotPatch_MirrorsTelefonePrincipal(t *testing.T) {
+	ddi, ddd, valor := "55", "21", "988888888"
+	sd := &models.SelfDeclaredData{
+		CPF: "02075979600",
+		Telefone: &models.Telefone{
+			Principal: &models.TelefonePrincipal{DDI: &ddi, DDD: &ddd, Valor: &valor},
+		},
+	}
+	patch := buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
+	fields := patch.Fields()
+	assert.Equal(t, "5521988888888", fields["telefone1"])
+	assert.Equal(t, "5521988888888", fields["telefonePrincipal"])
+}
+
+func TestBuildSalesforceSnapshotPatch_ClearsSelfDeclaredField(t *testing.T) {
+	genero := "Homem cisgênero"
+	sd := &models.SelfDeclaredData{
+		CPF:    "14202478754",
+		Genero: &genero,
+	}
+	patch := buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
+	fields := patch.Fields()
+	assert.Equal(t, "Homem_cisgenero", fields["genero"])
+
+	sd.Genero = nil
+	patch = buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
+	raw, err := json.Marshal(patch)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"genero":null`)
+}
+
+func TestBuildSalesforceSnapshotPatch_OmitsWhenNoMongoDoc(t *testing.T) {
+	patch := buildSalesforceSnapshotPatch(nil, nil, nil, false, false)
+	fields := patch.Fields()
+	assert.NotContains(t, fields, "genero")
+	assert.NotContains(t, fields, "email")
+	assert.Equal(t, SalesforceContaOrigem, fields["contaOrigem"])
 }
 
 func TestHandleSalesforcePushJob_PatchThenCreateOn404(t *testing.T) {
@@ -173,8 +266,22 @@ func TestHandleSalesforceSyncJob_AppliesSelfDeclared(t *testing.T) {
 	if config.AppConfig.SelfDeclaredCollection == "" {
 		config.AppConfig.SelfDeclaredCollection = "self_declared"
 	}
+	if config.AppConfig.UserConfigCollection == "" {
+		config.AppConfig.UserConfigCollection = "user_config"
+	}
 
 	cpf := "14202478754"
+	dados, err := json.Marshal(map[string]interface{}{
+		"accountId": "001x",
+		"email":     "sf@test.com",
+		"genero":    "Homem_cisgenero",
+		"raca":      "Parda",
+		"consentimento": []clients.SalesforceConsentimento{
+			{Categoria: "Comunicacao", Status: "IN"},
+		},
+	})
+	require.NoError(t, err)
+
 	job := &SyncJob{
 		ID:         "job-sf-sync",
 		Type:       SalesforceSyncQueue,
@@ -182,23 +289,16 @@ func TestHandleSalesforceSyncJob_AppliesSelfDeclared(t *testing.T) {
 		Collection: SalesforceSyncQueue,
 		Origin:     SyncOriginSalesforce,
 		Data: SalesforceSyncPayload{
-			CPF: cpf,
-			Cidadao: &clients.SalesforceCidadao{
-				AccountID: "001x",
-				CPF:       cpf,
-				Email:     "sf@test.com",
-				Genero:    "Homem_cisgenero",
-				Raca:      "Parda",
-			},
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  dados,
 		},
 	}
 
-	err := worker.handleSalesforceSyncJob(context.Background(), job)
-	require.NoError(t, err)
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
 
 	var sd models.SelfDeclaredData
-	err = worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd)
-	require.NoError(t, err)
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
 	require.NotNil(t, sd.Email)
 	require.NotNil(t, sd.Email.Principal)
 	require.NotNil(t, sd.Email.Principal.Valor)
@@ -207,6 +307,210 @@ func TestHandleSalesforceSyncJob_AppliesSelfDeclared(t *testing.T) {
 	assert.Equal(t, "Homem cisgênero", *sd.Genero)
 	require.NotNil(t, sd.Raca)
 	assert.Equal(t, "parda", *sd.Raca)
+}
+
+func TestHandleSalesforceSyncJob_AppliesCitizenFields(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.CitizenCollection == "" {
+		config.AppConfig.CitizenCollection = "citizens"
+	}
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "14202478754"
+	job := &SyncJob{
+		ID:         "job-sf-citizen",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{"nome":"João Silva","nomeSocial":"João","dataNascimento":"1990-05-15","nacionalidade":"Brasil"}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var citizen models.Citizen
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.CitizenCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&citizen))
+	require.NotNil(t, citizen.Nome)
+	assert.Equal(t, "João Silva", *citizen.Nome)
+	require.NotNil(t, citizen.NomeSocial)
+	assert.Equal(t, "João", *citizen.NomeSocial)
+	require.NotNil(t, citizen.Nascimento)
+	require.NotNil(t, citizen.Nascimento.Data)
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.Nacionalidade)
+	assert.Equal(t, "Brasil", *sd.Nacionalidade)
+}
+
+func TestHandleSalesforceSyncJob_DeltaNullClearsEmail(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+	if config.AppConfig.UserConfigCollection == "" {
+		config.AppConfig.UserConfigCollection = "user_config"
+	}
+
+	cpf := "14202478754"
+	oldEmail := "old@test.com"
+	_, err := worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).InsertOne(context.Background(), models.SelfDeclaredData{
+		CPF: cpf,
+		Email: &models.Email{
+			Principal: &models.EmailPrincipal{Valor: &oldEmail},
+		},
+	})
+	require.NoError(t, err)
+
+	job := &SyncJob{
+		ID:         "job-sf-null-email",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAnonimizacao,
+			Dados:  json.RawMessage(`{"nomeExibicao":"ANONIMIZADO","email":null}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	assert.Nil(t, sd.Email)
+	require.NotNil(t, sd.NomeExibicao)
+	assert.Equal(t, "ANONIMIZADO", *sd.NomeExibicao)
+	assert.True(t, sd.SalesforceAnonymized)
+}
+
+func TestHandleSalesforceSyncJob_DeltaEmptyStringKeepsEmailField(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "14202478754"
+	oldEmail := "old@test.com"
+	_, err := worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).InsertOne(context.Background(), models.SelfDeclaredData{
+		CPF: cpf,
+		Email: &models.Email{
+			Principal: &models.EmailPrincipal{Valor: &oldEmail},
+		},
+	})
+	require.NoError(t, err)
+
+	job := &SyncJob{
+		ID:         "job-sf-empty-email",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{"email":""}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.Email)
+	require.NotNil(t, sd.Email.Principal)
+	require.NotNil(t, sd.Email.Principal.Valor)
+	assert.Equal(t, "", *sd.Email.Principal.Valor)
+}
+
+func TestHandleSalesforceSyncJob_SkipsStaleUpdatedAt(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "14202478754"
+	newer := time.Date(2026, 8, 27, 18, 0, 0, 0, time.UTC)
+	genero := "Homem cisgênero"
+	_, err := worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).InsertOne(context.Background(), models.SelfDeclaredData{
+		CPF:                 cpf,
+		SalesforceUpdatedAt: &newer,
+		Genero:              &genero,
+	})
+	require.NoError(t, err)
+
+	job := &SyncJob{
+		ID:         "job-sf-stale",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:       cpf,
+			Evento:    SalesforceWebhookEventAtualizacao,
+			UpdatedAt: "2026-08-27T17:00:00Z",
+			Dados:     json.RawMessage(`{"genero":"Mulher_cisgenero"}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.Genero)
+	assert.Equal(t, "Homem cisgênero", *sd.Genero)
+}
+
+func TestHandleSalesforceSyncJob_AppliesConsentimentoToUserConfig(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+	if config.AppConfig.UserConfigCollection == "" {
+		config.AppConfig.UserConfigCollection = "user_config"
+	}
+
+	cpf := "14202478754"
+	dados := json.RawMessage(`{"consentimento":[{"categoria":"Comunicacao","status":"OUT","motivo":"nao desejo"}]}`)
+
+	job := &SyncJob{
+		ID:         "job-sf-consent",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  dados,
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var uc models.UserConfig
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.UserConfigCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&uc))
+	assert.False(t, uc.OptIn)
+	require.NotNil(t, uc.CategoryOptIns)
+	assert.False(t, uc.CategoryOptIns["Comunicacao"])
 }
 
 func TestMaybeEnqueueSalesforcePush_SkipsWhenOriginSalesforce(t *testing.T) {
@@ -283,4 +587,417 @@ func TestMaybeEnqueueSalesforcePush_SkipsWithoutBearer(t *testing.T) {
 	n, err := worker.redis.LLen(context.Background(), "sync:queue:"+SalesforcePushQueue).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), n)
+}
+
+func TestHandleSalesforceSyncJob_ConsentimentoMergePreservesExistingCategories(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.UserConfigCollection == "" {
+		config.AppConfig.UserConfigCollection = "user_config"
+	}
+
+	cpf := "11144477735"
+	_, err := worker.mongo.Collection(config.AppConfig.UserConfigCollection).InsertOne(context.Background(), models.UserConfig{
+		CPF:   cpf,
+		OptIn: true,
+		CategoryOptIns: map[string]bool{
+			"Comunicacao": true,
+			"Marketing":   true,
+		},
+		SalesforceConsentimentos: map[string]models.SalesforceConsentimentoEntry{
+			"Comunicacao": {Categoria: "Comunicacao", Status: "IN", OptIn: true},
+			"Marketing":   {Categoria: "Marketing", Status: "IN", OptIn: true},
+		},
+	})
+	require.NoError(t, err)
+
+	job := &SyncJob{
+		ID:         "job-sf-consent-merge",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{"consentimento":[{"categoria":"Comunicacao","status":"OUT","motivo":"nao desejo"}]}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var uc models.UserConfig
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.UserConfigCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&uc))
+	assert.True(t, uc.OptIn)
+	require.NotNil(t, uc.CategoryOptIns)
+	assert.False(t, uc.CategoryOptIns["Comunicacao"])
+	assert.True(t, uc.CategoryOptIns["Marketing"])
+}
+
+func TestHandleSalesforceSyncJob_ConsentimentoSameCategoriaDifferentCanal(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.UserConfigCollection == "" {
+		config.AppConfig.UserConfigCollection = "user_config"
+	}
+
+	cpf := "11144477735"
+	_, err := worker.mongo.Collection(config.AppConfig.UserConfigCollection).InsertOne(context.Background(), models.UserConfig{
+		CPF:   cpf,
+		OptIn: true,
+		CategoryOptIns: map[string]bool{
+			"PREF_X|Portal Pref.Rio": true,
+		},
+		SalesforceConsentimentos: map[string]models.SalesforceConsentimentoEntry{
+			"PREF_X|Portal Pref.Rio": {
+				Categoria: "PREF_X",
+				Canal:     "Portal Pref.Rio",
+				Status:    "IN",
+				OptIn:     true,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	job := &SyncJob{
+		ID:         "job-sf-consent-canal",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados: json.RawMessage(`{"consentimento":[{"categoria":"PREF_X","status":"IN","canal":"WhatsApp","finalidade":"lembrete","data":"2026-08-27T10:00:00Z"}]}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var uc models.UserConfig
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.UserConfigCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&uc))
+	assert.True(t, uc.OptIn)
+	require.NotNil(t, uc.CategoryOptIns)
+	assert.True(t, uc.CategoryOptIns["PREF_X|Portal Pref.Rio"])
+	assert.True(t, uc.CategoryOptIns["PREF_X|WhatsApp"])
+	require.NotNil(t, uc.SalesforceConsentimentos)
+	entry := uc.SalesforceConsentimentos["PREF_X|WhatsApp"]
+	assert.Equal(t, "PREF_X", entry.Categoria)
+	assert.Equal(t, "WhatsApp", entry.Canal)
+	assert.Equal(t, "lembrete", entry.Finalidade)
+	assert.Equal(t, "2026-08-27T10:00:00Z", entry.Data)
+	assert.True(t, entry.OptIn)
+}
+
+func TestHandleSalesforceSyncJob_ConsentimentoNullClearsAll(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.UserConfigCollection == "" {
+		config.AppConfig.UserConfigCollection = "user_config"
+	}
+
+	cpf := "11144477735"
+	_, err := worker.mongo.Collection(config.AppConfig.UserConfigCollection).InsertOne(context.Background(), models.UserConfig{
+		CPF:   cpf,
+		OptIn: true,
+		CategoryOptIns: map[string]bool{
+			"Comunicacao": true,
+			"Marketing":   true,
+		},
+		SalesforceConsentimentos: map[string]models.SalesforceConsentimentoEntry{
+			"Comunicacao": {Categoria: "Comunicacao", OptIn: true},
+		},
+	})
+	require.NoError(t, err)
+
+	job := &SyncJob{
+		ID:         "job-sf-consent-null",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{"consentimento":null}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var uc models.UserConfig
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.UserConfigCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&uc))
+	assert.False(t, uc.OptIn)
+	assert.Empty(t, uc.CategoryOptIns)
+	assert.Empty(t, uc.SalesforceConsentimentos)
+}
+
+func TestHandleSalesforceSyncJob_InvalidConsentimentoJSON(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+	if config.AppConfig.UserConfigCollection == "" {
+		config.AppConfig.UserConfigCollection = "user_config"
+	}
+
+	cpf := "14202478754"
+	job := &SyncJob{
+		ID:         "job-sf-consent-bad",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{"consentimento":"not-an-array"}`),
+		},
+	}
+	err := worker.handleSalesforceSyncJob(context.Background(), job)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "consentimento")
+}
+
+func TestHandleSalesforceSyncJob_InvalidUpdatedAt(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "14202478754"
+	job := &SyncJob{
+		ID:         "job-sf-bad-updated-at",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:       cpf,
+			Evento:    SalesforceWebhookEventAtualizacao,
+			UpdatedAt: "not-a-date",
+			Dados:     json.RawMessage(`{"genero":"Homem_cisgenero"}`),
+		},
+	}
+	err := worker.handleSalesforceSyncJob(context.Background(), job)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "updatedAt")
+}
+
+func TestHandleSalesforceSyncJob_EmptyDadosObjectIsNoOp(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "14202478754"
+	job := &SyncJob{
+		ID:         "job-sf-empty-dados",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	count, err := worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		CountDocuments(context.Background(), bson.M{"cpf": cpf})
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), count)
+}
+
+func TestHandleSalesforceSyncJob_InvalidPayloadWhitespaceDados(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	job := &SyncJob{
+		ID:         "job-sf-whitespace-dados",
+		Type:       SalesforceSyncQueue,
+		Key:        "14202478754",
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    "14202478754",
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`   `),
+		},
+	}
+	err := worker.handleSalesforceSyncJob(context.Background(), job)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid salesforce_sync")
+}
+
+func TestHandleSalesforceSyncJob_InvalidPayloadInvalidEvento(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	job := &SyncJob{
+		ID:         "job-sf-bad-evento",
+		Type:       SalesforceSyncQueue,
+		Key:        "14202478754",
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    "14202478754",
+			Evento: "invalido",
+			Dados:  json.RawMessage(`{"email":"a@test.com"}`),
+		},
+	}
+	err := worker.handleSalesforceSyncJob(context.Background(), job)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "evento")
+}
+
+func TestHandleSalesforceSyncJob_InvalidPayloadMissingCPF(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	job := &SyncJob{
+		ID:         "job-sf-no-cpf",
+		Type:       SalesforceSyncQueue,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{"email":"a@test.com"}`),
+		},
+	}
+	err := worker.handleSalesforceSyncJob(context.Background(), job)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid salesforce_sync payload")
+}
+
+func TestHandleSalesforceSyncJob_EnderecoPartialMerge(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "52998224725"
+	logradouro := "Rua Antiga"
+	cidade := "Niterói"
+	estado := "RJ"
+	cep := "24000000"
+	_, err := worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).InsertOne(context.Background(), models.SelfDeclaredData{
+		CPF: cpf,
+		Endereco: &models.Endereco{
+			Principal: &models.EnderecoPrincipal{
+				Logradouro: &logradouro,
+				Municipio:  &cidade,
+				Estado:     &estado,
+				CEP:        &cep,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	job := &SyncJob{
+		ID:         "job-sf-endereco-partial",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{"endereco":{"cidade":"Rio de Janeiro"}}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.Endereco)
+	require.NotNil(t, sd.Endereco.Principal)
+	assert.Equal(t, "Rua Antiga", *sd.Endereco.Principal.Logradouro)
+	assert.Equal(t, "Rio de Janeiro", *sd.Endereco.Principal.Municipio)
+	assert.Equal(t, "RJ", *sd.Endereco.Principal.Estado)
+	assert.Equal(t, "24000000", *sd.Endereco.Principal.CEP)
+}
+
+func TestHandleSalesforceSyncJob_TelefoneNullClears(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "52998224725"
+	valor := "988888888"
+	ddd := "21"
+	ddi := "55"
+	_, err := worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).InsertOne(context.Background(), models.SelfDeclaredData{
+		CPF: cpf,
+		Telefone: &models.Telefone{
+			Principal: &models.TelefonePrincipal{DDI: &ddi, DDD: &ddd, Valor: &valor},
+		},
+	})
+	require.NoError(t, err)
+
+	job := &SyncJob{
+		ID:         "job-sf-tel-null",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{"telefone1":null}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	assert.Nil(t, sd.Telefone)
+}
+
+func TestHandleSalesforceSyncJob_UpsertWhenNoExistingDocument(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "11144477735"
+	job := &SyncJob{
+		ID:         "job-sf-upsert",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    cpf,
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{"genero":"Mulher_cisgenero"}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.Genero)
+	assert.Equal(t, "Mulher cisgênero", *sd.Genero)
 }

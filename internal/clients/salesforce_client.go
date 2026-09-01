@@ -74,56 +74,63 @@ type SalesforceErrorBody struct {
 
 // SalesforceEndereco is the address block used by Salesforce citizen APIs.
 type SalesforceEndereco struct {
-	Logradouro string `json:"logradouro,omitempty"`
-	Cidade     string `json:"cidade,omitempty"`
-	Estado     string `json:"estado,omitempty"`
-	CEP        string `json:"cep,omitempty"`
-	Pais       string `json:"pais,omitempty"`
+	Logradouro  string `json:"logradouro,omitempty"`
+	Cidade      string `json:"cidade,omitempty"`
+	Estado      string `json:"estado,omitempty"`
+	CEP         string `json:"cep,omitempty"`
+	Pais        string `json:"pais,omitempty"`
+	Complemento string `json:"complemento,omitempty"`
+	Bairro      string `json:"bairro,omitempty"`
 }
 
-// SalesforceConsentimento is a consent preference from Salesforce.
+// SalesforceConsentimento is a consent preference from Salesforce (GET cidadao / webhook dados).
 type SalesforceConsentimento struct {
-	Categoria string `json:"categoria"`
-	Acao      string `json:"acao"`
+	Categoria  string `json:"categoria"`
+	Acao       string `json:"acao,omitempty"`   // legacy: optin | optout
+	Status     string `json:"status,omitempty"` // IN | OUT
+	Canal      string `json:"canal,omitempty"`
+	Data       string `json:"data,omitempty"`
+	Finalidade string `json:"finalidade,omitempty"`
+	Motivo     string `json:"motivo,omitempty"` // required when status=OUT / acao=optout
 }
 
 // SalesforceCidadaoCreateRequest is the POST .../api/private/cidadao body.
 // POST creates or updates a citizen (upsert).
 type SalesforceCidadaoCreateRequest struct {
-	CPF         string `json:"cpf"`
-	Nome        string `json:"nome,omitempty"`
-	Email       string `json:"email,omitempty"`
-	Telefone1   string `json:"telefone1,omitempty"`
-	Genero      string `json:"genero,omitempty"`
-	Raca        string `json:"raca,omitempty"`
-	Idioma      string `json:"idioma,omitempty"`
-	ContaOrigem string `json:"contaOrigem,omitempty"`
+	CPF                    string              `json:"cpf"`
+	Nome                   string              `json:"nome,omitempty"`
+	NomeSocial             string              `json:"nomeSocial,omitempty"`
+	NomeExibicao           string              `json:"nomeExibicao,omitempty"`
+	Email                  string              `json:"email,omitempty"`
+	Telefone1              string              `json:"telefone1,omitempty"`
+	Telefone2              string              `json:"telefone2,omitempty"`
+	Telefone3              string              `json:"telefone3,omitempty"`
+	TipoTelefone1          string              `json:"tipoTelefone1,omitempty"`
+	TipoTelefone2          string              `json:"tipoTelefone2,omitempty"`
+	TipoTelefone3          string              `json:"tipoTelefone3,omitempty"`
+	TelefoneInternacional  string              `json:"telefoneInternacional,omitempty"`
+	Genero                 string              `json:"genero,omitempty"`
+	Raca                   string              `json:"raca,omitempty"`
+	Escolaridade           string              `json:"escolaridade,omitempty"`
+	RendaFamiliar          string              `json:"rendaFamiliar,omitempty"`
+	Deficiencia            string              `json:"deficiencia,omitempty"`
+	DataNascimento         string              `json:"dataNascimento,omitempty"`
+	Complemento            string              `json:"complemento,omitempty"`
+	Nacionalidade          string              `json:"nacionalidade,omitempty"`
+	Passaporte             string              `json:"passaporte,omitempty"`
+	IsTourist              *bool               `json:"isTourist,omitempty"`
+	Idioma                 []string            `json:"idioma,omitempty"`
+	Endereco               *SalesforceEndereco `json:"endereco,omitempty"`
+	Cidade                 string              `json:"cidade,omitempty"`
+	CanalOrigem            string              `json:"canalOrigem,omitempty"`
+	CanalUltimaModificacao string              `json:"canalUltimaModificacao,omitempty"`
+	ContaOrigem            string              `json:"contaOrigem,omitempty"`
 }
 
 // SalesforceCidadaoCreateResponse is returned on 2xx from POST (status created|updated).
 type SalesforceCidadaoCreateResponse struct {
 	Status    string `json:"status"`
 	AccountID string `json:"accountId"`
-}
-
-// SalesforceCidadaoPatchRequest is the PATCH .../api/private/cidadao/{cpf} body.
-// Always include ContaOrigem when calling (e.g. "Portal Pref.Rio").
-type SalesforceCidadaoPatchRequest struct {
-	Email         string              `json:"email,omitempty"`
-	PrimeiroNome  string              `json:"primeiroNome,omitempty"`
-	Cidade        string              `json:"cidade,omitempty"`
-	Telefone1     string              `json:"telefone1,omitempty"`
-	Telefone2     string              `json:"telefone2,omitempty"`
-	Raca          string              `json:"raca,omitempty"`
-	Genero        string              `json:"genero,omitempty"`
-	Escolaridade  string              `json:"escolaridade,omitempty"`
-	RendaFamiliar string              `json:"rendaFamiliar,omitempty"`
-	Idioma        string              `json:"idioma,omitempty"`
-	ContaOrigem   string              `json:"contaOrigem,omitempty"`
-	Endereco      *SalesforceEndereco `json:"endereco,omitempty"`
-	NomeExibicao  string              `json:"nomeExibicao,omitempty"`
-	Deficiencia   string              `json:"deficiencia,omitempty"`
-	NomeSocial    string              `json:"nomeSocial,omitempty"`
 }
 
 // SalesforceCidadao is the citizen DTO returned by GET and PATCH.
@@ -371,12 +378,7 @@ func (c *SalesforceClient) PatchCidadao(ctx context.Context, cpf string, req *Sa
 	if req == nil {
 		return nil, fmt.Errorf("salesforce patch request is nil")
 	}
-	if phone := NormalizeSalesforcePhone(req.Telefone1); phone != "" {
-		req.Telefone1 = phone
-	}
-	if phone := NormalizeSalesforcePhone(req.Telefone2); phone != "" {
-		req.Telefone2 = phone
-	}
+	normalizePatchPhones(req.fields)
 
 	path := salesforceCidadaoPath + "/" + url.PathEscape(cpf)
 	respBody, err := c.doJSONBytes(ctx, http.MethodPatch, path, req)
@@ -656,9 +658,14 @@ func decodeSalesforceCidadaoResponse(body []byte) (*SalesforceCidadao, error) {
 	var envelope struct {
 		DadosPessoais json.RawMessage `json:"dadosPessoais"`
 		Consentimento []struct {
-			Categoria string `json:"categoria"`
-			Acao      string `json:"acao"`
-			Codigo    string `json:"codigo"`
+			Categoria  string `json:"categoria"`
+			Acao       string `json:"acao"`
+			Codigo     string `json:"codigo"`
+			Status     string `json:"status"`
+			Canal      string `json:"canal"`
+			Data       string `json:"data"`
+			Finalidade string `json:"finalidade"`
+			Motivo     string `json:"motivo"`
 		} `json:"consentimento"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
@@ -683,7 +690,15 @@ func decodeSalesforceCidadaoResponse(body []byte) (*SalesforceCidadao, error) {
 			if categoria == "" && acao == "" {
 				continue
 			}
-			mapped = append(mapped, SalesforceConsentimento{Categoria: categoria, Acao: acao})
+			mapped = append(mapped, SalesforceConsentimento{
+				Categoria:  categoria,
+				Acao:       acao,
+				Status:     strings.TrimSpace(item.Status),
+				Canal:      strings.TrimSpace(item.Canal),
+				Data:       strings.TrimSpace(item.Data),
+				Finalidade: strings.TrimSpace(item.Finalidade),
+				Motivo:     strings.TrimSpace(item.Motivo),
+			})
 		}
 		if len(mapped) > 0 {
 			out.Consentimento = mapped

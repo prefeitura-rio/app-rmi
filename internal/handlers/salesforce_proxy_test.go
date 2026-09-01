@@ -198,6 +198,27 @@ func TestGetSalesforceAnonimizacao_Upstream404(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "NAO_ENCONTRADO")
 }
 
+func TestGetSalesforceAnonimizacao_ForbiddenOtherUserCPF(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sfSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"numeroSolicitacao":"PRIVRTBF-00000099",
+			"cpf":"` + otherUserCPF + `",
+			"status":"concluido"
+		}`))
+	}))
+	defer sfSrv.Close()
+	withSFConfig(t, sfSrv.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/salesforce/anonimizacao/PRIVRTBF-00000099", nil)
+	req.Header.Set("Authorization", "Bearer "+minimalJWT)
+	w := httptest.NewRecorder()
+	salesforceProxyRouter().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
 func TestListSalesforceChamados_UnauthorizedWithoutJWT(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	withSFConfig(t, "https://sf.example.com")

@@ -150,8 +150,10 @@ When asked to do the "commit thing":
 - **Auth**: login/proxies forward the user JWT; outbound push reuses the JWT stored on the sync job from `AuthMiddleware` → `DataManager.Write`. Webhook accepts only Keycloak JWTs whose `azp` is in `SALESFORCE_WEBHOOK_CLIENTS` (Salesforce service client).
 - **Login sync**: `GET /v1/auth/validate` — GET SF → match / silent email PATCH / POST create on 404 (`contaOrigem: Portal Pref.Rio`); uses CPF/name/email from JWT (not `phone_number`). Phone DDI `55` prefix still applies on outbound push from self_declared data.
 - **Outbound (RMI → SF)**: after successful citizen/self_declared sync (`handleSyncSuccess`), enqueue `salesforce_push` unless `origin=salesforce` (requires bearer on job)
-- **Inbound (SF → RMI)**: webhook `{cpf, dados}` (changed Person Account fields) → enqueue `salesforce_sync` → worker upserts `self_declared` (no GET back to SF; no push back)
+- **Inbound (SF → RMI)**: webhook `{cpf, evento, updatedAt?, dados}` — `dados` = **delta** (campos alterados; ausente=não alterar, null=limpar, \"\"=vazio); merge `consentimento[]` por categoria → enqueue `salesforce_sync` → worker patch parcial em `self_declared` + opt-in (no GET back, no push back)
 - **Proxies (user JWT, additive under `/v1/salesforce`)**: consentimento, exportar, anonimizar (+ polling), chamados list/detail — do not alter `/v1/citizen` behavior
+- **Consentimento PATCH**: `categoria` must be a Salesforce picklist value (e.g. `PREF_Lembrete_Pagamento`, not free text). Upstream JWT policy returns 400 (missing token) / 401 (invalid) before Mule — not RMI `errors[]`.
+- **Smoke test**: `RMI_TOKEN='<jwt>' ./scripts/test_salesforce_integration.sh 02075979600`
 
 ### Performance-Critical Paths
 - **GetCitizenData**: Uses batched Redis operations via `getBatchedSelfDeclaredData()`

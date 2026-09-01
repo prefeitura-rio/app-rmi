@@ -44,7 +44,7 @@ func TestSalesforceClient_CreateOrUpdateCidadao_Success(t *testing.T) {
 		Telefone1:   "5521988888888",
 		Genero:      "Mulher_cisgenero",
 		Raca:        "Parda",
-		Idioma:      "Portugues_Brasil",
+		Idioma:      []string{"Portugues_Brasil"},
 		ContaOrigem: "Portal Pref.Rio",
 	})
 	require.NoError(t, err)
@@ -174,13 +174,13 @@ func TestSalesforceClient_PatchCidadao_Success(t *testing.T) {
 	defer srv.Close()
 
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
-	resp, err := client.PatchCidadao(context.Background(), "14202478754", &SalesforceCidadaoPatchRequest{
-		Email:        "a@b.com",
-		PrimeiroNome: "Joao",
-		Cidade:       "Rio de Janeiro",
-		Genero:       "Homem_cisgenero",
-		ContaOrigem:  "Portal Pref.Rio",
-	})
+	patch := NewSalesforcePatch()
+	patch.Put("email", "a@b.com")
+	patch.Put("primeiroNome", "Joao")
+	patch.Put("cidade", "Rio de Janeiro")
+	patch.Put("genero", "Homem_cisgenero")
+	patch.Put("contaOrigem", "Portal Pref.Rio")
+	resp, err := client.PatchCidadao(context.Background(), "14202478754", patch)
 	require.NoError(t, err)
 	assert.Equal(t, "Joao", gotBody["primeiroNome"])
 	assert.Equal(t, "Portal Pref.Rio", gotBody["contaOrigem"])
@@ -207,10 +207,10 @@ func TestSalesforceClient_PatchCidadao_AckReGets(t *testing.T) {
 	defer srv.Close()
 
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
-	resp, err := client.PatchCidadao(context.Background(), "14202478754", &SalesforceCidadaoPatchRequest{
-		Email:       "a@b.com",
-		ContaOrigem: "Portal Pref.Rio",
-	})
+	patch := NewSalesforcePatch()
+	patch.PutIfNonempty("email", "a@b.com")
+	patch.Put("contaOrigem", "Portal Pref.Rio")
+	resp, err := client.PatchCidadao(context.Background(), "14202478754", patch)
 	require.NoError(t, err)
 	assert.Equal(t, 1, gets)
 	assert.Equal(t, "001abc", resp.AccountID)
@@ -236,6 +236,40 @@ func TestDecodeSalesforceCidadaoResponse_FlatDTO(t *testing.T) {
 	assert.Equal(t, "andrelopesbr1999@gmail.com", got.Email)
 	assert.Equal(t, []string{"Portugues_Brasil"}, got.Idioma)
 	assert.Nil(t, got.Consentimento)
+}
+
+func TestDecodeSalesforceCidadaoResponse_HomologPersonAccount(t *testing.T) {
+	got, err := decodeSalesforceCidadaoResponse([]byte(`{
+		"accountId":"001be00000d6EBVAA2",
+		"cpf":"02075979600",
+		"nome":"Meu Nome",
+		"nomeExibicao":"RMI-SF-172653",
+		"email":"andrelopesbr1999@gmail.com",
+		"telefone1":"5521988888888",
+		"telefonePrincipal":null,
+		"tipoTelefone1":"Celular",
+		"genero":"Homem_cisgenero",
+		"raca":"Branca",
+		"nacionalidade":"Brasil",
+		"isTourist":false,
+		"idioma":["Portugues_Brasil"],
+		"endereco":null,
+		"consentimento":[
+			{"categoria":"PREF_Lembrete_Pagamento","status":"IN","canal":"Phone","finalidade":"Lembretes de pagamento","data":"2026-08-31T17:33:49Z"},
+			{"categoria":"PREF_Lembrete_Pagamento","status":"IN","canal":"Email","finalidade":"Lembretes de pagamento","data":"2026-08-31T17:33:49Z"}
+		],
+		"canalOrigem":"Portal Pref.Rio",
+		"canalUltimaModificacao":"Portal Pref.Rio"
+	}`))
+	require.NoError(t, err)
+	assert.Equal(t, "001be00000d6EBVAA2", got.AccountID)
+	assert.Equal(t, "5521988888888", got.Telefone1)
+	assert.Equal(t, "Celular", got.TipoTelefone1)
+	assert.Equal(t, "Branca", got.Raca)
+	assert.False(t, got.IsTourist)
+	require.Len(t, got.Consentimento, 2)
+	assert.Equal(t, "Phone", got.Consentimento[0].Canal)
+	assert.Equal(t, "PREF_Lembrete_Pagamento", got.Consentimento[0].Categoria)
 }
 
 func TestNormalizeSalesforcePhone(t *testing.T) {
@@ -271,7 +305,7 @@ func TestSalesforceClient_NotFound(t *testing.T) {
 	defer srv.Close()
 
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
-	_, err := client.PatchCidadao(context.Background(), "14202478754", &SalesforceCidadaoPatchRequest{Email: "a@b.com"})
+	_, err := client.PatchCidadao(context.Background(), "14202478754", NewSalesforcePatch().Put("email", "a@b.com"))
 	require.Error(t, err)
 	var apiErr *SalesforceAPIError
 	require.ErrorAs(t, err, &apiErr)

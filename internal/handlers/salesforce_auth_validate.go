@@ -15,8 +15,16 @@ import (
 
 // ValidateAuth syncs the authenticated user with Salesforce Person Account on login.
 //
-// GET /v1/auth/validate
-// Auth: Bearer JWT (Keycloak) — claims: preferred_username (CPF), name, email
+// @Summary Sincronizar Person Account no login
+// @Description Orquestra o Person Account no Salesforce: GET → match / PATCH silencioso de email / POST create em 404 (contaOrigem Portal Pref.Rio). Usa CPF, nome e email do JWT. Não persiste dados do SF no Mongo do RMI.
+// @Tags salesforce
+// @Produce json
+// @Success 200 {object} AuthValidateResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 502 {object} ErrorResponse "Falha ao chamar Salesforce"
+// @Failure 503 {object} ErrorResponse "SALESFORCE_BASE_URL não configurado"
+// @Security BearerAuth
+// @Router /auth/validate [get]
 func ValidateAuth(c *gin.Context) {
 	logger := observability.Logger()
 

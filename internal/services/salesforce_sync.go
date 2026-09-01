@@ -16,7 +16,6 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 )
 
@@ -28,6 +27,11 @@ const (
 
 	// SalesforceContaOrigem is always sent as contaOrigem on Salesforce writes.
 	SalesforceContaOrigem = "Portal Pref.Rio"
+
+	// SalesforceWebhookEventAtualizacao is the default inbound webhook event (partial field patch).
+	SalesforceWebhookEventAtualizacao = "atualizacao"
+	// SalesforceWebhookEventAnonimizacao marks a masked snapshot after LGPD anonymization in SF.
+	SalesforceWebhookEventAnonimizacao = "anonimizacao"
 
 	salesforceSistema = "salesforce"
 	salesforceOrigem  = "salesforce"
@@ -41,10 +45,12 @@ type SalesforceCidadaoAPI interface {
 	PatchCidadao(ctx context.Context, cpf string, req *clients.SalesforceCidadaoPatchRequest) (*clients.SalesforceCidadao, error)
 }
 
-// SalesforceSyncPayload is enqueued after the webhook GETs Person Account data.
+// SalesforceSyncPayload is enqueued after the inbound Salesforce webhook (delta in dados).
 type SalesforceSyncPayload struct {
-	CPF     string                     `json:"cpf"`
-	Cidadao *clients.SalesforceCidadao `json:"cidadao"`
+	CPF       string          `json:"cpf"`
+	Evento    string          `json:"evento"`
+	UpdatedAt string          `json:"updatedAt,omitempty"`
+	Dados     json.RawMessage `json:"dados"`
 }
 
 // SalesforcePushPayload is enqueued after a successful RMI citizen/self-declared persist.
@@ -80,7 +86,7 @@ func newSalesforceClientWithJWT(bearer string) *clients.SalesforceClient {
 }
 
 // EnqueueSalesforceSyncJob queues an inbound apply job (worker persists; no push back).
-func EnqueueSalesforceSyncJob(ctx context.Context, redis *redisclient.Client, cpf string, cidadao *clients.SalesforceCidadao) error {
+func EnqueueSalesforceSyncJob(ctx context.Context, redis *redisclient.Client, cpf, evento, updatedAt string, rawDados json.RawMessage) error {
 	if redis == nil {
 		return fmt.Errorf("redis client is nil")
 	}
@@ -88,8 +94,12 @@ func EnqueueSalesforceSyncJob(ctx context.Context, redis *redisclient.Client, cp
 	if cpf == "" {
 		return fmt.Errorf("cpf is required")
 	}
-	if cidadao == nil {
-		return fmt.Errorf("cidadao payload is nil")
+	if len(bytesTrimSpaceJSON(rawDados)) == 0 {
+		return fmt.Errorf("dados is required")
+	}
+	evento = NormalizeSalesforceWebhookEvento(evento)
+	if evento == "" {
+		return fmt.Errorf("invalid salesforce webhook evento")
 	}
 
 	job := SyncJob{
@@ -98,8 +108,10 @@ func EnqueueSalesforceSyncJob(ctx context.Context, redis *redisclient.Client, cp
 		Key:        cpf,
 		Collection: SalesforceSyncQueue,
 		Data: SalesforceSyncPayload{
-			CPF:     cpf,
-			Cidadao: cidadao,
+			CPF:       cpf,
+			Evento:    evento,
+			UpdatedAt: strings.TrimSpace(updatedAt),
+			Dados:     rawDados,
 		},
 		Timestamp:  time.Now(),
 		RetryCount: 0,
@@ -107,6 +119,25 @@ func EnqueueSalesforceSyncJob(ctx context.Context, redis *redisclient.Client, cp
 		Origin:     SyncOriginSalesforce,
 	}
 	return enqueueNamedSyncJob(ctx, redis, job)
+}
+
+func bytesTrimSpaceJSON(raw json.RawMessage) json.RawMessage {
+	return json.RawMessage(strings.TrimSpace(string(raw)))
+}
+
+// NormalizeSalesforceWebhookEvento returns a supported evento or empty string when invalid.
+// Empty input defaults to atualizacao.
+func NormalizeSalesforceWebhookEvento(evento string) string {
+	evento = strings.ToLower(strings.TrimSpace(evento))
+	if evento == "" {
+		return SalesforceWebhookEventAtualizacao
+	}
+	switch evento {
+	case SalesforceWebhookEventAtualizacao, SalesforceWebhookEventAnonimizacao:
+		return evento
+	default:
+		return ""
+	}
 }
 
 // EnqueueSalesforcePushJob queues an outbound push for the given CPF using the caller's JWT.
@@ -215,35 +246,27 @@ func (w *SyncWorker) handleSalesforceSyncJob(ctx context.Context, job *SyncJob) 
 	if cpf == "" {
 		cpf = job.Key
 	}
-	if cpf == "" || payload.Cidadao == nil {
+	if cpf == "" || len(bytesTrimSpaceJSON(payload.Dados)) == 0 {
 		return fmt.Errorf("invalid salesforce_sync payload")
+	}
+	evento := NormalizeSalesforceWebhookEvento(payload.Evento)
+	if evento == "" {
+		return fmt.Errorf("invalid salesforce_sync evento")
 	}
 
 	w.logger.Info("applying salesforce inbound sync",
 		zap.String("job_id", job.ID),
 		zap.String("cpf", cpf),
-		zap.String("account_id", payload.Cidadao.AccountID))
+		zap.String("evento", evento))
 
-	setFields := mapSalesforceCidadaoToSelfDeclared(payload.Cidadao)
-	if len(setFields) == 0 {
-		w.logger.Info("salesforce inbound sync had no mappable fields",
-			zap.String("cpf", cpf))
-		return nil
-	}
-	setFields["cpf"] = cpf
-	setFields["updated_at"] = time.Now()
+	return w.applySalesforceDelta(ctx, cpf, evento, payload.UpdatedAt, payload.Dados, time.Now())
+}
 
-	coll := w.mongo.Collection(config.AppConfig.SelfDeclaredCollection)
-	_, err = coll.UpdateOne(ctx,
-		bson.M{"cpf": cpf},
-		bson.M{"$set": setFields},
-		options.Update().SetUpsert(true),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to apply salesforce sync to self_declared: %w", err)
-	}
-
+func (w *SyncWorker) invalidateSalesforceMirrorCaches(ctx context.Context, cpf string) {
 	_ = w.redis.Del(ctx, fmt.Sprintf("citizen_wallet:%s", cpf)).Err()
+	_ = w.redis.Del(ctx, fmt.Sprintf("user_config:%s", cpf)).Err()
+	_ = w.redis.Del(ctx, fmt.Sprintf("citizen:cache:%s", cpf)).Err()
+	_ = w.redis.Del(ctx, fmt.Sprintf("citizen:write:%s", cpf)).Err()
 	for _, t := range []string{
 		"self_declared_address", "self_declared_email", "self_declared_phone",
 		"self_declared_raca", "self_declared_nome_exibicao", "self_declared_genero",
@@ -252,8 +275,6 @@ func (w *SyncWorker) handleSalesforceSyncJob(ctx context.Context, job *SyncJob) 
 		_ = w.redis.Del(ctx, fmt.Sprintf("%s:cache:%s", t, cpf)).Err()
 		_ = w.redis.Del(ctx, fmt.Sprintf("%s:write:%s", t, cpf)).Err()
 	}
-
-	return nil
 }
 
 func (w *SyncWorker) handleSalesforcePushJob(ctx context.Context, job *SyncJob) error {
@@ -290,13 +311,16 @@ func (w *SyncWorker) handleSalesforcePushJob(ctx context.Context, job *SyncJob) 
 		zap.String("job_id", job.ID),
 		zap.String("cpf", cpf))
 
-	citizen, selfDeclared, err := w.loadCitizenBundle(ctx, cpf)
+	citizen, selfDeclared, citizenFound, selfDeclaredFound, err := w.loadCitizenBundle(ctx, cpf)
+	if err != nil {
+		return err
+	}
+	userConfig, _, err := w.loadUserConfig(ctx, cpf)
 	if err != nil {
 		return err
 	}
 
-	patch := buildSalesforcePatch(citizen, selfDeclared)
-	patch.ContaOrigem = SalesforceContaOrigem
+	patch := buildSalesforceSnapshotPatch(citizen, selfDeclared, userConfig, citizenFound, selfDeclaredFound)
 
 	_, err = sf.PatchCidadao(ctx, cpf, patch)
 	if err == nil {
@@ -305,7 +329,7 @@ func (w *SyncWorker) handleSalesforcePushJob(ctx context.Context, job *SyncJob) 
 
 	var apiErr *clients.SalesforceAPIError
 	if errors.As(err, &apiErr) && apiErr.IsNotFound() {
-		createReq := buildSalesforceCreate(citizen, selfDeclared, SalesforceContaOrigem)
+		createReq := buildSalesforceCreate(citizen, selfDeclared, userConfig, citizenFound, selfDeclaredFound, SalesforceContaOrigem)
 		_, createErr := sf.CreateOrUpdateCidadao(ctx, createReq)
 		if createErr != nil {
 			return fmt.Errorf("salesforce create-or-update after 404 failed: %w", createErr)
@@ -315,25 +339,44 @@ func (w *SyncWorker) handleSalesforcePushJob(ctx context.Context, job *SyncJob) 
 	return fmt.Errorf("salesforce patch failed: %w", err)
 }
 
-func (w *SyncWorker) loadCitizenBundle(ctx context.Context, cpf string) (*models.Citizen, *models.SelfDeclaredData, error) {
+func (w *SyncWorker) loadCitizenBundle(ctx context.Context, cpf string) (*models.Citizen, *models.SelfDeclaredData, bool, bool, error) {
 	var citizen models.Citizen
+	citizenFound := true
 	err := w.mongo.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&citizen)
 	if err != nil && !errors.Is(err, mongo.ErrNoDocuments) {
-		return nil, nil, fmt.Errorf("failed to load citizen: %w", err)
+		return nil, nil, false, false, fmt.Errorf("failed to load citizen: %w", err)
 	}
 	if errors.Is(err, mongo.ErrNoDocuments) {
+		citizenFound = false
 		citizen.CPF = cpf
 	}
 
 	var selfDeclared models.SelfDeclaredData
+	selfDeclaredFound := true
 	err = w.mongo.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&selfDeclared)
 	if err != nil && !errors.Is(err, mongo.ErrNoDocuments) {
-		return nil, nil, fmt.Errorf("failed to load self_declared: %w", err)
+		return nil, nil, false, false, fmt.Errorf("failed to load self_declared: %w", err)
 	}
 	if errors.Is(err, mongo.ErrNoDocuments) {
+		selfDeclaredFound = false
 		selfDeclared.CPF = cpf
 	}
-	return &citizen, &selfDeclared, nil
+	return &citizen, &selfDeclared, citizenFound, selfDeclaredFound, nil
+}
+
+func (w *SyncWorker) loadUserConfig(ctx context.Context, cpf string) (*models.UserConfig, bool, error) {
+	if config.AppConfig == nil || strings.TrimSpace(config.AppConfig.UserConfigCollection) == "" {
+		return nil, false, nil
+	}
+	var uc models.UserConfig
+	err := w.mongo.Collection(config.AppConfig.UserConfigCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&uc)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to load user_config: %w", err)
+	}
+	return &uc, true, nil
 }
 
 func parseSalesforceSyncPayload(data interface{}) (*SalesforceSyncPayload, error) {
@@ -360,179 +403,29 @@ func parseSalesforcePushPayload(data interface{}) (*SalesforcePushPayload, error
 	return &payload, nil
 }
 
-func mapSalesforceCidadaoToSelfDeclared(c *clients.SalesforceCidadao) bson.M {
-	set := bson.M{}
-	now := time.Now()
-
-	if email := strings.TrimSpace(c.Email); email != "" {
-		emailVal := email
-		origem := salesforceOrigem
-		sistema := salesforceSistema
-		set["email"] = &models.Email{
-			Indicador: utils.BoolPtr(true),
-			Principal: &models.EmailPrincipal{
-				Valor:     &emailVal,
-				Origem:    &origem,
-				Sistema:   &sistema,
-				UpdatedAt: &now,
-			},
-		}
+func buildSalesforceTelefoneField(phone string, now time.Time) *models.Telefone {
+	phone = strings.TrimSpace(phone)
+	if phone == "" {
+		return nil
 	}
-
-	phone := firstNonEmpty(c.Telefone1, c.TelefonePrincipal)
-	if phone != "" {
-		if components, err := utils.ParsePhoneNumber(phone); err == nil {
-			ddi, ddd, valor := components.DDI, components.DDD, components.Valor
-			origem := salesforceOrigem
-			sistema := salesforceSistema
-			set["telefone"] = &models.Telefone{
-				Indicador: utils.BoolPtr(true),
-				Principal: &models.TelefonePrincipal{
-					DDI:       &ddi,
-					DDD:       &ddd,
-					Valor:     &valor,
-					Origem:    &origem,
-					Sistema:   &sistema,
-					UpdatedAt: &now,
-				},
-			}
-		}
+	components, err := utils.ParsePhoneNumber(phone)
+	if err != nil {
+		return nil
 	}
-
-	if c.Endereco != nil {
-		logradouro := strings.TrimSpace(c.Endereco.Logradouro)
-		cidade := strings.TrimSpace(c.Endereco.Cidade)
-		estado := strings.TrimSpace(c.Endereco.Estado)
-		cep := strings.TrimSpace(c.Endereco.CEP)
-		if logradouro != "" || cidade != "" || estado != "" || cep != "" {
-			origem := salesforceOrigem
-			sistema := salesforceSistema
-			set["endereco"] = &models.Endereco{
-				Indicador: utils.BoolPtr(true),
-				Principal: &models.EnderecoPrincipal{
-					Logradouro: &logradouro,
-					Municipio:  &cidade,
-					Estado:     &estado,
-					CEP:        &cep,
-					Origem:     &origem,
-					Sistema:    &sistema,
-					UpdatedAt:  &now,
-				},
-			}
-		}
+	ddi, ddd, valor := components.DDI, components.DDD, components.Valor
+	origem := salesforceOrigem
+	sistema := salesforceSistema
+	return &models.Telefone{
+		Indicador: utils.BoolPtr(true),
+		Principal: &models.TelefonePrincipal{
+			DDI:       &ddi,
+			DDD:       &ddd,
+			Valor:     &valor,
+			Origem:    &origem,
+			Sistema:   &sistema,
+			UpdatedAt: &now,
+		},
 	}
-
-	if v := mapSalesforceRacaToRMI(c.Raca); v != "" {
-		raca := v
-		set["raca"] = &raca
-	}
-	if v := mapSalesforceGeneroToRMI(c.Genero); v != "" {
-		genero := v
-		set["genero"] = &genero
-	}
-	if v := strings.TrimSpace(c.NomeExibicao); v != "" {
-		nome := v
-		set["nome_exibicao"] = &nome
-	} else if v := strings.TrimSpace(c.NomeSocial); v != "" {
-		nome := v
-		set["nome_exibicao"] = &nome
-	}
-	if v := strings.TrimSpace(c.Escolaridade); v != "" {
-		esc := v
-		set["escolaridade"] = &esc
-	}
-	if v := strings.TrimSpace(c.RendaFamiliar); v != "" {
-		renda := v
-		set["renda_familiar"] = &renda
-	}
-	if v := strings.TrimSpace(c.Deficiencia); v != "" {
-		def := v
-		set["deficiencia"] = &def
-	}
-
-	return set
-}
-
-func buildSalesforcePatch(citizen *models.Citizen, sd *models.SelfDeclaredData) *clients.SalesforceCidadaoPatchRequest {
-	req := &clients.SalesforceCidadaoPatchRequest{}
-
-	if sd != nil && sd.Email != nil && sd.Email.Principal != nil && sd.Email.Principal.Valor != nil {
-		req.Email = strings.TrimSpace(*sd.Email.Principal.Valor)
-	} else if citizen != nil && citizen.Email != nil && citizen.Email.Principal != nil && citizen.Email.Principal.Valor != nil {
-		req.Email = strings.TrimSpace(*citizen.Email.Principal.Valor)
-	}
-
-	if phone := extractPhoneDigits(sd, citizen); phone != "" {
-		req.Telefone1 = clients.NormalizeSalesforcePhone(phone)
-	}
-
-	if sd != nil && sd.Endereco != nil && sd.Endereco.Principal != nil {
-		p := sd.Endereco.Principal
-		req.Endereco = &clients.SalesforceEndereco{
-			Logradouro: deref(p.Logradouro),
-			Cidade:     deref(p.Municipio),
-			Estado:     deref(p.Estado),
-			CEP:        deref(p.CEP),
-			Pais:       "Brasil",
-		}
-		req.Cidade = deref(p.Municipio)
-	} else if citizen != nil && citizen.Endereco != nil && citizen.Endereco.Principal != nil {
-		p := citizen.Endereco.Principal
-		req.Endereco = &clients.SalesforceEndereco{
-			Logradouro: deref(p.Logradouro),
-			Cidade:     deref(p.Municipio),
-			Estado:     deref(p.Estado),
-			CEP:        deref(p.CEP),
-			Pais:       "Brasil",
-		}
-		req.Cidade = deref(p.Municipio)
-	}
-
-	if sd != nil && sd.Raca != nil {
-		req.Raca = mapRMIRacaToSalesforce(*sd.Raca)
-	}
-	if sd != nil && sd.Genero != nil {
-		req.Genero = mapRMIGeneroToSalesforce(*sd.Genero)
-	}
-	if sd != nil && sd.Escolaridade != nil {
-		req.Escolaridade = strings.TrimSpace(*sd.Escolaridade)
-	}
-	if sd != nil && sd.RendaFamiliar != nil {
-		req.RendaFamiliar = strings.TrimSpace(*sd.RendaFamiliar)
-	}
-	if sd != nil && sd.Deficiencia != nil {
-		req.Deficiencia = strings.TrimSpace(*sd.Deficiencia)
-	}
-	if sd != nil && sd.NomeExibicao != nil {
-		req.NomeExibicao = strings.TrimSpace(*sd.NomeExibicao)
-	}
-	if citizen != nil && citizen.Nome != nil {
-		req.PrimeiroNome = firstName(*citizen.Nome)
-	}
-	req.Idioma = "Portugues_Brasil"
-	return req
-}
-
-func buildSalesforceCreate(citizen *models.Citizen, sd *models.SelfDeclaredData, contaOrigem string) *clients.SalesforceCidadaoCreateRequest {
-	req := &clients.SalesforceCidadaoCreateRequest{
-		ContaOrigem: contaOrigem,
-		Idioma:      "Portugues_Brasil",
-	}
-	if citizen != nil {
-		req.CPF = citizen.CPF
-		if citizen.Nome != nil {
-			req.Nome = strings.TrimSpace(*citizen.Nome)
-		}
-	}
-	if sd != nil {
-		req.CPF = firstNonEmpty(req.CPF, sd.CPF)
-	}
-	patch := buildSalesforcePatch(citizen, sd)
-	req.Email = patch.Email
-	req.Telefone1 = patch.Telefone1
-	req.Genero = patch.Genero
-	req.Raca = patch.Raca
-	return req
 }
 
 func extractPhoneDigits(sd *models.SelfDeclaredData, citizen *models.Citizen) string {
@@ -606,13 +499,35 @@ func mapSalesforceGeneroToRMI(v string) string {
 }
 
 func mapRMIRacaToSalesforce(v string) string {
-	v = strings.TrimSpace(strings.ToLower(v))
+	v = strings.TrimSpace(strings.ToLower(stripPTAccents(v)))
 	if v == "" {
 		return ""
 	}
-	runes := []rune(v)
-	runes[0] = unicode.ToUpper(runes[0])
-	return string(runes)
+	switch v {
+	case "branca":
+		return "Branca"
+	case "preta":
+		return "Preta"
+	case "parda":
+		return "Parda"
+	case "amarela":
+		return "Amarela"
+	case "indigena":
+		return "Indigena"
+	case "outra":
+		return "Outra"
+	default:
+		// Already a Salesforce picklist value (e.g. from a prior GET).
+		if strings.TrimSpace(v) != strings.ToLower(v) {
+			return strings.TrimSpace(v)
+		}
+		runes := []rune(v)
+		if len(runes) == 0 {
+			return ""
+		}
+		runes[0] = unicode.ToUpper(runes[0])
+		return string(runes)
+	}
 }
 
 func mapSalesforceRacaToRMI(v string) string {

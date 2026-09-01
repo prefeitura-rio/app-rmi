@@ -93,7 +93,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 **Notas:**
 - `*` MCP_AUTH_TOKEN é obrigatório apenas se a funcionalidade de CF lookup estiver habilitada
 - `*` DATA_RELAY_BASE_URL e DATA_RELAY_API_KEY devem ser ambos definidos para envio real de e-mails (convites Mobilidade). Sem eles, o sync worker apenas registra o e-mail em log.
-- `*` SALESFORCE_BASE_URL habilita a integração. Proxies `/v1/salesforce/*` e push usam o JWT do usuário. O webhook `POST /v1/webhooks/salesforce/cidadao` exige JWT Keycloak cujo `azp` está em `SALESFORCE_WEBHOOK_CLIENTS` (token do client Salesforce) e recebe `cpf` + `dados` alterados (sem GET de volta ao SF). Proxies são aditivos e não alteram `/v1/citizen`.
+- `*` SALESFORCE_BASE_URL habilita a integração. Proxies `/v1/salesforce/*` e push usam o JWT do usuário. O webhook `POST /v1/webhooks/salesforce/cidadao` exige JWT Keycloak cujo `azp` está em `SALESFORCE_WEBHOOK_CLIENTS` (token do client Salesforce) e recebe `cpf`, `evento`, `updatedAt` (opcional) e `dados` como **delta** (campos alterados; ausente=não alterar, null=limpar, string vazia=valor vazio). Resposta **202** com CPF mascarado; retry idempotente. Sem GET de volta ao SF.
 
 ## 🏥 **CF (Clínica da Família) Lookup - Nova Funcionalidade**
 
