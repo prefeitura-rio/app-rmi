@@ -868,11 +868,9 @@ func salesforceAnyString(v interface{}) string {
 	switch t := v.(type) {
 	case string:
 		return strings.TrimSpace(t)
-	case fmt.Stringer:
-		return strings.TrimSpace(t.String())
 	case float64:
 		return strings.TrimSpace(fmt.Sprintf("%.0f", t))
-	case json.Number:
+	case fmt.Stringer:
 		return strings.TrimSpace(t.String())
 	default:
 		return ""
