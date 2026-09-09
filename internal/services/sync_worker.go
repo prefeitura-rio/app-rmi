@@ -189,7 +189,12 @@ func (w *SyncWorker) recoverStaleInflightJobs() {
 
 // usesReliableQueue reports whether the queue uses RPOPLPUSH + processing list (needs hash tags on cluster).
 func usesReliableQueue(queue string) bool {
-	return queue == MobilidadeInviteEmailQueue
+	switch queue {
+	case MobilidadeInviteEmailQueue, SalesforceSyncQueue, SalesforcePushQueue:
+		return true
+	default:
+		return false
+	}
 }
 
 func syncQueueKey(queue string) string {

@@ -52,6 +52,18 @@ func (w *SyncWorker) applySalesforceDelta(ctx context.Context, cpf, evento, upda
 		return err
 	}
 
+	fields, err := parseSalesforceDeltaFields(rawDados)
+	if err != nil {
+		return err
+	}
+
+	return w.withSalesforceInboundLock(ctx, cpf, func() error {
+		return w.applySalesforceDeltaLocked(ctx, cpf, evento, fields, incomingUpdatedAt, now)
+	})
+}
+
+func (w *SyncWorker) applySalesforceDeltaLocked(ctx context.Context, cpf, evento string, fields map[string]json.RawMessage, incomingUpdatedAt *time.Time, now time.Time) error {
+	// Re-read under the per-CPF lock so concurrent/out-of-order workers see the latest watermark.
 	var existing models.SelfDeclaredData
 	findErr := w.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
 		FindOne(ctx, bson.M{"cpf": cpf}).Decode(&existing)
@@ -65,11 +77,6 @@ func (w *SyncWorker) applySalesforceDelta(ctx context.Context, cpf, evento, upda
 			zap.String("cpf", cpf),
 			zap.String("evento", evento))
 		return nil
-	}
-
-	fields, err := parseSalesforceDeltaFields(rawDados)
-	if err != nil {
-		return err
 	}
 
 	var existingPtr *models.SelfDeclaredData
@@ -105,12 +112,60 @@ func (w *SyncWorker) applySalesforceDelta(ctx context.Context, cpf, evento, upda
 
 	// Stamp the idempotency watermark only after every mutation succeeded.
 	// Writing it earlier makes a later failure look stale on retry (partial apply, no DLQ).
+	// CAS rejects an older stamp if a newer concurrent writer already committed.
 	if err := w.stampSalesforceUpdatedAt(ctx, cpf, incomingUpdatedAt, now); err != nil {
 		return fmt.Errorf("failed to stamp salesforce updatedAt: %w", err)
 	}
 
 	w.invalidateSalesforceMirrorCaches(ctx, cpf)
 	return nil
+}
+
+const (
+	salesforceInboundLockTTL     = 30 * time.Second
+	salesforceInboundLockTimeout = 10 * time.Second
+	salesforceInboundLockPoll    = 25 * time.Millisecond
+)
+
+func salesforceInboundLockKey(cpf string) string {
+	return "salesforce:inbound_lock:" + strings.TrimSpace(cpf)
+}
+
+// withSalesforceInboundLock serializes inbound Salesforce applies for one CPF across workers.
+func (w *SyncWorker) withSalesforceInboundLock(ctx context.Context, cpf string, fn func() error) error {
+	if w == nil || w.redis == nil {
+		return fn()
+	}
+	cpf = strings.TrimSpace(cpf)
+	if cpf == "" {
+		return fn()
+	}
+	lockKey := salesforceInboundLockKey(cpf)
+	deadline := time.Now().Add(salesforceInboundLockTimeout)
+	for {
+		acquired, err := w.redis.SetNX(ctx, lockKey, fmt.Sprintf("worker-%d", w.id), salesforceInboundLockTTL).Result()
+		if err != nil {
+			return fmt.Errorf("salesforce inbound lock failed: %w", err)
+		}
+		if acquired {
+			defer func() {
+				if delErr := w.redis.Del(ctx, lockKey).Err(); delErr != nil && w.logger != nil {
+					w.logger.Debug("salesforce inbound lock release failed",
+						zap.String("cpf", cpf),
+						zap.Error(delErr))
+				}
+			}()
+			return fn()
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout acquiring salesforce inbound lock for cpf")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(salesforceInboundLockPoll):
+		}
+	}
 }
 
 func parseSalesforceDeltaFields(raw json.RawMessage) (map[string]json.RawMessage, error) {
@@ -258,14 +313,35 @@ func (w *SyncWorker) stampSalesforceUpdatedAt(ctx context.Context, cpf string, i
 	if incoming == nil || w == nil || w.mongo == nil || config.AppConfig == nil {
 		return nil
 	}
-	_, err := w.mongo.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(ctx,
-		bson.M{"cpf": cpf},
+	// Compare-and-set: only advance (or set) the watermark. An older concurrent/late
+	// writer must not regress salesforce_updated_at after a newer event committed.
+	res, err := w.mongo.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(ctx,
+		salesforceWatermarkCASFilter(cpf, *incoming),
 		bson.M{"$set": bson.M{
 			"salesforce_updated_at": *incoming,
 			"salesforce_synced_at":  now,
 		}},
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 && w.logger != nil {
+		w.logger.Info("salesforce watermark stamp skipped: newer or equal updatedAt already present",
+			zap.String("cpf", cpf),
+			zap.Time("incoming_updated_at", *incoming))
+	}
+	return nil
+}
+
+func salesforceWatermarkCASFilter(cpf string, incoming time.Time) bson.M {
+	return bson.M{
+		"cpf": cpf,
+		"$or": []bson.M{
+			{"salesforce_updated_at": bson.M{"$exists": false}},
+			{"salesforce_updated_at": nil},
+			{"salesforce_updated_at": bson.M{"$lt": incoming}},
+		},
+	}
 }
 
 func applyStringSliceDelta(set, unset bson.M, fieldKey string, raw json.RawMessage) {

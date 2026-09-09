@@ -240,7 +240,7 @@ func enqueueNamedSyncJob(ctx context.Context, redis *redisclient.Client, job Syn
 	if err != nil {
 		return fmt.Errorf("failed to marshal sync job: %w", err)
 	}
-	queueKey := fmt.Sprintf("sync:queue:%s", job.Type)
+	queueKey := syncQueueKey(job.Type)
 	if err := redis.LPush(ctx, queueKey, string(jobBytes)).Err(); err != nil {
 		return fmt.Errorf("failed to queue sync job: %w", err)
 	}

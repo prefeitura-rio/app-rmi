@@ -48,7 +48,7 @@ func withSalesforceSyncQueueRedis(t *testing.T) *redisclient.Client {
 	if err := redisClient.Ping(context.Background()).Err(); err != nil {
 		t.Skipf("Redis unavailable: %v", err)
 	}
-	queue := "sync:queue:" + services.SalesforceSyncQueue
+	queue := "sync:queue:{" + services.SalesforceSyncQueue + "}"
 	require.NoError(t, redisClient.Del(context.Background(), queue).Err())
 	prevRedis := config.Redis
 	config.SetRedis(redisClient)
@@ -197,11 +197,11 @@ func TestHandleSalesforceCidadaoWebhook_Success_UsesPayloadNoGET(t *testing.T) {
 	assert.Equal(t, utils.MaskCPFForWebhookResponse(testWebhookCPF), body.CPF)
 	assert.Equal(t, services.SalesforceWebhookEventAtualizacao, body.Evento)
 
-	n, err := redisClient.LLen(context.Background(), "sync:queue:"+services.SalesforceSyncQueue).Result()
+	n, err := redisClient.LLen(context.Background(), "sync:queue:{"+services.SalesforceSyncQueue+"}").Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), n)
 
-	rawJobs, err := redisClient.LRange(context.Background(), "sync:queue:"+services.SalesforceSyncQueue, 0, 0).Result()
+	rawJobs, err := redisClient.LRange(context.Background(), "sync:queue:{"+services.SalesforceSyncQueue+"}", 0, 0).Result()
 	require.NoError(t, err)
 	require.Len(t, rawJobs, 1)
 	assert.Contains(t, rawJobs[0], "maria@test.com")
@@ -252,7 +252,7 @@ func TestHandleSalesforceCidadaoWebhook_AnonimizacaoEvento(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	assert.Equal(t, services.SalesforceWebhookEventAnonimizacao, body.Evento)
 
-	rawJobs, err := redisClient.LRange(context.Background(), "sync:queue:"+services.SalesforceSyncQueue, 0, 0).Result()
+	rawJobs, err := redisClient.LRange(context.Background(), "sync:queue:{"+services.SalesforceSyncQueue+"}", 0, 0).Result()
 	require.NoError(t, err)
 	require.Len(t, rawJobs, 1)
 	assert.Contains(t, rawJobs[0], `"evento":"anonimizacao"`)

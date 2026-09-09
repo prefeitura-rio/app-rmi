@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/clients"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
@@ -375,7 +377,7 @@ func TestEnqueueSalesforceConsentimentoMirror(t *testing.T) {
 		Categoria: "PREF_Lembrete_Pagamento",
 		Acao:      "optin",
 	}))
-	n, err := worker.redis.LLen(context.Background(), "sync:queue:"+SalesforceSyncQueue).Result()
+	n, err := worker.redis.LLen(context.Background(), syncQueueKey(SalesforceSyncQueue)).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), n)
 }
@@ -648,7 +650,7 @@ func TestMaybeEnqueueSalesforcePush_SkipsWhenOriginSalesforce(t *testing.T) {
 		BearerToken: "jwt",
 	})
 
-	n, err := worker.redis.LLen(context.Background(), "sync:queue:"+SalesforcePushQueue).Result()
+	n, err := worker.redis.LLen(context.Background(), syncQueueKey(SalesforcePushQueue)).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), n)
 }
@@ -667,12 +669,13 @@ func TestMaybeEnqueueSalesforcePush_Enqueues(t *testing.T) {
 		BearerToken: "user-jwt",
 	})
 
-	n, err := worker.redis.LLen(context.Background(), "sync:queue:"+SalesforcePushQueue).Result()
+	n, err := worker.redis.LLen(context.Background(), syncQueueKey(SalesforcePushQueue)).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), n)
 
-	raw, err := worker.redis.RPop(context.Background(), "sync:queue:"+SalesforcePushQueue).Result()
+	raw, err := worker.claimReliableJob(context.Background(), SalesforcePushQueue)
 	require.NoError(t, err)
+	require.NotEmpty(t, raw)
 	var job SyncJob
 	require.NoError(t, json.Unmarshal([]byte(raw), &job))
 	assert.Equal(t, SalesforcePushQueue, job.Type)
@@ -689,6 +692,7 @@ func TestMaybeEnqueueSalesforcePush_Enqueues(t *testing.T) {
 	assert.Equal(t, "14202478754", payload.CPF)
 	assert.Empty(t, payload.BearerToken)
 	assert.NotContains(t, string(payloadBytes), "user-jwt")
+	require.NoError(t, worker.ackReliableJob(context.Background(), SalesforcePushQueue, raw))
 }
 
 func TestHandleSalesforcePushJob_OpensSealedBearer(t *testing.T) {
@@ -796,11 +800,11 @@ func TestHandleSyncFailure_NonRetryableGoesToDLQ(t *testing.T) {
 	}
 	worker.handleSyncFailure(job, newNonRetryableSyncError(fmt.Errorf("salesforce patch failed: unauthorized")))
 
-	n, err := worker.redis.LLen(context.Background(), "sync:queue:"+SalesforcePushQueue).Result()
+	n, err := worker.redis.LLen(context.Background(), syncQueueKey(SalesforcePushQueue)).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), n)
 
-	raw, err := worker.redis.LRange(context.Background(), "sync:dlq:"+SalesforcePushQueue, 0, 0).Result()
+	raw, err := worker.redis.LRange(context.Background(), syncDLQKey(SalesforcePushQueue), 0, 0).Result()
 	require.NoError(t, err)
 	require.Len(t, raw, 1)
 	assert.NotContains(t, raw[0], "user-jwt")
@@ -822,7 +826,7 @@ func TestMaybeEnqueueSalesforcePush_SkipsWithoutBearer(t *testing.T) {
 		Key:  "14202478754",
 	})
 
-	n, err := worker.redis.LLen(context.Background(), "sync:queue:"+SalesforcePushQueue).Result()
+	n, err := worker.redis.LLen(context.Background(), syncQueueKey(SalesforcePushQueue)).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), n)
 }
@@ -1314,4 +1318,397 @@ func TestHandleSalesforceSyncJob_UpsertWhenNoExistingDocument(t *testing.T) {
 		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
 	require.NotNil(t, sd.Genero)
 	assert.Equal(t, "Mulher cisgênero", *sd.Genero)
+}
+
+func TestStampSalesforceUpdatedAt_CASRejectsOlder(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "11144477735"
+	newer := time.Date(2026, 8, 27, 18, 0, 0, 0, time.UTC)
+	older := time.Date(2026, 8, 27, 17, 0, 0, 0, time.UTC)
+	_, err := worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).InsertOne(context.Background(), models.SelfDeclaredData{
+		CPF:                 cpf,
+		SalesforceUpdatedAt: &newer,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, worker.stampSalesforceUpdatedAt(context.Background(), cpf, &older, time.Now().UTC()))
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.SalesforceUpdatedAt)
+	assert.True(t, sd.SalesforceUpdatedAt.Equal(newer))
+}
+
+func TestApplySalesforceDelta_ConcurrentOutOfOrderSameCPF(t *testing.T) {
+	workerA, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+	workerB := NewSyncWorker(workerA.redis, workerA.mongo, 2, workerA.logger, workerA.metrics, workerA.degradedMode)
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "14202478754"
+	t1 := "2026-08-27T17:00:00Z"
+	t2 := "2026-08-27T18:00:00Z"
+
+	for i := 0; i < 8; i++ {
+		_, _ = workerA.mongo.Collection(config.AppConfig.SelfDeclaredCollection).DeleteMany(context.Background(), bson.M{"cpf": cpf})
+		_ = workerA.redis.Del(context.Background(), salesforceInboundLockKey(cpf)).Err()
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		errs := make(chan error, 2)
+		go func() {
+			defer wg.Done()
+			errs <- workerA.applySalesforceDelta(context.Background(), cpf, SalesforceWebhookEventAtualizacao, t1,
+				json.RawMessage(`{"email":"older@test.com"}`), time.Now().UTC())
+		}()
+		go func() {
+			defer wg.Done()
+			errs <- workerB.applySalesforceDelta(context.Background(), cpf, SalesforceWebhookEventAtualizacao, t2,
+				json.RawMessage(`{"email":"newer@test.com"}`), time.Now().UTC())
+		}()
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			require.NoError(t, err)
+		}
+
+		var sd models.SelfDeclaredData
+		require.NoError(t, workerA.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+			FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+		require.NotNil(t, sd.Email)
+		require.NotNil(t, sd.Email.Principal)
+		require.NotNil(t, sd.Email.Principal.Valor)
+		assert.Equal(t, "newer@test.com", *sd.Email.Principal.Valor, "iteration %d: older concurrent event must not win", i)
+		require.NotNil(t, sd.SalesforceUpdatedAt)
+		assert.Equal(t, t2, sd.SalesforceUpdatedAt.UTC().Format(time.RFC3339))
+	}
+}
+
+func TestApplySalesforceDelta_OlderEventBlockedWhileNewerHoldsLock(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "14202478754"
+	newer := time.Date(2026, 8, 27, 18, 0, 0, 0, time.UTC)
+	require.NoError(t, worker.applySalesforceDelta(context.Background(), cpf, SalesforceWebhookEventAtualizacao,
+		"2026-08-27T18:00:00Z", json.RawMessage(`{"email":"newer@test.com"}`), time.Now().UTC()))
+
+	lockKey := salesforceInboundLockKey(cpf)
+	ok, err := worker.redis.SetNX(context.Background(), lockKey, "test", salesforceInboundLockTTL).Result()
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- worker.applySalesforceDelta(context.Background(), cpf, SalesforceWebhookEventAtualizacao,
+			"2026-08-27T17:00:00Z", json.RawMessage(`{"email":"older@test.com"}`), time.Now().UTC())
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("older apply must wait on inbound lock held by test")
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	assert.Equal(t, "newer@test.com", *sd.Email.Principal.Valor)
+
+	require.NoError(t, worker.redis.Del(context.Background(), lockKey).Err())
+	require.NoError(t, <-done)
+
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	assert.Equal(t, "newer@test.com", *sd.Email.Principal.Valor)
+	require.NotNil(t, sd.SalesforceUpdatedAt)
+	assert.True(t, sd.SalesforceUpdatedAt.Equal(newer))
+}
+
+func TestSalesforceSyncQueue_CrashRecoveryRequeuesInflight(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queueKey := syncQueueKey(SalesforceSyncQueue)
+	processingKey := syncProcessingKey(SalesforceSyncQueue)
+	claimKey := syncProcessingClaimKey(SalesforceSyncQueue)
+	_ = worker.redis.Del(ctx, queueKey, processingKey, claimKey)
+
+	job := SyncJob{
+		ID:         "sf-crash-1",
+		Type:       SalesforceSyncQueue,
+		Key:        "14202478754",
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:    "14202478754",
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{"email":"crash@test.com"}`),
+		},
+		Timestamp:  time.Now().UTC(),
+		MaxRetries: 3,
+	}
+	raw, err := json.Marshal(job)
+	require.NoError(t, err)
+	require.NoError(t, worker.redis.LPush(ctx, queueKey, string(raw)).Err())
+
+	claimed, err := worker.claimReliableJob(ctx, SalesforceSyncQueue)
+	require.NoError(t, err)
+	assert.Equal(t, string(raw), claimed)
+
+	// Simulate crash before ack: payload stays inflight with a stale claim score.
+	require.NoError(t, worker.redis.ZAdd(ctx, claimKey, redis.Z{
+		Score: float64(time.Now().Add(-10 * time.Minute).Unix()), Member: claimed,
+	}).Err())
+
+	worker.recoverStaleInflightJobs()
+
+	n, err := worker.redis.LLen(ctx, queueKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n, "stale salesforce_sync inflight must return to the work queue")
+	procLen, err := worker.redis.LLen(ctx, processingKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), procLen)
+}
+
+func TestStampSalesforceUpdatedAt_CASAcceptsNewerAndRejectsEqual(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "11144477735"
+	older := time.Date(2026, 8, 27, 17, 0, 0, 0, time.UTC)
+	newer := time.Date(2026, 8, 27, 18, 0, 0, 0, time.UTC)
+	_, err := worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).InsertOne(context.Background(), models.SelfDeclaredData{
+		CPF:                 cpf,
+		SalesforceUpdatedAt: &older,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, worker.stampSalesforceUpdatedAt(context.Background(), cpf, &newer, time.Now().UTC()))
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.SalesforceUpdatedAt)
+	assert.True(t, sd.SalesforceUpdatedAt.Equal(newer))
+
+	same := newer
+	require.NoError(t, worker.stampSalesforceUpdatedAt(context.Background(), cpf, &same, time.Now().UTC()))
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.SalesforceUpdatedAt)
+	assert.True(t, sd.SalesforceUpdatedAt.Equal(newer), "equal updatedAt must not rewrite the watermark")
+}
+
+func TestApplySalesforceDelta_DelayedOlderRetryAfterNewerCommitted(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "14202478754"
+	require.NoError(t, worker.applySalesforceDelta(context.Background(), cpf, SalesforceWebhookEventAtualizacao,
+		"2026-08-27T18:00:00Z", json.RawMessage(`{"email":"newer@test.com"}`), time.Now().UTC()))
+
+	require.NoError(t, worker.applySalesforceDelta(context.Background(), cpf, SalesforceWebhookEventAtualizacao,
+		"2026-08-27T17:00:00Z", json.RawMessage(`{"email":"older-retry@test.com"}`), time.Now().UTC()))
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.Email)
+	require.NotNil(t, sd.Email.Principal)
+	require.NotNil(t, sd.Email.Principal.Valor)
+	assert.Equal(t, "newer@test.com", *sd.Email.Principal.Valor)
+	require.NotNil(t, sd.SalesforceUpdatedAt)
+	assert.Equal(t, "2026-08-27T18:00:00Z", sd.SalesforceUpdatedAt.UTC().Format(time.RFC3339))
+}
+
+func TestEnqueueSalesforceSyncJob_UsesReliableQueueAndClaim(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queueKey := syncQueueKey(SalesforceSyncQueue)
+	processingKey := syncProcessingKey(SalesforceSyncQueue)
+	claimKey := syncProcessingClaimKey(SalesforceSyncQueue)
+	_ = worker.redis.Del(ctx, queueKey, processingKey, claimKey)
+
+	require.NoError(t, EnqueueSalesforceSyncJob(ctx, worker.redis, "14202478754",
+		SalesforceWebhookEventAtualizacao, "2026-08-27T18:00:00Z",
+		json.RawMessage(`{"email":"reliable@test.com"}`)))
+
+	legacyLen, err := worker.redis.LLen(ctx, "sync:queue:"+SalesforceSyncQueue).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), legacyLen, "must not enqueue on the legacy non-hash-tagged key")
+
+	n, err := worker.redis.LLen(ctx, queueKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+
+	claimed, err := worker.claimReliableJob(ctx, SalesforceSyncQueue)
+	require.NoError(t, err)
+	require.NotEmpty(t, claimed)
+
+	procLen, err := worker.redis.LLen(ctx, processingKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), procLen)
+	_, err = worker.redis.ZScore(ctx, claimKey, claimed).Result()
+	require.NoError(t, err)
+
+	var job SyncJob
+	require.NoError(t, json.Unmarshal([]byte(claimed), &job))
+	assert.Equal(t, SalesforceSyncQueue, job.Type)
+	assert.Equal(t, "14202478754", job.Key)
+	assert.Equal(t, SyncOriginSalesforce, job.Origin)
+
+	require.NoError(t, worker.ackReliableJob(ctx, SalesforceSyncQueue, claimed))
+	procLen, err = worker.redis.LLen(ctx, processingKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), procLen)
+}
+
+func TestEnqueueSalesforcePushJob_UsesReliableQueueAndClaim(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queueKey := syncQueueKey(SalesforcePushQueue)
+	processingKey := syncProcessingKey(SalesforcePushQueue)
+	_ = worker.redis.Del(ctx, queueKey, processingKey, syncProcessingClaimKey(SalesforcePushQueue))
+
+	require.NoError(t, EnqueueSalesforcePushJob(ctx, worker.redis, "14202478754", "user-jwt-for-push"))
+
+	legacyLen, err := worker.redis.LLen(ctx, "sync:queue:"+SalesforcePushQueue).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), legacyLen)
+
+	n, err := worker.redis.LLen(ctx, queueKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+
+	claimed, err := worker.claimReliableJob(ctx, SalesforcePushQueue)
+	require.NoError(t, err)
+	require.NotEmpty(t, claimed)
+	assert.NotContains(t, claimed, "user-jwt-for-push")
+
+	procLen, err := worker.redis.LLen(ctx, processingKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), procLen)
+	require.NoError(t, worker.ackReliableJob(ctx, SalesforcePushQueue, claimed))
+}
+
+func TestSalesforcePushQueue_CrashRecoveryRequeuesInflight(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queueKey := syncQueueKey(SalesforcePushQueue)
+	processingKey := syncProcessingKey(SalesforcePushQueue)
+	claimKey := syncProcessingClaimKey(SalesforcePushQueue)
+	_ = worker.redis.Del(ctx, queueKey, processingKey, claimKey)
+
+	require.NoError(t, EnqueueSalesforcePushJob(ctx, worker.redis, "14202478754", "user-jwt"))
+	claimed, err := worker.claimReliableJob(ctx, SalesforcePushQueue)
+	require.NoError(t, err)
+	require.NotEmpty(t, claimed)
+
+	require.NoError(t, worker.redis.ZAdd(ctx, claimKey, redis.Z{
+		Score: float64(time.Now().Add(-10 * time.Minute).Unix()), Member: claimed,
+	}).Err())
+
+	worker.recoverStaleInflightJobs()
+
+	n, err := worker.redis.LLen(ctx, queueKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n, "stale salesforce_push inflight must return to the work queue")
+	procLen, err := worker.redis.LLen(ctx, processingKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), procLen)
+}
+
+func TestSalesforceSyncQueue_RecoverSkipsFreshClaims(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queueKey := syncQueueKey(SalesforceSyncQueue)
+	processingKey := syncProcessingKey(SalesforceSyncQueue)
+	claimKey := syncProcessingClaimKey(SalesforceSyncQueue)
+	_ = worker.redis.Del(ctx, queueKey, processingKey, claimKey)
+
+	require.NoError(t, EnqueueSalesforceSyncJob(ctx, worker.redis, "14202478754",
+		SalesforceWebhookEventAtualizacao, "", json.RawMessage(`{"email":"fresh@test.com"}`)))
+	claimed, err := worker.claimReliableJob(ctx, SalesforceSyncQueue)
+	require.NoError(t, err)
+	require.NotEmpty(t, claimed)
+
+	worker.recoverStaleInflightJobs()
+
+	procLen, err := worker.redis.LLen(ctx, processingKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), procLen, "fresh claim must stay in processing")
+	queueLen, err := worker.redis.LLen(ctx, queueKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), queueLen)
+}
+
+func TestSalesforceSyncQueue_ProcessClaimedJobAcksInflight(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	ctx := context.Background()
+	queueKey := syncQueueKey(SalesforceSyncQueue)
+	processingKey := syncProcessingKey(SalesforceSyncQueue)
+	claimKey := syncProcessingClaimKey(SalesforceSyncQueue)
+	_ = worker.redis.Del(ctx, queueKey, processingKey, claimKey)
+
+	require.NoError(t, EnqueueSalesforceSyncJob(ctx, worker.redis, "14202478754",
+		SalesforceWebhookEventAtualizacao, "2026-08-27T19:00:00Z",
+		json.RawMessage(`{"email":"acked@test.com"}`)))
+
+	job, err := worker.getJobNonBlocking(SalesforceSyncQueue)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	assert.True(t, job.fromInflight)
+	assert.NotEmpty(t, job.rawRedisPayload)
+
+	worker.processJob(job)
+
+	procLen, err := worker.redis.LLen(ctx, processingKey).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), procLen, "successful process must ack inflight")
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(ctx, bson.M{"cpf": "14202478754"}).Decode(&sd))
+	require.NotNil(t, sd.Email)
+	require.NotNil(t, sd.Email.Principal)
+	require.NotNil(t, sd.Email.Principal.Valor)
+	assert.Equal(t, "acked@test.com", *sd.Email.Principal.Valor)
 }

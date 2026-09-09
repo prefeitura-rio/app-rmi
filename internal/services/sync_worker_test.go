@@ -892,6 +892,13 @@ func TestSyncQueueKeys_HashTaggedForReliableQueue(t *testing.T) {
 	assert.Equal(t, "sync:queue:{mobilidade_invite_email}", syncQueueKey(MobilidadeInviteEmailQueue))
 	assert.Equal(t, "sync:processing:{mobilidade_invite_email}", syncProcessingKey(MobilidadeInviteEmailQueue))
 	assert.Equal(t, "sync:dlq:{mobilidade_invite_email}", syncDLQKey(MobilidadeInviteEmailQueue))
+	assert.Equal(t, "sync:queue:{salesforce_sync}", syncQueueKey(SalesforceSyncQueue))
+	assert.Equal(t, "sync:processing:{salesforce_sync}", syncProcessingKey(SalesforceSyncQueue))
+	assert.Equal(t, "sync:dlq:{salesforce_sync}", syncDLQKey(SalesforceSyncQueue))
+	assert.Equal(t, "sync:queue:{salesforce_push}", syncQueueKey(SalesforcePushQueue))
+	assert.Equal(t, "sync:dlq:{salesforce_push}", syncDLQKey(SalesforcePushQueue))
+	assert.True(t, usesReliableQueue(SalesforceSyncQueue))
+	assert.True(t, usesReliableQueue(SalesforcePushQueue))
 	assert.Equal(t, "sync:queue:citizen", syncQueueKey("citizen"))
 }
 
