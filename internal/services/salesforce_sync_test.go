@@ -2,9 +2,12 @@ package services
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -136,8 +139,17 @@ func TestBuildSalesforceSnapshotPatch(t *testing.T) {
 	assert.Equal(t, "Homem_cisgenero", fields["genero"])
 	assert.Equal(t, "Parda", fields["raca"])
 	assert.Equal(t, "Maria", fields["primeiroNome"])
+	assert.Equal(t, "Maria Silva", fields["nome"])
 	assert.Equal(t, []string{"Portugues_Brasil"}, fields["idioma"])
 	assert.Equal(t, SalesforceContaOrigem, fields["contaOrigem"])
+	assert.NotContains(t, fields, "escolaridade")
+	assert.NotContains(t, fields, "telefone2")
+	assert.NotContains(t, fields, "endereco")
+	assert.NotContains(t, fields, "nomeSocial")
+	assert.NotContains(t, fields, "cidade")
+	for k, v := range fields {
+		assert.NotNil(t, v, k)
+	}
 }
 
 func TestBuildSalesforceSnapshotPatch_OmitsIdiomaWhenUnset(t *testing.T) {
@@ -183,7 +195,7 @@ func TestBuildSalesforceSnapshotPatch_MirrorsTelefonePrincipal(t *testing.T) {
 	assert.Equal(t, "5521988888888", fields["telefonePrincipal"])
 }
 
-func TestBuildSalesforceSnapshotPatch_ClearsSelfDeclaredField(t *testing.T) {
+func TestBuildSalesforceSnapshotPatch_OmitsAbsentSelfDeclaredFields(t *testing.T) {
 	genero := "Homem cisgênero"
 	sd := &models.SelfDeclaredData{
 		CPF:    "14202478754",
@@ -192,12 +204,62 @@ func TestBuildSalesforceSnapshotPatch_ClearsSelfDeclaredField(t *testing.T) {
 	patch := buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
 	fields := patch.Fields()
 	assert.Equal(t, "Homem_cisgenero", fields["genero"])
+	assert.NotContains(t, fields, "escolaridade")
+	assert.NotContains(t, fields, "email")
+	assert.NotContains(t, fields, "telefone1")
+	assert.NotContains(t, fields, "raca")
+	assert.NotContains(t, fields, "endereco")
 
 	sd.Genero = nil
 	patch = buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
+	fields = patch.Fields()
+	assert.NotContains(t, fields, "genero")
+}
+
+func TestBuildSalesforceSnapshotPatch_ClearsExplicitEmpty(t *testing.T) {
+	empty := ""
+	ddi, ddd, valor := "55", "21", "988888888"
+	sd := &models.SelfDeclaredData{
+		CPF:    "14202478754",
+		Genero: &empty,
+		Email:  &models.Email{Principal: &models.EmailPrincipal{Valor: nil}},
+		Telefone: &models.Telefone{
+			Principal:   &models.TelefonePrincipal{DDI: &ddi, DDD: &ddd, Valor: &valor},
+			Alternativo: []models.TelefoneAlternativo{{Valor: &empty}},
+		},
+		Endereco: &models.Endereco{Principal: &models.EnderecoPrincipal{}},
+	}
+	patch := buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
 	raw, err := json.Marshal(patch)
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), `"genero":null`)
+	assert.Contains(t, string(raw), `"email":null`)
+	assert.Contains(t, string(raw), `"telefone1":"5521988888888"`)
+	assert.Contains(t, string(raw), `"telefone2":null`)
+	assert.Contains(t, string(raw), `"endereco":null`)
+	assert.NotContains(t, string(raw), `"telefone3"`)
+}
+
+func TestBuildSalesforceSnapshotPatch_UsesCitizenWhenSelfDeclaredLacksField(t *testing.T) {
+	nome := "Maria Silva"
+	raca := "branca"
+	ddi, ddd, valor := "55", "21", "988888888"
+	citizen := &models.Citizen{
+		CPF:  "14202478754",
+		Nome: &nome,
+		Raca: &raca,
+		Telefone: &models.Telefone{
+			Principal: &models.TelefonePrincipal{DDI: &ddi, DDD: &ddd, Valor: &valor},
+		},
+	}
+	sd := &models.SelfDeclaredData{CPF: "14202478754"}
+	patch := buildSalesforceSnapshotPatch(citizen, sd, nil, true, true)
+	fields := patch.Fields()
+	assert.Equal(t, "Branca", fields["raca"])
+	assert.Equal(t, "5521988888888", fields["telefone1"])
+	assert.Equal(t, "Maria Silva", fields["nome"])
+	assert.NotContains(t, fields, "genero")
+	assert.NotContains(t, fields, "email")
 }
 
 func TestBuildSalesforceSnapshotPatch_OmitsWhenNoMongoDoc(t *testing.T) {
@@ -257,6 +319,63 @@ func TestHandleSalesforcePushJob_PatchThenCreateOn404(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, patchCalled)
 	assert.True(t, createCalled)
+}
+
+func TestHandleSalesforcePushJob_PatchConflictIsSuccess(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.CitizenCollection == "" {
+		config.AppConfig.CitizenCollection = "citizens"
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPatch:
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"errors":[{"code":"CONFLICT","message":"já no status"}]}`))
+		case http.MethodGet:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"cpf":"14202478754","accountId":"001already"}`))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+
+	worker.SetSalesforceClient(clients.NewSalesforceClient(srv.URL, time.Second, clients.StaticBearerToken("jwt")))
+	nome := "Joao"
+	_, err := worker.mongo.Collection(config.AppConfig.CitizenCollection).InsertOne(context.Background(), models.Citizen{
+		CPF:  "14202478754",
+		Nome: &nome,
+	})
+	require.NoError(t, err)
+
+	err = worker.handleSalesforcePushJob(context.Background(), &SyncJob{
+		Type:        SalesforcePushQueue,
+		Key:         "14202478754",
+		BearerToken: "jwt",
+		Data:        SalesforcePushPayload{CPF: "14202478754", BearerToken: "jwt"},
+	})
+	require.NoError(t, err)
+}
+
+func TestEnqueueSalesforceConsentimentoMirror(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	require.NoError(t, EnqueueSalesforceConsentimentoMirror(context.Background(), nil, "11144477735", &clients.SalesforceConsentimentoPatchRequest{
+		Categoria: "PREF_Lembrete_Pagamento",
+		Acao:      "optin",
+	}))
+
+	require.NoError(t, EnqueueSalesforceConsentimentoMirror(context.Background(), worker.redis, "11144477735", &clients.SalesforceConsentimentoPatchRequest{
+		Categoria: "PREF_Lembrete_Pagamento",
+		Acao:      "optin",
+	}))
+	n, err := worker.redis.LLen(context.Background(), "sync:queue:"+SalesforceSyncQueue).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
 }
 
 func TestHandleSalesforceSyncJob_AppliesSelfDeclared(t *testing.T) {
@@ -556,7 +675,45 @@ func TestMaybeEnqueueSalesforcePush_Enqueues(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(raw), &job))
 	assert.Equal(t, SalesforcePushQueue, job.Type)
 	assert.Equal(t, "14202478754", job.Key)
-	assert.Equal(t, "user-jwt", job.BearerToken)
+	assert.True(t, strings.HasPrefix(job.BearerToken, bearerSealPrefix))
+	assert.NotContains(t, raw, "user-jwt")
+	opened, err := bearerFromQueue(job.BearerToken, job.Type, job.Key)
+	require.NoError(t, err)
+	assert.Equal(t, "user-jwt", opened)
+	payloadBytes, err := json.Marshal(job.Data)
+	require.NoError(t, err)
+	var payload SalesforcePushPayload
+	require.NoError(t, json.Unmarshal(payloadBytes, &payload))
+	assert.Equal(t, "14202478754", payload.CPF)
+	assert.Empty(t, payload.BearerToken)
+	assert.NotContains(t, string(payloadBytes), "user-jwt")
+}
+
+func TestHandleSalesforcePushJob_OpensSealedBearer(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"cpf":"14202478754","accountId":"001abc"}`))
+	}))
+	defer srv.Close()
+	worker.SetSalesforceClient(clients.NewSalesforceClient(srv.URL, time.Second, clients.StaticBearerToken("ignored")))
+
+	sealed, err := prepareBearerForQueue("real-user-jwt", SalesforcePushQueue, "14202478754")
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(sealed, bearerSealPrefix))
+
+	err = worker.handleSalesforcePushJob(context.Background(), &SyncJob{
+		Type:        SalesforcePushQueue,
+		Key:         "14202478754",
+		BearerToken: sealed,
+		Data:        SalesforcePushPayload{CPF: "14202478754"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer real-user-jwt", gotAuth)
 }
 
 func TestHandleSalesforcePushJob_RequiresBearer(t *testing.T) {
@@ -570,6 +727,85 @@ func TestHandleSalesforcePushJob_RequiresBearer(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bearer token")
+}
+
+func testJWTWithExp(exp int64) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
+	payload := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"exp":%d}`, exp)))
+	return header + "." + payload + ".sig"
+}
+
+func TestSalesforceBearerExpired(t *testing.T) {
+	assert.False(t, salesforceBearerExpired("jwt"))
+	assert.False(t, salesforceBearerExpired("a.b"))
+	assert.False(t, salesforceBearerExpired(testJWTWithExp(time.Now().Add(time.Hour).Unix())))
+	assert.True(t, salesforceBearerExpired(testJWTWithExp(1)))
+}
+
+func TestHandleSalesforcePushJob_ExpiredBearerIsNonRetryable(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+	worker.SetSalesforceClient(clients.NewSalesforceClient("https://sf.example.com", time.Second, clients.StaticBearerToken("jwt")))
+
+	err := worker.handleSalesforcePushJob(context.Background(), &SyncJob{
+		Type:        SalesforcePushQueue,
+		Key:         "14202478754",
+		BearerToken: testJWTWithExp(1),
+		Data:        SalesforcePushPayload{CPF: "14202478754"},
+	})
+	require.Error(t, err)
+	assert.True(t, isNonRetryableSyncError(err))
+	assert.Contains(t, err.Error(), "expired")
+}
+
+func TestHandleSalesforcePushJob_UnauthorizedIsNonRetryable(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"errors":[{"code":"UNAUTHORIZED","message":"invalid token"}]}`))
+	}))
+	defer srv.Close()
+	worker.SetSalesforceClient(clients.NewSalesforceClient(srv.URL, time.Second, clients.StaticBearerToken("jwt")))
+
+	err := worker.handleSalesforcePushJob(context.Background(), &SyncJob{
+		Type:        SalesforcePushQueue,
+		Key:         "14202478754",
+		BearerToken: "jwt",
+		Data:        SalesforcePushPayload{CPF: "14202478754"},
+	})
+	require.Error(t, err)
+	assert.True(t, isNonRetryableSyncError(err))
+}
+
+func TestHandleSyncFailure_NonRetryableGoesToDLQ(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	job := &SyncJob{
+		ID:          "job-nr",
+		Type:        SalesforcePushQueue,
+		Key:         "14202478754",
+		BearerToken: "user-jwt",
+		Data:        SalesforcePushPayload{CPF: "14202478754", BearerToken: "legacy-jwt"},
+		RetryCount:  0,
+		MaxRetries:  5,
+	}
+	worker.handleSyncFailure(job, newNonRetryableSyncError(fmt.Errorf("salesforce patch failed: unauthorized")))
+
+	n, err := worker.redis.LLen(context.Background(), "sync:queue:"+SalesforcePushQueue).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), n)
+
+	raw, err := worker.redis.LRange(context.Background(), "sync:dlq:"+SalesforcePushQueue, 0, 0).Result()
+	require.NoError(t, err)
+	require.Len(t, raw, 1)
+	assert.NotContains(t, raw[0], "user-jwt")
+	assert.NotContains(t, raw[0], "legacy-jwt")
+	var dlq DLQJob
+	require.NoError(t, json.Unmarshal([]byte(raw[0]), &dlq))
+	assert.Empty(t, dlq.OriginalJob.BearerToken)
 }
 
 func TestMaybeEnqueueSalesforcePush_SkipsWithoutBearer(t *testing.T) {
@@ -670,7 +906,7 @@ func TestHandleSalesforceSyncJob_ConsentimentoSameCategoriaDifferentCanal(t *tes
 		Data: SalesforceSyncPayload{
 			CPF:    cpf,
 			Evento: SalesforceWebhookEventAtualizacao,
-			Dados: json.RawMessage(`{"consentimento":[{"categoria":"PREF_X","status":"IN","canal":"WhatsApp","finalidade":"lembrete","data":"2026-08-27T10:00:00Z"}]}`),
+			Dados:  json.RawMessage(`{"consentimento":[{"categoria":"PREF_X","status":"IN","canal":"WhatsApp","finalidade":"lembrete","data":"2026-08-27T10:00:00Z"}]}`),
 		},
 	}
 	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))

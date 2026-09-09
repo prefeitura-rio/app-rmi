@@ -430,6 +430,10 @@ func salesforceConsentimentoKey(categoria, canal string) string {
 	return categoria + "|" + canal
 }
 
+func isUnsafeMongoMapKey(key string) bool {
+	return strings.ContainsAny(key, ".$")
+}
+
 func applyPlainStringPointerDelta(set, unset bson.M, fieldKey string, raw json.RawMessage) {
 	if jsonRawIsNull(raw) {
 		unset[fieldKey] = ""
@@ -591,59 +595,79 @@ func (w *SyncWorker) applySalesforceConsentimentoDelta(ctx context.Context, cpf 
 	}
 
 	coll := w.mongo.Collection(config.AppConfig.UserConfigCollection)
+
+	if jsonRawIsNull(raw) {
+		_, err := coll.UpdateOne(ctx,
+			bson.M{"cpf": cpf},
+			bson.M{
+				"$set": bson.M{
+					"opt_in":                    false,
+					"category_opt_ins":          map[string]bool{},
+					"salesforce_consentimentos": map[string]models.SalesforceConsentimentoEntry{},
+					"updated_at":                now,
+				},
+				"$setOnInsert": bson.M{
+					"cpf":         cpf,
+					"first_login": false,
+				},
+			},
+			options.Update().SetUpsert(true),
+		)
+		if err != nil {
+			return err
+		}
+		_ = w.redis.Del(ctx, fmt.Sprintf("user_config:%s", cpf)).Err()
+		return nil
+	}
+
+	var items []clients.SalesforceConsentimento
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return fmt.Errorf("invalid consentimento delta: %w", err)
+	}
+
 	var existing models.UserConfig
 	_ = coll.FindOne(ctx, bson.M{"cpf": cpf}).Decode(&existing)
 
-	consentimentos := cloneSalesforceConsentimentos(existing.SalesforceConsentimentos)
 	categoryOptIns := cloneCategoryOptIns(existing.CategoryOptIns)
-	optIn := existing.OptIn
-
-	if jsonRawIsNull(raw) {
-		consentimentos = map[string]models.SalesforceConsentimentoEntry{}
+	if categoryOptIns == nil {
 		categoryOptIns = map[string]bool{}
-		optIn = false
-	} else {
-		var items []clients.SalesforceConsentimento
-		if err := json.Unmarshal(raw, &items); err != nil {
-			return fmt.Errorf("invalid consentimento delta: %w", err)
-		}
-		if consentimentos == nil {
-			consentimentos = map[string]models.SalesforceConsentimentoEntry{}
-		}
-		if categoryOptIns == nil {
-			categoryOptIns = map[string]bool{}
-		}
-		for _, item := range items {
-			categoria := strings.TrimSpace(item.Categoria)
-			if categoria == "" {
-				continue
-			}
-			canal := strings.TrimSpace(item.Canal)
-			key := salesforceConsentimentoKey(categoria, canal)
-			optInVal := salesforceConsentimentoIsOptIn(item)
-			consentimentos[key] = models.SalesforceConsentimentoEntry{
-				Categoria:  categoria,
-				Status:     strings.TrimSpace(item.Status),
-				Canal:      canal,
-				Data:       strings.TrimSpace(item.Data),
-				Finalidade: strings.TrimSpace(item.Finalidade),
-				Motivo:     strings.TrimSpace(item.Motivo),
-				OptIn:      optInVal,
-			}
-			categoryOptIns[key] = optInVal
-		}
-		optIn = anyCategoryOptIn(categoryOptIns)
 	}
+
+	set := bson.M{
+		"updated_at": now,
+	}
+	for _, item := range items {
+		categoria := strings.TrimSpace(item.Categoria)
+		if categoria == "" {
+			continue
+		}
+		canal := strings.TrimSpace(item.Canal)
+		key := salesforceConsentimentoKey(categoria, canal)
+		if isUnsafeMongoMapKey(key) {
+			w.logger.Warn("skipping salesforce consentimento key with unsafe mongo path characters",
+				zap.String("cpf", cpf),
+				zap.String("key", key))
+			continue
+		}
+		optInVal := salesforceConsentimentoIsOptIn(item)
+		set["salesforce_consentimentos."+key] = models.SalesforceConsentimentoEntry{
+			Categoria:  categoria,
+			Status:     strings.TrimSpace(item.Status),
+			Canal:      canal,
+			Data:       strings.TrimSpace(item.Data),
+			Finalidade: strings.TrimSpace(item.Finalidade),
+			Motivo:     strings.TrimSpace(item.Motivo),
+			OptIn:      optInVal,
+		}
+		set["category_opt_ins."+key] = optInVal
+		categoryOptIns[key] = optInVal
+	}
+	set["opt_in"] = anyCategoryOptIn(categoryOptIns)
 
 	_, err := coll.UpdateOne(ctx,
 		bson.M{"cpf": cpf},
 		bson.M{
-			"$set": bson.M{
-				"opt_in":                    optIn,
-				"category_opt_ins":          categoryOptIns,
-				"salesforce_consentimentos": consentimentos,
-				"updated_at":                now,
-			},
+			"$set": set,
 			"$setOnInsert": bson.M{
 				"cpf":         cpf,
 				"first_login": false,
@@ -663,17 +687,6 @@ func cloneCategoryOptIns(in map[string]bool) map[string]bool {
 		return nil
 	}
 	out := make(map[string]bool, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func cloneSalesforceConsentimentos(in map[string]models.SalesforceConsentimentoEntry) map[string]models.SalesforceConsentimentoEntry {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make(map[string]models.SalesforceConsentimentoEntry, len(in))
 	for k, v := range in {
 		out[k] = v
 	}
@@ -744,14 +757,14 @@ func mapSalesforceCidadaoToSelfDeclared(c *clients.SalesforceCidadao) bson.M {
 	if err != nil {
 		return bson.M{}
 	}
-	set, _ := buildSelfDeclaredDeltaPatch(nil, mustJSONFields(raw), SalesforceWebhookEventAtualizacao, time.Now(), nil)
+	set, _ := buildSelfDeclaredDeltaPatch(nil, jsonFields(raw), SalesforceWebhookEventAtualizacao, time.Now(), nil)
 	return set
 }
 
-func mustJSONFields(raw []byte) map[string]json.RawMessage {
+func jsonFields(raw []byte) map[string]json.RawMessage {
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &fields); err != nil {
-		panic(err)
+	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+		return map[string]json.RawMessage{}
 	}
 	return fields
 }

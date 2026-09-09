@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -281,6 +282,46 @@ func TestHandleSalesforceCidadaoWebhook_DadosNull(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "dados must be a JSON object")
+}
+
+func TestHandleSalesforceCidadaoWebhook_DadosTooLarge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	prev := config.AppConfig
+	config.AppConfig = &config.Config{
+		SalesforceBaseURL:        "https://sf.example.com",
+		SalesforceWebhookClients: []string{"salesforce-rmi"},
+	}
+	defer func() { config.AppConfig = prev }()
+
+	payload := `{"cpf":"` + testWebhookCPF + `","dados":{"email":"` + strings.Repeat("a", maxSalesforceWebhookDadosBytes) + `"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/webhooks/salesforce/cidadao", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+salesforceWebhookJWT)
+	w := httptest.NewRecorder()
+	salesforceWebhookRouter().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "dados exceeds maximum size")
+}
+
+func TestHandleSalesforceCidadaoWebhook_UpdatedAtTooLong(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	prev := config.AppConfig
+	config.AppConfig = &config.Config{
+		SalesforceBaseURL:        "https://sf.example.com",
+		SalesforceWebhookClients: []string{"salesforce-rmi"},
+	}
+	defer func() { config.AppConfig = prev }()
+
+	payload := `{"cpf":"` + testWebhookCPF + `","updatedAt":"` + strings.Repeat("x", maxSalesforceWebhookUpdatedAtLen+1) + `","dados":{"cpf":"` + testWebhookCPF + `"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/webhooks/salesforce/cidadao", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+salesforceWebhookJWT)
+	w := httptest.NewRecorder()
+	salesforceWebhookRouter().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "updatedAt exceeds maximum length")
 }
 
 func TestHandleSalesforceCidadaoWebhook_DadosNotObject(t *testing.T) {

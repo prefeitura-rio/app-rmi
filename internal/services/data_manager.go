@@ -95,6 +95,11 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 		return fmt.Errorf("failed to write to Redis buffer: %w", err)
 	}
 
+	sealed, err := prepareBearerForQueue(utils.BearerTokenFromContext(ctx), op.GetType(), op.GetKey())
+	if err != nil {
+		return fmt.Errorf("failed to seal bearer token for sync job: %w", err)
+	}
+
 	// 2. Queue sync job
 	syncJob := SyncJob{
 		ID:          utils.GenerateUUID(),
@@ -105,7 +110,7 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 		Timestamp:   time.Now(),
 		RetryCount:  0,
 		MaxRetries:  3,
-		BearerToken: utils.BearerTokenFromContext(ctx),
+		BearerToken: sealed,
 	}
 
 	jobBytes, err := json.Marshal(syncJob)

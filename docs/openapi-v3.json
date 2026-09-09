@@ -10027,7 +10027,7 @@
             }
           },
           "400": {
-            "description": "CPF inválido, dados ausentes ou evento inválido",
+            "description": "CPF inválido, dados ausentes/grandes, updatedAt longo ou evento inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -10446,9 +10446,49 @@
           }
         }
       },
+      "clients.SalesforceExportConsentimento": {
+        "type": "object",
+        "properties": {
+          "canais": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/clients.SalesforceExportConsentimentoCanal"
+            }
+          },
+          "codigo": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceExportConsentimentoCanal": {
+        "type": "object",
+        "properties": {
+          "canal": {
+            "type": "string"
+          },
+          "motivo": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tipo": {
+            "type": "string"
+          }
+        }
+      },
       "clients.SalesforceExportacao": {
         "type": "object",
         "properties": {
+          "consentimento": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/clients.SalesforceExportConsentimento"
+            }
+          },
           "cpf": {
             "type": "string"
           },

@@ -179,6 +179,10 @@ func RequireSalesforceWebhookClient() gin.HandlerFunc {
 			}
 		}
 
+		observability.Logger().Warn("salesforce webhook client rejected",
+			zap.String("azp", azp),
+			zap.String("remote_addr", c.ClientIP()),
+			zap.String("path", c.Request.URL.Path))
 		c.JSON(http.StatusForbidden, gin.H{"error": "salesforce webhook client not allowed"})
 		c.Abort()
 	}

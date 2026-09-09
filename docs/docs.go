@@ -7483,7 +7483,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Consentimento atualizado (sem corpo)"
+                        "description": "Consentimento atualizado (sem corpo). 409 do Salesforce (já no status) é tratado como 200."
                     },
                     "400": {
                         "description": "Bad Request",
@@ -7505,12 +7505,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/clients.SalesforceErrorBody"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/clients.SalesforceErrorBody"
                         }
@@ -7735,7 +7729,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "CPF inválido, dados ausentes ou evento inválido",
+                        "description": "CPF inválido, dados ausentes/grandes, updatedAt longo ou evento inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -8055,9 +8049,49 @@ const docTemplate = `{
                 }
             }
         },
+        "clients.SalesforceExportConsentimento": {
+            "type": "object",
+            "properties": {
+                "canais": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clients.SalesforceExportConsentimentoCanal"
+                    }
+                },
+                "codigo": {
+                    "type": "string"
+                },
+                "descricao": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceExportConsentimentoCanal": {
+            "type": "object",
+            "properties": {
+                "canal": {
+                    "type": "string"
+                },
+                "motivo": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tipo": {
+                    "type": "string"
+                }
+            }
+        },
         "clients.SalesforceExportacao": {
             "type": "object",
             "properties": {
+                "consentimento": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clients.SalesforceExportConsentimento"
+                    }
+                },
                 "cpf": {
                     "type": "string"
                 },

@@ -17,6 +17,9 @@ const (
 	salesforceCidadaoPath      = "/api/private/cidadao"
 	salesforceAnonimizacaoPath = "/api/private/anonimizacao"
 	salesforceChamadosPath     = "/api/private/chamados"
+
+	salesforceHTTPMaxAttempts = 3
+	salesforceHTTPRetryBase   = 100 * time.Millisecond
 )
 
 // BearerTokenSource provides JWT access tokens for Salesforce API calls.
@@ -59,6 +62,22 @@ func (e *SalesforceAPIError) IsNotFound() bool {
 // IsConflict reports whether the error is an HTTP 409.
 func (e *SalesforceAPIError) IsConflict() bool {
 	return e != nil && e.StatusCode == http.StatusConflict
+}
+
+// IsUnauthorized reports whether the error is an HTTP 401.
+func (e *SalesforceAPIError) IsUnauthorized() bool {
+	return e != nil && e.StatusCode == http.StatusUnauthorized
+}
+
+// IsRetryable reports whether the caller should retry (429 or 5xx).
+func (e *SalesforceAPIError) IsRetryable() bool {
+	if e == nil {
+		return false
+	}
+	if e.StatusCode == http.StatusTooManyRequests {
+		return true
+	}
+	return e.StatusCode >= 500 && e.StatusCode <= 599
 }
 
 // SalesforceFieldError matches Salesforce error payloads.
@@ -177,10 +196,27 @@ type SalesforceConsentimentoPatchRequest struct {
 
 // SalesforceExportacao is the GET .../cidadao/{cpf}/exportar response (LGPD portability snapshot).
 type SalesforceExportacao struct {
-	CPF            string                 `json:"cpf"`
-	DataExportacao string                 `json:"dataExportacao"`
-	DadosPessoais  map[string]interface{} `json:"dadosPessoais"`
-	Relacionados   map[string]interface{} `json:"relacionados"`
+	CPF            string                          `json:"cpf"`
+	DataExportacao string                          `json:"dataExportacao"`
+	DadosPessoais  map[string]interface{}          `json:"dadosPessoais"`
+	Relacionados   map[string]interface{}          `json:"relacionados"`
+	Consentimento  []SalesforceExportConsentimento `json:"consentimento,omitempty"`
+}
+
+// SalesforceExportConsentimento is a consent category in the LGPD export snapshot.
+// Homolog groups preferences by codigo with nested canais (not the flat GET /cidadao shape).
+type SalesforceExportConsentimento struct {
+	Codigo    string                               `json:"codigo"`
+	Descricao string                               `json:"descricao,omitempty"`
+	Canais    []SalesforceExportConsentimentoCanal `json:"canais,omitempty"`
+}
+
+// SalesforceExportConsentimentoCanal is a channel preference inside an export consentimento group.
+type SalesforceExportConsentimentoCanal struct {
+	Canal  string `json:"canal,omitempty"`
+	Status string `json:"status,omitempty"`
+	Tipo   string `json:"tipo,omitempty"`
+	Motivo string `json:"motivo,omitempty"`
 }
 
 // SalesforceAnonimizacaoStatus is returned by POST anonimizar (202/409) and GET anonimizacao.
@@ -383,6 +419,11 @@ func (c *SalesforceClient) PatchCidadao(ctx context.Context, cpf string, req *Sa
 	path := salesforceCidadaoPath + "/" + url.PathEscape(cpf)
 	respBody, err := c.doJSONBytes(ctx, http.MethodPatch, path, req)
 	if err != nil {
+		var apiErr *SalesforceAPIError
+		if errors.As(err, &apiErr) && apiErr.IsConflict() {
+			// SF returns 409 when the Person Account is already in the requested state.
+			return c.GetCidadao(ctx, cpf)
+		}
 		return nil, err
 	}
 	if isSalesforcePatchAck(respBody) {
@@ -414,7 +455,16 @@ func (c *SalesforceClient) PatchCidadaoConsentimento(ctx context.Context, cpf st
 	}
 
 	path := salesforceCidadaoPath + "/" + url.PathEscape(cpf) + "/consentimento"
-	return c.doJSON(ctx, http.MethodPatch, path, req, nil)
+	err := c.doJSON(ctx, http.MethodPatch, path, req, nil)
+	if err == nil {
+		return nil
+	}
+	var apiErr *SalesforceAPIError
+	if errors.As(err, &apiErr) && apiErr.IsConflict() {
+		// SF returns 409 when consent is already IN/OUT as requested; treat as success.
+		return nil
+	}
+	return err
 }
 
 // ExportarCidadao GETs .../cidadao/{cpf}/exportar (synchronous LGPD snapshot).
@@ -563,18 +613,50 @@ func (c *SalesforceClient) doJSON(ctx context.Context, method, path string, body
 }
 
 // doJSONBytes performs the request and returns the raw success body (or a SalesforceAPIError).
+// Transient failures (network, 429, 5xx) are retried up to salesforceHTTPMaxAttempts.
 func (c *SalesforceClient) doJSONBytes(ctx context.Context, method, path string, body any) ([]byte, error) {
+	var bodyBytes []byte
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal salesforce request: %w", err)
+		}
+		bodyBytes = encoded
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= salesforceHTTPMaxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		respBody, err := c.doJSONBytesOnce(ctx, method, path, bodyBytes)
+		if err == nil {
+			return respBody, nil
+		}
+		lastErr = err
+		if !isSalesforceHTTPRetryable(err) || attempt == salesforceHTTPMaxAttempts {
+			return nil, err
+		}
+		delay := time.Duration(attempt) * salesforceHTTPRetryBase
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil, lastErr
+}
+
+func (c *SalesforceClient) doJSONBytesOnce(ctx context.Context, method, path string, bodyBytes []byte) ([]byte, error) {
 	token, err := c.tokenSource.BearerToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get bearer token: %w", err)
 	}
 
 	var reader io.Reader
-	if body != nil {
-		bodyBytes, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal salesforce request: %w", err)
-		}
+	if bodyBytes != nil {
 		reader = bytes.NewReader(bodyBytes)
 	}
 
@@ -584,8 +666,12 @@ func (c *SalesforceClient) doJSONBytes(ctx context.Context, method, path string,
 	}
 	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+token)
-	if body != nil {
+	if bodyBytes != nil {
 		httpReq.Header.Set("Content-Type", "application/json")
+	} else if method == http.MethodPost || method == http.MethodPatch || method == http.MethodPut {
+		// Mule rejects POST without Content-Length (HTTP 411).
+		httpReq.ContentLength = 0
+		httpReq.Body = http.NoBody
 	}
 
 	resp, err := c.httpClient.Do(httpReq)
@@ -611,6 +697,19 @@ func (c *SalesforceClient) doJSONBytes(ctx context.Context, method, path string,
 		return nil, apiErr
 	}
 	return respBody, nil
+}
+
+func isSalesforceHTTPRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *SalesforceAPIError
+	if errors.As(err, &apiErr) {
+		return apiErr.IsRetryable()
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "failed to execute salesforce request") ||
+		strings.Contains(msg, "failed to read salesforce response")
 }
 
 // isSalesforcePatchAck reports whether the PATCH body is an update acknowledgement

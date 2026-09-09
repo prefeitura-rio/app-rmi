@@ -25,12 +25,11 @@ import (
 // @Produce json
 // @Param cpf path string true "CPF do cidadão"
 // @Param body body clients.SalesforceConsentimentoPatchRequest true "Consentimento"
-// @Success 200 "Consentimento atualizado (sem corpo)"
+// @Success 200 "Consentimento atualizado (sem corpo). 409 do Salesforce (já no status) é tratado como 200."
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
 // @Failure 403 {object} ErrorResponse "CPF não pertence ao usuário autenticado"
 // @Failure 404 {object} clients.SalesforceErrorBody
-// @Failure 409 {object} clients.SalesforceErrorBody
 // @Failure 502 {object} ErrorResponse
 // @Failure 503 {object} ErrorResponse
 // @Security BearerAuth
@@ -58,6 +57,11 @@ func PatchSalesforceConsentimento(c *gin.Context) {
 	if err := sf.PatchCidadaoConsentimento(c.Request.Context(), cpf, &req); err != nil {
 		writeSalesforceProxyError(c, "patch consentimento", cpf, err)
 		return
+	}
+	if err := services.EnqueueSalesforceConsentimentoMirror(c.Request.Context(), config.Redis, cpf, &req); err != nil {
+		observability.Logger().Warn("failed to enqueue salesforce consentimento mirror",
+			zap.String("cpf", cpf),
+			zap.Error(err))
 	}
 	c.Status(http.StatusOK)
 }

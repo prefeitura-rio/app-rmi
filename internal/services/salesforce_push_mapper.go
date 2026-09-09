@@ -8,11 +8,10 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
-// buildSalesforceSnapshotPatch mirrors RMI state to Salesforce.
-// Cleared fields in an existing Mongo document are sent as JSON null.
-// Fields absent from Mongo are omitted so Salesforce keeps its current value.
+// buildSalesforceSnapshotPatch builds a partial PATCH from data RMI actually has.
+// Same contract as Salesforce inbound: omitted key = do not change, JSON null = clear.
 func buildSalesforceSnapshotPatch(citizen *models.Citizen, sd *models.SelfDeclaredData, uc *models.UserConfig, citizenFound, selfDeclaredFound bool) *clients.SalesforceCidadaoPatchRequest {
-	patch := clients.NewSalesforceSnapshotPatch()
+	patch := clients.NewSalesforcePatch()
 
 	if citizenFound {
 		putString(patch, "nome", rmiNome(citizen))
@@ -187,50 +186,60 @@ func putEndereco(patch *clients.SalesforceCidadaoPatchRequest, sd *models.SelfDe
 	patch.PutEndereco(addr)
 }
 
-func rmiNome(citizen *models.Citizen) rmiStringValue {
-	if citizen == nil || citizen.Nome == nil {
+func rmiStringFromPtr(p *string) rmiStringValue {
+	if p == nil {
+		return rmiStringValue{}
+	}
+	v := strings.TrimSpace(*p)
+	if v == "" {
 		return rmiStringValue{set: true, clear: true}
 	}
-	return rmiStringValue{set: true, value: strings.TrimSpace(*citizen.Nome)}
+	return rmiStringValue{set: true, value: v}
+}
+
+func rmiNome(citizen *models.Citizen) rmiStringValue {
+	if citizen == nil {
+		return rmiStringValue{}
+	}
+	return rmiStringFromPtr(citizen.Nome)
 }
 
 func rmiNomeSocial(citizen *models.Citizen) rmiStringValue {
-	if citizen == nil || citizen.NomeSocial == nil {
-		return rmiStringValue{set: true, clear: true}
+	if citizen == nil {
+		return rmiStringValue{}
 	}
-	return rmiStringValue{set: true, value: strings.TrimSpace(*citizen.NomeSocial)}
+	return rmiStringFromPtr(citizen.NomeSocial)
 }
 
 func rmiPrimeiroNome(citizen *models.Citizen) rmiStringValue {
 	nome := rmiNome(citizen)
+	if !nome.set {
+		return rmiStringValue{}
+	}
 	if nome.clear {
-		return rmiStringValue{set: true, clear: true}
+		return nome
 	}
 	return rmiStringValue{set: true, value: firstName(nome.value)}
 }
 
 func rmiSelfDeclaredString(sd *models.SelfDeclaredData, pick func(*models.SelfDeclaredData) *string) rmiStringValue {
 	if sd == nil {
-		return rmiStringValue{set: true, clear: true}
+		return rmiStringValue{}
 	}
-	val := pick(sd)
-	if val == nil {
-		return rmiStringValue{set: true, clear: true}
-	}
-	return rmiStringValue{set: true, value: strings.TrimSpace(*val)}
+	return rmiStringFromPtr(pick(sd))
 }
 
 func rmiSelfDeclaredComplemento(sd *models.SelfDeclaredData) rmiStringValue {
 	if sd == nil {
-		return rmiStringValue{set: true, clear: true}
+		return rmiStringValue{}
 	}
 	if sd.Complemento != nil {
-		return rmiStringValue{set: true, value: strings.TrimSpace(*sd.Complemento)}
+		return rmiStringFromPtr(sd.Complemento)
 	}
 	if sd.Endereco != nil && sd.Endereco.Principal != nil && sd.Endereco.Principal.Complemento != nil {
-		return rmiStringValue{set: true, value: strings.TrimSpace(*sd.Endereco.Principal.Complemento)}
+		return rmiStringFromPtr(sd.Endereco.Principal.Complemento)
 	}
-	return rmiStringValue{set: true, clear: true}
+	return rmiStringValue{}
 }
 
 func rmiEmail(sd *models.SelfDeclaredData, citizen *models.Citizen, selfDeclaredFound bool) rmiStringValue {
@@ -238,13 +247,10 @@ func rmiEmail(sd *models.SelfDeclaredData, citizen *models.Citizen, selfDeclared
 		if sd.Email.Principal == nil || sd.Email.Principal.Valor == nil {
 			return rmiStringValue{set: true, clear: true}
 		}
-		return rmiStringValue{set: true, value: strings.TrimSpace(*sd.Email.Principal.Valor)}
+		return rmiStringFromPtr(sd.Email.Principal.Valor)
 	}
-	if citizen != nil && citizen.Email != nil && citizen.Email.Principal != nil && citizen.Email.Principal.Valor != nil {
-		return rmiStringValue{set: true, value: strings.TrimSpace(*citizen.Email.Principal.Valor)}
-	}
-	if selfDeclaredFound {
-		return rmiStringValue{set: true, clear: true}
+	if citizen != nil && citizen.Email != nil && citizen.Email.Principal != nil {
+		return rmiStringFromPtr(citizen.Email.Principal.Valor)
 	}
 	return rmiStringValue{}
 }
@@ -257,9 +263,6 @@ func rmiTelefonePrincipal(sd *models.SelfDeclaredData, citizen *models.Citizen, 
 	}
 	phone := extractPhoneDigits(sd, citizen)
 	if phone == "" {
-		if selfDeclaredFound {
-			return rmiStringValue{set: true, clear: true}
-		}
 		return rmiStringValue{}
 	}
 	return rmiStringValue{set: true, value: clients.NormalizeSalesforcePhone(phone)}
@@ -267,7 +270,7 @@ func rmiTelefonePrincipal(sd *models.SelfDeclaredData, citizen *models.Citizen, 
 
 func rmiTelefoneAlternativo(sd *models.SelfDeclaredData, index int) rmiStringValue {
 	if sd == nil || sd.Telefone == nil || index >= len(sd.Telefone.Alternativo) {
-		return rmiStringValue{set: true, clear: true}
+		return rmiStringValue{}
 	}
 	alt := sd.Telefone.Alternativo[index]
 	if alt.Valor == nil || strings.TrimSpace(*alt.Valor) == "" {
@@ -292,53 +295,51 @@ func formatTelefoneAlternativo(alt models.TelefoneAlternativo) string {
 
 func rmiGenero(sd *models.SelfDeclaredData) rmiStringValue {
 	val := rmiSelfDeclaredString(sd, func(s *models.SelfDeclaredData) *string { return s.Genero })
-	if val.clear {
+	if !val.set || val.clear {
 		return val
 	}
 	mapped := mapRMIGeneroToSalesforce(val.value)
 	if mapped == "" {
-		return rmiStringValue{set: true, clear: true}
+		return rmiStringValue{}
+	}
+	return rmiStringValue{set: true, value: mapped}
+}
+
+func rmiMappedRaca(raw *string) rmiStringValue {
+	val := rmiStringFromPtr(raw)
+	if !val.set || val.clear {
+		return val
+	}
+	mapped := mapRMIRacaToSalesforce(val.value)
+	if mapped == "" {
+		return rmiStringValue{}
 	}
 	return rmiStringValue{set: true, value: mapped}
 }
 
 func rmiRaca(sd *models.SelfDeclaredData, citizen *models.Citizen, selfDeclaredFound, citizenFound bool) rmiStringValue {
 	if selfDeclaredFound && sd != nil && sd.Raca != nil {
-		mapped := mapRMIRacaToSalesforce(*sd.Raca)
-		if mapped == "" {
-			return rmiStringValue{set: true, clear: true}
-		}
-		return rmiStringValue{set: true, value: mapped}
+		return rmiMappedRaca(sd.Raca)
 	}
 	if citizenFound && citizen != nil && citizen.Raca != nil {
-		mapped := mapRMIRacaToSalesforce(*citizen.Raca)
-		if mapped == "" {
-			return rmiStringValue{set: true, clear: true}
-		}
-		return rmiStringValue{set: true, value: mapped}
-	}
-	if selfDeclaredFound || citizenFound {
-		return rmiStringValue{set: true, clear: true}
+		return rmiMappedRaca(citizen.Raca)
 	}
 	return rmiStringValue{}
 }
 
 func rmiDataNascimento(citizen *models.Citizen) rmiStringValue {
 	if citizen == nil || citizen.Nascimento == nil || citizen.Nascimento.Data == nil {
-		return rmiStringValue{set: true, clear: true}
+		return rmiStringValue{}
 	}
 	return rmiStringValue{set: true, value: citizen.Nascimento.Data.Format("2006-01-02")}
 }
 
 func rmiCidade(sd *models.SelfDeclaredData, citizen *models.Citizen, selfDeclaredFound, citizenFound bool) rmiStringValue {
 	if selfDeclaredFound && sd != nil && sd.Endereco != nil && sd.Endereco.Principal != nil && sd.Endereco.Principal.Municipio != nil {
-		return rmiStringValue{set: true, value: strings.TrimSpace(*sd.Endereco.Principal.Municipio)}
+		return rmiStringFromPtr(sd.Endereco.Principal.Municipio)
 	}
 	if citizenFound && citizen != nil && citizen.Endereco != nil && citizen.Endereco.Principal != nil && citizen.Endereco.Principal.Municipio != nil {
-		return rmiStringValue{set: true, value: strings.TrimSpace(*citizen.Endereco.Principal.Municipio)}
-	}
-	if selfDeclaredFound || citizenFound {
-		return rmiStringValue{set: true, clear: true}
+		return rmiStringFromPtr(citizen.Endereco.Principal.Municipio)
 	}
 	return rmiStringValue{}
 }
@@ -346,16 +347,18 @@ func rmiCidade(sd *models.SelfDeclaredData, citizen *models.Citizen, selfDeclare
 func rmiEndereco(sd *models.SelfDeclaredData, citizen *models.Citizen, selfDeclaredFound, citizenFound bool) (*clients.SalesforceEndereco, bool) {
 	var principal *models.EnderecoPrincipal
 	fromSelfDeclared := false
-	if selfDeclaredFound && sd != nil && sd.Endereco != nil && sd.Endereco.Principal != nil {
-		p := *sd.Endereco.Principal
-		principal = &p
+	if selfDeclaredFound && sd != nil && sd.Endereco != nil {
 		fromSelfDeclared = true
+		if sd.Endereco.Principal != nil {
+			p := *sd.Endereco.Principal
+			principal = &p
+		}
 	} else if citizenFound && citizen != nil && citizen.Endereco != nil && citizen.Endereco.Principal != nil {
 		p := *citizen.Endereco.Principal
 		principal = &p
 	}
 	if principal == nil {
-		if selfDeclaredFound || citizenFound {
+		if fromSelfDeclared {
 			return nil, true
 		}
 		return nil, false
@@ -369,11 +372,8 @@ func rmiEndereco(sd *models.SelfDeclaredData, citizen *models.Citizen, selfDecla
 		Complemento: deref(principal.Complemento),
 		Bairro:      deref(principal.Bairro),
 	}
-	if fromSelfDeclared && addr.Logradouro == "" && addr.Cidade == "" && addr.Estado == "" && addr.CEP == "" && addr.Complemento == "" && addr.Bairro == "" {
-		return nil, true
-	}
 	if addr.Logradouro == "" && addr.Cidade == "" && addr.Estado == "" && addr.CEP == "" && addr.Complemento == "" && addr.Bairro == "" {
-		if selfDeclaredFound {
+		if fromSelfDeclared {
 			return nil, true
 		}
 		return nil, false

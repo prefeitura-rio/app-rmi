@@ -35,6 +35,7 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 	config.AppConfig.CitizenCollection = "test_citizens"
 	config.AppConfig.SelfDeclaredCollection = "test_self_declared"
 	config.AppConfig.UserConfigCollection = "test_user_config"
+	config.AppConfig.SyncJobBearerEncryptionKey = testSyncJobBearerKey
 
 	// Use shared MongoDB connection
 	ctx := context.Background()

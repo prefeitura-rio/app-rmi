@@ -6,8 +6,7 @@ import (
 )
 
 // SalesforceCidadaoPatchRequest is the PATCH .../api/private/cidadao/{cpf} body.
-// Use NewSalesforcePatch for partial updates (only non-empty fields) or
-// NewSalesforceSnapshotPatch for full mirror pushes (cleared RMI fields become JSON null).
+// Omitted keys are left unchanged on Salesforce. JSON null clears a field.
 type SalesforceCidadaoPatchRequest struct {
 	fields map[string]any
 }
@@ -17,9 +16,9 @@ func NewSalesforcePatch() *SalesforceCidadaoPatchRequest {
 	return &SalesforceCidadaoPatchRequest{fields: make(map[string]any)}
 }
 
-// NewSalesforceSnapshotPatch builds a full mirror PATCH body (every key is set or null).
+// NewSalesforceSnapshotPatch is an alias of NewSalesforcePatch (partial body).
 func NewSalesforceSnapshotPatch() *SalesforceCidadaoPatchRequest {
-	return &SalesforceCidadaoPatchRequest{fields: make(map[string]any)}
+	return NewSalesforcePatch()
 }
 
 func (p *SalesforceCidadaoPatchRequest) PutIfNonempty(key, value string) *SalesforceCidadaoPatchRequest {

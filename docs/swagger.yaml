@@ -192,8 +192,34 @@ definitions:
           $ref: '#/definitions/clients.SalesforceFieldError'
         type: array
     type: object
+  clients.SalesforceExportConsentimento:
+    properties:
+      canais:
+        items:
+          $ref: '#/definitions/clients.SalesforceExportConsentimentoCanal'
+        type: array
+      codigo:
+        type: string
+      descricao:
+        type: string
+    type: object
+  clients.SalesforceExportConsentimentoCanal:
+    properties:
+      canal:
+        type: string
+      motivo:
+        type: string
+      status:
+        type: string
+      tipo:
+        type: string
+    type: object
   clients.SalesforceExportacao:
     properties:
+      consentimento:
+        items:
+          $ref: '#/definitions/clients.SalesforceExportConsentimento'
+        type: array
       cpf:
         type: string
       dadosPessoais:
@@ -7507,7 +7533,8 @@ paths:
       - application/json
       responses:
         "200":
-          description: Consentimento atualizado (sem corpo)
+          description: Consentimento atualizado (sem corpo). 409 do Salesforce (já
+            no status) é tratado como 200.
         "400":
           description: Bad Request
           schema:
@@ -7522,10 +7549,6 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Not Found
-          schema:
-            $ref: '#/definitions/clients.SalesforceErrorBody'
-        "409":
-          description: Conflict
           schema:
             $ref: '#/definitions/clients.SalesforceErrorBody'
         "502":
@@ -7675,7 +7698,8 @@ paths:
           schema:
             $ref: '#/definitions/handlers.SalesforceWebhookResponse'
         "400":
-          description: CPF inválido, dados ausentes ou evento inválido
+          description: CPF inválido, dados ausentes/grandes, updatedAt longo ou evento
+            inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":

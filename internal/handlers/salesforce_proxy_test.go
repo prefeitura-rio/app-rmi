@@ -106,6 +106,25 @@ func TestPatchSalesforceConsentimento_Upstream400(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "DADOS_INVALIDOS")
 }
 
+func TestPatchSalesforceConsentimento_Upstream409IsSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sfSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"errors":[{"code":"CONFLICT","message":"já no status"}]}`))
+	}))
+	defer sfSrv.Close()
+	withSFConfig(t, sfSrv.URL)
+
+	req := httptest.NewRequest(http.MethodPatch, "/v1/salesforce/cidadao/"+testWebhookCPF+"/consentimento",
+		bytes.NewBufferString(`{"categoria":"PREF_Lembrete_Pagamento","acao":"optin"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+minimalJWT)
+	w := httptest.NewRecorder()
+	salesforceProxyRouter().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestExportSalesforceCidadao_Upstream404(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	sfSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

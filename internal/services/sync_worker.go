@@ -552,15 +552,16 @@ func (w *SyncWorker) handleSyncSuccess(job *SyncJob) {
 
 // handleSyncFailure handles a failed sync
 func (w *SyncWorker) handleSyncFailure(job *SyncJob, err error) {
-	job.RetryCount++
-
 	var persisted bool
-	if job.RetryCount >= job.MaxRetries {
-		// Move to dead letter queue
+	if isNonRetryableSyncError(err) {
 		persisted = w.moveToDLQ(job, err)
 	} else {
-		// Re-queue with backoff
-		persisted = w.requeueJob(job)
+		job.RetryCount++
+		if job.RetryCount >= job.MaxRetries {
+			persisted = w.moveToDLQ(job, err)
+		} else {
+			persisted = w.requeueJob(job)
+		}
 	}
 	// Reliable-queue requeue/DLQ already removes processing+claim atomically.
 	// For other paths, ack only after the job is safely back on a Redis list.
@@ -569,11 +570,56 @@ func (w *SyncWorker) handleSyncFailure(job *SyncJob, err error) {
 	}
 }
 
+// redactSyncJobSecrets returns a copy of job without bearer tokens for DLQ persistence.
+func redactSyncJobSecrets(job SyncJob) SyncJob {
+	job.BearerToken = ""
+	job.Data = redactBearerFromJobData(job.Data)
+	return job
+}
+
+func redactBearerFromJobData(data interface{}) interface{} {
+	if data == nil {
+		return nil
+	}
+	switch v := data.(type) {
+	case SalesforcePushPayload:
+		v.BearerToken = ""
+		return v
+	case *SalesforcePushPayload:
+		if v == nil {
+			return v
+		}
+		cp := *v
+		cp.BearerToken = ""
+		return cp
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(v))
+		for k, val := range v {
+			if k == "bearer_token" {
+				continue
+			}
+			out[k] = val
+		}
+		return out
+	default:
+		raw, err := json.Marshal(data)
+		if err != nil {
+			return data
+		}
+		var m map[string]interface{}
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return data
+		}
+		delete(m, "bearer_token")
+		return m
+	}
+}
+
 // moveToDLQ moves a failed job to the dead letter queue.
 // Returns true when the job was successfully written to the DLQ.
 func (w *SyncWorker) moveToDLQ(job *SyncJob, err error) bool {
 	dlqJob := DLQJob{
-		OriginalJob: *job,
+		OriginalJob: redactSyncJobSecrets(*job),
 		Error:       err.Error(),
 		FailedAt:    time.Now(),
 	}

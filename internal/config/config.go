@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -80,6 +81,8 @@ type Config struct {
 	SalesforceTimeout time.Duration `json:"salesforce_timeout"`
 	// SalesforceWebhookClients are Keycloak client_ids (azp) allowed to call the SF→RMI webhook.
 	SalesforceWebhookClients []string `json:"salesforce_webhook_clients"`
+	// SyncJobBearerEncryptionKey is a 32-byte AES-256 key used to seal JWTs on Redis sync jobs.
+	SyncJobBearerEncryptionKey []byte `json:"-"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -386,6 +389,11 @@ func LoadConfig() error {
 		return fmt.Errorf("invalid INDEX_MAINTENANCE_INTERVAL: %w", err)
 	}
 
+	bearerKey, err := parseSyncJobBearerEncryptionKey(os.Getenv("SYNC_JOB_BEARER_ENCRYPTION_KEY"))
+	if err != nil {
+		return fmt.Errorf("invalid SYNC_JOB_BEARER_ENCRYPTION_KEY: %w", err)
+	}
+
 	// Redis Cluster configuration
 	redisClusterEnabled := getEnvOrDefault("REDIS_CLUSTER_ENABLED", "false") == "true"
 	var redisClusterAddrs []string
@@ -458,9 +466,10 @@ func LoadConfig() error {
 		DataRelayTimeout: getEnvAsDurationOrDefault("DATA_RELAY_TIMEOUT", 30*time.Second),
 
 		// Salesforce CRM (optional — Bearer JWT only; no OAuth client-credentials)
-		SalesforceBaseURL:        getEnvOrDefault("SALESFORCE_BASE_URL", ""),
-		SalesforceTimeout:        getEnvAsDurationOrDefault("SALESFORCE_TIMEOUT", 30*time.Second),
-		SalesforceWebhookClients: parseCommaSeparatedList(getEnvOrDefault("SALESFORCE_WEBHOOK_CLIENTS", "")),
+		SalesforceBaseURL:          getEnvOrDefault("SALESFORCE_BASE_URL", ""),
+		SalesforceTimeout:          getEnvAsDurationOrDefault("SALESFORCE_TIMEOUT", 30*time.Second),
+		SalesforceWebhookClients:   parseCommaSeparatedList(getEnvOrDefault("SALESFORCE_WEBHOOK_CLIENTS", "")),
+		SyncJobBearerEncryptionKey: bearerKey,
 
 		// Phone verification configuration
 		PhoneVerificationTTL:          phoneVerificationTTL,
@@ -562,6 +571,21 @@ func getEnvAsDurationOrDefault(key string, defaultValue time.Duration) time.Dura
 		}
 	}
 	return defaultValue
+}
+
+const syncJobBearerAES256KeySize = 32
+
+// parseSyncJobBearerEncryptionKey accepts a 32-byte AES-256 key as 64 hex characters.
+func parseSyncJobBearerEncryptionKey(raw string) ([]byte, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	decoded, err := hex.DecodeString(raw)
+	if err != nil || len(decoded) != syncJobBearerAES256KeySize {
+		return nil, fmt.Errorf("must be 64 hex characters (32-byte AES-256 key)")
+	}
+	return decoded, nil
 }
 
 // parseCommaSeparatedList parses a comma-separated string into a slice of strings

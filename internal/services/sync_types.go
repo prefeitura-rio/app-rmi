@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-	// Sync job origin values used for anti-loop on Salesforce bidirectional sync.
+// Sync job origin values used for anti-loop on Salesforce bidirectional sync.
 const (
 	SyncOriginSalesforce = "salesforce"
 )
@@ -21,7 +21,7 @@ type SyncJob struct {
 	MaxRetries  int         `json:"max_retries"`
 	AvailableAt time.Time   `json:"available_at,omitempty"` // deferred retry; zero = process immediately
 	Origin      string      `json:"origin,omitempty"`       // e.g. SyncOriginSalesforce — skip outbound SF push
-	BearerToken string      `json:"bearer_token,omitempty"` // JWT for Salesforce push (same scheme as RMI)
+	BearerToken string      `json:"bearer_token,omitempty"` // AES-GCM sealed JWT on the work queue; stripped in DLQ
 
 	// Transient fields for reliable-queue ack (not persisted in Redis payload JSON).
 	rawRedisPayload string `json:"-"`

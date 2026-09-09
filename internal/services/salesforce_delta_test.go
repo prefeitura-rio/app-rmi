@@ -334,8 +334,8 @@ func TestBuildSelfDeclaredDeltaPatch_TopLevelCidade(t *testing.T) {
 	existing := &models.SelfDeclaredData{
 		Endereco: &models.Endereco{
 			Principal: &models.EnderecoPrincipal{
-		Logradouro: stringPtr("Rua A"),
-		Estado:     stringPtr("RJ"),
+				Logradouro: stringPtr("Rua A"),
+				Estado:     stringPtr("RJ"),
 			},
 		},
 	}
@@ -347,6 +347,19 @@ func TestBuildSelfDeclaredDeltaPatch_TopLevelCidade(t *testing.T) {
 	require.NotNil(t, addr.Principal)
 	assert.Equal(t, "Niterói", *addr.Principal.Municipio)
 	assert.Equal(t, "Rua A", *addr.Principal.Logradouro)
+}
+
+func TestJSONFields_InvalidJSONReturnsEmpty(t *testing.T) {
+	assert.Empty(t, jsonFields([]byte(`not-json`)))
+	assert.Empty(t, jsonFields([]byte(`null`)))
+	assert.Equal(t, json.RawMessage(`"a"`), jsonFields([]byte(`{"email":"a"}`))["email"])
+}
+
+func TestIsUnsafeMongoMapKey(t *testing.T) {
+	assert.False(t, isUnsafeMongoMapKey("PREF_Lembrete_Pagamento"))
+	assert.False(t, isUnsafeMongoMapKey("PREF_Lembrete_Pagamento|WhatsApp"))
+	assert.True(t, isUnsafeMongoMapKey("foo.bar"))
+	assert.True(t, isUnsafeMongoMapKey("$set"))
 }
 
 func stringPtr(s string) *string { return &s }

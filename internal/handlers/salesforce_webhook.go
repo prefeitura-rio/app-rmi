@@ -13,6 +13,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	maxSalesforceWebhookDadosBytes   = 64 * 1024
+	maxSalesforceWebhookUpdatedAtLen = 64
+)
+
 // SalesforceWebhookRequest is the inbound delta payload from Salesforce.
 // Only changed fields appear in dados (same shape/types as GET /cidadao/{cpf}).
 type SalesforceWebhookRequest struct {
@@ -40,7 +45,7 @@ type SalesforceWebhookResponse struct {
 // @Produce json
 // @Param body body SalesforceWebhookRequestSwagger true "CPF, evento e delta de campos alterados"
 // @Success 202 {object} SalesforceWebhookResponse "Job enfileirado"
-// @Failure 400 {object} ErrorResponse "CPF inválido, dados ausentes ou evento inválido"
+// @Failure 400 {object} ErrorResponse "CPF inválido, dados ausentes/grandes, updatedAt longo ou evento inválido"
 // @Failure 401 {object} ErrorResponse "JWT inválido ou ausente"
 // @Failure 403 {object} ErrorResponse "azp do JWT não está em SALESFORCE_WEBHOOK_CLIENTS"
 // @Failure 503 {object} ErrorResponse "Integração Salesforce não configurada"
@@ -62,6 +67,14 @@ func HandleSalesforceCidadaoWebhook(c *gin.Context) {
 	cpf := strings.TrimSpace(req.CPF)
 	if !utils.ValidateCPF(cpf) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid CPF"})
+		return
+	}
+	if len(req.Dados) > maxSalesforceWebhookDadosBytes {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dados exceeds maximum size"})
+		return
+	}
+	if len(strings.TrimSpace(req.UpdatedAt)) > maxSalesforceWebhookUpdatedAtLen {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "updatedAt exceeds maximum length"})
 		return
 	}
 	if len(strings.TrimSpace(string(req.Dados))) == 0 {

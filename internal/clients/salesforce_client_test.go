@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -295,6 +296,7 @@ func TestSalesforceClient_APIError(t *testing.T) {
 	require.Len(t, apiErr.Errors, 1)
 	assert.Equal(t, "DADOS_INVALIDOS", apiErr.Errors[0].Code)
 	assert.False(t, apiErr.IsNotFound())
+	assert.False(t, apiErr.IsUnauthorized())
 }
 
 func TestSalesforceClient_NotFound(t *testing.T) {
@@ -369,7 +371,13 @@ func TestSalesforceClient_ExportarCidadao_Success(t *testing.T) {
 			"cpf":"52998224725",
 			"dataExportacao":"2026-07-01T19:31:18Z",
 			"dadosPessoais":{"primeiroNome":"TESTE","email":"cidadao@exemplo.com"},
-			"relacionados":{"protocolos":[],"ligacoes":[],"ordensServico":[]}
+			"relacionados":{"protocolos":[],"ligacoes":[],"ordensServico":[]},
+			"consentimento":[
+				{"codigo":"PREF_Lembrete_Pagamento","descricao":"Lembretes de pagamento","canais":[
+					{"canal":"Email","status":"IN","tipo":"optin"}
+				]},
+				{"codigo":"PREF_Info_Cidade","descricao":"Informações da cidade","canais":[]}
+			]
 		}`))
 	}))
 	defer srv.Close()
@@ -379,12 +387,18 @@ func TestSalesforceClient_ExportarCidadao_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "52998224725", got.CPF)
 	assert.Equal(t, "TESTE", got.DadosPessoais["primeiroNome"])
+	require.Len(t, got.Consentimento, 2)
+	assert.Equal(t, "PREF_Lembrete_Pagamento", got.Consentimento[0].Codigo)
+	require.Len(t, got.Consentimento[0].Canais, 1)
+	assert.Equal(t, "Email", got.Consentimento[0].Canais[0].Canal)
+	assert.Equal(t, "IN", got.Consentimento[0].Canais[0].Status)
 }
 
 func TestSalesforceClient_AnonimizarCidadao_Accepted(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/api/private/cidadao/52998224725/anonimizar", r.URL.Path)
+		assert.Equal(t, int64(0), r.ContentLength)
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(`{
 			"numeroSolicitacao":"PRIVRTBF-00000002",
@@ -591,4 +605,64 @@ func TestSalesforceAPIError_IsConflict(t *testing.T) {
 	assert.False(t, (*SalesforceAPIError)(nil).IsConflict())
 	assert.False(t, (&SalesforceAPIError{StatusCode: 404}).IsConflict())
 	assert.True(t, (&SalesforceAPIError{StatusCode: 409}).IsConflict())
+}
+
+func TestSalesforceAPIError_IsRetryable(t *testing.T) {
+	assert.False(t, (*SalesforceAPIError)(nil).IsRetryable())
+	assert.False(t, (&SalesforceAPIError{StatusCode: 400}).IsRetryable())
+	assert.False(t, (&SalesforceAPIError{StatusCode: 404}).IsRetryable())
+	assert.True(t, (&SalesforceAPIError{StatusCode: 429}).IsRetryable())
+	assert.True(t, (&SalesforceAPIError{StatusCode: 500}).IsRetryable())
+	assert.True(t, (&SalesforceAPIError{StatusCode: 503}).IsRetryable())
+}
+
+func TestSalesforceClient_PatchCidadaoConsentimento_ConflictIsSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"errors":[{"code":"CONFLICT","message":"já no status"}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
+	err := client.PatchCidadaoConsentimento(context.Background(), "14202478754", &SalesforceConsentimentoPatchRequest{
+		Categoria: "PREF_Lembrete_Pagamento",
+		Acao:      "optin",
+	})
+	require.NoError(t, err)
+}
+
+func TestSalesforceClient_RetriesTransientThenSucceeds(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&calls, 1)
+		if n < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"errors":[{"code":"UNAVAILABLE","message":"try again"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"cpf":"14202478754","accountId":"001"}`))
+	}))
+	defer srv.Close()
+
+	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
+	got, err := client.GetCidadao(context.Background(), "14202478754")
+	require.NoError(t, err)
+	assert.Equal(t, "001", got.AccountID)
+	assert.Equal(t, int32(3), atomic.LoadInt32(&calls))
+}
+
+func TestSalesforceClient_DoesNotRetryClientErrors(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"errors":[{"code":"DADOS_INVALIDOS","message":"bad"}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
+	_, err := client.GetCidadao(context.Background(), "14202478754")
+	require.Error(t, err)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls))
 }

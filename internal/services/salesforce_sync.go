@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -54,9 +55,41 @@ type SalesforceSyncPayload struct {
 }
 
 // SalesforcePushPayload is enqueued after a successful RMI citizen/self-declared persist.
+// BearerToken is accepted when reading older queue items; new jobs store the JWT only on SyncJob.
 type SalesforcePushPayload struct {
 	CPF         string `json:"cpf"`
 	BearerToken string `json:"bearer_token,omitempty"`
+}
+
+// nonRetryableSyncError marks a sync failure that must go to DLQ without further retries.
+type nonRetryableSyncError struct {
+	err error
+}
+
+func (e *nonRetryableSyncError) Error() string {
+	if e == nil || e.err == nil {
+		return "non-retryable sync error"
+	}
+	return e.err.Error()
+}
+
+func (e *nonRetryableSyncError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+func newNonRetryableSyncError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &nonRetryableSyncError{err: err}
+}
+
+func isNonRetryableSyncError(err error) bool {
+	var nr *nonRetryableSyncError
+	return errors.As(err, &nr)
 }
 
 // SalesforceConfigured reports whether Salesforce CRM sync can run (base URL set).
@@ -141,6 +174,8 @@ func NormalizeSalesforceWebhookEvento(evento string) string {
 }
 
 // EnqueueSalesforcePushJob queues an outbound push for the given CPF using the caller's JWT.
+// The JWT is AES-256-GCM sealed on SyncJob.BearerToken (work queue only), not duplicated in Data,
+// and stripped when the job is moved to the DLQ. Per-job lifetime is the JWT exp claim.
 func EnqueueSalesforcePushJob(ctx context.Context, redis *redisclient.Client, cpf, bearerToken string) error {
 	if redis == nil {
 		return fmt.Errorf("redis client is nil")
@@ -154,21 +189,50 @@ func EnqueueSalesforcePushJob(ctx context.Context, redis *redisclient.Client, cp
 		return fmt.Errorf("bearer token is required for salesforce push")
 	}
 
+	sealed, err := prepareBearerForQueue(bearerToken, SalesforcePushQueue, cpf)
+	if err != nil {
+		return err
+	}
+
 	job := SyncJob{
 		ID:         utils.GenerateUUID(),
 		Type:       SalesforcePushQueue,
 		Key:        cpf,
 		Collection: SalesforcePushQueue,
 		Data: SalesforcePushPayload{
-			CPF:         cpf,
-			BearerToken: bearerToken,
+			CPF: cpf,
 		},
 		Timestamp:   time.Now(),
 		RetryCount:  0,
-		MaxRetries:  3,
-		BearerToken: bearerToken,
+		MaxRetries:  5,
+		BearerToken: sealed,
 	}
 	return enqueueNamedSyncJob(ctx, redis, job)
+}
+
+// EnqueueSalesforceConsentimentoMirror applies a successful RMI→SF consentimento PATCH
+// into Mongo via the inbound salesforce_sync path (origin=salesforce, no push-back).
+func EnqueueSalesforceConsentimentoMirror(ctx context.Context, redis *redisclient.Client, cpf string, req *clients.SalesforceConsentimentoPatchRequest) error {
+	if redis == nil || req == nil {
+		return nil
+	}
+	acao := strings.ToLower(strings.TrimSpace(req.Acao))
+	status := "OUT"
+	if acao == "optin" {
+		status = "IN"
+	}
+	payload, err := json.Marshal(map[string]any{
+		"consentimento": []clients.SalesforceConsentimento{{
+			Categoria: strings.TrimSpace(req.Categoria),
+			Acao:      acao,
+			Status:    status,
+			Motivo:    strings.TrimSpace(req.Motivo),
+		}},
+	})
+	if err != nil {
+		return err
+	}
+	return EnqueueSalesforceSyncJob(ctx, redis, cpf, SalesforceWebhookEventAtualizacao, "", payload)
 }
 
 func enqueueNamedSyncJob(ctx context.Context, redis *redisclient.Client, job SyncJob) error {
@@ -215,6 +279,18 @@ func (w *SyncWorker) maybeEnqueueSalesforcePush(job *SyncJob) {
 		return
 	}
 	bearer := strings.TrimSpace(job.BearerToken)
+	if bearer != "" {
+		opened, err := bearerFromQueue(bearer, job.Type, job.Key)
+		if err != nil {
+			w.logger.Warn("skipping salesforce push enqueue: failed to open bearer token",
+				zap.String("job_id", job.ID),
+				zap.String("type", job.Type),
+				zap.String("cpf", job.Key),
+				zap.Error(err))
+			return
+		}
+		bearer = opened
+	}
 	if bearer == "" {
 		w.logger.Debug("skipping salesforce push enqueue: missing bearer token on sync job",
 			zap.String("job_id", job.ID),
@@ -294,6 +370,14 @@ func (w *SyncWorker) handleSalesforcePushJob(ctx context.Context, job *SyncJob) 
 	if bearer == "" {
 		return fmt.Errorf("bearer token is required for salesforce push")
 	}
+	opened, err := bearerFromQueue(bearer, job.Type, job.Key)
+	if err != nil {
+		return newNonRetryableSyncError(fmt.Errorf("salesforce push failed: %w", err))
+	}
+	bearer = opened
+	if bearer == "" {
+		return fmt.Errorf("bearer token is required for salesforce push")
+	}
 
 	sf := w.salesforce
 	if sf == nil {
@@ -305,6 +389,9 @@ func (w *SyncWorker) handleSalesforcePushJob(ctx context.Context, job *SyncJob) 
 		w.logger.Debug("salesforce push skipped: client not configured",
 			zap.String("job_id", job.ID))
 		return nil
+	}
+	if salesforceBearerExpired(bearer) {
+		return newNonRetryableSyncError(fmt.Errorf("salesforce push failed: bearer token expired"))
 	}
 
 	w.logger.Info("pushing citizen data to salesforce",
@@ -328,11 +415,22 @@ func (w *SyncWorker) handleSalesforcePushJob(ctx context.Context, job *SyncJob) 
 	}
 
 	var apiErr *clients.SalesforceAPIError
+	if errors.As(err, &apiErr) && apiErr.IsConflict() {
+		return nil
+	}
+	if errors.As(err, &apiErr) && apiErr.IsUnauthorized() {
+		return newNonRetryableSyncError(fmt.Errorf("salesforce patch failed: %w", err))
+	}
 	if errors.As(err, &apiErr) && apiErr.IsNotFound() {
 		createReq := buildSalesforceCreate(citizen, selfDeclared, userConfig, citizenFound, selfDeclaredFound, SalesforceContaOrigem)
 		_, createErr := sf.CreateOrUpdateCidadao(ctx, createReq)
 		if createErr != nil {
-			return fmt.Errorf("salesforce create-or-update after 404 failed: %w", createErr)
+			wrapped := fmt.Errorf("salesforce create-or-update after 404 failed: %w", createErr)
+			var createAPIErr *clients.SalesforceAPIError
+			if errors.As(createErr, &createAPIErr) && createAPIErr.IsUnauthorized() {
+				return newNonRetryableSyncError(wrapped)
+			}
+			return wrapped
 		}
 		return nil
 	}
@@ -538,21 +636,42 @@ func mapSalesforceRacaToRMI(v string) string {
 	return v
 }
 
+// salesforceBearerExpired reports whether a three-part JWT has a past exp claim.
+// Opaque tokens (including test placeholders like "jwt") are not treated as expired.
+func salesforceBearerExpired(token string) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	payload, err := decodeJWTPayloadSegment(parts[1])
+	if err != nil {
+		return false
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return false
+	}
+	if claims.Exp <= 0 {
+		return false
+	}
+	return time.Now().Unix() >= claims.Exp
+}
+
+func decodeJWTPayloadSegment(segment string) ([]byte, error) {
+	if b, err := base64.RawURLEncoding.DecodeString(segment); err == nil {
+		return b, nil
+	}
+	return base64.URLEncoding.DecodeString(segment)
+}
+
 func firstName(full string) string {
 	parts := strings.Fields(strings.TrimSpace(full))
 	if len(parts) == 0 {
 		return ""
 	}
 	return parts[0]
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }
 
 func stripPTAccents(s string) string {
