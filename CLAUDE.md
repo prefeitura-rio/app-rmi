@@ -153,7 +153,6 @@ When asked to do the "commit thing":
 - **Inbound (SF → RMI)**: webhook `{cpf, evento, updatedAt?, dados}` — `dados` = **delta** (max 64KB; `updatedAt` max 64 chars; ausente=não alterar, null=limpar, \"\"=vazio); merge `consentimento[]` por categoria via `$set` pontilhado → enqueue `salesforce_sync` → worker patch parcial em `self_declared` + opt-in (no GET back, no push back)
 - **Proxies (user JWT, additive under `/v1/salesforce`)**: consentimento, exportar, anonimizar (+ polling), chamados list/detail — do not alter `/v1/citizen` behavior
 - **Consentimento PATCH**: `categoria` must be a Salesforce picklist value (e.g. `PREF_Lembrete_Pagamento`, not free text). Upstream JWT policy returns 400 (missing token) / 401 (invalid) before Mule — not RMI `errors[]`.
-- **Smoke test**: `RMI_TOKEN='<jwt>' ./scripts/test_salesforce_integration.sh 02075979600`
 
 ### Performance-Critical Paths
 - **GetCitizenData**: Uses batched Redis operations via `getBatchedSelfDeclaredData()`
