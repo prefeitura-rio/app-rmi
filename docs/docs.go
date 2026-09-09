@@ -7229,7 +7229,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Proxy para GET /api/private/anonimizacao/{numeroSolicitacao}.",
+                "description": "Proxy GET /api/private/anonimizacao/{numeroSolicitacao}. 403 se não houver prova de posse: CPF no payload do Salesforce deve ser o do caller; se o upstream omitir CPF, só quem criou a solicitação neste API (POST anonimizar) consegue ler.",
                 "produces": [
                     "application/json"
                 ],
@@ -7255,6 +7255,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Solicitação não pertence ao usuário autenticado",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -7388,7 +7394,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Proxy para POST /api/private/cidadao/{cpf}/anonimizar (assíncrono). 202 enfileirado; 409 se já houver solicitação aberta.",
+                "description": "Proxy POST /api/private/cidadao/{cpf}/anonimizar (assíncrono). 202 enfileirado; 409 se já houver solicitação aberta. Em 202 e 409 o RMI associa numeroSolicitacao ao CPF autenticado para o polling.",
                 "produces": [
                     "application/json"
                 ],
@@ -7452,7 +7458,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Proxy para PATCH /api/private/cidadao/{cpf}/consentimento. Encaminha o JWT do usuário. categoria deve ser valor de picklist SF (ex. PREF_Lembrete_Pagamento). motivo obrigatório quando acao=optout.",
+                "description": "Proxy PATCH /api/private/cidadao/{cpf}/consentimento com o JWT do usuário. categoria é picklist SF (ex. PREF_Lembrete_Pagamento). motivo obrigatório se acao=optout. Espelho no RMI grava só salesforce_consentimentos; não altera opt_in nem category_opt_ins.",
                 "consumes": [
                     "application/json"
                 ],
@@ -7699,7 +7705,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Webhook inbound: CPF + delta em dados (mesmo shape do GET Person Account). JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. evento=atualizacao (default) ou anonimizacao; updatedAt opcional. Campo ausente=não alterar; null=limpar; string vazia=valor vazio. Resposta 202 com CPF mascarado. Enfileira salesforce_sync sem GET de volta ao SF.",
+                "description": "JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. Body: cpf + dados (delta; updatedAt opcional; evento=atualizacao default ou anonimizacao). Ausente=não alterar; null=limpar; \\\"\\\"=vazio. Persiste overlay em self_declared; consentimento só em salesforce_consentimentos (não altera opt_in/category_opt_ins do RMI). nome, nomeSocial e dataNascimento no delta são ignorados (não gravam citizens). 202 com CPF mascarado; sem GET de volta ao SF.",
                 "consumes": [
                     "application/json"
                 ],
@@ -7742,6 +7748,12 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "azp do JWT não está em SALESFORCE_WEBHOOK_CLIENTS",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Falha ao enfileirar salesforce_sync (Redis)",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -8485,12 +8497,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "consentimento": {
+                    "description": "Só salesforce_consentimentos; null limpa o mapa SF (não mexe no opt-in RMI)",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/clients.SalesforceConsentimento"
                     }
                 },
                 "dataNascimento": {
+                    "description": "Ignorado: não altera a coleção citizens",
                     "type": "string"
                 },
                 "deficiencia": {
@@ -8521,12 +8535,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "nome": {
+                    "description": "Ignorado: não altera a coleção citizens",
                     "type": "string"
                 },
                 "nomeExibicao": {
                     "type": "string"
                 },
                 "nomeSocial": {
+                    "description": "Ignorado: não altera a coleção citizens",
                     "type": "string"
                 },
                 "passaporte": {
@@ -11667,7 +11683,7 @@ const docTemplate = `{
             "name": "health"
         },
         {
-            "description": "Integração Salesforce Person Account: login sync, webhook inbound (delta), proxies CRM e push assíncrono RMI→SF via sync worker",
+            "description": "Integração Salesforce Person Account: login sync, webhook inbound (delta em self_declared, sem gravar citizens), proxies CRM e push assíncrono RMI→SF via sync worker",
             "name": "salesforce"
         }
     ]

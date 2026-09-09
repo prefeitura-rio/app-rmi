@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 func TestShouldEnqueueSalesforcePush(t *testing.T) {
@@ -428,7 +430,7 @@ func TestHandleSalesforceSyncJob_AppliesSelfDeclared(t *testing.T) {
 	assert.Equal(t, "parda", *sd.Raca)
 }
 
-func TestHandleSalesforceSyncJob_AppliesCitizenFields(t *testing.T) {
+func TestHandleSalesforceSyncJob_DoesNotWriteCanonicalCitizen(t *testing.T) {
 	worker, _, cleanup := setupSyncWorkerTest(t)
 	defer cleanup()
 
@@ -455,14 +457,10 @@ func TestHandleSalesforceSyncJob_AppliesCitizenFields(t *testing.T) {
 	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
 
 	var citizen models.Citizen
-	require.NoError(t, worker.mongo.Collection(config.AppConfig.CitizenCollection).
-		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&citizen))
-	require.NotNil(t, citizen.Nome)
-	assert.Equal(t, "João Silva", *citizen.Nome)
-	require.NotNil(t, citizen.NomeSocial)
-	assert.Equal(t, "João", *citizen.NomeSocial)
-	require.NotNil(t, citizen.Nascimento)
-	require.NotNil(t, citizen.Nascimento.Data)
+	err := worker.mongo.Collection(config.AppConfig.CitizenCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&citizen)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, mongo.ErrNoDocuments))
 
 	var sd models.SelfDeclaredData
 	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
@@ -627,9 +625,13 @@ func TestHandleSalesforceSyncJob_AppliesConsentimentoToUserConfig(t *testing.T) 
 	var uc models.UserConfig
 	require.NoError(t, worker.mongo.Collection(config.AppConfig.UserConfigCollection).
 		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&uc))
+	require.NotNil(t, uc.SalesforceConsentimentos)
+	entry := uc.SalesforceConsentimentos["Comunicacao"]
+	assert.Equal(t, "Comunicacao", entry.Categoria)
+	assert.Equal(t, "OUT", entry.Status)
+	assert.False(t, entry.OptIn)
+	assert.Empty(t, uc.CategoryOptIns)
 	assert.False(t, uc.OptIn)
-	require.NotNil(t, uc.CategoryOptIns)
-	assert.False(t, uc.CategoryOptIns["Comunicacao"])
 }
 
 func TestMaybeEnqueueSalesforcePush_SkipsWhenOriginSalesforce(t *testing.T) {
@@ -702,7 +704,7 @@ func TestHandleSalesforcePushJob_OpensSealedBearer(t *testing.T) {
 	defer srv.Close()
 	worker.SetSalesforceClient(clients.NewSalesforceClient(srv.URL, time.Second, clients.StaticBearerToken("ignored")))
 
-	sealed, err := prepareBearerForQueue("real-user-jwt", SalesforcePushQueue, "14202478754")
+	sealed, _, err := prepareBearerForQueue("real-user-jwt", SalesforcePushQueue, "14202478754")
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(sealed, bearerSealPrefix))
 
@@ -867,8 +869,12 @@ func TestHandleSalesforceSyncJob_ConsentimentoMergePreservesExistingCategories(t
 		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&uc))
 	assert.True(t, uc.OptIn)
 	require.NotNil(t, uc.CategoryOptIns)
-	assert.False(t, uc.CategoryOptIns["Comunicacao"])
+	assert.True(t, uc.CategoryOptIns["Comunicacao"])
 	assert.True(t, uc.CategoryOptIns["Marketing"])
+	require.NotNil(t, uc.SalesforceConsentimentos)
+	assert.False(t, uc.SalesforceConsentimentos["Comunicacao"].OptIn)
+	assert.Equal(t, "OUT", uc.SalesforceConsentimentos["Comunicacao"].Status)
+	assert.True(t, uc.SalesforceConsentimentos["Marketing"].OptIn)
 }
 
 func TestHandleSalesforceSyncJob_ConsentimentoSameCategoriaDifferentCanal(t *testing.T) {
@@ -917,7 +923,8 @@ func TestHandleSalesforceSyncJob_ConsentimentoSameCategoriaDifferentCanal(t *tes
 	assert.True(t, uc.OptIn)
 	require.NotNil(t, uc.CategoryOptIns)
 	assert.True(t, uc.CategoryOptIns["PREF_X|Portal Pref.Rio"])
-	assert.True(t, uc.CategoryOptIns["PREF_X|WhatsApp"])
+	_, hasRMIWhatsApp := uc.CategoryOptIns["PREF_X|WhatsApp"]
+	assert.False(t, hasRMIWhatsApp)
 	require.NotNil(t, uc.SalesforceConsentimentos)
 	entry := uc.SalesforceConsentimentos["PREF_X|WhatsApp"]
 	assert.Equal(t, "PREF_X", entry.Categoria)
@@ -925,6 +932,8 @@ func TestHandleSalesforceSyncJob_ConsentimentoSameCategoriaDifferentCanal(t *tes
 	assert.Equal(t, "lembrete", entry.Finalidade)
 	assert.Equal(t, "2026-08-27T10:00:00Z", entry.Data)
 	assert.True(t, entry.OptIn)
+	portal := uc.SalesforceConsentimentos["PREF_X|Portal Pref.Rio"]
+	assert.True(t, portal.OptIn)
 }
 
 func TestHandleSalesforceSyncJob_ConsentimentoNullClearsAll(t *testing.T) {
@@ -966,8 +975,10 @@ func TestHandleSalesforceSyncJob_ConsentimentoNullClearsAll(t *testing.T) {
 	var uc models.UserConfig
 	require.NoError(t, worker.mongo.Collection(config.AppConfig.UserConfigCollection).
 		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&uc))
-	assert.False(t, uc.OptIn)
-	assert.Empty(t, uc.CategoryOptIns)
+	assert.True(t, uc.OptIn)
+	require.NotNil(t, uc.CategoryOptIns)
+	assert.True(t, uc.CategoryOptIns["Comunicacao"])
+	assert.True(t, uc.CategoryOptIns["Marketing"])
 	assert.Empty(t, uc.SalesforceConsentimentos)
 }
 
@@ -998,6 +1009,73 @@ func TestHandleSalesforceSyncJob_InvalidConsentimentoJSON(t *testing.T) {
 	err := worker.handleSalesforceSyncJob(context.Background(), job)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "consentimento")
+}
+
+func TestHandleSalesforceSyncJob_RetriesAfterPartialConsentimentoFailure(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+	if config.AppConfig.UserConfigCollection == "" {
+		config.AppConfig.UserConfigCollection = "user_config"
+	}
+
+	cpf := "14202478754"
+	updatedAt := "2026-08-27T17:00:00Z"
+	first := &SyncJob{
+		ID:         "job-sf-partial-1",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:       cpf,
+			Evento:    SalesforceWebhookEventAtualizacao,
+			UpdatedAt: updatedAt,
+			Dados:     json.RawMessage(`{"email":"sf@test.com","consentimento":"not-an-array"}`),
+		},
+	}
+	err := worker.handleSalesforceSyncJob(context.Background(), first)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "consentimento")
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.Email)
+	require.NotNil(t, sd.Email.Principal)
+	require.NotNil(t, sd.Email.Principal.Valor)
+	assert.Equal(t, "sf@test.com", *sd.Email.Principal.Valor)
+	assert.Nil(t, sd.SalesforceUpdatedAt)
+
+	retry := &SyncJob{
+		ID:         "job-sf-partial-2",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:       cpf,
+			Evento:    SalesforceWebhookEventAtualizacao,
+			UpdatedAt: updatedAt,
+			Dados:     json.RawMessage(`{"email":"sf@test.com","consentimento":[{"categoria":"Comunicacao","status":"OUT","motivo":"nao desejo"}]}`),
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), retry))
+
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.SalesforceUpdatedAt)
+	assert.Equal(t, updatedAt, sd.SalesforceUpdatedAt.UTC().Format(time.RFC3339))
+
+	var uc models.UserConfig
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.UserConfigCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&uc))
+	require.NotNil(t, uc.SalesforceConsentimentos)
+	assert.False(t, uc.SalesforceConsentimentos["Comunicacao"].OptIn)
+	assert.Empty(t, uc.CategoryOptIns)
 }
 
 func TestHandleSalesforceSyncJob_InvalidUpdatedAt(t *testing.T) {

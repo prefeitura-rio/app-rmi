@@ -19,7 +19,7 @@ import (
 // PatchSalesforceConsentimento proxies PATCH .../cidadao/{cpf}/consentimento.
 //
 // @Summary Atualizar consentimento no Salesforce
-// @Description Proxy para PATCH /api/private/cidadao/{cpf}/consentimento. Encaminha o JWT do usuário. categoria deve ser valor de picklist SF (ex. PREF_Lembrete_Pagamento). motivo obrigatório quando acao=optout.
+// @Description Proxy PATCH /api/private/cidadao/{cpf}/consentimento com o JWT do usuário. categoria é picklist SF (ex. PREF_Lembrete_Pagamento). motivo obrigatório se acao=optout. Espelho no RMI grava só salesforce_consentimentos; não altera opt_in nem category_opt_ins.
 // @Tags salesforce
 // @Accept json
 // @Produce json
@@ -99,7 +99,7 @@ func ExportSalesforceCidadao(c *gin.Context) {
 // AnonimizarSalesforceCidadao proxies POST .../cidadao/{cpf}/anonimizar.
 //
 // @Summary Solicitar anonimização no Salesforce
-// @Description Proxy para POST /api/private/cidadao/{cpf}/anonimizar (assíncrono). 202 enfileirado; 409 se já houver solicitação aberta.
+// @Description Proxy POST /api/private/cidadao/{cpf}/anonimizar (assíncrono). 202 enfileirado; 409 se já houver solicitação aberta. Em 202 e 409 o RMI associa numeroSolicitacao ao CPF autenticado para o polling.
 // @Tags salesforce
 // @Produce json
 // @Param cpf path string true "CPF do cidadão"
@@ -122,11 +122,15 @@ func AnonimizarSalesforceCidadao(c *gin.Context) {
 	if err != nil {
 		var apiErr *clients.SalesforceAPIError
 		if errors.As(err, &apiErr) && apiErr.IsConflict() && out != nil {
+			persistSalesforceAnonimizacaoOwner(c, out.NumeroSolicitacao, cpf)
 			c.JSON(http.StatusConflict, out)
 			return
 		}
 		writeSalesforceProxyError(c, "anonimizar cidadao", cpf, err)
 		return
+	}
+	if out != nil {
+		persistSalesforceAnonimizacaoOwner(c, out.NumeroSolicitacao, cpf)
 	}
 	c.JSON(http.StatusAccepted, out)
 }
@@ -134,12 +138,13 @@ func AnonimizarSalesforceCidadao(c *gin.Context) {
 // GetSalesforceAnonimizacao proxies GET .../anonimizacao/{numeroSolicitacao}.
 //
 // @Summary Consultar status de anonimização
-// @Description Proxy para GET /api/private/anonimizacao/{numeroSolicitacao}.
+// @Description Proxy GET /api/private/anonimizacao/{numeroSolicitacao}. 403 se não houver prova de posse: CPF no payload do Salesforce deve ser o do caller; se o upstream omitir CPF, só quem criou a solicitação neste API (POST anonimizar) consegue ler.
 // @Tags salesforce
 // @Produce json
 // @Param numeroSolicitacao path string true "Número da solicitação"
 // @Success 200 {object} clients.SalesforceAnonimizacaoStatus
 // @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse "Solicitação não pertence ao usuário autenticado"
 // @Failure 404 {object} clients.SalesforceErrorBody
 // @Failure 502 {object} ErrorResponse
 // @Failure 503 {object} ErrorResponse
@@ -157,7 +162,7 @@ func GetSalesforceAnonimizacao(c *gin.Context) {
 		writeSalesforceProxyError(c, "get anonimizacao", numero, err)
 		return
 	}
-	if !salesforceAnonimizacaoOwnedByCaller(c, out) {
+	if !salesforceAnonimizacaoOwnedByCaller(c, numero, out) {
 		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Access denied"})
 		return
 	}
@@ -272,16 +277,21 @@ func jsonLooksLikeObject(s string) bool {
 	return strings.HasPrefix(s, "{") || strings.HasPrefix(s, "[")
 }
 
+func persistSalesforceAnonimizacaoOwner(c *gin.Context, numero, cpf string) {
+	if strings.TrimSpace(numero) == "" {
+		return
+	}
+	if err := services.StoreSalesforceAnonimizacaoOwner(c.Request.Context(), config.Redis, numero, cpf); err != nil {
+		observability.Logger().Warn("failed to persist salesforce anonimizacao ownership",
+			zap.String("numero", numero),
+			zap.Error(err))
+	}
+}
+
 // salesforceAnonimizacaoOwnedByCaller ensures the polling user can only read their own LGPD request.
-// When Salesforce returns a CPF on the status payload, it must match the authenticated user.
-func salesforceAnonimizacaoOwnedByCaller(c *gin.Context, status *clients.SalesforceAnonimizacaoStatus) bool {
-	if status == nil {
-		return true
-	}
-	cpfInResponse := strings.TrimSpace(status.CPF)
-	if cpfInResponse == "" {
-		return true
-	}
+// Proof of ownership is status.CPF when Salesforce returns it; otherwise the Redis mapping
+// created at POST /anonimizar. Missing proof fails closed (403), including empty-CPF payloads.
+func salesforceAnonimizacaoOwnedByCaller(c *gin.Context, numero string, status *clients.SalesforceAnonimizacaoStatus) bool {
 	claimsVal, ok := c.Get("claims")
 	if !ok {
 		return false
@@ -293,5 +303,18 @@ func salesforceAnonimizacaoOwnedByCaller(c *gin.Context, status *clients.Salesfo
 	if config.AppConfig != nil && claims.HasRole(config.AppConfig.AdminGroup) {
 		return true
 	}
-	return utils.NormalizeCPF(claims.PreferredUsername) == utils.NormalizeCPF(cpfInResponse)
+	caller := utils.NormalizeCPF(claims.PreferredUsername)
+	if caller == "" {
+		return false
+	}
+	if status != nil {
+		if cpfInResponse := strings.TrimSpace(status.CPF); cpfInResponse != "" {
+			return caller == utils.NormalizeCPF(cpfInResponse)
+		}
+	}
+	owner, found := services.LookupSalesforceAnonimizacaoOwner(c.Request.Context(), config.Redis, numero)
+	if !found {
+		return false
+	}
+	return caller == owner
 }

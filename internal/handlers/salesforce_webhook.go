@@ -39,7 +39,7 @@ type SalesforceWebhookResponse struct {
 // and enqueues a salesforce_sync job (origem=salesforce). No GET back to Salesforce.
 //
 // @Summary Webhook Salesforce cidadão
-// @Description Webhook inbound: CPF + delta em dados (mesmo shape do GET Person Account). JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. evento=atualizacao (default) ou anonimizacao; updatedAt opcional. Campo ausente=não alterar; null=limpar; string vazia=valor vazio. Resposta 202 com CPF mascarado. Enfileira salesforce_sync sem GET de volta ao SF.
+// @Description JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. Body: cpf + dados (delta; updatedAt opcional; evento=atualizacao default ou anonimizacao). Ausente=não alterar; null=limpar; \"\"=vazio. Persiste overlay em self_declared; consentimento só em salesforce_consentimentos (não altera opt_in/category_opt_ins do RMI). nome, nomeSocial e dataNascimento no delta são ignorados (não gravam citizens). 202 com CPF mascarado; sem GET de volta ao SF.
 // @Tags salesforce
 // @Accept json
 // @Produce json
@@ -48,6 +48,7 @@ type SalesforceWebhookResponse struct {
 // @Failure 400 {object} ErrorResponse "CPF inválido, dados ausentes/grandes, updatedAt longo ou evento inválido"
 // @Failure 401 {object} ErrorResponse "JWT inválido ou ausente"
 // @Failure 403 {object} ErrorResponse "azp do JWT não está em SALESFORCE_WEBHOOK_CLIENTS"
+// @Failure 500 {object} ErrorResponse "Falha ao enfileirar salesforce_sync (Redis)"
 // @Failure 503 {object} ErrorResponse "Integração Salesforce não configurada"
 // @Security BearerAuth
 // @Router /webhooks/salesforce/cidadao [post]

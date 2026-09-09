@@ -66,7 +66,7 @@ import (
 // @tag.description Operações de verificação de saúde da API
 
 // @tag.name salesforce
-// @tag.description Integração Salesforce Person Account: login sync, webhook inbound (delta), proxies CRM e push assíncrono RMI→SF via sync worker
+// @tag.description Integração Salesforce Person Account: login sync, webhook inbound (delta em self_declared, sem gravar citizens), proxies CRM e push assíncrono RMI→SF via sync worker
 
 func main() {
 	// Initialize logger first

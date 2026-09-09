@@ -2,13 +2,18 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/middleware"
+	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/prefeitura-rio/app-rmi/internal/services"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -236,6 +241,120 @@ func TestGetSalesforceAnonimizacao_ForbiddenOtherUserCPF(t *testing.T) {
 	salesforceProxyRouter().ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestGetSalesforceAnonimizacao_NoCPFWithoutMappingForbidden(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	prevRedis := config.Redis
+	config.SetRedis(nil)
+	t.Cleanup(func() { config.SetRedis(prevRedis) })
+
+	sfSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/private/anonimizacao/PRIVRTBF-NOCPF", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"numeroSolicitacao":"PRIVRTBF-NOCPF",
+			"status":"enfileirado"
+		}`))
+	}))
+	defer sfSrv.Close()
+	withSFConfig(t, sfSrv.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/salesforce/anonimizacao/PRIVRTBF-NOCPF", nil)
+	req.Header.Set("Authorization", "Bearer "+minimalJWT)
+	w := httptest.NewRecorder()
+	salesforceProxyRouter().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func withProxyRedis(t *testing.T) *redisclient.Client {
+	t.Helper()
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+	singleClient := redis.NewClient(&redis.Options{Addr: redisAddr})
+	redisClient := redisclient.NewClient(singleClient)
+	if err := redisClient.Ping(context.Background()).Err(); err != nil {
+		t.Skipf("Redis unavailable: %v", err)
+	}
+	prevRedis := config.Redis
+	config.SetRedis(redisClient)
+	t.Cleanup(func() { config.SetRedis(prevRedis) })
+	return redisClient
+}
+
+func TestGetSalesforceAnonimizacao_NoCPFWithMappingAllowed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rdb := withProxyRedis(t)
+	numero := "PRIVRTBF-OWNED"
+	require.NoError(t, services.StoreSalesforceAnonimizacaoOwner(context.Background(), rdb, numero, testWebhookCPF))
+	t.Cleanup(func() {
+		_ = rdb.Del(context.Background(), "salesforce:anonimizacao:"+numero).Err()
+	})
+
+	sfSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"numeroSolicitacao":"` + numero + `",
+			"status":"enfileirado"
+		}`))
+	}))
+	defer sfSrv.Close()
+	withSFConfig(t, sfSrv.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/salesforce/anonimizacao/"+numero, nil)
+	req.Header.Set("Authorization", "Bearer "+minimalJWT)
+	w := httptest.NewRecorder()
+	salesforceProxyRouter().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), numero)
+}
+
+func TestAnonimizarSalesforceCidadao_PersistsOwnerForPollingWithoutCPF(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rdb := withProxyRedis(t)
+	numero := "PRIVRTBF-CREATE"
+	t.Cleanup(func() {
+		_ = rdb.Del(context.Background(), "salesforce:anonimizacao:"+numero).Err()
+	})
+
+	sfSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{
+				"numeroSolicitacao":"` + numero + `",
+				"status":"enfileirado"
+			}`))
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"numeroSolicitacao":"` + numero + `",
+				"status":"enfileirado"
+			}`))
+		}
+	}))
+	defer sfSrv.Close()
+	withSFConfig(t, sfSrv.URL)
+
+	post := httptest.NewRequest(http.MethodPost, "/v1/salesforce/cidadao/"+testWebhookCPF+"/anonimizar", nil)
+	post.Header.Set("Authorization", "Bearer "+minimalJWT)
+	postRec := httptest.NewRecorder()
+	salesforceProxyRouter().ServeHTTP(postRec, post)
+	require.Equal(t, http.StatusAccepted, postRec.Code)
+
+	owner, ok := services.LookupSalesforceAnonimizacaoOwner(context.Background(), rdb, numero)
+	require.True(t, ok)
+	assert.Equal(t, testWebhookCPF, owner)
+
+	get := httptest.NewRequest(http.MethodGet, "/v1/salesforce/anonimizacao/"+numero, nil)
+	get.Header.Set("Authorization", "Bearer "+minimalJWT)
+	getRec := httptest.NewRecorder()
+	salesforceProxyRouter().ServeHTTP(getRec, get)
+	assert.Equal(t, http.StatusOK, getRec.Code)
 }
 
 func TestListSalesforceChamados_UnauthorizedWithoutJWT(t *testing.T) {

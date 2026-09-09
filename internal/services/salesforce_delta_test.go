@@ -260,19 +260,24 @@ func TestBuildSelfDeclaredDeltaPatch_NomeExibicao(t *testing.T) {
 	assert.Equal(t, "Maria Social", *nome)
 }
 
-func TestBuildCitizenDeltaPatch_NomeAndNomeSocial(t *testing.T) {
-	set, unset := buildCitizenDeltaPatch(map[string]json.RawMessage{
-		"nome":       json.RawMessage(`"João Silva"`),
-		"nomeSocial": json.RawMessage(`"João"`),
-	})
-	require.Contains(t, set, "nome")
-	require.Contains(t, set, "nome_social")
-	assert.Empty(t, unset)
+func TestBuildSelfDeclaredDeltaPatch_DoesNotStampWatermark(t *testing.T) {
+	incoming := time.Date(2026, 8, 27, 17, 0, 0, 0, time.UTC)
+	set, _ := buildSelfDeclaredDeltaPatch(nil, map[string]json.RawMessage{
+		"email": json.RawMessage(`"sf@test.com"`),
+	}, SalesforceWebhookEventAtualizacao, time.Now(), &incoming)
 
-	_, unsetOnly := buildCitizenDeltaPatch(map[string]json.RawMessage{
-		"nome": json.RawMessage(`null`),
-	})
-	assert.Equal(t, "", unsetOnly["nome"])
+	assert.NotContains(t, set, "salesforce_updated_at")
+	assert.Contains(t, set, "email")
+}
+
+func TestSalesforceDeltaHasWork_IgnoresCanonicalCitizenFields(t *testing.T) {
+	fields := map[string]json.RawMessage{
+		"nome":           json.RawMessage(`"João Silva"`),
+		"nomeSocial":     json.RawMessage(`"João"`),
+		"dataNascimento": json.RawMessage(`"1990-05-15"`),
+	}
+	set, unset := buildSelfDeclaredDeltaPatch(nil, fields, SalesforceWebhookEventAtualizacao, time.Now(), nil)
+	assert.False(t, salesforceDeltaHasWork(fields, set, unset))
 }
 
 func TestSalesforceConsentimentoKey(t *testing.T) {

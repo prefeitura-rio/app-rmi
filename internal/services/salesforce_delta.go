@@ -78,8 +78,7 @@ func (w *SyncWorker) applySalesforceDelta(ctx context.Context, cpf, evento, upda
 	}
 
 	set, unset := buildSelfDeclaredDeltaPatch(existingPtr, fields, evento, now, incomingUpdatedAt)
-	citizenSet, citizenUnset := buildCitizenDeltaPatch(fields)
-	if !salesforceDeltaHasWork(fields, set, unset, citizenSet, citizenUnset) {
+	if !salesforceDeltaHasWork(fields, set, unset) {
 		w.logger.Info("salesforce inbound sync: empty delta",
 			zap.String("cpf", cpf))
 		return nil
@@ -98,14 +97,16 @@ func (w *SyncWorker) applySalesforceDelta(ctx context.Context, cpf, evento, upda
 		return fmt.Errorf("failed to apply salesforce delta to self_declared: %w", err)
 	}
 
-	if err := w.applyCitizenSalesforceDelta(ctx, cpf, citizenSet, citizenUnset); err != nil {
-		return fmt.Errorf("failed to apply salesforce delta to citizen: %w", err)
-	}
-
 	if fieldPresent(fields, "consentimento") {
 		if err := w.applySalesforceConsentimentoDelta(ctx, cpf, fields["consentimento"], now); err != nil {
 			return fmt.Errorf("failed to apply salesforce consentimento delta: %w", err)
 		}
+	}
+
+	// Stamp the idempotency watermark only after every mutation succeeded.
+	// Writing it earlier makes a later failure look stale on retry (partial apply, no DLQ).
+	if err := w.stampSalesforceUpdatedAt(ctx, cpf, incomingUpdatedAt, now); err != nil {
+		return fmt.Errorf("failed to stamp salesforce updatedAt: %w", err)
 	}
 
 	w.invalidateSalesforceMirrorCaches(ctx, cpf)
@@ -139,9 +140,7 @@ func buildSelfDeclaredDeltaPatch(existing *models.SelfDeclaredData, fields map[s
 	origem := salesforceOrigem
 	sistema := salesforceSistema
 	set["salesforce_synced_at"] = now
-	if incomingUpdatedAt != nil {
-		set["salesforce_updated_at"] = *incomingUpdatedAt
-	}
+	_ = incomingUpdatedAt // watermark is committed after all mutations succeed
 
 	if evento == SalesforceWebhookEventAnonimizacao {
 		set["salesforce_anonymized"] = true
@@ -243,11 +242,8 @@ func buildSelfDeclaredDeltaPatch(existing *models.SelfDeclaredData, fields map[s
 	return set, unset
 }
 
-func salesforceDeltaHasWork(fields map[string]json.RawMessage, set, unset, citizenSet, citizenUnset bson.M) bool {
+func salesforceDeltaHasWork(fields map[string]json.RawMessage, set, unset bson.M) bool {
 	if fieldPresent(fields, "consentimento") {
-		return true
-	}
-	if len(citizenSet) > 0 || len(citizenUnset) > 0 {
 		return true
 	}
 	for k := range set {
@@ -258,79 +254,18 @@ func salesforceDeltaHasWork(fields map[string]json.RawMessage, set, unset, citiz
 	return len(unset) > 0
 }
 
-func buildCitizenDeltaPatch(fields map[string]json.RawMessage) (bson.M, bson.M) {
-	set := bson.M{}
-	unset := bson.M{}
-
-	if raw, ok := fields["nome"]; ok {
-		applyPlainStringPointerDelta(set, unset, "nome", raw)
-	}
-	if raw, ok := fields["nomeSocial"]; ok {
-		applyPlainStringPointerDelta(set, unset, "nome_social", raw)
-	}
-	if raw, ok := fields["dataNascimento"]; ok {
-		applyCitizenBirthDateDelta(set, unset, raw)
-	}
-
-	return set, unset
-}
-
-func (w *SyncWorker) applyCitizenSalesforceDelta(ctx context.Context, cpf string, set, unset bson.M) error {
-	if len(set) == 0 && len(unset) == 0 {
+func (w *SyncWorker) stampSalesforceUpdatedAt(ctx context.Context, cpf string, incoming *time.Time, now time.Time) error {
+	if incoming == nil || w == nil || w.mongo == nil || config.AppConfig == nil {
 		return nil
 	}
-	if config.AppConfig == nil || strings.TrimSpace(config.AppConfig.CitizenCollection) == "" {
-		return nil
-	}
-	update := bson.M{}
-	if len(set) > 0 {
-		update["$set"] = set
-	}
-	if len(unset) > 0 {
-		update["$unset"] = unset
-	}
-	_, err := w.mongo.Collection(config.AppConfig.CitizenCollection).
-		UpdateOne(ctx, bson.M{"cpf": cpf}, update, options.Update().SetUpsert(true))
+	_, err := w.mongo.Collection(config.AppConfig.SelfDeclaredCollection).UpdateOne(ctx,
+		bson.M{"cpf": cpf},
+		bson.M{"$set": bson.M{
+			"salesforce_updated_at": *incoming,
+			"salesforce_synced_at":  now,
+		}},
+	)
 	return err
-}
-
-func applyCitizenBirthDateDelta(set, unset bson.M, raw json.RawMessage) {
-	if jsonRawIsNull(raw) {
-		unset["nascimento"] = ""
-		return
-	}
-	val, ok := jsonRawAsString(raw)
-	if !ok {
-		return
-	}
-	val = strings.TrimSpace(val)
-	if val == "" {
-		set["nascimento"] = &models.Nascimento{Data: nil}
-		return
-	}
-	t, err := parseSalesforceBirthDate(val)
-	if err != nil {
-		return
-	}
-	set["nascimento"] = &models.Nascimento{Data: &t}
-}
-
-func parseSalesforceBirthDate(raw string) (time.Time, error) {
-	layouts := []string{
-		time.RFC3339Nano,
-		time.RFC3339,
-		"2006-01-02T15:04:05",
-		"2006-01-02",
-	}
-	var lastErr error
-	for _, layout := range layouts {
-		if t, err := time.Parse(layout, raw); err == nil {
-			return t, nil
-		} else {
-			lastErr = err
-		}
-	}
-	return time.Time{}, lastErr
 }
 
 func applyStringSliceDelta(set, unset bson.M, fieldKey string, raw json.RawMessage) {
@@ -601,8 +536,6 @@ func (w *SyncWorker) applySalesforceConsentimentoDelta(ctx context.Context, cpf 
 			bson.M{"cpf": cpf},
 			bson.M{
 				"$set": bson.M{
-					"opt_in":                    false,
-					"category_opt_ins":          map[string]bool{},
 					"salesforce_consentimentos": map[string]models.SalesforceConsentimentoEntry{},
 					"updated_at":                now,
 				},
@@ -623,14 +556,6 @@ func (w *SyncWorker) applySalesforceConsentimentoDelta(ctx context.Context, cpf 
 	var items []clients.SalesforceConsentimento
 	if err := json.Unmarshal(raw, &items); err != nil {
 		return fmt.Errorf("invalid consentimento delta: %w", err)
-	}
-
-	var existing models.UserConfig
-	_ = coll.FindOne(ctx, bson.M{"cpf": cpf}).Decode(&existing)
-
-	categoryOptIns := cloneCategoryOptIns(existing.CategoryOptIns)
-	if categoryOptIns == nil {
-		categoryOptIns = map[string]bool{}
 	}
 
 	set := bson.M{
@@ -659,10 +584,7 @@ func (w *SyncWorker) applySalesforceConsentimentoDelta(ctx context.Context, cpf 
 			Motivo:     strings.TrimSpace(item.Motivo),
 			OptIn:      optInVal,
 		}
-		set["category_opt_ins."+key] = optInVal
-		categoryOptIns[key] = optInVal
 	}
-	set["opt_in"] = anyCategoryOptIn(categoryOptIns)
 
 	_, err := coll.UpdateOne(ctx,
 		bson.M{"cpf": cpf},
@@ -680,26 +602,6 @@ func (w *SyncWorker) applySalesforceConsentimentoDelta(ctx context.Context, cpf 
 	}
 	_ = w.redis.Del(ctx, fmt.Sprintf("user_config:%s", cpf)).Err()
 	return nil
-}
-
-func cloneCategoryOptIns(in map[string]bool) map[string]bool {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make(map[string]bool, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func anyCategoryOptIn(m map[string]bool) bool {
-	for _, v := range m {
-		if v {
-			return true
-		}
-	}
-	return false
 }
 
 func jsonRawIsNull(raw json.RawMessage) bool {

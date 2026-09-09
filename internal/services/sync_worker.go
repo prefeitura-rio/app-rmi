@@ -29,6 +29,7 @@ type SyncWorker struct {
 	degradedMode *DegradedMode
 	stopChan     chan struct{}
 	queues       []string
+	queueCursor  uint64
 	emailSender  EmailSender
 	salesforce   SalesforceCidadaoAPI
 }
@@ -245,8 +246,12 @@ func (w *SyncWorker) processQueuesParallel() {
 	const maxJobsPerCycle = 3
 	jobsProcessed := 0
 
-	// Use round-robin approach to fairly distribute processing across queues
-	for _, queue := range w.queues {
+	// Rotate the starting queue each cycle so later queues (e.g. Salesforce) are not starved
+	// when citizen/phone_mapping/user_config stay continuously non-empty.
+	ordered := rotateQueueOrder(w.queues, w.queueCursor)
+	w.queueCursor++
+
+	for _, queue := range ordered {
 		if jobsProcessed >= maxJobsPerCycle {
 			break
 		}
@@ -274,6 +279,22 @@ func (w *SyncWorker) processQueuesParallel() {
 	if jobsProcessed > 0 {
 		w.logger.Debug("processed jobs in cycle", zap.Int("jobs_processed", jobsProcessed))
 	}
+}
+
+// rotateQueueOrder returns queues starting at cursor % len(queues), wrapping around.
+func rotateQueueOrder(queues []string, cursor uint64) []string {
+	n := len(queues)
+	if n == 0 {
+		return queues
+	}
+	start := int(cursor % uint64(n))
+	if start == 0 {
+		return queues
+	}
+	out := make([]string, n)
+	copy(out, queues[start:])
+	copy(out[n-start:], queues[:start])
+	return out
 }
 
 // getJobNonBlocking gets a job from a specific queue without blocking.

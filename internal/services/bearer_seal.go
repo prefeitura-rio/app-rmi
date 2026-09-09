@@ -12,7 +12,17 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 )
 
-const bearerSealPrefix = "enc:v1:"
+const (
+	bearerSealPrefix = "enc:v1:"
+
+	bearerReasonAbsent               = "absent"
+	bearerReasonSealed               = "sealed"
+	bearerReasonEncryptionKeyMissing = "encryption_key_missing"
+	bearerReasonUnsealFailed         = "unseal_failed"
+	bearerReasonEnqueueFailed        = "enqueue_failed"
+	bearerReasonEnqueued             = "enqueued"
+	bearerReasonAbsentOnJob          = "absent_on_job"
+)
 
 func bearerEncryptionKey() []byte {
 	if config.AppConfig == nil {
@@ -25,19 +35,24 @@ func bearerAAD(jobType, jobKey string) []byte {
 	return []byte(jobType + "\x00" + jobKey)
 }
 
-func prepareBearerForQueue(plain, jobType, jobKey string) (string, error) {
+func prepareBearerForQueue(plain, jobType, jobKey string) (string, string, error) {
 	plain = strings.TrimSpace(plain)
 	if plain == "" {
-		return "", nil
+		return "", bearerReasonAbsent, nil
 	}
 	key := bearerEncryptionKey()
 	if len(key) == 0 {
 		if jobType == SalesforcePushQueue {
-			return "", fmt.Errorf("SYNC_JOB_BEARER_ENCRYPTION_KEY is required to enqueue salesforce push")
+			return "", bearerReasonEncryptionKeyMissing, fmt.Errorf("SYNC_JOB_BEARER_ENCRYPTION_KEY is required to enqueue salesforce push")
 		}
-		return plain, nil
+		// Never persist a JWT in plaintext. Other queues omit the token until a key is configured.
+		return "", bearerReasonEncryptionKeyMissing, nil
 	}
-	return sealBearerToken(key, plain, bearerAAD(jobType, jobKey))
+	sealed, err := sealBearerToken(key, plain, bearerAAD(jobType, jobKey))
+	if err != nil {
+		return "", "", err
+	}
+	return sealed, bearerReasonSealed, nil
 }
 
 func bearerFromQueue(stored, jobType, jobKey string) (string, error) {

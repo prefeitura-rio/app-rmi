@@ -51,13 +51,18 @@ func TestPrepareBearerForQueue_RequiresKeyForSalesforcePush(t *testing.T) {
 	config.AppConfig = &config.Config{}
 	defer func() { config.AppConfig = prev }()
 
-	_, err := prepareBearerForQueue("user-jwt", SalesforcePushQueue, "14202478754")
+	_, _, err := prepareBearerForQueue("user-jwt", SalesforcePushQueue, "14202478754")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "SYNC_JOB_BEARER_ENCRYPTION_KEY")
 
-	plain, err := prepareBearerForQueue("user-jwt", "self_declared_email", "14202478754")
+	plain, reason, err := prepareBearerForQueue("user-jwt", "self_declared_email", "14202478754")
 	require.NoError(t, err)
-	assert.Equal(t, "user-jwt", plain)
+	assert.Empty(t, plain)
+	assert.Equal(t, bearerReasonEncryptionKeyMissing, reason)
+
+	_, reason, err = prepareBearerForQueue("", "self_declared_email", "14202478754")
+	require.NoError(t, err)
+	assert.Equal(t, bearerReasonAbsent, reason)
 }
 
 func TestPrepareBearerForQueue_SealsWhenKeyPresent(t *testing.T) {
@@ -65,8 +70,9 @@ func TestPrepareBearerForQueue_SealsWhenKeyPresent(t *testing.T) {
 	config.AppConfig = &config.Config{SyncJobBearerEncryptionKey: testSyncJobBearerKey}
 	defer func() { config.AppConfig = prev }()
 
-	sealed, err := prepareBearerForQueue("user-jwt", SalesforcePushQueue, "14202478754")
+	sealed, reason, err := prepareBearerForQueue("user-jwt", SalesforcePushQueue, "14202478754")
 	require.NoError(t, err)
+	assert.Equal(t, bearerReasonSealed, reason)
 	assert.True(t, strings.HasPrefix(sealed, bearerSealPrefix))
 	assert.NotContains(t, sealed, "user-jwt")
 

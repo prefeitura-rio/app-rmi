@@ -189,7 +189,7 @@ func EnqueueSalesforcePushJob(ctx context.Context, redis *redisclient.Client, cp
 		return fmt.Errorf("bearer token is required for salesforce push")
 	}
 
-	sealed, err := prepareBearerForQueue(bearerToken, SalesforcePushQueue, cpf)
+	sealed, _, err := prepareBearerForQueue(bearerToken, SalesforcePushQueue, cpf)
 	if err != nil {
 		return err
 	}
@@ -282,35 +282,54 @@ func (w *SyncWorker) maybeEnqueueSalesforcePush(job *SyncJob) {
 	if bearer != "" {
 		opened, err := bearerFromQueue(bearer, job.Type, job.Key)
 		if err != nil {
-			w.logger.Warn("skipping salesforce push enqueue: failed to open bearer token",
-				zap.String("job_id", job.ID),
-				zap.String("type", job.Type),
-				zap.String("cpf", job.Key),
-				zap.Error(err))
+			w.logSalesforcePushEnqueue(job, bearerReasonUnsealFailed, "skipping salesforce push enqueue: could not unseal bearer token", err)
 			return
 		}
 		bearer = opened
 	}
 	if bearer == "" {
-		w.logger.Debug("skipping salesforce push enqueue: missing bearer token on sync job",
-			zap.String("job_id", job.ID),
-			zap.String("type", job.Type),
-			zap.String("cpf", job.Key))
+		reason := bearerReasonAbsentOnJob
+		msg := "skipping salesforce push enqueue: sync job has no bearer token"
+		if len(bearerEncryptionKey()) == 0 {
+			reason = bearerReasonEncryptionKeyMissing
+			msg = "skipping salesforce push enqueue: job has no bearer (SYNC_JOB_BEARER_ENCRYPTION_KEY not configured)"
+		}
+		w.logSalesforcePushEnqueue(job, reason, msg, nil)
 		return
 	}
 	ctx := context.Background()
 	if err := EnqueueSalesforcePushJob(ctx, w.redis, job.Key, bearer); err != nil {
-		w.logger.Warn("failed to enqueue salesforce push after sync",
-			zap.String("job_id", job.ID),
-			zap.String("type", job.Type),
-			zap.String("cpf", job.Key),
-			zap.Error(err))
+		w.logSalesforcePushEnqueue(job, bearerReasonEnqueueFailed, "failed to enqueue salesforce push after sync", err)
 		return
 	}
-	w.logger.Debug("enqueued salesforce push after sync",
+	w.logSalesforcePushEnqueue(job, bearerReasonEnqueued, "enqueued salesforce push after sync", nil)
+}
+
+func (w *SyncWorker) logSalesforcePushEnqueue(job *SyncJob, reason, msg string, err error) {
+	if w == nil || w.logger == nil || job == nil {
+		return
+	}
+	fields := []zap.Field{
+		zap.String("event", "salesforce_push"),
+		zap.String("stage", "enqueue"),
+		zap.String("reason", reason),
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
-		zap.String("cpf", job.Key))
+		zap.String("cpf", job.Key),
+	}
+	if err != nil {
+		fields = append(fields, zap.Error(err))
+		w.logger.Warn(msg, fields...)
+		return
+	}
+	switch reason {
+	case bearerReasonEnqueued:
+		w.logger.Debug(msg, fields...)
+	case bearerReasonAbsentOnJob:
+		w.logger.Info(msg, fields...)
+	default:
+		w.logger.Warn(msg, fields...)
+	}
 }
 
 func (w *SyncWorker) handleSalesforceSyncJob(ctx context.Context, job *SyncJob) error {
@@ -368,15 +387,15 @@ func (w *SyncWorker) handleSalesforcePushJob(ctx context.Context, job *SyncJob) 
 		return fmt.Errorf("cpf is required for salesforce push")
 	}
 	if bearer == "" {
-		return fmt.Errorf("bearer token is required for salesforce push")
+		return fmt.Errorf("salesforce push failed: bearer token absent on job")
 	}
 	opened, err := bearerFromQueue(bearer, job.Type, job.Key)
 	if err != nil {
-		return newNonRetryableSyncError(fmt.Errorf("salesforce push failed: %w", err))
+		return newNonRetryableSyncError(fmt.Errorf("salesforce push failed: could not unseal bearer token: %w", err))
 	}
 	bearer = opened
 	if bearer == "" {
-		return fmt.Errorf("bearer token is required for salesforce push")
+		return fmt.Errorf("salesforce push failed: bearer token absent on job")
 	}
 
 	sf := w.salesforce

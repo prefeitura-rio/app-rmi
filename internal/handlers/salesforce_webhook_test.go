@@ -37,6 +37,28 @@ func webhookPayload(cpf string) string {
 	return `{"cpf":"` + cpf + `","evento":"atualizacao","dados":{"cpf":"` + cpf + `","email":"maria@test.com","genero":"Mulher_cisgenero","accountId":"001be00000XqUOzAAN"}}`
 }
 
+func withSalesforceSyncQueueRedis(t *testing.T) *redisclient.Client {
+	t.Helper()
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+	singleClient := redis.NewClient(&redis.Options{Addr: redisAddr})
+	redisClient := redisclient.NewClient(singleClient)
+	if err := redisClient.Ping(context.Background()).Err(); err != nil {
+		t.Skipf("Redis unavailable: %v", err)
+	}
+	queue := "sync:queue:" + services.SalesforceSyncQueue
+	require.NoError(t, redisClient.Del(context.Background(), queue).Err())
+	prevRedis := config.Redis
+	config.SetRedis(redisClient)
+	t.Cleanup(func() {
+		_ = redisClient.Del(context.Background(), queue).Err()
+		config.SetRedis(prevRedis)
+	})
+	return redisClient
+}
+
 func salesforceWebhookRouter() *gin.Engine {
 	r := gin.New()
 	r.POST("/v1/webhooks/salesforce/cidadao",
@@ -151,21 +173,7 @@ func TestHandleSalesforceCidadaoWebhook_MissingDados(t *testing.T) {
 func TestHandleSalesforceCidadaoWebhook_Success_UsesPayloadNoGET(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-	singleClient := redis.NewClient(&redis.Options{Addr: redisAddr})
-	redisClient := redisclient.NewClient(singleClient)
-	if err := redisClient.Ping(context.Background()).Err(); err != nil {
-		t.Skipf("Redis unavailable: %v", err)
-	}
-	prevRedis := config.Redis
-	config.SetRedis(redisClient)
-	defer func() {
-		config.SetRedis(prevRedis)
-		_ = redisClient.Del(context.Background(), "sync:queue:"+services.SalesforceSyncQueue).Err()
-	}()
+	redisClient := withSalesforceSyncQueueRedis(t)
 
 	prev := config.AppConfig
 	config.AppConfig = &config.Config{
@@ -223,21 +231,7 @@ func TestHandleSalesforceCidadaoWebhook_InvalidEvento(t *testing.T) {
 func TestHandleSalesforceCidadaoWebhook_AnonimizacaoEvento(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-	singleClient := redis.NewClient(&redis.Options{Addr: redisAddr})
-	redisClient := redisclient.NewClient(singleClient)
-	if err := redisClient.Ping(context.Background()).Err(); err != nil {
-		t.Skipf("Redis unavailable: %v", err)
-	}
-	prevRedis := config.Redis
-	config.SetRedis(redisClient)
-	defer func() {
-		config.SetRedis(prevRedis)
-		_ = redisClient.Del(context.Background(), "sync:queue:"+services.SalesforceSyncQueue).Err()
-	}()
+	redisClient := withSalesforceSyncQueueRedis(t)
 
 	prev := config.AppConfig
 	config.AppConfig = &config.Config{
@@ -386,21 +380,7 @@ func TestHandleSalesforceCidadaoWebhook_MalformedJSON(t *testing.T) {
 func TestHandleSalesforceCidadaoWebhook_EmptyDadosObject(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-	singleClient := redis.NewClient(&redis.Options{Addr: redisAddr})
-	redisClient := redisclient.NewClient(singleClient)
-	if err := redisClient.Ping(context.Background()).Err(); err != nil {
-		t.Skipf("Redis unavailable: %v", err)
-	}
-	prevRedis := config.Redis
-	config.SetRedis(redisClient)
-	defer func() {
-		config.SetRedis(prevRedis)
-		_ = redisClient.Del(context.Background(), "sync:queue:"+services.SalesforceSyncQueue).Err()
-	}()
+	_ = withSalesforceSyncQueueRedis(t)
 
 	prev := config.AppConfig
 	config.AppConfig = &config.Config{
