@@ -29,7 +29,9 @@ type SyncWorker struct {
 	degradedMode *DegradedMode
 	stopChan     chan struct{}
 	queues       []string
+	queueCursor  uint64
 	emailSender  EmailSender
+	salesforce   SalesforceCidadaoAPI
 }
 
 // NewSyncWorker creates a new sync worker
@@ -43,6 +45,7 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 		degradedMode: degradedMode,
 		stopChan:     make(chan struct{}),
 		emailSender:  ResolveDefaultEmailSender(logger),
+		salesforce:   nil,
 		queues: []string{
 			"citizen",
 			"phone_mapping",
@@ -62,6 +65,8 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 			"self_declared_deficiencia",
 			"cf_lookup",
 			MobilidadeInviteEmailQueue,
+			SalesforceSyncQueue,
+			SalesforcePushQueue,
 		},
 	}
 }
@@ -69,6 +74,11 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 // SetEmailSender overrides the email sender (used by tests).
 func (w *SyncWorker) SetEmailSender(sender EmailSender) {
 	w.emailSender = sender
+}
+
+// SetSalesforceClient overrides the Salesforce client (used by tests).
+func (w *SyncWorker) SetSalesforceClient(client SalesforceCidadaoAPI) {
+	w.salesforce = client
 }
 
 // Start starts the worker
@@ -179,7 +189,12 @@ func (w *SyncWorker) recoverStaleInflightJobs() {
 
 // usesReliableQueue reports whether the queue uses RPOPLPUSH + processing list (needs hash tags on cluster).
 func usesReliableQueue(queue string) bool {
-	return queue == MobilidadeInviteEmailQueue
+	switch queue {
+	case MobilidadeInviteEmailQueue, SalesforceSyncQueue, SalesforcePushQueue:
+		return true
+	default:
+		return false
+	}
 }
 
 func syncQueueKey(queue string) string {
@@ -236,8 +251,12 @@ func (w *SyncWorker) processQueuesParallel() {
 	const maxJobsPerCycle = 3
 	jobsProcessed := 0
 
-	// Use round-robin approach to fairly distribute processing across queues
-	for _, queue := range w.queues {
+	// Rotate the starting queue each cycle so later queues (e.g. Salesforce) are not starved
+	// when citizen/phone_mapping/user_config stay continuously non-empty.
+	ordered := rotateQueueOrder(w.queues, w.queueCursor)
+	w.queueCursor++
+
+	for _, queue := range ordered {
 		if jobsProcessed >= maxJobsPerCycle {
 			break
 		}
@@ -265,6 +284,22 @@ func (w *SyncWorker) processQueuesParallel() {
 	if jobsProcessed > 0 {
 		w.logger.Debug("processed jobs in cycle", zap.Int("jobs_processed", jobsProcessed))
 	}
+}
+
+// rotateQueueOrder returns queues starting at cursor % len(queues), wrapping around.
+func rotateQueueOrder(queues []string, cursor uint64) []string {
+	n := len(queues)
+	if n == 0 {
+		return queues
+	}
+	start := int(cursor % uint64(n))
+	if start == 0 {
+		return queues
+	}
+	out := make([]string, n)
+	copy(out, queues[start:])
+	copy(out[n-start:], queues[:start])
+	return out
 }
 
 // getJobNonBlocking gets a job from a specific queue without blocking.
@@ -537,19 +572,22 @@ func (w *SyncWorker) handleSyncSuccess(job *SyncJob) {
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
 		zap.String("key", job.Key))
+
+	w.maybeEnqueueSalesforcePush(job)
 }
 
 // handleSyncFailure handles a failed sync
 func (w *SyncWorker) handleSyncFailure(job *SyncJob, err error) {
-	job.RetryCount++
-
 	var persisted bool
-	if job.RetryCount >= job.MaxRetries {
-		// Move to dead letter queue
+	if isNonRetryableSyncError(err) {
 		persisted = w.moveToDLQ(job, err)
 	} else {
-		// Re-queue with backoff
-		persisted = w.requeueJob(job)
+		job.RetryCount++
+		if job.RetryCount >= job.MaxRetries {
+			persisted = w.moveToDLQ(job, err)
+		} else {
+			persisted = w.requeueJob(job)
+		}
 	}
 	// Reliable-queue requeue/DLQ already removes processing+claim atomically.
 	// For other paths, ack only after the job is safely back on a Redis list.
@@ -558,11 +596,56 @@ func (w *SyncWorker) handleSyncFailure(job *SyncJob, err error) {
 	}
 }
 
+// redactSyncJobSecrets returns a copy of job without bearer tokens for DLQ persistence.
+func redactSyncJobSecrets(job SyncJob) SyncJob {
+	job.BearerToken = ""
+	job.Data = redactBearerFromJobData(job.Data)
+	return job
+}
+
+func redactBearerFromJobData(data interface{}) interface{} {
+	if data == nil {
+		return nil
+	}
+	switch v := data.(type) {
+	case SalesforcePushPayload:
+		v.BearerToken = ""
+		return v
+	case *SalesforcePushPayload:
+		if v == nil {
+			return v
+		}
+		cp := *v
+		cp.BearerToken = ""
+		return cp
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(v))
+		for k, val := range v {
+			if k == "bearer_token" {
+				continue
+			}
+			out[k] = val
+		}
+		return out
+	default:
+		raw, err := json.Marshal(data)
+		if err != nil {
+			return data
+		}
+		var m map[string]interface{}
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return data
+		}
+		delete(m, "bearer_token")
+		return m
+	}
+}
+
 // moveToDLQ moves a failed job to the dead letter queue.
 // Returns true when the job was successfully written to the DLQ.
 func (w *SyncWorker) moveToDLQ(job *SyncJob, err error) bool {
 	dlqJob := DLQJob{
-		OriginalJob: *job,
+		OriginalJob: redactSyncJobSecrets(*job),
 		Error:       err.Error(),
 		FailedAt:    time.Now(),
 	}
@@ -757,6 +840,14 @@ func (w *SyncWorker) handleSpecialJobTypes(ctx context.Context, job *SyncJob) er
 	// Mobilidade conductor invite email
 	if job.Type == MobilidadeInviteEmailQueue || job.Collection == MobilidadeInviteEmailQueue {
 		return w.handleMobilidadeInviteEmailJob(ctx, job)
+	}
+
+	if job.Type == SalesforceSyncQueue || job.Collection == SalesforceSyncQueue {
+		return w.handleSalesforceSyncJob(ctx, job)
+	}
+
+	if job.Type == SalesforcePushQueue || job.Collection == SalesforcePushQueue {
+		return w.handleSalesforcePushJob(ctx, job)
 	}
 
 	// Not a special job type

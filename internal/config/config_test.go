@@ -1248,3 +1248,29 @@ func TestLoadConfig_SalesforceSuccess(t *testing.T) {
 		t.Errorf("SFMCSubdomain = %v, want mcpv1-test", AppConfig.SFMCSubdomain)
 	}
 }
+
+func TestParseSyncJobBearerEncryptionKey(t *testing.T) {
+	got, err := parseSyncJobBearerEncryptionKey("")
+	if err != nil {
+		t.Fatalf("empty key error = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("empty key = %v, want nil", got)
+	}
+
+	hexKey := strings.Repeat("ab", 32)
+	got, err = parseSyncJobBearerEncryptionKey(hexKey)
+	if err != nil {
+		t.Fatalf("valid hex error = %v", err)
+	}
+	if len(got) != 32 {
+		t.Fatalf("valid hex len = %d, want 32", len(got))
+	}
+
+	if _, err := parseSyncJobBearerEncryptionKey("not-hex"); err == nil {
+		t.Fatal("expected error for non-hex key")
+	}
+	if _, err := parseSyncJobBearerEncryptionKey("aa"); err == nil {
+		t.Fatal("expected error for short key")
+	}
+}

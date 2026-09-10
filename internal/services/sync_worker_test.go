@@ -35,6 +35,7 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 	config.AppConfig.CitizenCollection = "test_citizens"
 	config.AppConfig.SelfDeclaredCollection = "test_self_declared"
 	config.AppConfig.UserConfigCollection = "test_user_config"
+	config.AppConfig.SyncJobBearerEncryptionKey = testSyncJobBearerKey
 
 	// Use shared MongoDB connection
 	ctx := context.Background()
@@ -72,6 +73,7 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 			"self_declared:*",
 			"sync:queue:*",
 			"sync:dlq:*",
+			"salesforce:anonimizacao:*",
 			"phone_mapping:*",
 			"user_config:*",
 			"opt_in_history:*",
@@ -136,6 +138,8 @@ func TestNewSyncWorker(t *testing.T) {
 		"self_declared_deficiencia",
 		"cf_lookup",
 		MobilidadeInviteEmailQueue,
+		SalesforceSyncQueue,
+		SalesforcePushQueue,
 	}
 
 	assert.Equal(t, len(expectedQueues), len(worker.queues))
@@ -339,6 +343,76 @@ func TestSyncWorker_ProcessQueuesParallel_MaxJobsLimit(t *testing.T) {
 	queueLen, err := worker.redis.LLen(ctx, queueKey).Result()
 	require.NoError(t, err)
 	assert.Greater(t, queueLen, int64(0), "Should have some jobs remaining after processing")
+}
+
+func TestRotateQueueOrder(t *testing.T) {
+	queues := []string{"citizen", "phone_mapping", SalesforceSyncQueue}
+	assert.Equal(t, queues, rotateQueueOrder(queues, 0))
+	assert.Equal(t, []string{"phone_mapping", SalesforceSyncQueue, "citizen"}, rotateQueueOrder(queues, 1))
+	assert.Equal(t, []string{SalesforceSyncQueue, "citizen", "phone_mapping"}, rotateQueueOrder(queues, 2))
+	assert.Equal(t, queues, rotateQueueOrder(queues, 3))
+	assert.Empty(t, rotateQueueOrder(nil, 4))
+}
+
+func TestProcessQueuesParallel_RotatesStartSoLaterQueuesAreNotStarved(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queues := []string{"rr_starvation_a", "rr_starvation_b", "rr_starvation_c", "rr_starvation_sf"}
+	worker.queues = queues
+	worker.queueCursor = 0
+
+	keys := make([]string, len(queues))
+	for i, q := range queues {
+		keys[i] = "sync:queue:" + q
+	}
+	require.NoError(t, worker.redis.Del(ctx, keys...).Err())
+	t.Cleanup(func() {
+		_ = worker.redis.Del(ctx, keys...).Err()
+	})
+
+	pushJob := func(queue string, n int) {
+		t.Helper()
+		job := SyncJob{
+			ID:         uuid.New().String(),
+			Type:       "citizen",
+			Key:        fmt.Sprintf("rr%s%d", queue, n),
+			Collection: config.AppConfig.CitizenCollection,
+			Data: map[string]interface{}{
+				"cpf":  fmt.Sprintf("rr%s%d", queue, n),
+				"nome": queue,
+			},
+			Timestamp:  time.Now(),
+			RetryCount: 0,
+			MaxRetries: 3,
+		}
+		jobBytes, err := json.Marshal(job)
+		require.NoError(t, err)
+		require.NoError(t, worker.redis.LPush(ctx, "sync:queue:"+queue, string(jobBytes)).Err())
+	}
+
+	// Keep the first three queues non-empty so a cursor that always starts at 0
+	// would never reach the last queue (max 3 jobs, one per queue per cycle).
+	for _, q := range queues {
+		pushJob(q, 1)
+		pushJob(q, 2)
+	}
+
+	sfKey := "sync:queue:" + queues[3]
+	n, err := worker.redis.LLen(ctx, sfKey).Result()
+	require.NoError(t, err)
+	require.Equal(t, int64(2), n)
+
+	worker.processQueuesParallel()
+	n, err = worker.redis.LLen(ctx, sfKey).Result()
+	require.NoError(t, err)
+	require.Equal(t, int64(2), n, "first cycle starts at the front and exhausts the 3-job budget before Salesforce")
+
+	worker.processQueuesParallel()
+	n, err = worker.redis.LLen(ctx, sfKey).Result()
+	require.NoError(t, err)
+	require.Equal(t, int64(1), n, "second cycle must rotate so the last queue is visited")
 }
 
 // TestSyncWorker_SyncToMongoDB_CitizenSuccess tests successful citizen sync
@@ -818,6 +892,13 @@ func TestSyncQueueKeys_HashTaggedForReliableQueue(t *testing.T) {
 	assert.Equal(t, "sync:queue:{mobilidade_invite_email}", syncQueueKey(MobilidadeInviteEmailQueue))
 	assert.Equal(t, "sync:processing:{mobilidade_invite_email}", syncProcessingKey(MobilidadeInviteEmailQueue))
 	assert.Equal(t, "sync:dlq:{mobilidade_invite_email}", syncDLQKey(MobilidadeInviteEmailQueue))
+	assert.Equal(t, "sync:queue:{salesforce_sync}", syncQueueKey(SalesforceSyncQueue))
+	assert.Equal(t, "sync:processing:{salesforce_sync}", syncProcessingKey(SalesforceSyncQueue))
+	assert.Equal(t, "sync:dlq:{salesforce_sync}", syncDLQKey(SalesforceSyncQueue))
+	assert.Equal(t, "sync:queue:{salesforce_push}", syncQueueKey(SalesforcePushQueue))
+	assert.Equal(t, "sync:dlq:{salesforce_push}", syncDLQKey(SalesforcePushQueue))
+	assert.True(t, usesReliableQueue(SalesforceSyncQueue))
+	assert.True(t, usesReliableQueue(SalesforcePushQueue))
 	assert.Equal(t, "sync:queue:citizen", syncQueueKey("citizen"))
 }
 

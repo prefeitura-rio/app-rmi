@@ -11,6 +11,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.uber.org/zap"
 )
 
@@ -49,8 +50,10 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		observability.Logger().Debug("successfully extracted claims from JWT token", zap.String("user_sub", claims.SUB))
 
-		// Store claims in context for later use
+		// Store claims and raw bearer for handlers / DataManager → Salesforce push
 		c.Set("claims", claims)
+		c.Set("bearer_token", token)
+		c.Request = c.Request.WithContext(utils.ContextWithBearerToken(c.Request.Context(), token))
 		c.Next()
 	}
 }
@@ -141,6 +144,47 @@ func RequireAdmin() gin.HandlerFunc {
 		}
 
 		c.Next()
+	}
+}
+
+// RequireSalesforceWebhookClient allows only JWTs whose azp is in SalesforceWebhookClients.
+// The Salesforce integration obtains that JWT via Keycloak (OAuth); RMI rejects other clients.
+func RequireSalesforceWebhookClient() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if config.AppConfig == nil || len(config.AppConfig.SalesforceWebhookClients) == 0 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "salesforce webhook clients not configured"})
+			c.Abort()
+			return
+		}
+
+		claims, exists := c.Get("claims")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Claims not found"})
+			c.Abort()
+			return
+		}
+
+		jwtClaims, ok := claims.(*models.JWTClaims)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid claims type"})
+			c.Abort()
+			return
+		}
+
+		azp := strings.TrimSpace(jwtClaims.AZP)
+		for _, allowed := range config.AppConfig.SalesforceWebhookClients {
+			if azp != "" && azp == strings.TrimSpace(allowed) {
+				c.Next()
+				return
+			}
+		}
+
+		observability.Logger().Warn("salesforce webhook client rejected",
+			zap.String("azp", azp),
+			zap.String("remote_addr", c.ClientIP()),
+			zap.String("path", c.Request.URL.Path))
+		c.JSON(http.StatusForbidden, gin.H{"error": "salesforce webhook client not allowed"})
+		c.Abort()
 	}
 }
 

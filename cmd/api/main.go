@@ -65,6 +65,9 @@ import (
 // @tag.name health
 // @tag.description Operações de verificação de saúde da API
 
+// @tag.name salesforce
+// @tag.description Integração Salesforce Person Account: login sync, webhook inbound (delta em self_declared, sem gravar citizens), proxies CRM e push assíncrono RMI→SF via sync worker
+
 func main() {
 	// Initialize logger first
 	if err := logging.InitLogger(); err != nil {
@@ -165,6 +168,13 @@ func main() {
 		// Health check endpoint (no auth required)
 		v1.GET("/health", handlers.HealthCheck)
 
+		// Login sync orchestrator (Bearer JWT → Salesforce Person Account)
+		auth := v1.Group("/auth")
+		auth.Use(middleware.AuthMiddleware())
+		{
+			auth.GET("/validate", handlers.ValidateAuth)
+		}
+
 		// Metrics endpoint (no auth required) - for Prometheus scraping
 		v1.GET("/metrics", handlers.MetricsHandler)
 
@@ -256,6 +266,25 @@ func main() {
 			public.GET("/family-income/options", handlers.GetFamilyIncomeOptions)
 			public.GET("/education/options", handlers.GetEducationOptions)
 			public.GET("/disability/options", handlers.GetDisabilityOptions)
+		}
+
+		// Salesforce inbound webhook (Keycloak JWT from SF client — azp allowlist)
+		webhooks := v1.Group("/webhooks")
+		webhooks.Use(middleware.AuthMiddleware(), middleware.RequireSalesforceWebhookClient())
+		{
+			webhooks.POST("/salesforce/cidadao", handlers.HandleSalesforceCidadaoWebhook)
+		}
+
+		// Salesforce CRM proxies (user JWT forwarded to SF; additive — does not alter /citizen behavior)
+		sf := v1.Group("/salesforce")
+		sf.Use(middleware.AuthMiddleware())
+		{
+			sf.PATCH("/cidadao/:cpf/consentimento", middleware.RequireOwnCPF(), handlers.PatchSalesforceConsentimento)
+			sf.GET("/cidadao/:cpf/exportar", middleware.RequireOwnCPF(), handlers.ExportSalesforceCidadao)
+			sf.POST("/cidadao/:cpf/anonimizar", middleware.RequireOwnCPF(), handlers.AnonimizarSalesforceCidadao)
+			sf.GET("/anonimizacao/:numeroSolicitacao", handlers.GetSalesforceAnonimizacao)
+			sf.GET("/chamados", handlers.ListSalesforceChamados)
+			sf.GET("/chamados/:protocolo", handlers.GetSalesforceChamado)
 		}
 
 		// Public avatar endpoints (no auth required)

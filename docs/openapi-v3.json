@@ -1166,6 +1166,955 @@
         }
       }
     },
+    "/admin/cpf-secretaria/{cpf}": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Retorna todos os vínculos de secretaria associados a um CPF na base de apoio.",
+        "tags": [
+          "admin",
+          "cpf-secretaria"
+        ],
+        "summary": "Listar vínculos CPF-Secretaria",
+        "parameters": [
+          {
+            "description": "CPF do usuário (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.CPFSecretariaListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Vincula um CPF a uma secretaria (cd_ua SICI) na base de apoio. Um CPF pode ter múltiplos vínculos.",
+        "tags": [
+          "admin",
+          "cpf-secretaria"
+        ],
+        "summary": "Adicionar vínculo CPF-Secretaria",
+        "parameters": [
+          {
+            "description": "CPF do usuário (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.AddCPFSecretariaRequest"
+              }
+            }
+          },
+          "description": "cd_ua da secretaria",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.CPFSecretariaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/cpf-secretaria/{cpf}/{cd_ua}": {
+      "delete": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Remove o vínculo entre um CPF e uma secretaria específica.",
+        "tags": [
+          "admin",
+          "cpf-secretaria"
+        ],
+        "summary": "Remover vínculo CPF-Secretaria",
+        "parameters": [
+          {
+            "description": "CPF do usuário (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Código da UA (SICI)",
+            "name": "cd_ua",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/mobilidade/vehicle-brands": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Lista completa de marcas do catálogo, incluindo soft-deleted (admin).",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Listar marcas (admin)",
+        "responses": {
+          "200": {
+            "description": "Lista tipada de marcas em data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleBrandsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Cadastra uma marca no catálogo. ID gerado no backend (brand_&lt;slug&gt;); is_other=false.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Criar marca (admin)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.VehicleBrandCreateRequest"
+              }
+            }
+          },
+          "description": "Nome da marca",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Marca criada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleBrand"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validação inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nome ou ID já existente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/mobilidade/vehicle-brands/{brand_id}": {
+      "delete": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Soft-delete de marca. 409 se houver modelos ativos ou veículos referenciando. Sentinel brand_outro não pode ser excluída.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Excluir marca (admin, soft-delete)",
+        "parameters": [
+          {
+            "description": "ID da marca",
+            "name": "brand_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Marca excluída"
+          },
+          "400": {
+            "description": "Sentinel ou validação",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Marca não encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Modelos ativos ou veículos referenciando",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza o nome de uma marca ativa. Sentinel brand_outro não pode ser alterada. 409 se referenciada por veículo.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Atualizar marca (admin)",
+        "parameters": [
+          {
+            "description": "ID da marca",
+            "name": "brand_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.VehicleBrandUpdateRequest"
+              }
+            }
+          },
+          "description": "Campos a atualizar",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Marca atualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleBrand"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validação inválida ou sentinel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Marca não encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflito (nome duplicado ou veículo referenciando)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/mobilidade/vehicle-models": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Lista completa de modelos, incluindo soft-deleted. Filtro opcional por brand_id.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Listar modelos (admin)",
+        "parameters": [
+          {
+            "description": "Filtrar por ID da marca",
+            "name": "brand_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista tipada de modelos em data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleModelsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Cadastra um modelo vinculado a brand_id com vehicle_type. ID gerado no backend; is_other=false.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Criar modelo (admin)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.VehicleModelCreateRequest"
+              }
+            }
+          },
+          "description": "Dados do modelo",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Modelo criado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validação inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Marca não encontrada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nome ou ID já existente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/mobilidade/vehicle-models/{model_id}": {
+      "delete": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Soft-delete de modelo. 409 se veículos referenciarem. Sentinel model_outro não pode ser excluído.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Excluir modelo (admin, soft-delete)",
+        "parameters": [
+          {
+            "description": "ID do modelo",
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Modelo excluído"
+          },
+          "400": {
+            "description": "Sentinel ou validação",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Modelo não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Veículos referenciando",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza nome, vehicle_type e/ou brand_id de um modelo ativo. Sentinel model_outro não pode ser alterado. 409 se referenciado por veículo.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Atualizar modelo (admin)",
+        "parameters": [
+          {
+            "description": "ID do modelo",
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.VehicleModelUpdateRequest"
+              }
+            }
+          },
+          "description": "Campos a atualizar",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Modelo atualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validação inválida ou sentinel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Modelo ou marca não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflito (nome duplicado ou veículo referenciando)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/notification-categories": {
       "post": {
         "security": [
@@ -1538,6 +2487,62 @@
           },
           "500": {
             "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/validate": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Orquestra o Person Account no Salesforce: GET → match / PATCH silencioso de email / POST create em 404 (contaOrigem Portal Pref.Rio). Usa CPF, nome e email do JWT. Não persiste dados do SF no Mongo do RMI.",
+        "tags": [
+          "salesforce"
+        ],
+        "summary": "Sincronizar Person Account no login",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.AuthValidateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Falha ao chamar Salesforce",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SALESFORCE_BASE_URL não configurado",
             "content": {
               "application/json": {
                 "schema": {
@@ -4673,6 +5678,989 @@
         }
       }
     },
+    "/citizen/{cpf}/vehicle-invitations": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Lista convites pending em que o CPF é o convidado.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Listar convites pendentes de veículo",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Convites pendentes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleInvitationsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "CPF inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/citizen/{cpf}/vehicle-invitations/{conductor_id}": {
+      "patch": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza status do convite para accepted ou rejected (somente o convidado).",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Aceitar ou recusar convite de veículo",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          },
+          {
+            "description": "ID do vínculo/convite",
+            "name": "conductor_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.RespondInvitationRequest"
+              }
+            }
+          },
+          "description": "Novo status",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Convite respondido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleConductor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validação inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Convite não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/citizen/{cpf}/vehicles": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Retorna veículos em que o CPF é proprietário ou condutor aceito, com role em cada item. Quando role=conductor, inclui conductor_id (id do vínculo aceito). brand_name/model_name são resolvidos do catálogo quando há brand_id/model_id e não há brand_other/model_other.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Listar veículos da carteira (mobilidade)",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          },
+          {
+            "description": "Número da página (padrão: 1)",
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "description": "Itens por página (padrão: 10, máximo: 100)",
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista paginada de veículos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.PaginatedVehicles"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "CPF ou paginação inválidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Cadastra um veículo para o CPF autenticado. Fluxo catálogo (brand_id+model_id), híbrido (brand_id + model_other sem model_id) ou Outro livre (brand_other/model_other+vehicle_type). URLs de foto devem ser HTTPS GCS. Se has_invoice=true, invoice_photo_url é obrigatória. Contato do dono (nome/telefone/e-mail) é enriquecido ao vivo via RMI a partir do owner_cpf — não enviar owner_* no body. registration_number é gerado pelo backend (formato RJ-E-XXXXXX).",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Cadastrar veículo",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.VehicleCreateRequest"
+              }
+            }
+          },
+          "description": "Dados do veículo",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Veículo criado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validação inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/citizen/{cpf}/vehicles/{vehicle_id}": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Retorna o detalhe do veículo para proprietário ou condutor aceito (inclui invoice_photo_url, metadados de arquivos e registration_number). Quando role=conductor, inclui conductor_id (id do vínculo aceito). owner_name/owner_phone/owner_email são enriquecidos ao vivo via RMI a partir de owner_cpf. brand_name/model_name vêm do catálogo quando há brand_id/model_id e não há texto livre (*_other).",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Obter detalhe do veículo",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          },
+          {
+            "description": "ID do veículo",
+            "name": "vehicle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalhe do veículo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "CPF inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Veículo não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Soft-delete do veículo e revoga vínculos pending/accepted (somente proprietário).",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Excluir veículo (soft delete)",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          },
+          {
+            "description": "ID do veículo",
+            "name": "vehicle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Veículo excluído"
+          },
+          "400": {
+            "description": "CPF inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Veículo não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza campos do veículo (somente proprietário). Em mudança de marca/modelo do catálogo, vehicle_type é rederivado do modelo. Para trocar para fluxo Outro (texto livre), envie brand_id/model_id como null (ou \"\") junto com brand_other/model_other e vehicle_type; campo omitido não altera o valor atual.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Atualizar veículo",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          },
+          {
+            "description": "ID do veículo",
+            "name": "vehicle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.VehicleUpdateRequest"
+              }
+            }
+          },
+          "description": "Campos a atualizar",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Veículo atualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validação inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado (não é o proprietário)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Veículo não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/citizen/{cpf}/vehicles/{vehicle_id}/conductors": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Lista vínculos pending e accepted (somente proprietário). Pending devolve snapshot do convite; accepted enriquece nome/e-mail/celular ao vivo via RMI.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Listar condutores do veículo",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          },
+          {
+            "description": "ID do veículo",
+            "name": "vehicle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de condutores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.ConductorsListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "CPF inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Veículo não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Cria vínculo pending e enfileira e-mail de convite via notify_email do body (somente proprietário). name/phone são hints opcionais enquanto pending. Duplicata pending/accepted retorna 409.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Convidar condutor",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          },
+          {
+            "description": "ID do veículo",
+            "name": "vehicle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.InviteConductorRequest"
+              }
+            }
+          },
+          "description": "CPF + e-mail do convidado (name/phone opcionais)",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Convite criado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleConductor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validação inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Veículo não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Já existe vínculo pending/accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/citizen/{cpf}/vehicles/{vehicle_id}/conductors/{conductor_id}": {
+      "delete": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Proprietário revoga pending/accepted; condutor aceito pode sair (self-leave).",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Remover / revogar condutor",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          },
+          {
+            "description": "ID do veículo",
+            "name": "vehicle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "ID do vínculo",
+            "name": "conductor_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Vínculo revogado"
+          },
+          "400": {
+            "description": "Validação inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Não encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/citizen/{cpf}/wallet": {
       "get": {
         "security": [
@@ -4943,6 +6931,73 @@
             "bearerAuth": []
           }
         ]
+      }
+    },
+    "/cpf-secretaria/{cpf}": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Retorna a lista de cd_uas vinculados ao CPF na base de apoio. Usado por outras APIs (app-go-api) via service account.",
+        "tags": [
+          "cpf-secretaria"
+        ],
+        "summary": "Consultar secretarias de um CPF",
+        "parameters": [
+          {
+            "description": "CPF do usuário (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.CPFSecretariaQueryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/departments": {
@@ -5804,6 +7859,165 @@
             "bearerAuth": []
           }
         ]
+      }
+    },
+    "/mobilidade/vehicle-brands": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Catálogo de marcas para o formulário de mobilidade (seed Mongo). Sentinel \"Outro\" usa id estável brand_outro com is_other=true.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Listar marcas de veículos",
+        "responses": {
+          "200": {
+            "description": "Lista tipada de marcas em data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleBrandsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mobilidade/vehicle-colors": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Lista fixa de cores permitidas no formulário de mobilidade (fora do CSV de marcas/modelos).",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Listar cores de veículos",
+        "responses": {
+          "200": {
+            "description": "Lista tipada de cores em data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleColorsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mobilidade/vehicle-models": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Modelos do catálogo filtrados por brand_id (obrigatório), incluindo vehicle_type. Sentinel \"Outro\" usa id estável model_outro com is_other=true.",
+        "tags": [
+          "mobilidade"
+        ],
+        "summary": "Listar modelos de veículos por marca",
+        "parameters": [
+          {
+            "description": "ID da marca",
+            "name": "brand_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista tipada de modelos em data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.VehicleModelsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "brand_id ausente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/notification-categories": {
@@ -7149,6 +9363,501 @@
         }
       }
     },
+    "/salesforce/anonimizacao/{numeroSolicitacao}": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Proxy para GET /api/private/anonimizacao/{numeroSolicitacao}.",
+        "tags": [
+          "salesforce"
+        ],
+        "summary": "Consultar status de anonimização",
+        "parameters": [
+          {
+            "description": "Número da solicitação",
+            "name": "numeroSolicitacao",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/clients.SalesforceAnonimizacaoStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/clients.SalesforceErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/salesforce/chamados": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Proxy para GET /api/private/chamados usando o JWT do usuário (Community User).",
+        "tags": [
+          "salesforce"
+        ],
+        "summary": "Listar chamados do cidadão",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/clients.SalesforceChamadosList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/salesforce/chamados/{protocolo}": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Proxy para GET /api/private/chamados/{protocolo}.",
+        "tags": [
+          "salesforce"
+        ],
+        "summary": "Detalhar chamado por protocolo",
+        "parameters": [
+          {
+            "description": "Protocolo do chamado",
+            "name": "protocolo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/clients.SalesforceProtocolo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/clients.SalesforceErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/salesforce/cidadao/{cpf}/anonimizar": {
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Proxy para POST /api/private/cidadao/{cpf}/anonimizar (assíncrono). 202 enfileirado; 409 se já houver solicitação aberta.",
+        "tags": [
+          "salesforce"
+        ],
+        "summary": "Solicitar anonimização no Salesforce",
+        "parameters": [
+          {
+            "description": "CPF do cidadão",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/clients.SalesforceAnonimizacaoStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Solicitação já em aberto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/clients.SalesforceAnonimizacaoStatus"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/salesforce/cidadao/{cpf}/consentimento": {
+      "patch": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Proxy para PATCH /api/private/cidadao/{cpf}/consentimento. Encaminha o JWT do usuário. categoria deve ser valor de picklist SF (ex. PREF_Lembrete_Pagamento). motivo obrigatório quando acao=optout.",
+        "tags": [
+          "salesforce"
+        ],
+        "summary": "Atualizar consentimento no Salesforce",
+        "parameters": [
+          {
+            "description": "CPF do cidadão",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/clients.SalesforceConsentimentoPatchRequest"
+              }
+            }
+          },
+          "description": "Consentimento",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Consentimento atualizado (sem corpo)"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CPF não pertence ao usuário autenticado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/clients.SalesforceErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/clients.SalesforceErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/salesforce/cidadao/{cpf}/exportar": {
+      "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Proxy síncrono para GET /api/private/cidadao/{cpf}/exportar.",
+        "tags": [
+          "salesforce"
+        ],
+        "summary": "Exportar dados pessoais (LGPD) do Salesforce",
+        "parameters": [
+          {
+            "description": "CPF do cidadão",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/clients.SalesforceExportacao"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/clients.SalesforceErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/validate/email": {
       "post": {
         "description": "Valida formato e estrutura de endereços de email, retornando informações detalhadas sobre o endereço quando válido.",
@@ -7282,12 +9991,93 @@
           }
         ]
       }
+    },
+    "/webhooks/salesforce/cidadao": {
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Webhook inbound: CPF + delta em dados (mesmo shape do GET Person Account). JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. evento=atualizacao (default) ou anonimizacao; updatedAt opcional. Campo ausente=não alterar; null=limpar; string vazia=valor vazio. Resposta 202 com CPF mascarado. Enfileira salesforce_sync sem GET de volta ao SF.",
+        "tags": [
+          "salesforce"
+        ],
+        "summary": "Webhook Salesforce cidadão",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/handlers.SalesforceWebhookRequestSwagger"
+              }
+            }
+          },
+          "description": "CPF, evento e delta de campos alterados",
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Job enfileirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.SalesforceWebhookResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "CPF inválido, dados ausentes/grandes, updatedAt longo ou evento inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "JWT inválido ou ausente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "azp do JWT não está em SALESFORCE_WEBHOOK_CLIENTS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Integração Salesforce não configurada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "tags": [
     {
       "description": "Operações relacionadas a cidadãos, incluindo consulta e atualização de dados autodeclarados",
       "name": "citizen"
+    },
+    {
+      "description": "Carteira de veículos (bicicleta elétrica, autopropelido, ciclomotor), condutores e catálogo",
+      "name": "mobilidade"
     },
     {
       "description": "Operações relacionadas a departamentos/unidades administrativas (UA)",
@@ -7304,6 +10094,10 @@
     {
       "description": "Operações de verificação de saúde da API",
       "name": "health"
+    },
+    {
+      "description": "Integração Salesforce Person Account: login sync, webhook inbound (delta), proxies CRM e push assíncrono RMI→SF via sync worker",
+      "name": "salesforce"
     }
   ],
   "servers": [
@@ -7360,6 +10154,525 @@
       }
     },
     "schemas": {
+      "clients.SalesforceAndamento": {
+        "type": "object",
+        "properties": {
+          "dataInsercao": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": "string"
+          },
+          "evento": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tipoEvento": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceAnonimizacaoStatus": {
+        "type": "object",
+        "properties": {
+          "cpf": {
+            "type": "string"
+          },
+          "dataConclusao": {
+            "type": "string"
+          },
+          "dataSolicitacao": {
+            "type": "string"
+          },
+          "numeroSolicitacao": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceCanOpen": {
+        "type": "object",
+        "properties": {
+          "elogio": {
+            "$ref": "#/components/schemas/clients.SalesforceCanOpenAction"
+          },
+          "reclamacao": {
+            "$ref": "#/components/schemas/clients.SalesforceCanOpenAction"
+          },
+          "sugestao": {
+            "$ref": "#/components/schemas/clients.SalesforceCanOpenAction"
+          }
+        }
+      },
+      "clients.SalesforceCanOpenAction": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "categoryId": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceChamadosList": {
+        "type": "object",
+        "properties": {
+          "ouvidoriaWindow": {
+            "$ref": "#/components/schemas/clients.SalesforceOuvidoriaWindow"
+          },
+          "protocolos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/clients.SalesforceProtocolo"
+            }
+          }
+        }
+      },
+      "clients.SalesforceCidadao": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "canalOrigem": {
+            "type": "string"
+          },
+          "canalUltimaModificacao": {
+            "type": "string"
+          },
+          "complemento": {
+            "type": "string"
+          },
+          "consentimento": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/clients.SalesforceConsentimento"
+            }
+          },
+          "cpf": {
+            "type": "string"
+          },
+          "dataNascimento": {
+            "type": "string"
+          },
+          "deficiencia": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "endereco": {
+            "$ref": "#/components/schemas/clients.SalesforceEndereco"
+          },
+          "escolaridade": {
+            "type": "string"
+          },
+          "genero": {
+            "type": "string"
+          },
+          "idioma": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "isTourist": {
+            "type": "boolean"
+          },
+          "nacionalidade": {
+            "type": "string"
+          },
+          "nome": {
+            "type": "string"
+          },
+          "nomeExibicao": {
+            "type": "string"
+          },
+          "nomeSocial": {
+            "type": "string"
+          },
+          "passaporte": {
+            "type": "string"
+          },
+          "raca": {
+            "type": "string"
+          },
+          "rendaFamiliar": {
+            "type": "string"
+          },
+          "telefone1": {
+            "type": "string"
+          },
+          "telefone2": {
+            "type": "string"
+          },
+          "telefone3": {
+            "type": "string"
+          },
+          "telefoneInternacional": {
+            "type": "string"
+          },
+          "telefonePrincipal": {
+            "type": "string"
+          },
+          "tipoTelefone1": {
+            "type": "string"
+          },
+          "tipoTelefone2": {
+            "type": "string"
+          },
+          "tipoTelefone3": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceConsentimento": {
+        "type": "object",
+        "properties": {
+          "acao": {
+            "description": "legacy: optin | optout",
+            "type": "string"
+          },
+          "canal": {
+            "type": "string"
+          },
+          "categoria": {
+            "type": "string"
+          },
+          "data": {
+            "type": "string"
+          },
+          "finalidade": {
+            "type": "string"
+          },
+          "motivo": {
+            "description": "required when status=OUT / acao=optout",
+            "type": "string"
+          },
+          "status": {
+            "description": "IN | OUT",
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceConsentimentoPatchRequest": {
+        "type": "object",
+        "properties": {
+          "acao": {
+            "type": "string"
+          },
+          "categoria": {
+            "type": "string"
+          },
+          "motivo": {
+            "type": "string"
+          },
+          "origem": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceEndereco": {
+        "type": "object",
+        "properties": {
+          "bairro": {
+            "type": "string"
+          },
+          "cep": {
+            "type": "string"
+          },
+          "cidade": {
+            "type": "string"
+          },
+          "complemento": {
+            "type": "string"
+          },
+          "estado": {
+            "type": "string"
+          },
+          "logradouro": {
+            "type": "string"
+          },
+          "pais": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceEnderecoChamado": {
+        "type": "object",
+        "properties": {
+          "bairro": {
+            "type": "string"
+          },
+          "cep": {
+            "type": "string"
+          },
+          "complemento": {
+            "type": "string"
+          },
+          "coordenadaX": {
+            "type": "number"
+          },
+          "coordenadaY": {
+            "type": "number"
+          },
+          "logradouro": {
+            "type": "string"
+          },
+          "numero": {
+            "type": "string"
+          },
+          "pontoReferencia": {
+            "type": "string"
+          },
+          "tipoEndereco": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceErrorBody": {
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/clients.SalesforceFieldError"
+            }
+          }
+        }
+      },
+      "clients.SalesforceExportConsentimento": {
+        "type": "object",
+        "properties": {
+          "canais": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/clients.SalesforceExportConsentimentoCanal"
+            }
+          },
+          "codigo": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceExportConsentimentoCanal": {
+        "type": "object",
+        "properties": {
+          "canal": {
+            "type": "string"
+          },
+          "motivo": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tipo": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceExportacao": {
+        "type": "object",
+        "properties": {
+          "consentimento": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/clients.SalesforceExportConsentimento"
+            }
+          },
+          "cpf": {
+            "type": "string"
+          },
+          "dadosPessoais": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "dataExportacao": {
+            "type": "string"
+          },
+          "relacionados": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "clients.SalesforceFieldError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceOrdemServico": {
+        "type": "object",
+        "properties": {
+          "andamentos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/clients.SalesforceAndamento"
+            }
+          },
+          "bairro": {
+            "type": "string"
+          },
+          "canOpen": {
+            "$ref": "#/components/schemas/clients.SalesforceCanOpen"
+          },
+          "categoria": {
+            "type": "string"
+          },
+          "codigoOs": {
+            "type": "string"
+          },
+          "dataAbertura": {
+            "type": "string"
+          },
+          "dataFechamento": {
+            "type": "string"
+          },
+          "dataTermino": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": "string"
+          },
+          "endereco": {
+            "$ref": "#/components/schemas/clients.SalesforceEnderecoChamado"
+          },
+          "id": {
+            "type": "string"
+          },
+          "idCatalogoServico": {
+            "type": "string"
+          },
+          "isClosed": {
+            "type": "boolean"
+          },
+          "isOverdue": {
+            "type": "boolean"
+          },
+          "orgaoResponsavel": {
+            "$ref": "#/components/schemas/clients.SalesforceOrgao"
+          },
+          "orgaoResponsavelPai": {
+            "$ref": "#/components/schemas/clients.SalesforceOrgao"
+          },
+          "ouvidoriaUrl": {
+            "type": "string"
+          },
+          "ouvidoriaWindow": {
+            "$ref": "#/components/schemas/clients.SalesforceOuvidoriaWindow"
+          },
+          "previsaoSLA": {
+            "type": "string"
+          },
+          "prioridade": {
+            "type": "string"
+          },
+          "servico": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subtema": {
+            "type": "string"
+          },
+          "tema": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceOrgao": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "nome": {
+            "type": "string"
+          },
+          "sigla": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceOuvidoriaWindow": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "clients.SalesforceProtocolo": {
+        "type": "object",
+        "properties": {
+          "categoria": {
+            "type": "string"
+          },
+          "dataAbertura": {
+            "type": "string"
+          },
+          "dataFechamento": {
+            "type": "string"
+          },
+          "dataUltimaAtualizacao": {
+            "type": "string"
+          },
+          "ordens_de_servico": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/clients.SalesforceOrdemServico"
+            }
+          },
+          "origem": {
+            "type": "string"
+          },
+          "protocolo": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subcategoria": {
+            "type": "string"
+          }
+        }
+      },
+      "handlers.AuthValidateResponse": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "matched",
+              "updated",
+              "created"
+            ],
+            "example": "matched"
+          },
+          "cidadao": {
+            "$ref": "#/components/schemas/clients.SalesforceCidadao"
+          }
+        }
+      },
       "handlers.CacheReadRequest": {
         "type": "object",
         "required": [
@@ -7550,6 +10863,145 @@
           }
         }
       },
+      "handlers.SalesforceWebhookDados": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "canalOrigem": {
+            "type": "string"
+          },
+          "canalUltimaModificacao": {
+            "type": "string"
+          },
+          "cidade": {
+            "type": "string"
+          },
+          "complemento": {
+            "type": "string"
+          },
+          "consentimento": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/clients.SalesforceConsentimento"
+            }
+          },
+          "dataNascimento": {
+            "type": "string"
+          },
+          "deficiencia": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "endereco": {
+            "$ref": "#/components/schemas/clients.SalesforceEndereco"
+          },
+          "escolaridade": {
+            "type": "string"
+          },
+          "genero": {
+            "type": "string"
+          },
+          "idioma": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "isTourist": {
+            "type": "boolean"
+          },
+          "nacionalidade": {
+            "type": "string"
+          },
+          "nome": {
+            "type": "string"
+          },
+          "nomeExibicao": {
+            "type": "string"
+          },
+          "nomeSocial": {
+            "type": "string"
+          },
+          "passaporte": {
+            "type": "string"
+          },
+          "raca": {
+            "type": "string"
+          },
+          "rendaFamiliar": {
+            "type": "string"
+          },
+          "telefone1": {
+            "type": "string"
+          },
+          "telefone2": {
+            "type": "string"
+          },
+          "telefone3": {
+            "type": "string"
+          },
+          "telefoneInternacional": {
+            "type": "string"
+          },
+          "telefonePrincipal": {
+            "type": "string"
+          },
+          "tipoTelefone1": {
+            "type": "string"
+          },
+          "tipoTelefone2": {
+            "type": "string"
+          },
+          "tipoTelefone3": {
+            "type": "string"
+          }
+        }
+      },
+      "handlers.SalesforceWebhookRequestSwagger": {
+        "type": "object",
+        "properties": {
+          "cpf": {
+            "type": "string",
+            "example": "52998224725"
+          },
+          "dados": {
+            "$ref": "#/components/schemas/handlers.SalesforceWebhookDados"
+          },
+          "evento": {
+            "type": "string",
+            "enum": [
+              "atualizacao",
+              "anonimizacao"
+            ],
+            "example": "atualizacao"
+          },
+          "updatedAt": {
+            "type": "string",
+            "example": "2026-08-31T17:33:49Z"
+          }
+        }
+      },
+      "handlers.SalesforceWebhookResponse": {
+        "type": "object",
+        "properties": {
+          "cpf": {
+            "type": "string"
+          },
+          "evento": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "handlers.ServiceHealth": {
         "type": "object",
         "properties": {
@@ -7633,6 +11085,17 @@
             "type": "string"
           },
           "telefone": {
+            "type": "string"
+          }
+        }
+      },
+      "models.AddCPFSecretariaRequest": {
+        "type": "object",
+        "required": [
+          "cd_ua"
+        ],
+        "properties": {
+          "cd_ua": {
             "type": "string"
           }
         }
@@ -7958,6 +11421,57 @@
           }
         }
       },
+      "models.CPFSecretariaListResponse": {
+        "type": "object",
+        "properties": {
+          "cpf": {
+            "type": "string"
+          },
+          "mappings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.CPFSecretariaResponse"
+            }
+          }
+        }
+      },
+      "models.CPFSecretariaQueryResponse": {
+        "type": "object",
+        "properties": {
+          "cd_uas": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cpf": {
+            "type": "string"
+          }
+        }
+      },
+      "models.CPFSecretariaResponse": {
+        "type": "object",
+        "properties": {
+          "cd_ua": {
+            "type": "string"
+          },
+          "cpf": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
       "models.CRAS": {
         "type": "object",
         "properties": {
@@ -8151,6 +11665,32 @@
           },
           "id": {
             "type": "string"
+          }
+        }
+      },
+      "models.ConductorStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "accepted",
+          "rejected",
+          "revoked"
+        ],
+        "x-enum-varnames": [
+          "ConductorStatusPending",
+          "ConductorStatusAccepted",
+          "ConductorStatusRejected",
+          "ConductorStatusRevoked"
+        ]
+      },
+      "models.ConductorsListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.VehicleConductor"
+            }
           }
         }
       },
@@ -8479,6 +12019,57 @@
             "type": "string"
           }
         }
+      },
+      "models.InvitationResponseStatus": {
+        "type": "string",
+        "enum": [
+          "accepted",
+          "rejected"
+        ],
+        "x-enum-varnames": [
+          "InvitationResponseAccepted",
+          "InvitationResponseRejected"
+        ]
+      },
+      "models.InviteConductorRequest": {
+        "type": "object",
+        "required": [
+          "cpf",
+          "email"
+        ],
+        "properties": {
+          "cpf": {
+            "description": "CPF must be exactly 11 digits (no punctuation), matching RMI/JWT form.",
+            "type": "string",
+            "example": "11144477735"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          }
+        }
+      },
+      "models.InviteEmailStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "queued",
+          "sent",
+          "failed",
+          "skipped"
+        ],
+        "x-enum-varnames": [
+          "InviteEmailStatusPending",
+          "InviteEmailStatusQueued",
+          "InviteEmailStatusSent",
+          "InviteEmailStatusFailed",
+          "InviteEmailStatusSkipped"
+        ]
       },
       "models.LegalEntity": {
         "type": "object",
@@ -8863,6 +12454,23 @@
           }
         }
       },
+      "models.OtherTutor": {
+        "type": "object",
+        "properties": {
+          "cpf": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "nome": {
+            "type": "string"
+          },
+          "telefone": {
+            "type": "string"
+          }
+        }
+      },
       "models.PaginatedLegalEntities": {
         "type": "object",
         "properties": {
@@ -8926,6 +12534,34 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/models.Pet"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer"
+              },
+              "per_page": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "total_pages": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "models.PaginatedVehicles": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.VehicleListItem"
             }
           },
           "pagination": {
@@ -9037,6 +12673,12 @@
           },
           "nascimento_data": {
             "type": "string"
+          },
+          "outros_tutores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.OtherTutor"
+            }
           },
           "pedigree_indicador": {
             "type": "boolean"
@@ -9386,6 +13028,22 @@
           }
         }
       },
+      "models.RespondInvitationRequest": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "description": "Status must be accepted or rejected (pending/revoked are rejected with 400).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/models.InvitationResponseStatus"
+              }
+            ]
+          }
+        }
+      },
       "models.ResponsiblePerson": {
         "type": "object",
         "properties": {
@@ -9713,6 +13371,9 @@
       },
       "models.UserConfigOptInResponse": {
         "type": "object",
+        "required": [
+          "opt_in"
+        ],
         "properties": {
           "category_opt_ins": {
             "type": "object",
@@ -9775,6 +13436,596 @@
         "properties": {
           "valid": {
             "type": "boolean"
+          }
+        }
+      },
+      "models.VehicleBrand": {
+        "type": "object",
+        "properties": {
+          "deleted_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "example": "brand_caloi"
+          },
+          "is_other": {
+            "type": "boolean",
+            "example": false
+          },
+          "name": {
+            "type": "string",
+            "example": "Caloi"
+          }
+        }
+      },
+      "models.VehicleBrandCreateRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Caloi"
+          }
+        }
+      },
+      "models.VehicleBrandUpdateRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Caloi"
+          }
+        }
+      },
+      "models.VehicleBrandsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.VehicleBrand"
+            }
+          }
+        }
+      },
+      "models.VehicleColorsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "Amarelo",
+              "Azul",
+              "Preto"
+            ]
+          }
+        }
+      },
+      "models.VehicleConductor": {
+        "type": "object",
+        "properties": {
+          "conductor_cpf": {
+            "type": "string"
+          },
+          "conductor_name": {
+            "description": "Invite snapshot (persisted). For accepted links, GET overlays live RMI contact on these JSON fields.",
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "email_attempted_at": {
+            "type": "string"
+          },
+          "email_status": {
+            "description": "Invite email delivery (handoff: register attempt/status on the link).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/models.InviteEmailStatus"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "invited_by_cpf": {
+            "type": "string"
+          },
+          "notify_email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "responded_at": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/models.ConductorStatus"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "vehicle_id": {
+            "type": "string"
+          }
+        }
+      },
+      "models.VehicleCreateRequest": {
+        "type": "object",
+        "required": [
+          "color",
+          "display_name",
+          "has_invoice",
+          "self_declaration",
+          "serial_number",
+          "serial_number_photo_url",
+          "vehicle_photo_url"
+        ],
+        "properties": {
+          "brand_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "brand_other": {
+            "type": "string",
+            "nullable": true
+          },
+          "color": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "has_invoice": {
+            "type": "boolean"
+          },
+          "invoice_photo_file_name": {
+            "type": "string"
+          },
+          "invoice_photo_file_size": {
+            "type": "integer"
+          },
+          "invoice_photo_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "model_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "model_other": {
+            "type": "string",
+            "nullable": true
+          },
+          "self_declaration": {
+            "type": "boolean"
+          },
+          "serial_number": {
+            "type": "string"
+          },
+          "serial_number_photo_file_name": {
+            "type": "string"
+          },
+          "serial_number_photo_file_size": {
+            "type": "integer"
+          },
+          "serial_number_photo_url": {
+            "type": "string"
+          },
+          "vehicle_photo_file_name": {
+            "type": "string"
+          },
+          "vehicle_photo_file_size": {
+            "type": "integer"
+          },
+          "vehicle_photo_url": {
+            "type": "string"
+          },
+          "vehicle_type": {
+            "$ref": "#/components/schemas/models.VehicleType"
+          }
+        }
+      },
+      "models.VehicleDetail": {
+        "type": "object",
+        "properties": {
+          "brand_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "brand_name": {
+            "description": "BrandName is response-only: catalog brand name when brand_id is set and brand_other is empty.",
+            "type": "string",
+            "nullable": true
+          },
+          "brand_other": {
+            "type": "string",
+            "nullable": true
+          },
+          "color": {
+            "type": "string"
+          },
+          "conductor_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "deleted_at": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "has_invoice": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invoice_photo_file_name": {
+            "type": "string"
+          },
+          "invoice_photo_file_size": {
+            "type": "integer"
+          },
+          "invoice_photo_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "model_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "model_name": {
+            "description": "ModelName is response-only: catalog model name when model_id is set and model_other is empty.",
+            "type": "string",
+            "nullable": true
+          },
+          "model_other": {
+            "type": "string",
+            "nullable": true
+          },
+          "owner_cpf": {
+            "type": "string"
+          },
+          "owner_email": {
+            "type": "string"
+          },
+          "owner_name": {
+            "type": "string"
+          },
+          "owner_phone": {
+            "type": "string"
+          },
+          "registration_number": {
+            "description": "RegistrationNumber is a short wallet identifier generated on create (format RJ-E-XXXXXX). Not accepted in POST/PATCH.",
+            "type": "string",
+            "example": "RJ-E-000001"
+          },
+          "role": {
+            "$ref": "#/components/schemas/models.VehicleRole"
+          },
+          "self_declaration": {
+            "type": "boolean"
+          },
+          "serial_number": {
+            "type": "string"
+          },
+          "serial_number_photo_file_name": {
+            "description": "Optional file metadata for UI detail (Apêndice A.4).",
+            "type": "string"
+          },
+          "serial_number_photo_file_size": {
+            "type": "integer"
+          },
+          "serial_number_photo_url": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "vehicle_photo_file_name": {
+            "type": "string"
+          },
+          "vehicle_photo_file_size": {
+            "type": "integer"
+          },
+          "vehicle_photo_url": {
+            "type": "string"
+          },
+          "vehicle_type": {
+            "$ref": "#/components/schemas/models.VehicleType"
+          }
+        }
+      },
+      "models.VehicleInvitationItem": {
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invited_by_cpf": {
+            "type": "string"
+          },
+          "owner_name": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/models.ConductorStatus"
+          },
+          "vehicle": {
+            "$ref": "#/components/schemas/models.VehicleInvitationSummary"
+          },
+          "vehicle_id": {
+            "type": "string"
+          }
+        }
+      },
+      "models.VehicleInvitationSummary": {
+        "type": "object",
+        "properties": {
+          "brand_label": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "model_label": {
+            "type": "string"
+          },
+          "vehicle_photo_url": {
+            "type": "string"
+          },
+          "vehicle_type": {
+            "$ref": "#/components/schemas/models.VehicleType"
+          }
+        }
+      },
+      "models.VehicleInvitationsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.VehicleInvitationItem"
+            }
+          }
+        }
+      },
+      "models.VehicleListItem": {
+        "type": "object",
+        "properties": {
+          "brand_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "brand_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "brand_other": {
+            "type": "string",
+            "nullable": true
+          },
+          "color": {
+            "type": "string"
+          },
+          "conductor_id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "model_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "model_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "model_other": {
+            "type": "string",
+            "nullable": true
+          },
+          "registration_number": {
+            "type": "string",
+            "example": "RJ-E-000001"
+          },
+          "role": {
+            "$ref": "#/components/schemas/models.VehicleRole"
+          },
+          "vehicle_photo_url": {
+            "type": "string"
+          },
+          "vehicle_type": {
+            "$ref": "#/components/schemas/models.VehicleType"
+          }
+        }
+      },
+      "models.VehicleModel": {
+        "type": "object",
+        "properties": {
+          "brand_id": {
+            "type": "string",
+            "example": "brand_caloi"
+          },
+          "deleted_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "example": "model_e-vibe"
+          },
+          "is_other": {
+            "type": "boolean",
+            "example": false
+          },
+          "name": {
+            "type": "string",
+            "example": "E-Vibe"
+          },
+          "vehicle_type": {
+            "$ref": "#/components/schemas/models.VehicleType"
+          }
+        }
+      },
+      "models.VehicleModelCreateRequest": {
+        "type": "object",
+        "required": [
+          "brand_id",
+          "name",
+          "vehicle_type"
+        ],
+        "properties": {
+          "brand_id": {
+            "type": "string",
+            "example": "brand_caloi"
+          },
+          "name": {
+            "type": "string",
+            "example": "E-Vibe"
+          },
+          "vehicle_type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/models.VehicleType"
+              }
+            ],
+            "example": "bicicleta_eletrica"
+          }
+        }
+      },
+      "models.VehicleModelUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "brand_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "vehicle_type": {
+            "$ref": "#/components/schemas/models.VehicleType"
+          }
+        }
+      },
+      "models.VehicleModelsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.VehicleModel"
+            }
+          }
+        }
+      },
+      "models.VehicleRole": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "conductor"
+        ],
+        "x-enum-varnames": [
+          "VehicleRoleOwner",
+          "VehicleRoleConductor"
+        ]
+      },
+      "models.VehicleType": {
+        "type": "string",
+        "enum": [
+          "bicicleta_eletrica",
+          "autopropelido",
+          "ciclomotor"
+        ],
+        "x-enum-varnames": [
+          "VehicleTypeBicicletaEletrica",
+          "VehicleTypeAutopropelido",
+          "VehicleTypeCiclomotor"
+        ]
+      },
+      "models.VehicleUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "brand_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "brand_other": {
+            "type": "string",
+            "nullable": true
+          },
+          "color": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "has_invoice": {
+            "type": "boolean"
+          },
+          "invoice_photo_file_name": {
+            "type": "string"
+          },
+          "invoice_photo_file_size": {
+            "type": "integer"
+          },
+          "invoice_photo_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "model_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "model_other": {
+            "type": "string",
+            "nullable": true
+          },
+          "serial_number": {
+            "type": "string"
+          },
+          "serial_number_photo_file_name": {
+            "type": "string"
+          },
+          "serial_number_photo_file_size": {
+            "type": "integer"
+          },
+          "serial_number_photo_url": {
+            "type": "string"
+          },
+          "vehicle_photo_file_name": {
+            "type": "string"
+          },
+          "vehicle_photo_file_size": {
+            "type": "integer"
+          },
+          "vehicle_photo_url": {
+            "type": "string"
+          },
+          "vehicle_type": {
+            "$ref": "#/components/schemas/models.VehicleType"
           }
         }
       }

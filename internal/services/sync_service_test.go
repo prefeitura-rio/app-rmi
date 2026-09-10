@@ -299,22 +299,7 @@ func TestSyncService_MonitorDLQ_AllQueues(t *testing.T) {
 	ctx := context.Background()
 
 	// Add jobs to all DLQ types mentioned in the code
-	allQueues := []string{
-		"citizen",
-		"phone_mapping",
-		"user_config",
-		"opt_in_history",
-		"beta_group",
-		"phone_verification",
-		"maintenance_request",
-		"self_declared_address",
-		"self_declared_email",
-		"self_declared_phone",
-		"self_declared_raca",
-		"self_declared_nome_exibicao",
-		"cf_lookup",
-		MobilidadeInviteEmailQueue,
-	}
+	allQueues := monitoredDLQQueues()
 
 	for _, queue := range allQueues {
 		dlqKey := syncDLQKey(queue)
@@ -363,6 +348,32 @@ func TestSyncService_MonitorDLQ_EmptyQueues(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// No assertions needed - just verify it doesn't panic
+}
+
+func TestSyncService_ScanDLQ_IncludesSalesforceQueues(t *testing.T) {
+	service, redisClient, _, cleanup := setupSyncServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	for _, queue := range []string{SalesforceSyncQueue, SalesforcePushQueue} {
+		dlqKey := syncDLQKey(queue)
+		_ = redisClient.Del(ctx, dlqKey)
+		jobBytes, err := json.Marshal(DLQJob{
+			OriginalJob: SyncJob{ID: "dlq-" + queue, Type: queue, Key: "14202478754"},
+			Error:       "jwt expired",
+			FailedAt:    time.Now(),
+		})
+		require.NoError(t, err)
+		require.NoError(t, redisClient.LPush(ctx, dlqKey, string(jobBytes)).Err())
+	}
+
+	require.Contains(t, monitoredDLQQueues(), SalesforceSyncQueue)
+	require.Contains(t, monitoredDLQQueues(), SalesforcePushQueue)
+
+	service.scanDLQs()
+
+	assert.Equal(t, int64(1), service.metrics.GetQueueDepth("dlq_"+SalesforceSyncQueue))
+	assert.Equal(t, int64(1), service.metrics.GetQueueDepth("dlq_"+SalesforcePushQueue))
 }
 
 // TestSyncService_WorkersProcessJobs tests that workers process jobs

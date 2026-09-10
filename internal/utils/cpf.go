@@ -74,6 +74,15 @@ func ValidateCPF(cpf string) bool {
 	return true
 }
 
+// MaskCPFForWebhookResponse masks a CPF for outbound webhook responses (e.g. 12345678909 -> ***.456.789-**).
+func MaskCPFForWebhookResponse(cpf string) string {
+	cpf = NormalizeCPF(cpf)
+	if len(cpf) != 11 {
+		return "***.***.***-**"
+	}
+	return "***." + cpf[3:6] + "." + cpf[6:9] + "-**"
+}
+
 // MaskEmail redacts an email for logs (keeps domain).
 func MaskEmail(email string) string {
 	email = strings.TrimSpace(email)

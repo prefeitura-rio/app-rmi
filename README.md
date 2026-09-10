@@ -69,6 +69,10 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | DATA_RELAY_BASE_URL | URL base da API Data Relay (envio de e-mail via mailman) | - | Não* |
 | DATA_RELAY_API_KEY | API key do Data Relay (`X-Api-Key`) | - | Não* |
 | DATA_RELAY_TIMEOUT | Timeout HTTP do Data Relay | 30s | Não |
+| SALESFORCE_BASE_URL | URL base da API Salesforce CRM (host; o client acrescenta `/api/private/...`) | - | Não* |
+| SALESFORCE_TIMEOUT | Timeout HTTP do Salesforce CRM | 30s | Não |
+| SALESFORCE_WEBHOOK_CLIENTS | Client IDs Keycloak (`azp`) autorizados no webhook SF→RMI (lista separada por vírgula) | - | Não* |
+| SYNC_JOB_BEARER_ENCRYPTION_KEY | Chave AES-256 em hex (64 caracteres) para cifrar JWTs nas filas de sync. Sem a chave o token não é gravado; `salesforce_push` exige a chave. | - | Não* |
 | CF_LOOKUP_COLLECTION | Nome da coleção de lookups de CF | cf_lookups | Não |
 | CF_LOOKUP_CACHE_TTL | TTL do cache de CF lookups (ex: "24h") | 24h | Não |
 | CF_LOOKUP_RATE_LIMIT | Rate limit por CPF para CF lookups (ex: "1h") | 1h | Não |
@@ -90,6 +94,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 **Notas:**
 - `*` MCP_AUTH_TOKEN é obrigatório apenas se a funcionalidade de CF lookup estiver habilitada
 - `*` DATA_RELAY_BASE_URL e DATA_RELAY_API_KEY devem ser ambos definidos para envio real de e-mails (convites Mobilidade). Sem eles, o sync worker apenas registra o e-mail em log.
+- `*` SALESFORCE_BASE_URL habilita a integração. Proxies `/v1/salesforce/*` e push usam o JWT do usuário. JWTs só entram na fila Redis cifrados (`SYNC_JOB_BEARER_ENCRYPTION_KEY`); sem a chave o token não é capturado e `salesforce_push` não é enfileirado. O webhook `POST /v1/webhooks/salesforce/cidadao` exige JWT Keycloak cujo `azp` está em `SALESFORCE_WEBHOOK_CLIENTS` (token do client Salesforce) e recebe `cpf`, `evento`, `updatedAt` (opcional) e `dados` como **delta** (campos alterados; ausente=não alterar, null=limpar, string vazia=valor vazio). Inbound persiste em `self_declared` + `salesforce_consentimentos` (não altera `citizens` nem o opt-in global do RMI). Resposta **202** com CPF mascarado; retry idempotente. Sem GET de volta ao SF.
 
 ## 🏥 **CF (Clínica da Família) Lookup - Nova Funcionalidade**
 

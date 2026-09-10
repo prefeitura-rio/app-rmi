@@ -375,3 +375,84 @@ func TestMin(t *testing.T) {
 		})
 	}
 }
+
+func TestRequireSalesforceWebhookClient_AllowedAZP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	prev := config.AppConfig
+	config.AppConfig = &config.Config{SalesforceWebhookClients: []string{"salesforce-rmi"}}
+	defer func() { config.AppConfig = prev }()
+
+	r := gin.New()
+	r.POST("/hook", func(c *gin.Context) {
+		c.Set("claims", &models.JWTClaims{AZP: "salesforce-rmi"})
+		c.Next()
+	}, RequireSalesforceWebhookClient(), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/hook", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+}
+
+func TestRequireSalesforceWebhookClient_ForbiddenAZP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	prev := config.AppConfig
+	config.AppConfig = &config.Config{SalesforceWebhookClients: []string{"salesforce-rmi"}}
+	defer func() { config.AppConfig = prev }()
+
+	r := gin.New()
+	r.POST("/hook", func(c *gin.Context) {
+		c.Set("claims", &models.JWTClaims{AZP: "superapp"})
+		c.Next()
+	}, RequireSalesforceWebhookClient(), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/hook", nil))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", w.Code)
+	}
+}
+
+func TestRequireSalesforceWebhookClient_NotConfigured(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	prev := config.AppConfig
+	config.AppConfig = &config.Config{}
+	defer func() { config.AppConfig = prev }()
+
+	r := gin.New()
+	r.POST("/hook", func(c *gin.Context) {
+		c.Set("claims", &models.JWTClaims{AZP: "salesforce-rmi"})
+		c.Next()
+	}, RequireSalesforceWebhookClient(), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/hook", nil))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+}
+
+func TestRequireSalesforceWebhookClient_NoClaims(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	prev := config.AppConfig
+	config.AppConfig = &config.Config{SalesforceWebhookClients: []string{"salesforce-rmi"}}
+	defer func() { config.AppConfig = prev }()
+
+	r := gin.New()
+	r.POST("/hook", RequireSalesforceWebhookClient(), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/hook", nil))
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}

@@ -77,40 +77,48 @@ func (s *SyncService) monitorDLQ() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		// Check all DLQ sizes
-		queues := []string{
-			"citizen",
-			"phone_mapping",
-			"user_config",
-			"opt_in_history",
-			"beta_group",
-			"phone_verification",
-			"maintenance_request",
-			"self_declared_address",
-			"self_declared_email",
-			"self_declared_phone",
-			"self_declared_raca",
-			"self_declared_nome_exibicao",
-			"cf_lookup",
-			MobilidadeInviteEmailQueue,
+		s.scanDLQs()
+	}
+}
+
+// monitoredDLQQueues is the set of sync queues whose DLQs are scanned for alerts/metrics.
+func monitoredDLQQueues() []string {
+	return []string{
+		"citizen",
+		"phone_mapping",
+		"user_config",
+		"opt_in_history",
+		"beta_group",
+		"phone_verification",
+		"maintenance_request",
+		"self_declared_address",
+		"self_declared_email",
+		"self_declared_phone",
+		"self_declared_raca",
+		"self_declared_nome_exibicao",
+		"cf_lookup",
+		MobilidadeInviteEmailQueue,
+		SalesforceSyncQueue,
+		SalesforcePushQueue,
+	}
+}
+
+// scanDLQs records depth and warns for every non-empty dead-letter queue.
+func (s *SyncService) scanDLQs() {
+	for _, queue := range monitoredDLQQueues() {
+		dlqKey := syncDLQKey(queue)
+		dlqSize, err := s.redis.LLen(context.Background(), dlqKey).Result()
+		if err != nil {
+			continue
 		}
 
-		for _, queue := range queues {
-			dlqKey := syncDLQKey(queue)
-			dlqSize, err := s.redis.LLen(context.Background(), dlqKey).Result()
-			if err != nil {
-				continue
-			}
+		if dlqSize > 0 {
+			s.logger.Warn("DLQ has failed jobs",
+				zap.String("queue", queue),
+				zap.String("dlq_key", dlqKey),
+				zap.Int64("dlq_size", dlqSize))
 
-			if dlqSize > 0 {
-				s.logger.Warn("DLQ has failed jobs",
-					zap.String("queue", queue),
-					zap.String("dlq_key", dlqKey),
-					zap.Int64("dlq_size", dlqSize))
-
-				// Update metrics - record DLQ size
-				s.metrics.RecordQueueDepth("dlq_"+queue, dlqSize)
-			}
+			s.metrics.RecordQueueDepth("dlq_"+queue, dlqSize)
 		}
 	}
 }

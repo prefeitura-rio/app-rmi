@@ -1939,6 +1939,49 @@
                 }
             }
         },
+        "/auth/validate": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Orquestra o Person Account no Salesforce: GET → match / PATCH silencioso de email / POST create em 404 (contaOrigem Portal Pref.Rio). Usa CPF, nome e email do JWT. Não persiste dados do SF no Mongo do RMI.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "salesforce"
+                ],
+                "summary": "Sincronizar Person Account no login",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.AuthValidateResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Falha ao chamar Salesforce",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "SALESFORCE_BASE_URL não configurado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/avatars": {
             "get": {
                 "description": "Obtém lista paginada de avatares de foto de perfil disponíveis",
@@ -7177,6 +7220,378 @@
                 }
             }
         },
+        "/salesforce/anonimizacao/{numeroSolicitacao}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Proxy GET /api/private/anonimizacao/{numeroSolicitacao}. 403 se não houver prova de posse: CPF no payload do Salesforce deve ser o do caller; se o upstream omitir CPF, só quem criou a solicitação neste API (POST anonimizar) consegue ler.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "salesforce"
+                ],
+                "summary": "Consultar status de anonimização",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Número da solicitação",
+                        "name": "numeroSolicitacao",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/clients.SalesforceAnonimizacaoStatus"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Solicitação não pertence ao usuário autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/clients.SalesforceErrorBody"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/salesforce/chamados": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Proxy para GET /api/private/chamados usando o JWT do usuário (Community User).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "salesforce"
+                ],
+                "summary": "Listar chamados do cidadão",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/clients.SalesforceChamadosList"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/salesforce/chamados/{protocolo}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Proxy para GET /api/private/chamados/{protocolo}.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "salesforce"
+                ],
+                "summary": "Detalhar chamado por protocolo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Protocolo do chamado",
+                        "name": "protocolo",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/clients.SalesforceProtocolo"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/clients.SalesforceErrorBody"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/salesforce/cidadao/{cpf}/anonimizar": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Proxy POST /api/private/cidadao/{cpf}/anonimizar (assíncrono). 202 enfileirado; 409 se já houver solicitação aberta. Em 202 e 409 o RMI associa numeroSolicitacao ao CPF autenticado para o polling.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "salesforce"
+                ],
+                "summary": "Solicitar anonimização no Salesforce",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF do cidadão",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/clients.SalesforceAnonimizacaoStatus"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Solicitação já em aberto",
+                        "schema": {
+                            "$ref": "#/definitions/clients.SalesforceAnonimizacaoStatus"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/salesforce/cidadao/{cpf}/consentimento": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Proxy PATCH /api/private/cidadao/{cpf}/consentimento com o JWT do usuário. categoria é picklist SF (ex. PREF_Lembrete_Pagamento). motivo obrigatório se acao=optout. Espelho no RMI grava só salesforce_consentimentos; não altera opt_in nem category_opt_ins.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "salesforce"
+                ],
+                "summary": "Atualizar consentimento no Salesforce",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF do cidadão",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Consentimento",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/clients.SalesforceConsentimentoPatchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Consentimento atualizado (sem corpo). 409 do Salesforce (já no status) é tratado como 200."
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "CPF não pertence ao usuário autenticado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/clients.SalesforceErrorBody"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/salesforce/cidadao/{cpf}/exportar": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Proxy síncrono para GET /api/private/cidadao/{cpf}/exportar.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "salesforce"
+                ],
+                "summary": "Exportar dados pessoais (LGPD) do Salesforce",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CPF do cidadão",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/clients.SalesforceExportacao"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/clients.SalesforceErrorBody"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/validate/email": {
             "post": {
                 "description": "Valida formato e estrutura de endereços de email, retornando informações detalhadas sobre o endereço quando válido.",
@@ -7280,9 +7695,597 @@
                     }
                 }
             }
+        },
+        "/webhooks/salesforce/cidadao": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. Body: cpf + dados (delta; updatedAt opcional; evento=atualizacao default ou anonimizacao). Ausente=não alterar; null=limpar; \\\"\\\"=vazio. Persiste overlay em self_declared; consentimento só em salesforce_consentimentos (não altera opt_in/category_opt_ins do RMI). nome, nomeSocial e dataNascimento no delta são ignorados (não gravam citizens). 202 com CPF mascarado; sem GET de volta ao SF.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "salesforce"
+                ],
+                "summary": "Webhook Salesforce cidadão",
+                "parameters": [
+                    {
+                        "description": "CPF, evento e delta de campos alterados",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SalesforceWebhookRequestSwagger"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Job enfileirado",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SalesforceWebhookResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "CPF inválido, dados ausentes/grandes, updatedAt longo ou evento inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "JWT inválido ou ausente",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "azp do JWT não está em SALESFORCE_WEBHOOK_CLIENTS",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Falha ao enfileirar salesforce_sync (Redis)",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Integração Salesforce não configurada",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "clients.SalesforceAndamento": {
+            "type": "object",
+            "properties": {
+                "dataInsercao": {
+                    "type": "string"
+                },
+                "descricao": {
+                    "type": "string"
+                },
+                "evento": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tipoEvento": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceAnonimizacaoStatus": {
+            "type": "object",
+            "properties": {
+                "cpf": {
+                    "type": "string"
+                },
+                "dataConclusao": {
+                    "type": "string"
+                },
+                "dataSolicitacao": {
+                    "type": "string"
+                },
+                "numeroSolicitacao": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceCanOpen": {
+            "type": "object",
+            "properties": {
+                "elogio": {
+                    "$ref": "#/definitions/clients.SalesforceCanOpenAction"
+                },
+                "reclamacao": {
+                    "$ref": "#/definitions/clients.SalesforceCanOpenAction"
+                },
+                "sugestao": {
+                    "$ref": "#/definitions/clients.SalesforceCanOpenAction"
+                }
+            }
+        },
+        "clients.SalesforceCanOpenAction": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "categoryId": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceChamadosList": {
+            "type": "object",
+            "properties": {
+                "ouvidoriaWindow": {
+                    "$ref": "#/definitions/clients.SalesforceOuvidoriaWindow"
+                },
+                "protocolos": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clients.SalesforceProtocolo"
+                    }
+                }
+            }
+        },
+        "clients.SalesforceCidadao": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "canalOrigem": {
+                    "type": "string"
+                },
+                "canalUltimaModificacao": {
+                    "type": "string"
+                },
+                "complemento": {
+                    "type": "string"
+                },
+                "consentimento": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clients.SalesforceConsentimento"
+                    }
+                },
+                "cpf": {
+                    "type": "string"
+                },
+                "dataNascimento": {
+                    "type": "string"
+                },
+                "deficiencia": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "endereco": {
+                    "$ref": "#/definitions/clients.SalesforceEndereco"
+                },
+                "escolaridade": {
+                    "type": "string"
+                },
+                "genero": {
+                    "type": "string"
+                },
+                "idioma": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "isTourist": {
+                    "type": "boolean"
+                },
+                "nacionalidade": {
+                    "type": "string"
+                },
+                "nome": {
+                    "type": "string"
+                },
+                "nomeExibicao": {
+                    "type": "string"
+                },
+                "nomeSocial": {
+                    "type": "string"
+                },
+                "passaporte": {
+                    "type": "string"
+                },
+                "raca": {
+                    "type": "string"
+                },
+                "rendaFamiliar": {
+                    "type": "string"
+                },
+                "telefone1": {
+                    "type": "string"
+                },
+                "telefone2": {
+                    "type": "string"
+                },
+                "telefone3": {
+                    "type": "string"
+                },
+                "telefoneInternacional": {
+                    "type": "string"
+                },
+                "telefonePrincipal": {
+                    "type": "string"
+                },
+                "tipoTelefone1": {
+                    "type": "string"
+                },
+                "tipoTelefone2": {
+                    "type": "string"
+                },
+                "tipoTelefone3": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceConsentimento": {
+            "type": "object",
+            "properties": {
+                "acao": {
+                    "description": "legacy: optin | optout",
+                    "type": "string"
+                },
+                "canal": {
+                    "type": "string"
+                },
+                "categoria": {
+                    "type": "string"
+                },
+                "data": {
+                    "type": "string"
+                },
+                "finalidade": {
+                    "type": "string"
+                },
+                "motivo": {
+                    "description": "required when status=OUT / acao=optout",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "IN | OUT",
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceConsentimentoPatchRequest": {
+            "type": "object",
+            "properties": {
+                "acao": {
+                    "type": "string"
+                },
+                "categoria": {
+                    "type": "string"
+                },
+                "motivo": {
+                    "type": "string"
+                },
+                "origem": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceEndereco": {
+            "type": "object",
+            "properties": {
+                "bairro": {
+                    "type": "string"
+                },
+                "cep": {
+                    "type": "string"
+                },
+                "cidade": {
+                    "type": "string"
+                },
+                "complemento": {
+                    "type": "string"
+                },
+                "estado": {
+                    "type": "string"
+                },
+                "logradouro": {
+                    "type": "string"
+                },
+                "pais": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceEnderecoChamado": {
+            "type": "object",
+            "properties": {
+                "bairro": {
+                    "type": "string"
+                },
+                "cep": {
+                    "type": "string"
+                },
+                "complemento": {
+                    "type": "string"
+                },
+                "coordenadaX": {
+                    "type": "number"
+                },
+                "coordenadaY": {
+                    "type": "number"
+                },
+                "logradouro": {
+                    "type": "string"
+                },
+                "numero": {
+                    "type": "string"
+                },
+                "pontoReferencia": {
+                    "type": "string"
+                },
+                "tipoEndereco": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceErrorBody": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clients.SalesforceFieldError"
+                    }
+                }
+            }
+        },
+        "clients.SalesforceExportConsentimento": {
+            "type": "object",
+            "properties": {
+                "canais": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clients.SalesforceExportConsentimentoCanal"
+                    }
+                },
+                "codigo": {
+                    "type": "string"
+                },
+                "descricao": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceExportConsentimentoCanal": {
+            "type": "object",
+            "properties": {
+                "canal": {
+                    "type": "string"
+                },
+                "motivo": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tipo": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceExportacao": {
+            "type": "object",
+            "properties": {
+                "consentimento": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clients.SalesforceExportConsentimento"
+                    }
+                },
+                "cpf": {
+                    "type": "string"
+                },
+                "dadosPessoais": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "dataExportacao": {
+                    "type": "string"
+                },
+                "relacionados": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "clients.SalesforceFieldError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceOrdemServico": {
+            "type": "object",
+            "properties": {
+                "andamentos": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clients.SalesforceAndamento"
+                    }
+                },
+                "bairro": {
+                    "type": "string"
+                },
+                "canOpen": {
+                    "$ref": "#/definitions/clients.SalesforceCanOpen"
+                },
+                "categoria": {
+                    "type": "string"
+                },
+                "codigoOs": {
+                    "type": "string"
+                },
+                "dataAbertura": {
+                    "type": "string"
+                },
+                "dataFechamento": {
+                    "type": "string"
+                },
+                "dataTermino": {
+                    "type": "string"
+                },
+                "descricao": {
+                    "type": "string"
+                },
+                "endereco": {
+                    "$ref": "#/definitions/clients.SalesforceEnderecoChamado"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "idCatalogoServico": {
+                    "type": "string"
+                },
+                "isClosed": {
+                    "type": "boolean"
+                },
+                "isOverdue": {
+                    "type": "boolean"
+                },
+                "orgaoResponsavel": {
+                    "$ref": "#/definitions/clients.SalesforceOrgao"
+                },
+                "orgaoResponsavelPai": {
+                    "$ref": "#/definitions/clients.SalesforceOrgao"
+                },
+                "ouvidoriaUrl": {
+                    "type": "string"
+                },
+                "ouvidoriaWindow": {
+                    "$ref": "#/definitions/clients.SalesforceOuvidoriaWindow"
+                },
+                "previsaoSLA": {
+                    "type": "string"
+                },
+                "prioridade": {
+                    "type": "string"
+                },
+                "servico": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subtema": {
+                    "type": "string"
+                },
+                "tema": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceOrgao": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "nome": {
+                    "type": "string"
+                },
+                "sigla": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceOuvidoriaWindow": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "integer"
+                },
+                "label": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.SalesforceProtocolo": {
+            "type": "object",
+            "properties": {
+                "categoria": {
+                    "type": "string"
+                },
+                "dataAbertura": {
+                    "type": "string"
+                },
+                "dataFechamento": {
+                    "type": "string"
+                },
+                "dataUltimaAtualizacao": {
+                    "type": "string"
+                },
+                "ordens_de_servico": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clients.SalesforceOrdemServico"
+                    }
+                },
+                "origem": {
+                    "type": "string"
+                },
+                "protocolo": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subcategoria": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.AuthValidateResponse": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "matched",
+                        "updated",
+                        "created"
+                    ],
+                    "example": "matched"
+                },
+                "cidadao": {
+                    "$ref": "#/definitions/clients.SalesforceCidadao"
+                }
+            }
+        },
         "handlers.CacheReadRequest": {
             "type": "object",
             "required": [
@@ -7470,6 +8473,149 @@
                 "valid": {
                     "description": "Indica se o número é válido.",
                     "type": "boolean"
+                }
+            }
+        },
+        "handlers.SalesforceWebhookDados": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "canalOrigem": {
+                    "type": "string"
+                },
+                "canalUltimaModificacao": {
+                    "type": "string"
+                },
+                "cidade": {
+                    "type": "string"
+                },
+                "complemento": {
+                    "type": "string"
+                },
+                "consentimento": {
+                    "description": "Só salesforce_consentimentos; null limpa o mapa SF (não mexe no opt-in RMI)",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/clients.SalesforceConsentimento"
+                    }
+                },
+                "dataNascimento": {
+                    "description": "Ignorado: não altera a coleção citizens",
+                    "type": "string"
+                },
+                "deficiencia": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "endereco": {
+                    "$ref": "#/definitions/clients.SalesforceEndereco"
+                },
+                "escolaridade": {
+                    "type": "string"
+                },
+                "genero": {
+                    "type": "string"
+                },
+                "idioma": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "isTourist": {
+                    "type": "boolean"
+                },
+                "nacionalidade": {
+                    "type": "string"
+                },
+                "nome": {
+                    "description": "Ignorado: não altera a coleção citizens",
+                    "type": "string"
+                },
+                "nomeExibicao": {
+                    "type": "string"
+                },
+                "nomeSocial": {
+                    "description": "Ignorado: não altera a coleção citizens",
+                    "type": "string"
+                },
+                "passaporte": {
+                    "type": "string"
+                },
+                "raca": {
+                    "type": "string"
+                },
+                "rendaFamiliar": {
+                    "type": "string"
+                },
+                "telefone1": {
+                    "type": "string"
+                },
+                "telefone2": {
+                    "type": "string"
+                },
+                "telefone3": {
+                    "type": "string"
+                },
+                "telefoneInternacional": {
+                    "type": "string"
+                },
+                "telefonePrincipal": {
+                    "type": "string"
+                },
+                "tipoTelefone1": {
+                    "type": "string"
+                },
+                "tipoTelefone2": {
+                    "type": "string"
+                },
+                "tipoTelefone3": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.SalesforceWebhookRequestSwagger": {
+            "type": "object",
+            "properties": {
+                "cpf": {
+                    "type": "string",
+                    "example": "52998224725"
+                },
+                "dados": {
+                    "$ref": "#/definitions/handlers.SalesforceWebhookDados"
+                },
+                "evento": {
+                    "type": "string",
+                    "enum": [
+                        "atualizacao",
+                        "anonimizacao"
+                    ],
+                    "example": "atualizacao"
+                },
+                "updatedAt": {
+                    "type": "string",
+                    "example": "2026-08-31T17:33:49Z"
+                }
+            }
+        },
+        "handlers.SalesforceWebhookResponse": {
+            "type": "object",
+            "properties": {
+                "cpf": {
+                    "type": "string"
+                },
+                "evento": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
                 }
             }
         },
@@ -10533,6 +11679,10 @@
         {
             "description": "Operações de verificação de saúde da API",
             "name": "health"
+        },
+        {
+            "description": "Integração Salesforce Person Account: login sync, webhook inbound (delta em self_declared, sem gravar citizens), proxies CRM e push assíncrono RMI→SF via sync worker",
+            "name": "salesforce"
         }
     ]
 }
