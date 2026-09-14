@@ -1016,7 +1016,9 @@ func TestIsMunicipioCoberto(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, IsMunicipioCoberto(tt.municipio))
+			// Test the unexported matcher directly so results are independent of the
+			// CF_LOOKUP_V2_ENABLED production gate on IsMunicipioCoberto.
+			assert.Equal(t, tt.want, isMunicipioCoberto(tt.municipio))
 		})
 	}
 }

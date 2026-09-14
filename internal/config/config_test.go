@@ -1081,6 +1081,14 @@ func TestLoadConfig_DefaultValues(t *testing.T) {
 	if AppConfig.RedisMinIdleConns != 50 {
 		t.Errorf("Default RedisMinIdleConns = %d, want 50", AppConfig.RedisMinIdleConns)
 	}
+
+	if !AppConfig.CFLookupV2Enabled {
+		t.Errorf("Default CFLookupV2Enabled = false, want true in development")
+	}
+
+	if AppConfig.CFLookupSyncTimeout != 15*time.Second {
+		t.Errorf("Default CFLookupSyncTimeout = %v, want 15s when V2 enabled", AppConfig.CFLookupSyncTimeout)
+	}
 }
 
 func TestLoadConfig_CustomValues(t *testing.T) {
@@ -1131,6 +1139,14 @@ func TestLoadConfig_CustomValues(t *testing.T) {
 	if AppConfig.RedisMinIdleConns != 100 {
 		t.Errorf("Custom RedisMinIdleConns = %d, want 100", AppConfig.RedisMinIdleConns)
 	}
+
+	if AppConfig.CFLookupV2Enabled {
+		t.Errorf("CFLookupV2Enabled = true, want false in production")
+	}
+
+	if AppConfig.CFLookupSyncTimeout != 8*time.Second {
+		t.Errorf("CFLookupSyncTimeout = %v, want 8s when V2 disabled", AppConfig.CFLookupSyncTimeout)
+	}
 }
 
 // setupMinimalEnv sets up the minimal required environment variables for LoadConfig
@@ -1154,6 +1170,9 @@ func setupMinimalEnv(t *testing.T) {
 	os.Setenv("WHATSAPP_COST_CENTER_ID", "cc123")
 	os.Setenv("WHATSAPP_CAMPAIGN_NAME", "test_campaign")
 	os.Setenv("CF_LOOKUP_ENABLED", "false")
+	os.Unsetenv("CF_LOOKUP_V2_ENABLED")
+	os.Unsetenv("CF_LOOKUP_SYNC_TIMEOUT")
+	os.Unsetenv("ENVIRONMENT")
 
 	t.Cleanup(func() {
 		os.Unsetenv("PORT")
@@ -1162,6 +1181,9 @@ func setupMinimalEnv(t *testing.T) {
 		os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
 		os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
+		os.Unsetenv("CF_LOOKUP_V2_ENABLED")
+		os.Unsetenv("CF_LOOKUP_SYNC_TIMEOUT")
+		os.Unsetenv("ENVIRONMENT")
 		os.Unsetenv("MONGODB_PET_COLLECTION")
 		os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
 		os.Unsetenv("MONGODB_CHAT_MEMORY_COLLECTION")
