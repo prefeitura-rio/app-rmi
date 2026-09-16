@@ -17,8 +17,8 @@ type SalesforceWebhookRequestSwagger struct {
 // on the wire and ignored.
 type SalesforceWebhookDados struct {
 	AccountID              string                            `json:"accountId,omitempty"`
-	Nome                   string                            `json:"nome,omitempty"`                  // Ignorado: não altera a coleção citizens
-	NomeSocial             string                            `json:"nomeSocial,omitempty"`            // Ignorado: não altera a coleção citizens
+	Nome                   string                            `json:"nome,omitempty"`       // Ignorado: não altera a coleção citizens
+	NomeSocial             string                            `json:"nomeSocial,omitempty"` // Ignorado: não altera a coleção citizens
 	NomeExibicao           string                            `json:"nomeExibicao,omitempty"`
 	Email                  string                            `json:"email,omitempty"`
 	TelefonePrincipal      string                            `json:"telefonePrincipal,omitempty"`
@@ -49,6 +49,6 @@ type SalesforceWebhookDados struct {
 
 // AuthValidateResponse documents GET /auth/validate (login sync with Salesforce only; no Mongo persist).
 type AuthValidateResponse struct {
-	Action  string                    `json:"action" example:"matched" enums:"matched,updated,created"`
+	Action  string                     `json:"action" example:"matched" enums:"matched,updated,created"`
 	Cidadao *clients.SalesforceCidadao `json:"cidadao"`
 }

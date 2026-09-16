@@ -13,7 +13,7 @@ import (
 
 // AuthValidateResult is returned by the login Salesforce sync orchestrator.
 type AuthValidateResult struct {
-	Action  string                   `json:"action"` // matched | updated | created
+	Action  string                     `json:"action"` // matched | updated | created
 	Cidadao *clients.SalesforceCidadao `json:"cidadao"`
 }
 

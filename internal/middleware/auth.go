@@ -118,6 +118,32 @@ func min(a, b int) int {
 	return b
 }
 
+// HasAdminPrivileges checks if the JWT claims grant administrative access to RMI.
+// A caller is considered admin if they carry the configured AdminGroup (e.g. "heimdall-admin"),
+// the standard "rmi-admin" role, or if their authorized party (azp) is in TrustedServiceClients.
+func HasAdminPrivileges(jwtClaims *models.JWTClaims) bool {
+	if jwtClaims == nil {
+		return false
+	}
+	if jwtClaims.HasRole("rmi-admin") {
+		return true
+	}
+	if config.AppConfig != nil {
+		if config.AppConfig.AdminGroup != "" && jwtClaims.HasRole(config.AppConfig.AdminGroup) {
+			return true
+		}
+		azp := strings.TrimSpace(jwtClaims.AZP)
+		if azp != "" {
+			for _, clientID := range config.AppConfig.TrustedServiceClients {
+				if azp == strings.TrimSpace(clientID) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // RequireAdmin checks if the user has admin privileges
 func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -135,9 +161,7 @@ func RequireAdmin() gin.HandlerFunc {
 			return
 		}
 
-		isAdmin := jwtClaims.HasRole(config.AppConfig.AdminGroup)
-
-		if !isAdmin {
+		if !HasAdminPrivileges(jwtClaims) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required"})
 			c.Abort()
 			return
@@ -209,7 +233,7 @@ func RequireOwnCPF() gin.HandlerFunc {
 		requestedCPF := c.Param("cpf")
 		userCPF := jwtClaims.PreferredUsername
 
-		isAdmin := jwtClaims.HasRole(config.AppConfig.AdminGroup)
+		isAdmin := HasAdminPrivileges(jwtClaims)
 
 		// Allow if user is admin or accessing their own data
 		if !isAdmin && requestedCPF != userCPF {
@@ -249,11 +273,7 @@ func IsAdmin(c *gin.Context) (bool, error) {
 		return false, fmt.Errorf("invalid claims type")
 	}
 
-	if jwtClaims.HasRole(config.AppConfig.AdminGroup) {
-		return true, nil
-	}
-
-	return false, nil
+	return HasAdminPrivileges(jwtClaims), nil
 }
 
 // ErrAccessDenied is returned when access is denied
