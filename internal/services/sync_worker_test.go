@@ -136,6 +136,7 @@ func TestNewSyncWorker(t *testing.T) {
 		"self_declared_renda_familiar",
 		"self_declared_escolaridade",
 		"self_declared_deficiencia",
+		"self_declared_nascimento",
 		"cf_lookup",
 		MobilidadeInviteEmailQueue,
 		SalesforceSyncQueue,
@@ -549,6 +550,7 @@ func TestSyncWorker_SyncToMongoDB_AllSelfDeclaredFields(t *testing.T) {
 		{"self_declared_renda_familiar", "renda_familiar", "2-4 salários"},
 		{"self_declared_escolaridade", "escolaridade", "superior completo"},
 		{"self_declared_deficiencia", "deficiencia", false},
+		{"self_declared_nascimento", "nascimento", bson.M{"data": "1990-01-01"}},
 	}
 
 	for _, tc := range testCases {
