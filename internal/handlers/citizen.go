@@ -136,6 +136,31 @@ func GetCitizenData(c *gin.Context) {
 	}
 	getDataSpan.End()
 
+	if citizen.CPF == "" {
+		var jwtClaims *models.JWTClaims
+		if claims, exists := c.Get("claims"); exists {
+			if parsed, ok := claims.(*models.JWTClaims); ok {
+				jwtClaims = parsed
+			}
+		}
+
+		if jwtClaims != nil && jwtClaims.PreferredUsername == cpf {
+			minimal, err := ensureMinimalCitizen(ctx, cpf, jwtClaims)
+			if err != nil {
+				logger.Error("failed to create minimal citizen", zap.Error(err))
+				c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create citizen record"})
+				return
+			}
+			citizen.CPF = minimal.CPF
+			if citizen.Nome == nil {
+				citizen.Nome = minimal.Nome
+			}
+		} else {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Citizen not found"})
+			return
+		}
+	}
+
 	observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
 
 	// Cache the merged result with tracing
@@ -184,6 +209,50 @@ func GetCitizenData(c *gin.Context) {
 		zap.String("status", "success"))
 }
 
+func ensureMinimalCitizen(ctx context.Context, cpf string, claims *models.JWTClaims) (*models.Citizen, error) {
+	if claims == nil || claims.PreferredUsername != cpf {
+		return nil, fmt.Errorf("claims do not match requested CPF")
+	}
+
+	nome := strings.TrimSpace(claims.Name)
+	if nome == "" && (claims.GivenName != "" || claims.FamilyName != "") {
+		nome = strings.TrimSpace(claims.GivenName + " " + claims.FamilyName)
+	}
+
+	var nomePtr *string
+	if nome != "" {
+		nomePtr = &nome
+	}
+
+	var particao int64
+	if len(cpf) >= 2 {
+		if p, err := strconv.ParseInt(cpf[:2], 10, 64); err == nil {
+			particao = p
+		}
+	}
+
+	collection := config.MongoDB.Collection(config.AppConfig.CitizenCollection)
+	filter := bson.M{"cpf": cpf}
+	update := bson.M{
+		"$setOnInsert": bson.M{
+			"cpf":          cpf,
+			"nome":         nomePtr,
+			"cpf_particao": particao,
+		},
+	}
+	opts := options.Update().SetUpsert(true)
+	_, err := collection.UpdateOne(ctx, filter, update, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.Citizen{
+		CPF:         cpf,
+		Nome:        nomePtr,
+		CPFParticao: particao,
+	}, nil
+}
+
 // Helper: Get merged citizen data (as delivered by /citizen/{cpf})
 func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, error) {
 	// Create data manager for cache-aware reads
@@ -230,6 +299,15 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 	if selfDeclared.Raca != nil {
 		citizen.Raca = selfDeclared.Raca
 	}
+	if selfDeclared.Nascimento != nil && selfDeclared.Nascimento.Data != nil {
+		if citizen.Nascimento == nil {
+			citizen.Nascimento = selfDeclared.Nascimento
+		} else if citizen.Nascimento.Data == nil {
+			citizen.Nascimento.Data = selfDeclared.Nascimento.Data
+			citizen.Nascimento.Origem = selfDeclared.Nascimento.Origem
+			citizen.Nascimento.Sistema = selfDeclared.Nascimento.Sistema
+		}
+	}
 	// Always set exhibition name field (even if nil) to ensure it appears in JSON response
 	citizen.NomeExibicao = selfDeclared.NomeExibicao
 	// Set new demographic fields
@@ -256,6 +334,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		fmt.Sprintf("self_declared_renda_familiar:write:%s", cpf),
 		fmt.Sprintf("self_declared_escolaridade:write:%s", cpf),
 		fmt.Sprintf("self_declared_deficiencia:write:%s", cpf),
+		fmt.Sprintf("self_declared_nascimento:write:%s", cpf),
 	}
 
 	// Try write buffer first (most recent data)
@@ -356,11 +435,20 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		selfDeclared.Deficiencia = deficienciaData.Deficiencia
 	}
 
+	var nascimentoData struct {
+		CPF        string             `json:"cpf"`
+		Nascimento *models.Nascimento `json:"nascimento"`
+		UpdatedAt  string             `json:"updated_at"`
+	}
+	if parseResult(keys[9], "nascimento", &nascimentoData) && nascimentoData.Nascimento != nil {
+		selfDeclared.Nascimento = nascimentoData.Nascimento
+	}
+
 	// If write buffer didn't have everything, try read cache in batch
 	if selfDeclared.Endereco == nil || selfDeclared.Email == nil ||
 		selfDeclared.Telefone == nil || selfDeclared.Raca == nil || selfDeclared.NomeExibicao == nil ||
 		selfDeclared.Genero == nil || selfDeclared.RendaFamiliar == nil ||
-		selfDeclared.Escolaridade == nil || selfDeclared.Deficiencia == nil {
+		selfDeclared.Escolaridade == nil || selfDeclared.Deficiencia == nil || selfDeclared.Nascimento == nil {
 
 		cacheKeys := []string{
 			fmt.Sprintf("self_declared_address:cache:%s", cpf),
@@ -372,6 +460,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			fmt.Sprintf("self_declared_renda_familiar:cache:%s", cpf),
 			fmt.Sprintf("self_declared_escolaridade:cache:%s", cpf),
 			fmt.Sprintf("self_declared_deficiencia:cache:%s", cpf),
+			fmt.Sprintf("self_declared_nascimento:cache:%s", cpf),
 		}
 
 		cacheResults, err := services.BatchReadMultiple(ctx, cacheKeys, observability.Logger().Unwrap())
@@ -417,13 +506,16 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		if selfDeclared.Deficiencia == nil && parseCacheResult(cacheKeys[8], "deficiencia", &deficienciaData) && deficienciaData.Deficiencia != nil {
 			selfDeclared.Deficiencia = deficienciaData.Deficiencia
 		}
+		if selfDeclared.Nascimento == nil && parseCacheResult(cacheKeys[9], "nascimento", &nascimentoData) && nascimentoData.Nascimento != nil {
+			selfDeclared.Nascimento = nascimentoData.Nascimento
+		}
 	}
 
 	// Final fallback to MongoDB for any missing individual fields
 	if selfDeclared.Endereco == nil || selfDeclared.Email == nil ||
 		selfDeclared.Telefone == nil || selfDeclared.Raca == nil || selfDeclared.NomeExibicao == nil ||
 		selfDeclared.Genero == nil || selfDeclared.RendaFamiliar == nil ||
-		selfDeclared.Escolaridade == nil || selfDeclared.Deficiencia == nil {
+		selfDeclared.Escolaridade == nil || selfDeclared.Deficiencia == nil || selfDeclared.Nascimento == nil {
 
 		observability.Logger().Debug("fallback to MongoDB for missing self-declared fields",
 			zap.String("cpf", cpf),
@@ -470,6 +562,9 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			}
 			if selfDeclared.Deficiencia == nil && mongoSelfDeclared.Deficiencia != nil {
 				selfDeclared.Deficiencia = mongoSelfDeclared.Deficiencia
+			}
+			if selfDeclared.Nascimento == nil && mongoSelfDeclared.Nascimento != nil {
+				selfDeclared.Nascimento = mongoSelfDeclared.Nascimento
 			}
 
 			observability.Logger().Debug("filled missing self-declared fields from MongoDB",
@@ -2761,6 +2856,192 @@ func UpdateSelfDeclaredDeficiencia(c *gin.Context) {
 		zap.String("cpf", cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
+		zap.String("status", "success"))
+}
+
+// UpdateSelfDeclaredBirthDate godoc
+// @Summary Atualizar data de nascimento autodeclarada
+// @Description Atualiza ou define a data de nascimento autodeclarada do cidadão. Bloqueado se já houver data oficial.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "CPF do cidadão (11 dígitos)" minLength(11) maxLength(11)
+// @Param data body models.SelfDeclaredBirthDateInput true "Data de nascimento autodeclarada (YYYY-MM-DD)"
+// @Security BearerAuth
+// @Success 200 {object} SuccessResponse "Data de nascimento atualizada com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF ou data inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 422 {object} ErrorResponse "Data de nascimento oficial não pode ser alterada por autodeclaração"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/{cpf}/birth-date [put]
+func UpdateSelfDeclaredBirthDate(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "UpdateSelfDeclaredBirthDate")
+	defer span.End()
+
+	cpf := c.Param("cpf")
+	logger := observability.Logger().With(zap.String("cpf", cpf))
+
+	span.SetAttributes(
+		attribute.String("cpf", cpf),
+		attribute.String("operation", "update_birth_date"),
+		attribute.String("service", "citizen"),
+	)
+
+	logger.Debug("UpdateSelfDeclaredBirthDate called", zap.String("cpf", cpf))
+
+	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
+	if !utils.ValidateCPF(cpf) {
+		utils.RecordErrorInSpan(cpfSpan, fmt.Errorf("invalid CPF format"), map[string]interface{}{
+			"cpf": cpf,
+		})
+		cpfSpan.End()
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
+		return
+	}
+	cpfSpan.End()
+
+	ctx, inputSpan := utils.TraceInputParsing(ctx, "birth_date")
+	var input models.SelfDeclaredBirthDateInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.RecordErrorInSpan(inputSpan, err, map[string]interface{}{
+			"error.type": "input_parsing",
+			"input.type": "SelfDeclaredBirthDateInput",
+		})
+		inputSpan.End()
+		logger.Error("failed to parse input", zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid input format"})
+		return
+	}
+	inputSpan.End()
+
+	dateStr := input.GetDateString()
+	ctx, validationSpan := utils.TraceInputValidation(ctx, "birth_date_value", "birth_date")
+	parsedDate, err := models.ParseBirthDate(dateStr)
+	if err != nil {
+		utils.RecordErrorInSpan(validationSpan, err, map[string]interface{}{
+			"invalid_value": dateStr,
+		})
+		validationSpan.End()
+		logger.Error("invalid birth date value", zap.String("value", dateStr), zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	validationSpan.End()
+
+	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.CitizenCollection, "cpf")
+	var baseCitizen models.Citizen
+	err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&baseCitizen)
+	if err != nil && err != mongo.ErrNoDocuments {
+		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{
+			"db.collection": config.AppConfig.CitizenCollection,
+			"db.filter":     "cpf",
+		})
+		findSpan.End()
+		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
+		logger.Error("failed to check base citizen data", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	findSpan.End()
+
+	if err == nil && baseCitizen.Nascimento != nil && baseCitizen.Nascimento.Data != nil {
+		if baseCitizen.Nascimento.Origem == nil || *baseCitizen.Nascimento.Origem != "self-declared" {
+			c.JSON(http.StatusUnprocessableEntity, ErrorResponse{Error: "Data de nascimento oficial não pode ser alterada por autodeclaração"})
+			return
+		}
+	}
+
+	var jwtClaims *models.JWTClaims
+	if claims, exists := c.Get("claims"); exists {
+		if parsed, ok := claims.(*models.JWTClaims); ok {
+			jwtClaims = parsed
+		}
+	}
+
+	if (err == mongo.ErrNoDocuments || baseCitizen.CPF == "") && jwtClaims != nil && jwtClaims.PreferredUsername == cpf {
+		if _, ensureErr := ensureMinimalCitizen(ctx, cpf, jwtClaims); ensureErr != nil {
+			logger.Warn("failed to ensure minimal citizen during birth date update", zap.Error(ensureErr))
+		}
+	}
+
+	origem := "self-declared"
+	sistema := "rmi"
+	nascimento := &models.Nascimento{
+		Data:    parsedDate,
+		Origem:  &origem,
+		Sistema: &sistema,
+	}
+
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_birth_date_via_cache")
+	cacheService := services.NewCacheService()
+	err = cacheService.UpdateSelfDeclaredBirthDate(ctx, cpf, nascimento)
+	if err != nil {
+		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
+			"cache.operation": "update_self_declared_birth_date",
+			"cache.service":   "unified_cache_service",
+		})
+		updateSpan.End()
+		observability.DatabaseOperations.WithLabelValues("update", "error").Inc()
+		logger.Error("failed to update self-declared birth date via cache service", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	updateSpan.End()
+
+	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+	observability.SelfDeclaredUpdates.WithLabelValues("success").Inc()
+
+	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
+	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_error", err.Error())
+		logger.Warn("failed to invalidate old cache", zap.Error(err))
+	} else {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_success", true)
+	}
+	cacheSpan.End()
+
+	ctx, auditSpan := utils.TraceAuditLogging(ctx, "update", "birth_date")
+	auditCtx := utils.AuditContext{
+		CPF:       cpf,
+		UserID:    c.GetString("user_id"),
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+		RequestID: c.GetString("RequestID"),
+	}
+
+	oldDate := ""
+	if baseCitizen.Nascimento != nil && baseCitizen.Nascimento.Data != nil {
+		oldDate = baseCitizen.Nascimento.Data.Format("2006-01-02")
+	} else {
+		var existingSelfDeclared models.SelfDeclaredData
+		if errFind := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&existingSelfDeclared); errFind == nil {
+			if existingSelfDeclared.Nascimento != nil && existingSelfDeclared.Nascimento.Data != nil {
+				oldDate = existingSelfDeclared.Nascimento.Data.Format("2006-01-02")
+			}
+		}
+	}
+
+	err = utils.LogBirthDateUpdate(ctx, auditCtx, oldDate, dateStr)
+	if err != nil {
+		utils.RecordErrorInSpan(auditSpan, err, map[string]interface{}{
+			"audit.action":   "update",
+			"audit.resource": "birth_date",
+		})
+		logger.Warn("failed to log audit event", zap.Error(err))
+	}
+	auditSpan.End()
+
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared birth date updated successfully"})
+	responseSpan.End()
+
+	totalDuration := time.Since(startTime)
+	logger.Debug("UpdateSelfDeclaredBirthDate completed",
+		zap.String("cpf", cpf),
+		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
 

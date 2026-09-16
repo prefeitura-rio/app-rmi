@@ -1451,9 +1451,13 @@ definitions:
         type: string
       municipio_id:
         type: string
+      origem:
+        type: string
       pais:
         type: string
       pais_id:
+        type: string
+      sistema:
         type: string
       uf:
         type: string
@@ -1968,6 +1972,13 @@ definitions:
     - logradouro
     - municipio
     - numero
+    type: object
+  models.SelfDeclaredBirthDateInput:
+    properties:
+      data:
+        type: string
+      valor:
+        type: string
     type: object
   models.SelfDeclaredDeficienciaInput:
     properties:
@@ -4221,6 +4232,58 @@ paths:
       summary: Atualizar avatar do usuário
       tags:
       - avatars
+      - citizen
+  /citizen/{cpf}/birth-date:
+    put:
+      consumes:
+      - application/json
+      description: Atualiza ou define a data de nascimento autodeclarada do cidadão.
+        Bloqueado se já houver data oficial.
+      parameters:
+      - description: CPF do cidadão (11 dígitos)
+        in: path
+        maxLength: 11
+        minLength: 11
+        name: cpf
+        required: true
+        type: string
+      - description: Data de nascimento autodeclarada (YYYY-MM-DD)
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/models.SelfDeclaredBirthDateInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data de nascimento atualizada com sucesso
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "400":
+          description: Formato de CPF ou data inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Acesso negado - permissões insuficientes
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "422":
+          description: Data de nascimento oficial não pode ser alterada por autodeclaração
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar data de nascimento autodeclarada
+      tags:
       - citizen
   /citizen/{cpf}/disability:
     put:

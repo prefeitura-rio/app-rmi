@@ -206,6 +206,7 @@ func main() {
 			citizen.PUT("/:cpf/family-income", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredRendaFamiliar)
 			citizen.PUT("/:cpf/education", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredEscolaridade)
 			citizen.PUT("/:cpf/disability", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredDeficiencia)
+			citizen.PUT("/:cpf/birth-date", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredBirthDate)
 			citizen.GET("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.GetFirstLogin)
 			citizen.PUT("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.UpdateFirstLogin)
 			citizen.GET("/:cpf/optin", middleware.RequireOwnCPF(), handlers.GetOptIn)

@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -12,6 +13,8 @@ type Nascimento struct {
 	UF          *string    `json:"uf" bson:"uf,omitempty"`
 	PaisID      *string    `json:"pais_id" bson:"pais_id,omitempty"`
 	Pais        *string    `json:"pais" bson:"pais,omitempty"`
+	Origem      *string    `json:"origem,omitempty" bson:"origem,omitempty"`
+	Sistema     *string    `json:"sistema,omitempty" bson:"sistema,omitempty"`
 }
 
 // Mae represents mother's information
@@ -576,4 +579,31 @@ func IsValidDisability(value string) bool {
 		}
 	}
 	return false
+}
+
+func ParseBirthDate(dataStr string) (*time.Time, error) {
+	if len(dataStr) == 0 {
+		return nil, fmt.Errorf("data de nascimento é obrigatória")
+	}
+
+	t, err := time.Parse("2006-01-02", dataStr)
+	if err != nil {
+		t, err = time.Parse(time.RFC3339, dataStr)
+	}
+	if err != nil {
+		t, err = time.Parse("02/01/2006", dataStr)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("formato de data inválido, utilize YYYY-MM-DD")
+	}
+
+	now := time.Now()
+	if t.After(now) {
+		return nil, fmt.Errorf("data de nascimento não pode ser no futuro")
+	}
+	if t.Before(now.AddDate(-130, 0, 0)) {
+		return nil, fmt.Errorf("data de nascimento inválida")
+	}
+
+	return &t, nil
 }

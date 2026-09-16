@@ -283,6 +283,123 @@ func TestRequireOwnCPF_AdminAccess(t *testing.T) {
 	}
 }
 
+func TestRequireOwnCPF_RmiAdminRole(t *testing.T) {
+	origAdmin := config.AppConfig.AdminGroup
+	config.AppConfig.AdminGroup = "heimdall-admin"
+	defer func() { config.AppConfig.AdminGroup = origAdmin }()
+
+	const ownCPF = "03561350712"
+	const otherCPF = "45049725810"
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		claims := &models.JWTClaims{
+			PreferredUsername: ownCPF,
+		}
+		claims.RealmAccess.Roles = []string{"rmi-admin"}
+		c.Set("claims", claims)
+		c.Next()
+	})
+	router.Use(RequireOwnCPF())
+	router.GET("/citizen/:cpf/data", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "rmi-admin access"})
+	})
+
+	req, _ := http.NewRequest("GET", "/citizen/"+otherCPF+"/data", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("RequireOwnCPF() with rmi-admin role status = %v, want %v", w.Code, http.StatusOK)
+	}
+}
+
+func TestRequireOwnCPF_TrustedServiceClient(t *testing.T) {
+	origTrusted := config.AppConfig.TrustedServiceClients
+	config.AppConfig.TrustedServiceClients = []string{"superapp.apps.rio.gov.br"}
+	defer func() { config.AppConfig.TrustedServiceClients = origTrusted }()
+
+	const otherCPF = "45049725810"
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		claims := &models.JWTClaims{
+			PreferredUsername: "service-account-superapp",
+			AZP:               "superapp.apps.rio.gov.br",
+		}
+		c.Set("claims", claims)
+		c.Next()
+	})
+	router.Use(RequireOwnCPF())
+	router.GET("/citizen/:cpf/data", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "trusted service access"})
+	})
+
+	req, _ := http.NewRequest("GET", "/citizen/"+otherCPF+"/data", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("RequireOwnCPF() with trusted service azp status = %v, want %v", w.Code, http.StatusOK)
+	}
+}
+
+func TestRequireAdmin_RmiAdminRole(t *testing.T) {
+	origAdmin := config.AppConfig.AdminGroup
+	config.AppConfig.AdminGroup = "heimdall-admin"
+	defer func() { config.AppConfig.AdminGroup = origAdmin }()
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		claims := &models.JWTClaims{
+			PreferredUsername: "admin_user",
+		}
+		claims.RealmAccess.Roles = []string{"rmi-admin"}
+		c.Set("claims", claims)
+		c.Next()
+	})
+	router.Use(RequireAdmin())
+	router.GET("/admin", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "admin access"})
+	})
+
+	req, _ := http.NewRequest("GET", "/admin", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("RequireAdmin() with rmi-admin role status = %v, want %v", w.Code, http.StatusOK)
+	}
+}
+
+func TestRequireAdmin_TrustedServiceClient(t *testing.T) {
+	origTrusted := config.AppConfig.TrustedServiceClients
+	config.AppConfig.TrustedServiceClients = []string{"superapp.apps.rio.gov.br"}
+	defer func() { config.AppConfig.TrustedServiceClients = origTrusted }()
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		claims := &models.JWTClaims{
+			PreferredUsername: "service-account-superapp",
+			AZP:               "superapp.apps.rio.gov.br",
+		}
+		c.Set("claims", claims)
+		c.Next()
+	})
+	router.Use(RequireAdmin())
+	router.GET("/admin", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "admin access"})
+	})
+
+	req, _ := http.NewRequest("GET", "/admin", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("RequireAdmin() with trusted service client status = %v, want %v", w.Code, http.StatusOK)
+	}
+}
+
 func TestExtractCPFFromToken_Success(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	claims := &models.JWTClaims{

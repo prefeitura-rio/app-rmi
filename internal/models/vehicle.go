@@ -141,23 +141,23 @@ type VehicleColorsResponse struct {
 // OwnerName/OwnerPhone/OwnerEmail are response-only (enriched live from RMI via owner_cpf);
 // they are not written on create for UI purposes.
 type Vehicle struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	OwnerCPF     string             `bson:"owner_cpf" json:"owner_cpf"`
-	OwnerName    string             `bson:"-" json:"owner_name"`
-	OwnerPhone   string             `bson:"-" json:"owner_phone"`
-	OwnerEmail   string             `bson:"-" json:"owner_email"`
-	DisplayName  string             `bson:"display_name" json:"display_name"`
-	BrandID      *string            `bson:"brand_id,omitempty" json:"brand_id" extensions:"x-nullable"`
-	BrandOther   *string            `bson:"brand_other,omitempty" json:"brand_other" extensions:"x-nullable"`
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	OwnerCPF    string             `bson:"owner_cpf" json:"owner_cpf"`
+	OwnerName   string             `bson:"-" json:"owner_name"`
+	OwnerPhone  string             `bson:"-" json:"owner_phone"`
+	OwnerEmail  string             `bson:"-" json:"owner_email"`
+	DisplayName string             `bson:"display_name" json:"display_name"`
+	BrandID     *string            `bson:"brand_id,omitempty" json:"brand_id" extensions:"x-nullable"`
+	BrandOther  *string            `bson:"brand_other,omitempty" json:"brand_other" extensions:"x-nullable"`
 	// BrandName is response-only: catalog brand name when brand_id is set and brand_other is empty.
 	BrandName  *string `bson:"-" json:"brand_name" extensions:"x-nullable"`
 	ModelID    *string `bson:"model_id,omitempty" json:"model_id" extensions:"x-nullable"`
 	ModelOther *string `bson:"model_other,omitempty" json:"model_other" extensions:"x-nullable"`
 	// ModelName is response-only: catalog model name when model_id is set and model_other is empty.
-	ModelName    *string            `bson:"-" json:"model_name" extensions:"x-nullable"`
-	VehicleType  VehicleType        `bson:"vehicle_type" json:"vehicle_type"`
-	Color        string             `bson:"color" json:"color"`
-	SerialNumber string             `bson:"serial_number" json:"serial_number"`
+	ModelName    *string     `bson:"-" json:"model_name" extensions:"x-nullable"`
+	VehicleType  VehicleType `bson:"vehicle_type" json:"vehicle_type"`
+	Color        string      `bson:"color" json:"color"`
+	SerialNumber string      `bson:"serial_number" json:"serial_number"`
 	// RegistrationNumber is a short wallet identifier generated on create (format RJ-E-XXXXXX). Not accepted in POST/PATCH.
 	RegistrationNumber   string  `bson:"registration_number" json:"registration_number" example:"RJ-E-000001"`
 	SerialNumberPhotoURL string  `bson:"serial_number_photo_url" json:"serial_number_photo_url"`

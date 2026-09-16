@@ -29,6 +29,7 @@ func setupRouter() *gin.Engine {
 	r.PUT("/v1/citizen/:cpf/phone", UpdateSelfDeclaredPhone)
 	r.PUT("/v1/citizen/:cpf/email", UpdateSelfDeclaredEmail)
 	r.PUT("/v1/citizen/:cpf/ethnicity", UpdateSelfDeclaredRaca)
+	r.PUT("/v1/citizen/:cpf/birth-date", UpdateSelfDeclaredBirthDate)
 	r.GET("/v1/health", HealthCheck)
 	r.GET("/v1/citizen/:cpf/firstlogin", GetFirstLogin)
 	r.PUT("/v1/citizen/:cpf/firstlogin", UpdateFirstLogin)
@@ -718,6 +719,67 @@ func TestUpdateSelfDeclaredNomeExibicao(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			jsonBody, _ := json.Marshal(tt.body)
 			req, _ := http.NewRequest("PUT", "/v1/citizen/"+tt.cpf+"/display-name", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			assert.Equal(t, tt.expectedStatus, w.Code)
+		})
+	}
+}
+
+func TestUpdateSelfDeclaredBirthDate_Validation(t *testing.T) {
+	r := setupRouter()
+
+	tests := []struct {
+		name           string
+		cpf            string
+		body           map[string]interface{}
+		expectedStatus int
+	}{
+		{
+			name: "invalid CPF",
+			cpf:  "invalid-cpf",
+			body: map[string]interface{}{
+				"data": "1990-05-20",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "empty body",
+			cpf:            cpfTest,
+			body:           map[string]interface{}{},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "invalid date format",
+			cpf:  cpfTest,
+			body: map[string]interface{}{
+				"data": "invalid-date",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "future date",
+			cpf:  cpfTest,
+			body: map[string]interface{}{
+				"data": "2099-01-01",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "impossibly old date",
+			cpf:  cpfTest,
+			body: map[string]interface{}{
+				"data": "1800-01-01",
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonBody, _ := json.Marshal(tt.body)
+			req, _ := http.NewRequest("PUT", "/v1/citizen/"+tt.cpf+"/birth-date", bytes.NewBuffer(jsonBody))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, req)

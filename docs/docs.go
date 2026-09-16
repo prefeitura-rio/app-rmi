@@ -2660,6 +2660,84 @@ const docTemplate = `{
                 }
             }
         },
+        "/citizen/{cpf}/birth-date": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atualiza ou define a data de nascimento autodeclarada do cidadão. Bloqueado se já houver data oficial.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "citizen"
+                ],
+                "summary": "Atualizar data de nascimento autodeclarada",
+                "parameters": [
+                    {
+                        "maxLength": 11,
+                        "minLength": 11,
+                        "type": "string",
+                        "description": "CPF do cidadão (11 dígitos)",
+                        "name": "cpf",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data de nascimento autodeclarada (YYYY-MM-DD)",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SelfDeclaredBirthDateInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data de nascimento atualizada com sucesso",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Formato de CPF ou data inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Acesso negado - permissões insuficientes",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Data de nascimento oficial não pode ser alterada por autodeclaração",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/citizen/{cpf}/disability": {
             "put": {
                 "security": [
@@ -9939,10 +10017,16 @@ const docTemplate = `{
                 "municipio_id": {
                     "type": "string"
                 },
+                "origem": {
+                    "type": "string"
+                },
                 "pais": {
                     "type": "string"
                 },
                 "pais_id": {
+                    "type": "string"
+                },
+                "sistema": {
                     "type": "string"
                 },
                 "uf": {
@@ -10724,6 +10808,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "tipo_logradouro": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SelfDeclaredBirthDateInput": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "string"
+                },
+                "valor": {
                     "type": "string"
                 }
             }
