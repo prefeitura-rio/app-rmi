@@ -300,8 +300,12 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 		citizen.Raca = selfDeclared.Raca
 	}
 	if selfDeclared.Nascimento != nil && selfDeclared.Nascimento.Data != nil {
-		if citizen.Nascimento == nil || citizen.Nascimento.Data == nil {
+		if citizen.Nascimento == nil {
 			citizen.Nascimento = selfDeclared.Nascimento
+		} else if citizen.Nascimento.Data == nil {
+			citizen.Nascimento.Data = selfDeclared.Nascimento.Data
+			citizen.Nascimento.Origem = selfDeclared.Nascimento.Origem
+			citizen.Nascimento.Sistema = selfDeclared.Nascimento.Sistema
 		}
 	}
 	// Always set exhibition name field (even if nil) to ensure it appears in JSON response
@@ -2855,6 +2859,22 @@ func UpdateSelfDeclaredDeficiencia(c *gin.Context) {
 		zap.String("status", "success"))
 }
 
+// UpdateSelfDeclaredBirthDate godoc
+// @Summary Atualizar data de nascimento autodeclarada
+// @Description Atualiza ou define a data de nascimento autodeclarada do cidadão. Bloqueado se já houver data oficial.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "CPF do cidadão (11 dígitos)" minLength(11) maxLength(11)
+// @Param data body models.SelfDeclaredBirthDateInput true "Data de nascimento autodeclarada (YYYY-MM-DD)"
+// @Security BearerAuth
+// @Success 200 {object} SuccessResponse "Data de nascimento atualizada com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF ou data inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 422 {object} ErrorResponse "Data de nascimento oficial não pode ser alterada por autodeclaração"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/{cpf}/birth-date [put]
 func UpdateSelfDeclaredBirthDate(c *gin.Context) {
 	startTime := time.Now()
 	ctx, span := otel.Tracer("").Start(c.Request.Context(), "UpdateSelfDeclaredBirthDate")
@@ -2995,6 +3015,13 @@ func UpdateSelfDeclaredBirthDate(c *gin.Context) {
 	oldDate := ""
 	if baseCitizen.Nascimento != nil && baseCitizen.Nascimento.Data != nil {
 		oldDate = baseCitizen.Nascimento.Data.Format("2006-01-02")
+	} else {
+		var existingSelfDeclared models.SelfDeclaredData
+		if errFind := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&existingSelfDeclared); errFind == nil {
+			if existingSelfDeclared.Nascimento != nil && existingSelfDeclared.Nascimento.Data != nil {
+				oldDate = existingSelfDeclared.Nascimento.Data.Format("2006-01-02")
+			}
+		}
 	}
 
 	err = utils.LogBirthDateUpdate(ctx, auditCtx, oldDate, dateStr)

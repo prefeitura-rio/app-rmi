@@ -1120,6 +1120,7 @@ func TestGetFieldNameFromJobType(t *testing.T) {
 		{"self_declared_renda_familiar", "renda_familiar"},
 		{"self_declared_escolaridade", "escolaridade"},
 		{"self_declared_deficiencia", "deficiencia"},
+		{"self_declared_nascimento", "nascimento"},
 		{"unknown_type", ""},
 		{"citizen", ""},
 	}
