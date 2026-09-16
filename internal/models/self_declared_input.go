@@ -45,3 +45,15 @@ type SelfDeclaredEscolaridadeInput struct {
 type SelfDeclaredDeficienciaInput struct {
 	Valor string `json:"valor" binding:"required"`
 }
+
+type SelfDeclaredBirthDateInput struct {
+	Data  string `json:"data"`
+	Valor string `json:"valor"`
+}
+
+func (i SelfDeclaredBirthDateInput) GetDateString() string {
+	if i.Data != "" {
+		return i.Data
+	}
+	return i.Valor
+}

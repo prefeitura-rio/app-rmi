@@ -284,7 +284,7 @@ mongodb-start: docker-network
             --network rmi-network \
             -p 27017:27017 \
             -e MONGODB_DATABASE=rmi \
-            mongo:latest
+            mongo:6.0
     else
         echo "MongoDB is already running"
     fi

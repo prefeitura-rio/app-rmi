@@ -63,6 +63,7 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 			"self_declared_renda_familiar",
 			"self_declared_escolaridade",
 			"self_declared_deficiencia",
+			"self_declared_nascimento",
 			"cf_lookup",
 			MobilidadeInviteEmailQueue,
 			SalesforceSyncQueue,
@@ -1086,6 +1087,8 @@ func getFieldNameFromJobType(jobType string) string {
 		return "escolaridade"
 	case "self_declared_deficiencia":
 		return "deficiencia"
+	case "self_declared_nascimento":
+		return "nascimento"
 	default:
 		return ""
 	}

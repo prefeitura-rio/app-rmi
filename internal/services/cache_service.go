@@ -134,6 +134,17 @@ func (s *CacheService) UpdateSelfDeclaredDeficiencia(ctx context.Context, cpf st
 	return dataManager.Write(ctx, op)
 }
 
+func (s *CacheService) UpdateSelfDeclaredBirthDate(ctx context.Context, cpf string, nascimento *models.Nascimento) error {
+	op := &SelfDeclaredBirthDateDataOperation{
+		CPF:        cpf,
+		Nascimento: nascimento,
+		UpdatedAt:  time.Now(),
+	}
+
+	dataManager := NewDataManager(config.Redis, config.MongoDB, s.logger)
+	return dataManager.Write(ctx, op)
+}
+
 // UpdateUserConfig updates user configuration via cache system
 func (s *CacheService) UpdateUserConfig(ctx context.Context, userID string, userConfig *models.UserConfig) error {
 	op := &UserConfigDataOperation{

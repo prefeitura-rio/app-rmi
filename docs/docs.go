@@ -9939,10 +9939,16 @@ const docTemplate = `{
                 "municipio_id": {
                     "type": "string"
                 },
+                "origem": {
+                    "type": "string"
+                },
                 "pais": {
                     "type": "string"
                 },
                 "pais_id": {
+                    "type": "string"
+                },
+                "sistema": {
                     "type": "string"
                 },
                 "uf": {
