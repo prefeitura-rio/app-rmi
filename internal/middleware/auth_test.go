@@ -52,7 +52,35 @@ func TestAuthMiddleware_Success(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("AuthMiddleware() status = %v, want %v", w.Code, http.StatusOK)
+		t.Errorf("AuthMiddleware() with valid token status = %v, want %v", w.Code, http.StatusOK)
+	}
+}
+
+func TestAuthMiddleware_UrlEncodedJWTWithUnderscores(t *testing.T) {
+	router := gin.New()
+	router.Use(AuthMiddleware())
+	router.GET("/test", func(c *gin.Context) {
+		claims, exists := c.Get("claims")
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "no claims"})
+			return
+		}
+		jwtClaims := claims.(*models.JWTClaims)
+		c.JSON(http.StatusOK, gin.H{
+			"preferred_username": jwtClaims.PreferredUsername,
+			"name":               jwtClaims.Name,
+		})
+	})
+
+	token := "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJMWUFNbUUwVUZBd1hyUXJGbEgwSlNrMmtCR3FSblFiMDFWRG55a3R1UE5NIn0.eyJqdGkiOiJmNTlhODQyZC04MmVmLTRlYzAtYmIzZS1jODU0YTVkMzg1YWUiLCJleHAiOjE3ODk4MzA0MDYsIm5iZiI6MCwiaWF0IjoxNzg5NzQ0NTQ3LCJpc3MiOiJodHRwczovL2F1dGgtaWRyaW9ob20uYXBwcy5yaW8uZ292LmJyL2F1dGgvcmVhbG1zL2lkcmlvX2NpZGFkYW8iLCJhdWQiOlsiYnJva2VyIiwiYWNjb3VudCJdLCJzdWIiOiI0M2E1MTg3Ni1hZWQwLTQwMjMtODFiMy05YmQ5Y2JhYzk1YmQiLCJ0eXAiOiJCZWFyZXIiLCJhenAiOiJzdXBlcmFwcCIsIm5vbmNlIjoiZDMyOGE0YTMtM2I1Ny00MDI5LWIwOWMtODBmMzIwMDdhY2VlIiwiYXV0aF90aW1lIjoxNzg5NzQ0MDA2LCJzZXNzaW9uX3N0YXRlIjoiOWRkNTIxNTAtNDc5NS00MmExLTk0MmUtZTIwNDEzM2U3OGZlIiwiYWNyIjoiMSIsImFsbG93ZWQtb3JpZ2lucyI6WyJodHRwczovL3VzZmV6azM5YzVoci5zaGFyZS56cm9rLmlvIiwiaHR0cHM6Ly9zdGFnaW5nLnBlcXVlbm9zY2FyaW9jYXMuZGFkb3MucmlvIiwiaHR0cHM6Ly9wZXF1ZW5vc2NhcmlvY2FzLmRhZG9zLnJpbyIsImh0dHBzOi8vYWRtaW4uc3RhZ2luZy5hcHAuZGFkb3MucmlvIiwiaHR0cDovL2xvY2FsaG9zdDozMDAxIiwiaHR0cDovL2xvY2FsaG9zdDo4MDAwIiwiaHR0cHM6Ly9wcmVmLnJpbyIsImh0dHA6Ly9sb2NhbGhvc3Q6MzAwMCIsImh0dHBzOi8vYzg2YzZjYTMwOWE4Lm5ncm9rLWZyZWUuYXBwIiwiaHR0cHM6Ly9zdGFnaW5nLmFwcC5kYWRvcy5yaW8iXSwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbIm9mZmxpbmVfYWNjZXNzIiwiY2FyaW9jYS1yaW8iLCJ1bWFfYXV0aG9yaXphdGlvbiIsInVzZXIiXX0sInJlc291cmNlX2FjY2VzcyI6eyJicm9rZXIiOnsicm9sZXMiOlsicmVhZC10b2tlbiJdfSwiYWNjb3VudCI6eyJyb2xlcyI6WyJtYW5hZ2UtYWNjb3VudCIsIm1hbmFnZS1hY2NvdW50LWxpbmtzIiwidmlldy1wcm9maWxlIl19fSwic2NvcGUiOiJwaG9uZSBhZGRyZXNzIHByb2ZpbGUgZW1haWwiLCJhZGRyZXNzIjp7fSwiZW1haWxfdmVyaWZpZWQiOnRydWUsIm5hbWUiOiJKb8OjbyBTaWx2YSIsInBob25lX251bWJlciI6IjIxOTk3MDE1MTI4IiwicHJlZmVycmVkX3VzZXJuYW1lIjoiMDI5MjkzNjcwMjQiLCJnaXZlbl9uYW1lIjoiSm_Do28iLCJmYW1pbHlfbmFtZSI6IlNpbHZhIiwiZW1haWwiOiJsdWNhc3RhdmFyZXN0dEBnbWFpbC5jb20ifQ.fake-signature"
+
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("AuthMiddleware() failed for valid URL-encoded JWT: status = %v, want %v (body: %s)", w.Code, http.StatusOK, w.Body.String())
 	}
 }
 

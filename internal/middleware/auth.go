@@ -74,26 +74,31 @@ func extractClaims(token string) (*models.JWTClaims, error) {
 	claimsPart := parts[1]
 	logger.Debug("extracting JWT claims", zap.String("claims_part_length", fmt.Sprintf("%d", len(claimsPart))))
 
-	// Add padding if needed
-	switch len(claimsPart) % 4 {
-	case 2:
-		claimsPart += "=="
-	case 3:
-		claimsPart += "="
-	}
-
-	// Try RawURLEncoding first, then fallback to standard encoding
 	var claimsBytes []byte
 	var err error
 
+	// Standard JWT encoding is base64.RawURLEncoding (unpadded URL-safe base64 per RFC 7519).
 	claimsBytes, err = base64.RawURLEncoding.DecodeString(claimsPart)
 	if err != nil {
-		logger.Debug("RawURLEncoding failed, trying StdEncoding", zap.Error(err))
-		// Fallback to standard base64 decoding
-		claimsBytes, err = base64.StdEncoding.DecodeString(claimsPart)
+		logger.Debug("RawURLEncoding failed, trying URLEncoding with padding", zap.Error(err))
+		padded := claimsPart
+		switch len(padded) % 4 {
+		case 2:
+			padded += "=="
+		case 3:
+			padded += "="
+		}
+		claimsBytes, err = base64.URLEncoding.DecodeString(padded)
 		if err != nil {
-			logger.Error("failed to decode JWT claims with both encodings", zap.Error(err), zap.String("claims_part", claimsPart[:min(50, len(claimsPart))]))
-			return nil, fmt.Errorf("failed to decode claims: %w", err)
+			logger.Debug("URLEncoding failed, trying StdEncoding", zap.Error(err))
+			claimsBytes, err = base64.StdEncoding.DecodeString(padded)
+			if err != nil {
+				claimsBytes, err = base64.RawStdEncoding.DecodeString(claimsPart)
+				if err != nil {
+					logger.Error("failed to decode JWT claims with any encoding", zap.Error(err), zap.String("claims_part", claimsPart[:min(50, len(claimsPart))]))
+					return nil, fmt.Errorf("failed to decode claims: %w", err)
+				}
+			}
 		}
 	}
 
