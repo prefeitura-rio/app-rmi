@@ -9999,7 +9999,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Webhook inbound: CPF + delta em dados (mesmo shape do GET Person Account). JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. evento=atualizacao (default) ou anonimizacao; updatedAt opcional. Campo ausente=não alterar; null=limpar; string vazia=valor vazio. Resposta 202 com CPF mascarado. Enfileira salesforce_sync sem GET de volta ao SF.",
+        "description": "JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. Body: cpf + evento (atualizacao default ou anonimizacao) + updatedAt opcional. Para atualizacao, dados é delta obrigatório (ausente=não alterar; null=limpar; \\\"\\\"=vazio). Para anonimizacao, dados é opcional e ignorado — o RMI limpa o espelho SF por inteiro (self_declared PII + salesforce_consentimentos; não altera citizens nem opt_in/category_opt_ins do RMI). nome/nomeSocial/dataNascimento no delta de atualizacao são ignorados. 202 com CPF mascarado; retry idempotente via updatedAt.",
         "tags": [
           "salesforce"
         ],
@@ -10012,7 +10012,7 @@
               }
             }
           },
-          "description": "CPF, evento e delta de campos alterados",
+          "description": "CPF, evento; dados obrigatório só em atualizacao",
           "required": true
         },
         "responses": {
@@ -10027,7 +10027,7 @@
             }
           },
           "400": {
-            "description": "CPF inválido, dados ausentes/grandes, updatedAt longo ou evento inválido",
+            "description": "CPF inválido, dados ausentes/grandes (atualizacao), updatedAt longo ou evento inválido",
             "content": {
               "application/json": {
                 "schema": {

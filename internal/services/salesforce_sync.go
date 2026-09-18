@@ -31,7 +31,8 @@ const (
 
 	// SalesforceWebhookEventAtualizacao is the default inbound webhook event (partial field patch).
 	SalesforceWebhookEventAtualizacao = "atualizacao"
-	// SalesforceWebhookEventAnonimizacao marks a masked snapshot after LGPD anonymization in SF.
+	// SalesforceWebhookEventAnonimizacao triggers a full wipe of the Salesforce mirror in RMI
+	// (self_declared PII + salesforce_consentimentos) after LGPD anonymization completes in SF.
 	SalesforceWebhookEventAnonimizacao = "anonimizacao"
 
 	salesforceSistema = "salesforce"
@@ -119,6 +120,7 @@ func newSalesforceClientWithJWT(bearer string) *clients.SalesforceClient {
 }
 
 // EnqueueSalesforceSyncJob queues an inbound apply job (worker persists; no push back).
+// For evento=anonimizacao, rawDados may be empty — the worker wipes the SF mirror wholesale.
 func EnqueueSalesforceSyncJob(ctx context.Context, redis *redisclient.Client, cpf, evento, updatedAt string, rawDados json.RawMessage) error {
 	if redis == nil {
 		return fmt.Errorf("redis client is nil")
@@ -127,12 +129,12 @@ func EnqueueSalesforceSyncJob(ctx context.Context, redis *redisclient.Client, cp
 	if cpf == "" {
 		return fmt.Errorf("cpf is required")
 	}
-	if len(bytesTrimSpaceJSON(rawDados)) == 0 {
-		return fmt.Errorf("dados is required")
-	}
 	evento = NormalizeSalesforceWebhookEvento(evento)
 	if evento == "" {
 		return fmt.Errorf("invalid salesforce webhook evento")
+	}
+	if evento != SalesforceWebhookEventAnonimizacao && len(bytesTrimSpaceJSON(rawDados)) == 0 {
+		return fmt.Errorf("dados is required")
 	}
 
 	job := SyncJob{
@@ -341,12 +343,15 @@ func (w *SyncWorker) handleSalesforceSyncJob(ctx context.Context, job *SyncJob) 
 	if cpf == "" {
 		cpf = job.Key
 	}
-	if cpf == "" || len(bytesTrimSpaceJSON(payload.Dados)) == 0 {
-		return fmt.Errorf("invalid salesforce_sync payload")
-	}
 	evento := NormalizeSalesforceWebhookEvento(payload.Evento)
 	if evento == "" {
 		return fmt.Errorf("invalid salesforce_sync evento")
+	}
+	if cpf == "" {
+		return fmt.Errorf("invalid salesforce_sync payload")
+	}
+	if evento != SalesforceWebhookEventAnonimizacao && len(bytesTrimSpaceJSON(payload.Dados)) == 0 {
+		return fmt.Errorf("invalid salesforce_sync payload")
 	}
 
 	w.logger.Info("applying salesforce inbound sync",

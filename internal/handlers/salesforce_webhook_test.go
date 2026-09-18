@@ -240,7 +240,8 @@ func TestHandleSalesforceCidadaoWebhook_AnonimizacaoEvento(t *testing.T) {
 	}
 	defer func() { config.AppConfig = prev }()
 
-	payload := `{"cpf":"` + testWebhookCPF + `","evento":"anonimizacao","dados":{"cpf":"` + testWebhookCPF + `","nome":"ANONIMIZADO","email":""}}`
+	// New contract: anonimizacao is key + evento + updatedAt only (no dados).
+	payload := `{"cpf":"` + testWebhookCPF + `","evento":"anonimizacao","updatedAt":"2026-08-27T17:00:00Z"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/webhooks/salesforce/cidadao", bytes.NewBufferString(payload))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+salesforceWebhookJWT)
@@ -256,6 +257,37 @@ func TestHandleSalesforceCidadaoWebhook_AnonimizacaoEvento(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rawJobs, 1)
 	assert.Contains(t, rawJobs[0], `"evento":"anonimizacao"`)
+	assert.Contains(t, rawJobs[0], `"updatedAt":"2026-08-27T17:00:00Z"`)
+	assert.NotContains(t, rawJobs[0], `"dados":{`)
+}
+
+func TestHandleSalesforceCidadaoWebhook_AnonimizacaoIgnoresLegacyDados(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	redisClient := withSalesforceSyncQueueRedis(t)
+
+	prev := config.AppConfig
+	config.AppConfig = &config.Config{
+		SalesforceBaseURL:        "https://sf.example.com",
+		SalesforceWebhookClients: []string{"salesforce-rmi"},
+	}
+	defer func() { config.AppConfig = prev }()
+
+	// Backward compat: dados may still be sent but is stripped before enqueue.
+	payload := `{"cpf":"` + testWebhookCPF + `","evento":"anonimizacao","dados":{"cpf":"` + testWebhookCPF + `","nome":"ANONIMIZADO","email":""}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/webhooks/salesforce/cidadao", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+salesforceWebhookJWT)
+	w := httptest.NewRecorder()
+	salesforceWebhookRouter().ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusAccepted, w.Code)
+
+	rawJobs, err := redisClient.LRange(context.Background(), "sync:queue:{"+services.SalesforceSyncQueue+"}", 0, 0).Result()
+	require.NoError(t, err)
+	require.Len(t, rawJobs, 1)
+	assert.Contains(t, rawJobs[0], `"evento":"anonimizacao"`)
+	assert.NotContains(t, rawJobs[0], `"ANONIMIZADO"`)
 }
 
 func TestHandleSalesforceCidadaoWebhook_DadosNull(t *testing.T) {

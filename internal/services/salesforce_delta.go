@@ -52,6 +52,17 @@ func (w *SyncWorker) applySalesforceDelta(ctx context.Context, cpf, evento, upda
 		return err
 	}
 
+	evento = NormalizeSalesforceWebhookEvento(evento)
+	if evento == "" {
+		return fmt.Errorf("invalid salesforce webhook evento")
+	}
+
+	if evento == SalesforceWebhookEventAnonimizacao {
+		return w.withSalesforceInboundLock(ctx, cpf, func() error {
+			return w.applySalesforceAnonimizacaoLocked(ctx, cpf, incomingUpdatedAt, now)
+		})
+	}
+
 	fields, err := parseSalesforceDeltaFields(rawDados)
 	if err != nil {
 		return err
@@ -60,6 +71,51 @@ func (w *SyncWorker) applySalesforceDelta(ctx context.Context, cpf, evento, upda
 	return w.withSalesforceInboundLock(ctx, cpf, func() error {
 		return w.applySalesforceDeltaLocked(ctx, cpf, evento, fields, incomingUpdatedAt, now)
 	})
+}
+
+// applySalesforceAnonimizacaoLocked wipes the Salesforce mirror for a CPF after RTBF
+// completes in SF. Clears self_declared PII fields and salesforce_consentimentos; does
+// not touch citizens, RMI opt_in, or category_opt_ins. dados from the webhook is ignored.
+func (w *SyncWorker) applySalesforceAnonimizacaoLocked(ctx context.Context, cpf string, incomingUpdatedAt *time.Time, now time.Time) error {
+	var existing models.SelfDeclaredData
+	findErr := w.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(ctx, bson.M{"cpf": cpf}).Decode(&existing)
+	existingFound := findErr == nil
+	if findErr != nil && !errors.Is(findErr, mongo.ErrNoDocuments) {
+		return fmt.Errorf("failed to load self_declared for anonimizacao: %w", findErr)
+	}
+
+	if existingFound && isStaleSalesforceUpdatedAt(existing.SalesforceUpdatedAt, incomingUpdatedAt) {
+		w.logger.Info("salesforce inbound sync skipped: stale updatedAt",
+			zap.String("cpf", cpf),
+			zap.String("evento", SalesforceWebhookEventAnonimizacao))
+		return nil
+	}
+
+	set, unset := buildSelfDeclaredAnonimizacaoWipe(now)
+	set["cpf"] = cpf
+	set["updated_at"] = now
+
+	update := bson.M{"$set": set}
+	if len(unset) > 0 {
+		update["$unset"] = unset
+	}
+
+	coll := w.mongo.Collection(config.AppConfig.SelfDeclaredCollection)
+	if _, err := coll.UpdateOne(ctx, bson.M{"cpf": cpf}, update, options.Update().SetUpsert(true)); err != nil {
+		return fmt.Errorf("failed to apply salesforce anonimizacao wipe to self_declared: %w", err)
+	}
+
+	if err := w.applySalesforceConsentimentoDelta(ctx, cpf, json.RawMessage("null"), now); err != nil {
+		return fmt.Errorf("failed to clear salesforce consentimentos on anonimizacao: %w", err)
+	}
+
+	if err := w.stampSalesforceUpdatedAt(ctx, cpf, incomingUpdatedAt, now); err != nil {
+		return fmt.Errorf("failed to stamp salesforce updatedAt: %w", err)
+	}
+
+	w.invalidateSalesforceMirrorCaches(ctx, cpf)
+	return nil
 }
 
 func (w *SyncWorker) applySalesforceDeltaLocked(ctx context.Context, cpf, evento string, fields map[string]json.RawMessage, incomingUpdatedAt *time.Time, now time.Time) error {
@@ -198,6 +254,8 @@ func buildSelfDeclaredDeltaPatch(existing *models.SelfDeclaredData, fields map[s
 	_ = incomingUpdatedAt // watermark is committed after all mutations succeed
 
 	if evento == SalesforceWebhookEventAnonimizacao {
+		// Legacy path: anonimizacao should go through applySalesforceAnonimizacaoLocked.
+		// Keep flags here only if a caller still builds a delta patch with this evento.
 		set["salesforce_anonymized"] = true
 		set["salesforce_anonymized_at"] = now
 	}
@@ -294,6 +352,42 @@ func buildSelfDeclaredDeltaPatch(existing *models.SelfDeclaredData, fields map[s
 		applyAlternatePhoneDelta(set, unset, existing, raw, 1, now, origem, sistema)
 	}
 
+	return set, unset
+}
+
+// buildSelfDeclaredAnonimizacaoWipe clears every PII / SF-mirrored field on self_declared
+// and stamps anonymization markers. CPF and watermarks are set by the caller.
+func buildSelfDeclaredAnonimizacaoWipe(now time.Time) (bson.M, bson.M) {
+	set := bson.M{
+		"salesforce_synced_at":     now,
+		"salesforce_anonymized":    true,
+		"salesforce_anonymized_at": now,
+	}
+	unset := bson.M{
+		"endereco":                 "",
+		"email":                    "",
+		"telefone":                 "",
+		"telefone_pending":         "",
+		"raca":                     "",
+		"nome_exibicao":            "",
+		"genero":                   "",
+		"renda_familiar":           "",
+		"escolaridade":             "",
+		"deficiencia":              "",
+		"nascimento":               "",
+		"nacionalidade":            "",
+		"idioma":                   "",
+		"passaporte":               "",
+		"is_tourist":               "",
+		"complemento":              "",
+		"tipo_telefone1":           "",
+		"tipo_telefone2":           "",
+		"tipo_telefone3":           "",
+		"telefone_internacional":   "",
+		"canal_origem":             "",
+		"canal_ultima_modificacao": "",
+		"salesforce_account_id":    "",
+	}
 	return set, unset
 }
 

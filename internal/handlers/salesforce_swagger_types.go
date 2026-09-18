@@ -3,12 +3,13 @@ package handlers
 import "github.com/prefeitura-rio/app-rmi/internal/clients"
 
 // SalesforceWebhookRequestSwagger documents the inbound webhook body (OpenAPI/Swagger).
-// dados is a delta: only changed fields; absent=do not change, null=clear, ""=empty value.
+// For atualizacao, dados is a required delta (absent=do not change, null=clear, ""=empty).
+// For anonimizacao, omit dados — RMI wipes the SF mirror wholesale (dados ignored if sent).
 type SalesforceWebhookRequestSwagger struct {
-	CPF       string                 `json:"cpf" example:"52998224725"`
-	Evento    string                 `json:"evento,omitempty" enums:"atualizacao,anonimizacao" example:"atualizacao"`
-	UpdatedAt string                 `json:"updatedAt,omitempty" example:"2026-08-31T17:33:49Z"`
-	Dados     SalesforceWebhookDados `json:"dados"`
+	CPF       string                  `json:"cpf" example:"52998224725"`
+	Evento    string                  `json:"evento,omitempty" enums:"atualizacao,anonimizacao" example:"atualizacao"`
+	UpdatedAt string                  `json:"updatedAt,omitempty" example:"2026-08-31T17:33:49Z"`
+	Dados     *SalesforceWebhookDados `json:"dados,omitempty"`
 }
 
 // SalesforceWebhookDados is the inbound delta (same wire shape as GET Person Account).
