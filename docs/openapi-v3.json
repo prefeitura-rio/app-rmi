@@ -10969,7 +10969,7 @@
             "example": "52998224725"
           },
           "dados": {
-            "$ref": "#/definitions/handlers.SalesforceWebhookDados"
+            "$ref": "#/components/schemas/handlers.SalesforceWebhookDados"
           },
           "evento": {
             "type": "string",

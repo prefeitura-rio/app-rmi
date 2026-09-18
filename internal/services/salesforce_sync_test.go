@@ -540,6 +540,73 @@ func TestHandleSalesforceSyncJob_AnonimizacaoWipesMirrorWithoutDados(t *testing.
 	assert.Empty(t, uc.SalesforceConsentimentos)
 }
 
+func TestHandleSalesforceSyncJob_AnonimizacaoUpsertsWhenSelfDeclaredMissing(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+	if config.AppConfig.UserConfigCollection == "" {
+		config.AppConfig.UserConfigCollection = "user_config"
+	}
+
+	cpf := "14202478754"
+	err := worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Err()
+	require.ErrorIs(t, err, mongo.ErrNoDocuments)
+
+	job := &SyncJob{
+		ID:         "job-sf-anon-upsert",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:       cpf,
+			Evento:    SalesforceWebhookEventAnonimizacao,
+			UpdatedAt: "2026-08-27T17:00:00Z",
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var raw bson.M
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&raw))
+
+	assert.Equal(t, cpf, raw["cpf"])
+	assert.Equal(t, true, raw["salesforce_anonymized"])
+	require.NotNil(t, raw["salesforce_anonymized_at"])
+	require.NotNil(t, raw["salesforce_updated_at"])
+	require.NotNil(t, raw["salesforce_synced_at"])
+	require.NotNil(t, raw["updated_at"])
+
+	piiFields := []string{
+		"email", "telefone", "telefone_pending", "endereco", "nome_exibicao",
+		"raca", "genero", "renda_familiar", "escolaridade", "deficiencia",
+		"nascimento", "nacionalidade", "idioma", "passaporte", "is_tourist",
+		"complemento", "tipo_telefone1", "tipo_telefone2", "tipo_telefone3",
+		"telefone_internacional", "canal_origem", "canal_ultima_modificacao",
+		"salesforce_account_id",
+	}
+	for _, field := range piiFields {
+		_, present := raw[field]
+		assert.False(t, present, "upserted self_declared must not retain PII field %q", field)
+	}
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	assert.True(t, sd.SalesforceAnonymized)
+	assert.Nil(t, sd.Email)
+	assert.Nil(t, sd.Telefone)
+	assert.Nil(t, sd.NomeExibicao)
+	assert.Nil(t, sd.Endereco)
+	assert.Nil(t, sd.SalesforceAccountID)
+	require.NotNil(t, sd.SalesforceUpdatedAt)
+	assert.Equal(t, "2026-08-27T17:00:00Z", sd.SalesforceUpdatedAt.UTC().Format(time.RFC3339))
+}
+
 func TestHandleSalesforceSyncJob_AnonimizacaoRespectsStaleUpdatedAt(t *testing.T) {
 	worker, _, cleanup := setupSyncWorkerTest(t)
 	defer cleanup()
