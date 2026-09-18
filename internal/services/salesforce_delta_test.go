@@ -67,13 +67,19 @@ func TestIsStaleSalesforceUpdatedAt(t *testing.T) {
 	assert.True(t, isStaleSalesforceUpdatedAt(&old, &old))
 }
 
-func TestBuildSelfDeclaredDeltaPatch_AnonimizacaoFlags(t *testing.T) {
-	set, _ := buildSelfDeclaredDeltaPatch(nil, map[string]json.RawMessage{
-		"nomeExibicao": json.RawMessage(`"ANONIMIZADO"`),
-	}, SalesforceWebhookEventAnonimizacao, time.Now(), nil)
+func TestBuildSelfDeclaredAnonimizacaoWipe(t *testing.T) {
+	now := time.Now()
+	set, unset := buildSelfDeclaredAnonimizacaoWipe(now)
 
 	assert.Equal(t, true, set["salesforce_anonymized"])
-	assert.NotNil(t, set["salesforce_anonymized_at"])
+	assert.Equal(t, now, set["salesforce_anonymized_at"])
+	assert.Equal(t, now, set["salesforce_synced_at"])
+	assert.Contains(t, unset, "email")
+	assert.Contains(t, unset, "telefone")
+	assert.Contains(t, unset, "nome_exibicao")
+	assert.Contains(t, unset, "endereco")
+	assert.Contains(t, unset, "salesforce_account_id")
+	assert.NotContains(t, set, "cpf")
 }
 
 func TestBuildSelfDeclaredDeltaPatch_ConsentimentoMergeFields(t *testing.T) {

@@ -471,6 +471,117 @@ func TestHandleSalesforceSyncJob_DoesNotWriteCanonicalCitizen(t *testing.T) {
 	assert.Equal(t, "Brasil", *sd.Nacionalidade)
 }
 
+func TestHandleSalesforceSyncJob_AnonimizacaoWipesMirrorWithoutDados(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+	if config.AppConfig.UserConfigCollection == "" {
+		config.AppConfig.UserConfigCollection = "user_config"
+	}
+
+	cpf := "14202478754"
+	oldEmail := "old@test.com"
+	nome := "Maria"
+	phone := "5521988888888"
+	accountID := "001XX000004TMIQ"
+	_, err := worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).InsertOne(context.Background(), models.SelfDeclaredData{
+		CPF:          cpf,
+		NomeExibicao: &nome,
+		Email: &models.Email{
+			Principal: &models.EmailPrincipal{Valor: &oldEmail},
+		},
+		Telefone: &models.Telefone{
+			Principal: &models.TelefonePrincipal{Valor: &phone},
+		},
+		SalesforceAccountID: &accountID,
+	})
+	require.NoError(t, err)
+
+	_, err = worker.mongo.Collection(config.AppConfig.UserConfigCollection).InsertOne(context.Background(), models.UserConfig{
+		CPF: cpf,
+		SalesforceConsentimentos: map[string]models.SalesforceConsentimentoEntry{
+			"PREF_Lembrete_Pagamento": {Categoria: "PREF_Lembrete_Pagamento", Status: "IN", OptIn: true},
+		},
+	})
+	require.NoError(t, err)
+
+	job := &SyncJob{
+		ID:         "job-sf-anon-wipe",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:       cpf,
+			Evento:    SalesforceWebhookEventAnonimizacao,
+			UpdatedAt: "2026-08-27T17:00:00Z",
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	assert.Nil(t, sd.Email)
+	assert.Nil(t, sd.Telefone)
+	assert.Nil(t, sd.NomeExibicao)
+	assert.Nil(t, sd.SalesforceAccountID)
+	assert.True(t, sd.SalesforceAnonymized)
+	require.NotNil(t, sd.SalesforceAnonymizedAt)
+	require.NotNil(t, sd.SalesforceUpdatedAt)
+	assert.Equal(t, "2026-08-27T17:00:00Z", sd.SalesforceUpdatedAt.UTC().Format(time.RFC3339))
+
+	var uc models.UserConfig
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.UserConfigCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&uc))
+	assert.Empty(t, uc.SalesforceConsentimentos)
+}
+
+func TestHandleSalesforceSyncJob_AnonimizacaoRespectsStaleUpdatedAt(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	if config.AppConfig.SelfDeclaredCollection == "" {
+		config.AppConfig.SelfDeclaredCollection = "self_declared"
+	}
+
+	cpf := "14202478754"
+	newer := time.Date(2026, 8, 27, 18, 0, 0, 0, time.UTC)
+	email := "keep@test.com"
+	_, err := worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).InsertOne(context.Background(), models.SelfDeclaredData{
+		CPF:                 cpf,
+		Email:               &models.Email{Principal: &models.EmailPrincipal{Valor: &email}},
+		SalesforceUpdatedAt: &newer,
+	})
+	require.NoError(t, err)
+
+	job := &SyncJob{
+		ID:         "job-sf-anon-stale",
+		Type:       SalesforceSyncQueue,
+		Key:        cpf,
+		Collection: SalesforceSyncQueue,
+		Origin:     SyncOriginSalesforce,
+		Data: SalesforceSyncPayload{
+			CPF:       cpf,
+			Evento:    SalesforceWebhookEventAnonimizacao,
+			UpdatedAt: "2026-08-27T17:00:00Z",
+		},
+	}
+	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
+
+	var sd models.SelfDeclaredData
+	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
+		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
+	require.NotNil(t, sd.Email)
+	require.NotNil(t, sd.Email.Principal)
+	require.NotNil(t, sd.Email.Principal.Valor)
+	assert.Equal(t, "keep@test.com", *sd.Email.Principal.Valor)
+	assert.False(t, sd.SalesforceAnonymized)
+}
+
 func TestHandleSalesforceSyncJob_DeltaNullClearsEmail(t *testing.T) {
 	worker, _, cleanup := setupSyncWorkerTest(t)
 	defer cleanup()
@@ -500,8 +611,8 @@ func TestHandleSalesforceSyncJob_DeltaNullClearsEmail(t *testing.T) {
 		Origin:     SyncOriginSalesforce,
 		Data: SalesforceSyncPayload{
 			CPF:    cpf,
-			Evento: SalesforceWebhookEventAnonimizacao,
-			Dados:  json.RawMessage(`{"nomeExibicao":"ANONIMIZADO","email":null}`),
+			Evento: SalesforceWebhookEventAtualizacao,
+			Dados:  json.RawMessage(`{"email":null}`),
 		},
 	}
 	require.NoError(t, worker.handleSalesforceSyncJob(context.Background(), job))
@@ -510,9 +621,7 @@ func TestHandleSalesforceSyncJob_DeltaNullClearsEmail(t *testing.T) {
 	require.NoError(t, worker.mongo.Collection(config.AppConfig.SelfDeclaredCollection).
 		FindOne(context.Background(), bson.M{"cpf": cpf}).Decode(&sd))
 	assert.Nil(t, sd.Email)
-	require.NotNil(t, sd.NomeExibicao)
-	assert.Equal(t, "ANONIMIZADO", *sd.NomeExibicao)
-	assert.True(t, sd.SalesforceAnonymized)
+	assert.False(t, sd.SalesforceAnonymized)
 }
 
 func TestHandleSalesforceSyncJob_DeltaEmptyStringKeepsEmailField(t *testing.T) {

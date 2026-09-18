@@ -18,13 +18,14 @@ const (
 	maxSalesforceWebhookUpdatedAtLen = 64
 )
 
-// SalesforceWebhookRequest is the inbound delta payload from Salesforce.
-// Only changed fields appear in dados (same shape/types as GET /cidadao/{cpf}).
+// SalesforceWebhookRequest is the inbound payload from Salesforce.
+// For evento=atualizacao, dados is a required delta (same shape/types as GET /cidadao/{cpf}).
+// For evento=anonimizacao, dados is optional and ignored — RMI wipes the SF mirror wholesale.
 type SalesforceWebhookRequest struct {
 	CPF       string          `json:"cpf" binding:"required"`
 	Evento    string          `json:"evento"`
 	UpdatedAt string          `json:"updatedAt"`
-	Dados     json.RawMessage `json:"dados" binding:"required"`
+	Dados     json.RawMessage `json:"dados"`
 }
 
 // SalesforceWebhookResponse is returned when the sync job is accepted.
@@ -35,17 +36,17 @@ type SalesforceWebhookResponse struct {
 	Evento  string `json:"evento"`
 }
 
-// HandleSalesforceCidadaoWebhook receives CPF + changed Person Account fields from Salesforce
-// and enqueues a salesforce_sync job (origem=salesforce). No GET back to Salesforce.
+// HandleSalesforceCidadaoWebhook receives Salesforce Person Account events and enqueues
+// a salesforce_sync job (origem=salesforce). No GET back to Salesforce.
 //
 // @Summary Webhook Salesforce cidadão
-// @Description JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. Body: cpf + dados (delta; updatedAt opcional; evento=atualizacao default ou anonimizacao). Ausente=não alterar; null=limpar; \"\"=vazio. Persiste overlay em self_declared; consentimento só em salesforce_consentimentos (não altera opt_in/category_opt_ins do RMI). nome, nomeSocial e dataNascimento no delta são ignorados (não gravam citizens). 202 com CPF mascarado; sem GET de volta ao SF.
+// @Description JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. Body: cpf + evento (atualizacao default ou anonimizacao) + updatedAt opcional. Para atualizacao, dados é delta obrigatório (ausente=não alterar; null=limpar; \"\"=vazio). Para anonimizacao, dados é opcional e ignorado — o RMI limpa o espelho SF por inteiro (self_declared PII + salesforce_consentimentos; não altera citizens nem opt_in/category_opt_ins do RMI). nome/nomeSocial/dataNascimento no delta de atualizacao são ignorados. 202 com CPF mascarado; retry idempotente via updatedAt.
 // @Tags salesforce
 // @Accept json
 // @Produce json
-// @Param body body SalesforceWebhookRequestSwagger true "CPF, evento e delta de campos alterados"
+// @Param body body SalesforceWebhookRequestSwagger true "CPF, evento; dados obrigatório só em atualizacao"
 // @Success 202 {object} SalesforceWebhookResponse "Job enfileirado"
-// @Failure 400 {object} ErrorResponse "CPF inválido, dados ausentes/grandes, updatedAt longo ou evento inválido"
+// @Failure 400 {object} ErrorResponse "CPF inválido, dados ausentes/grandes (atualizacao), updatedAt longo ou evento inválido"
 // @Failure 401 {object} ErrorResponse "JWT inválido ou ausente"
 // @Failure 403 {object} ErrorResponse "azp do JWT não está em SALESFORCE_WEBHOOK_CLIENTS"
 // @Failure 500 {object} ErrorResponse "Falha ao enfileirar salesforce_sync (Redis)"
@@ -62,7 +63,7 @@ func HandleSalesforceCidadaoWebhook(c *gin.Context) {
 
 	var req SalesforceWebhookRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "cpf and dados are required"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "cpf is required"})
 		return
 	}
 	cpf := strings.TrimSpace(req.CPF)
@@ -78,10 +79,6 @@ func HandleSalesforceCidadaoWebhook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "updatedAt exceeds maximum length"})
 		return
 	}
-	if len(strings.TrimSpace(string(req.Dados))) == 0 {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dados is required"})
-		return
-	}
 
 	evento := services.NormalizeSalesforceWebhookEvento(req.Evento)
 	if evento == "" {
@@ -89,12 +86,30 @@ func HandleSalesforceCidadaoWebhook(c *gin.Context) {
 		return
 	}
 
-	if _, err := parseSalesforceWebhookDadosObject(req.Dados); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
+	dados := json.RawMessage(strings.TrimSpace(string(req.Dados)))
+	hasDados := len(dados) > 0 && string(dados) != "null"
+
+	if evento == services.SalesforceWebhookEventAnonimizacao {
+		// Full wipe is owned by RMI; any dados snapshot is ignored (accepted for backward compat).
+		if hasDados {
+			if _, err := parseSalesforceWebhookDadosObject(dados); err != nil {
+				c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+				return
+			}
+		}
+		dados = nil
+	} else {
+		if len(dados) == 0 {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "dados is required"})
+			return
+		}
+		if _, err := parseSalesforceWebhookDadosObject(dados); err != nil {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+			return
+		}
 	}
 
-	if err := services.EnqueueSalesforceSyncJob(c.Request.Context(), config.Redis, cpf, evento, req.UpdatedAt, req.Dados); err != nil {
+	if err := services.EnqueueSalesforceSyncJob(c.Request.Context(), config.Redis, cpf, evento, req.UpdatedAt, dados); err != nil {
 		logger.Error("failed to enqueue salesforce sync job",
 			zap.String("cpf", cpf),
 			zap.String("evento", evento),
@@ -117,7 +132,7 @@ func HandleSalesforceCidadaoWebhook(c *gin.Context) {
 
 func parseSalesforceWebhookDadosObject(raw json.RawMessage) (map[string]json.RawMessage, error) {
 	raw = json.RawMessage(strings.TrimSpace(string(raw)))
-	if string(raw) == "null" {
+	if len(raw) == 0 || string(raw) == "null" {
 		return nil, errInvalidDados()
 	}
 	var fields map[string]json.RawMessage

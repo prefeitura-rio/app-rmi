@@ -7781,7 +7781,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. Body: cpf + dados (delta; updatedAt opcional; evento=atualizacao default ou anonimizacao). Ausente=não alterar; null=limpar; \\\"\\\"=vazio. Persiste overlay em self_declared; consentimento só em salesforce_consentimentos (não altera opt_in/category_opt_ins do RMI). nome, nomeSocial e dataNascimento no delta são ignorados (não gravam citizens). 202 com CPF mascarado; sem GET de volta ao SF.",
+                "description": "JWT Keycloak com azp em SALESFORCE_WEBHOOK_CLIENTS. Body: cpf + evento (atualizacao default ou anonimizacao) + updatedAt opcional. Para atualizacao, dados é delta obrigatório (ausente=não alterar; null=limpar; \\\"\\\"=vazio). Para anonimizacao, dados é opcional e ignorado — o RMI limpa o espelho SF por inteiro (self_declared PII + salesforce_consentimentos; não altera citizens nem opt_in/category_opt_ins do RMI). nome/nomeSocial/dataNascimento no delta de atualizacao são ignorados. 202 com CPF mascarado; retry idempotente via updatedAt.",
                 "consumes": [
                     "application/json"
                 ],
@@ -7794,7 +7794,7 @@
                 "summary": "Webhook Salesforce cidadão",
                 "parameters": [
                     {
-                        "description": "CPF, evento e delta de campos alterados",
+                        "description": "CPF, evento; dados obrigatório só em atualizacao",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -7811,7 +7811,7 @@
                         }
                     },
                     "400": {
-                        "description": "CPF inválido, dados ausentes/grandes, updatedAt longo ou evento inválido",
+                        "description": "CPF inválido, dados ausentes/grandes (atualizacao), updatedAt longo ou evento inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
