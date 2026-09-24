@@ -43,6 +43,26 @@ func TestBuildSelfDeclaredDeltaPatch_AbsentFieldNoOp(t *testing.T) {
 	require.Contains(t, set, "genero")
 }
 
+func TestBuildSelfDeclaredDeltaPatch_PicklistAPIValuesToRMILabels(t *testing.T) {
+	set, _ := buildSelfDeclaredDeltaPatch(nil, map[string]json.RawMessage{
+		"escolaridade":  json.RawMessage(`"Pos Graduacao"`),
+		"rendaFamiliar": json.RawMessage(`"2 a 3 salarios minimos"`),
+		"deficiencia":   json.RawMessage(`"Nao sou pessoa com deficiencia"`),
+	}, SalesforceWebhookEventAtualizacao, time.Now(), nil)
+
+	esc, ok := set["escolaridade"].(*string)
+	require.True(t, ok)
+	assert.Equal(t, "Pós Graduação", *esc)
+
+	renda, ok := set["renda_familiar"].(*string)
+	require.True(t, ok)
+	assert.Equal(t, "2 a 3 salários mínimos", *renda)
+
+	def, ok := set["deficiencia"].(*string)
+	require.True(t, ok)
+	assert.Equal(t, "Não sou pessoa com deficiência", *def)
+}
+
 func TestParseSalesforceUpdatedAt(t *testing.T) {
 	ts, err := parseSalesforceUpdatedAt("2026-08-27T17:00:00Z")
 	require.NoError(t, err)

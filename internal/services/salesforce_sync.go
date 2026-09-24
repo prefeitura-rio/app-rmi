@@ -660,6 +660,198 @@ func mapSalesforceRacaToRMI(v string) string {
 	return v
 }
 
+// mapRMIEscolaridadeToSalesforce maps Pref.Rio education labels to Education_Level__c API values.
+func mapRMIEscolaridadeToSalesforce(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	switch v {
+	case "Fundamental incompleto",
+		"Fundamental completo",
+		"Medio incompleto",
+		"Medio completo",
+		"Superior incompleto",
+		"Superior completo",
+		"Pos Graduacao",
+		"Mestrado",
+		"Doutorado":
+		return v
+	}
+
+	normalized := strings.ToLower(stripPTAccents(v))
+	switch normalized {
+	case "fundamental incompleto":
+		return "Fundamental incompleto"
+	case "fundamental completo":
+		return "Fundamental completo"
+	case "medio incompleto":
+		return "Medio incompleto"
+	case "medio completo":
+		return "Medio completo"
+	case "superior incompleto":
+		return "Superior incompleto"
+	case "superior completo":
+		return "Superior completo"
+	case "pos graduacao":
+		return "Pos Graduacao"
+	case "mestrado":
+		return "Mestrado"
+	case "doutorado":
+		return "Doutorado"
+	default:
+		return ""
+	}
+}
+
+func mapSalesforceEscolaridadeToRMI(v string) string {
+	switch strings.TrimSpace(v) {
+	case "Fundamental incompleto":
+		return "Fundamental incompleto"
+	case "Fundamental completo":
+		return "Fundamental completo"
+	case "Medio incompleto":
+		return "Médio incompleto"
+	case "Medio completo":
+		return "Médio completo"
+	case "Superior incompleto":
+		return "Superior incompleto"
+	case "Superior completo":
+		return "Superior completo"
+	case "Pos Graduacao":
+		return "Pós Graduação"
+	case "Mestrado":
+		return "Mestrado"
+	case "Doutorado":
+		return "Doutorado"
+	default:
+		// Already an RMI label (e.g. from a prior round-trip).
+		if models.IsValidEducation(strings.TrimSpace(v)) {
+			return strings.TrimSpace(v)
+		}
+		return ""
+	}
+}
+
+// mapRMIRendaFamiliarToSalesforce maps Pref.Rio income labels to Family_Income__c API values.
+func mapRMIRendaFamiliarToSalesforce(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	switch v {
+	case "Menos de 1 salario minimo",
+		"1 a 2 salarios minimos",
+		"2 a 3 salarios minimos",
+		"3 a 5 salarios minimos",
+		"Mais de 5 salarios minimos":
+		return v
+	}
+
+	normalized := strings.ToLower(stripPTAccents(v))
+	switch normalized {
+	case "menos de 1 salario minimo":
+		return "Menos de 1 salario minimo"
+	case "1 a 2 salarios minimos":
+		return "1 a 2 salarios minimos"
+	case "2 a 3 salarios minimos":
+		return "2 a 3 salarios minimos"
+	case "3 a 5 salarios minimos":
+		return "3 a 5 salarios minimos"
+	case "mais de 5 salarios minimos":
+		return "Mais de 5 salarios minimos"
+	default:
+		return ""
+	}
+}
+
+func mapSalesforceRendaFamiliarToRMI(v string) string {
+	switch strings.TrimSpace(v) {
+	case "Menos de 1 salario minimo":
+		return "Menos de 1 salário mínimo"
+	case "1 a 2 salarios minimos":
+		return "1 a 2 salários mínimos"
+	case "2 a 3 salarios minimos":
+		return "2 a 3 salários mínimos"
+	case "3 a 5 salarios minimos":
+		return "3 a 5 salários mínimos"
+	case "Mais de 5 salarios minimos":
+		return "Mais de 5 salários mínimos"
+	default:
+		if models.IsValidFamilyIncome(strings.TrimSpace(v)) {
+			return strings.TrimSpace(v)
+		}
+		return ""
+	}
+}
+
+// mapRMIDeficienciaToSalesforce maps Pref.Rio disability labels to Disability_Type__c API values.
+func mapRMIDeficienciaToSalesforce(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	switch v {
+	case "Nao sou pessoa com deficiencia",
+		"Fisica",
+		"Auditiva",
+		"Visual",
+		"Transtorno do Espectro Autista",
+		"Intelectual",
+		"Mental (psicossocial)",
+		"Reabilitado do INSS":
+		return v
+	}
+
+	normalized := strings.ToLower(stripPTAccents(v))
+	switch normalized {
+	case "nao sou pessoa com deficiencia":
+		return "Nao sou pessoa com deficiencia"
+	case "fisica":
+		return "Fisica"
+	case "auditiva":
+		return "Auditiva"
+	case "visual":
+		return "Visual"
+	case "transtorno do espectro autista":
+		return "Transtorno do Espectro Autista"
+	case "intelectual":
+		return "Intelectual"
+	case "mental (psicossocial)":
+		return "Mental (psicossocial)"
+	case "reabilitado do inss":
+		return "Reabilitado do INSS"
+	default:
+		return ""
+	}
+}
+
+func mapSalesforceDeficienciaToRMI(v string) string {
+	switch strings.TrimSpace(v) {
+	case "Nao sou pessoa com deficiencia":
+		return "Não sou pessoa com deficiência"
+	case "Fisica":
+		return "Física"
+	case "Auditiva":
+		return "Auditiva"
+	case "Visual":
+		return "Visual"
+	case "Transtorno do Espectro Autista":
+		return "Transtorno do Espectro Autista"
+	case "Intelectual":
+		return "Intelectual"
+	case "Mental (psicossocial)":
+		return "Mental (psicossocial)"
+	case "Reabilitado do INSS":
+		return "Reabilitado do INSS"
+	default:
+		if models.IsValidDisability(strings.TrimSpace(v)) {
+			return strings.TrimSpace(v)
+		}
+		return ""
+	}
+}
+
 // salesforceBearerExpired reports whether a three-part JWT has a past exp claim.
 // Opaque tokens (including test placeholders like "jwt") are not treated as expired.
 func salesforceBearerExpired(token string) bool {

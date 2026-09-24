@@ -302,13 +302,13 @@ func buildSelfDeclaredDeltaPatch(existing *models.SelfDeclaredData, fields map[s
 	}
 
 	if raw, ok := fields["escolaridade"]; ok {
-		applyPlainStringPointerDelta(set, unset, "escolaridade", raw)
+		applyStringPointerDelta(set, unset, "escolaridade", raw, mapSalesforceEscolaridadeToRMI)
 	}
 	if raw, ok := fields["rendaFamiliar"]; ok {
-		applyPlainStringPointerDelta(set, unset, "renda_familiar", raw)
+		applyStringPointerDelta(set, unset, "renda_familiar", raw, mapSalesforceRendaFamiliarToRMI)
 	}
 	if raw, ok := fields["deficiencia"]; ok {
-		applyPlainStringPointerDelta(set, unset, "deficiencia", raw)
+		applyStringPointerDelta(set, unset, "deficiencia", raw, mapSalesforceDeficienciaToRMI)
 	}
 
 	if raw, ok := fields["nacionalidade"]; ok {
