@@ -23,9 +23,9 @@ func buildSalesforceSnapshotPatch(citizen *models.Citizen, sd *models.SelfDeclar
 	if selfDeclaredFound {
 		putString(patch, "nomeExibicao", rmiSelfDeclaredString(sd, func(s *models.SelfDeclaredData) *string { return s.NomeExibicao }))
 		putString(patch, "genero", rmiGenero(sd))
-		putString(patch, "escolaridade", rmiSelfDeclaredString(sd, func(s *models.SelfDeclaredData) *string { return s.Escolaridade }))
-		putString(patch, "rendaFamiliar", rmiSelfDeclaredString(sd, func(s *models.SelfDeclaredData) *string { return s.RendaFamiliar }))
-		putString(patch, "deficiencia", rmiSelfDeclaredString(sd, func(s *models.SelfDeclaredData) *string { return s.Deficiencia }))
+		putString(patch, "escolaridade", rmiMappedSelfDeclared(sd, func(s *models.SelfDeclaredData) *string { return s.Escolaridade }, mapRMIEscolaridadeToSalesforce))
+		putString(patch, "rendaFamiliar", rmiMappedSelfDeclared(sd, func(s *models.SelfDeclaredData) *string { return s.RendaFamiliar }, mapRMIRendaFamiliarToSalesforce))
+		putString(patch, "deficiencia", rmiMappedSelfDeclared(sd, func(s *models.SelfDeclaredData) *string { return s.Deficiencia }, mapRMIDeficienciaToSalesforce))
 		putString(patch, "nacionalidade", rmiSelfDeclaredString(sd, func(s *models.SelfDeclaredData) *string { return s.Nacionalidade }))
 		putString(patch, "passaporte", rmiSelfDeclaredString(sd, func(s *models.SelfDeclaredData) *string { return s.Passaporte }))
 		putString(patch, "complemento", rmiSelfDeclaredComplemento(sd))
@@ -294,11 +294,15 @@ func formatTelefoneAlternativo(alt models.TelefoneAlternativo) string {
 }
 
 func rmiGenero(sd *models.SelfDeclaredData) rmiStringValue {
-	val := rmiSelfDeclaredString(sd, func(s *models.SelfDeclaredData) *string { return s.Genero })
+	return rmiMappedSelfDeclared(sd, func(s *models.SelfDeclaredData) *string { return s.Genero }, mapRMIGeneroToSalesforce)
+}
+
+func rmiMappedSelfDeclared(sd *models.SelfDeclaredData, get func(*models.SelfDeclaredData) *string, mapFn func(string) string) rmiStringValue {
+	val := rmiSelfDeclaredString(sd, get)
 	if !val.set || val.clear {
 		return val
 	}
-	mapped := mapRMIGeneroToSalesforce(val.value)
+	mapped := mapFn(val.value)
 	if mapped == "" {
 		return rmiStringValue{}
 	}

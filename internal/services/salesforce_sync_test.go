@@ -64,6 +64,55 @@ func TestMapRMIRacaToSalesforce(t *testing.T) {
 	assert.Equal(t, "", mapRMIRacaToSalesforce(""))
 }
 
+func TestMapRMIEscolaridadeToSalesforce(t *testing.T) {
+	assert.Equal(t, "Pos Graduacao", mapRMIEscolaridadeToSalesforce("Pós Graduação"))
+	assert.Equal(t, "Medio incompleto", mapRMIEscolaridadeToSalesforce("Médio incompleto"))
+	assert.Equal(t, "Medio completo", mapRMIEscolaridadeToSalesforce("Médio completo"))
+	assert.Equal(t, "Superior completo", mapRMIEscolaridadeToSalesforce("Superior completo"))
+	assert.Equal(t, "Fundamental incompleto", mapRMIEscolaridadeToSalesforce("Fundamental incompleto"))
+	assert.Equal(t, "Pos Graduacao", mapRMIEscolaridadeToSalesforce("Pos Graduacao"))
+	assert.Equal(t, "", mapRMIEscolaridadeToSalesforce("valor inventado"))
+}
+
+func TestMapSalesforceEscolaridadeToRMI(t *testing.T) {
+	assert.Equal(t, "Pós Graduação", mapSalesforceEscolaridadeToRMI("Pos Graduacao"))
+	assert.Equal(t, "Médio incompleto", mapSalesforceEscolaridadeToRMI("Medio incompleto"))
+	assert.Equal(t, "Médio completo", mapSalesforceEscolaridadeToRMI("Medio completo"))
+	assert.Equal(t, "Pós Graduação", mapSalesforceEscolaridadeToRMI("Pós Graduação"))
+	assert.Equal(t, "", mapSalesforceEscolaridadeToRMI("Desconhecido"))
+}
+
+func TestMapRMIRendaFamiliarToSalesforce(t *testing.T) {
+	assert.Equal(t, "2 a 3 salarios minimos", mapRMIRendaFamiliarToSalesforce("2 a 3 salários mínimos"))
+	assert.Equal(t, "Menos de 1 salario minimo", mapRMIRendaFamiliarToSalesforce("Menos de 1 salário mínimo"))
+	assert.Equal(t, "Mais de 5 salarios minimos", mapRMIRendaFamiliarToSalesforce("Mais de 5 salários mínimos"))
+	assert.Equal(t, "1 a 2 salarios minimos", mapRMIRendaFamiliarToSalesforce("1 a 2 salarios minimos"))
+	assert.Equal(t, "", mapRMIRendaFamiliarToSalesforce("valor inventado"))
+}
+
+func TestMapSalesforceRendaFamiliarToRMI(t *testing.T) {
+	assert.Equal(t, "2 a 3 salários mínimos", mapSalesforceRendaFamiliarToRMI("2 a 3 salarios minimos"))
+	assert.Equal(t, "Menos de 1 salário mínimo", mapSalesforceRendaFamiliarToRMI("Menos de 1 salario minimo"))
+	assert.Equal(t, "2 a 3 salários mínimos", mapSalesforceRendaFamiliarToRMI("2 a 3 salários mínimos"))
+	assert.Equal(t, "", mapSalesforceRendaFamiliarToRMI("Desconhecido"))
+}
+
+func TestMapRMIDeficienciaToSalesforce(t *testing.T) {
+	assert.Equal(t, "Nao sou pessoa com deficiencia", mapRMIDeficienciaToSalesforce("Não sou pessoa com deficiência"))
+	assert.Equal(t, "Fisica", mapRMIDeficienciaToSalesforce("Física"))
+	assert.Equal(t, "Transtorno do Espectro Autista", mapRMIDeficienciaToSalesforce("Transtorno do Espectro Autista"))
+	assert.Equal(t, "Mental (psicossocial)", mapRMIDeficienciaToSalesforce("Mental (psicossocial)"))
+	assert.Equal(t, "Fisica", mapRMIDeficienciaToSalesforce("Fisica"))
+	assert.Equal(t, "", mapRMIDeficienciaToSalesforce("valor inventado"))
+}
+
+func TestMapSalesforceDeficienciaToRMI(t *testing.T) {
+	assert.Equal(t, "Não sou pessoa com deficiência", mapSalesforceDeficienciaToRMI("Nao sou pessoa com deficiencia"))
+	assert.Equal(t, "Física", mapSalesforceDeficienciaToRMI("Fisica"))
+	assert.Equal(t, "Não sou pessoa com deficiência", mapSalesforceDeficienciaToRMI("Não sou pessoa com deficiência"))
+	assert.Equal(t, "", mapSalesforceDeficienciaToRMI("Desconhecido"))
+}
+
 func TestMapSalesforceCidadaoToSelfDeclared(t *testing.T) {
 	cidadao := &clients.SalesforceCidadao{
 		Email:     "maria@test.com",
@@ -117,6 +166,9 @@ func TestBuildSalesforceSnapshotPatch(t *testing.T) {
 	email := "maria@test.com"
 	genero := "Homem cisgênero"
 	raca := "parda"
+	escolaridade := "Pós Graduação"
+	renda := "2 a 3 salários mínimos"
+	deficiencia := "Não sou pessoa com deficiência"
 	ddi, ddd, valor := "55", "21", "988888888"
 
 	citizen := &models.Citizen{
@@ -124,9 +176,12 @@ func TestBuildSalesforceSnapshotPatch(t *testing.T) {
 		Nome: &nome,
 	}
 	sd := &models.SelfDeclaredData{
-		CPF:    "14202478754",
-		Genero: &genero,
-		Raca:   &raca,
+		CPF:           "14202478754",
+		Genero:        &genero,
+		Raca:          &raca,
+		Escolaridade:  &escolaridade,
+		RendaFamiliar: &renda,
+		Deficiencia:   &deficiencia,
 		Email: &models.Email{
 			Principal: &models.EmailPrincipal{Valor: &email},
 		},
@@ -142,11 +197,13 @@ func TestBuildSalesforceSnapshotPatch(t *testing.T) {
 	assert.Equal(t, "5521988888888", fields["telefone1"])
 	assert.Equal(t, "Homem_cisgenero", fields["genero"])
 	assert.Equal(t, "Parda", fields["raca"])
+	assert.Equal(t, "Pos Graduacao", fields["escolaridade"])
+	assert.Equal(t, "2 a 3 salarios minimos", fields["rendaFamiliar"])
+	assert.Equal(t, "Nao sou pessoa com deficiencia", fields["deficiencia"])
 	assert.Equal(t, "Maria", fields["primeiroNome"])
 	assert.Equal(t, "Maria Silva", fields["nome"])
 	assert.Equal(t, []string{"Portugues_Brasil"}, fields["idioma"])
 	assert.Equal(t, SalesforceContaOrigem, fields["contaOrigem"])
-	assert.NotContains(t, fields, "escolaridade")
 	assert.NotContains(t, fields, "telefone2")
 	assert.NotContains(t, fields, "endereco")
 	assert.NotContains(t, fields, "nomeSocial")
