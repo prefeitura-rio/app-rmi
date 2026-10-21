@@ -95,16 +95,23 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 		return fmt.Errorf("failed to write to Redis buffer: %w", err)
 	}
 
+	sealed, reason, err := prepareBearerForQueue(utils.BearerTokenFromContext(ctx), op.GetType(), op.GetKey())
+	if err != nil {
+		return fmt.Errorf("failed to seal bearer token for sync job: %w", err)
+	}
+	dm.logSyncJobBearerCapture(op.GetType(), op.GetKey(), reason)
+
 	// 2. Queue sync job
 	syncJob := SyncJob{
-		ID:         utils.GenerateUUID(),
-		Type:       op.GetType(),
-		Key:        op.GetKey(),
-		Collection: op.GetCollection(),
-		Data:       op.GetData(),
-		Timestamp:  time.Now(),
-		RetryCount: 0,
-		MaxRetries: 3,
+		ID:          utils.GenerateUUID(),
+		Type:        op.GetType(),
+		Key:         op.GetKey(),
+		Collection:  op.GetCollection(),
+		Data:        op.GetData(),
+		Timestamp:   time.Now(),
+		RetryCount:  0,
+		MaxRetries:  3,
+		BearerToken: sealed,
 	}
 
 	jobBytes, err := json.Marshal(syncJob)
@@ -125,6 +132,31 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 		zap.String("collection", op.GetCollection()))
 
 	return nil
+}
+
+func (dm *DataManager) logSyncJobBearerCapture(jobType, jobKey, reason string) {
+	if dm == nil || dm.logger == nil {
+		return
+	}
+	fields := []zap.Field{
+		zap.String("event", "sync_job_bearer"),
+		zap.String("stage", "capture"),
+		zap.String("reason", reason),
+		zap.String("type", jobType),
+		zap.String("key", jobKey),
+	}
+	switch reason {
+	case bearerReasonEncryptionKeyMissing:
+		dm.logger.Warn("omitting bearer token from sync job: SYNC_JOB_BEARER_ENCRYPTION_KEY is not configured", fields...)
+	case bearerReasonAbsent:
+		if SalesforceBaseURLConfigured() && shouldEnqueueSalesforcePush(&SyncJob{Type: jobType}) {
+			dm.logger.Debug("sync job queued without bearer token on the request", fields...)
+		}
+	case bearerReasonSealed:
+		if SalesforceBaseURLConfigured() && shouldEnqueueSalesforcePush(&SyncJob{Type: jobType}) {
+			dm.logger.Debug("bearer token sealed onto sync job", fields...)
+		}
+	}
 }
 
 // Read reads data from cache layers, falling back to MongoDB

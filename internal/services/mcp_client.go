@@ -505,7 +505,8 @@ func (c *MCPClient) parseHealthServicesResponse(result map[string]interface{}) (
 
 	equipamentos, ok := structuredContent["equipamentos"].([]interface{})
 	if !ok || len(equipamentos) == 0 {
-		return nil, fmt.Errorf("no equipment found in response")
+		c.logger.Debug("no equipment found in response")
+		return nil, nil
 	}
 
 	var healthResult models.HealthServicesResult

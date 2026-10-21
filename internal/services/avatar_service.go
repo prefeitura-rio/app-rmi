@@ -48,8 +48,8 @@ func (s *AvatarService) ListAvatars(ctx context.Context, page, perPage int) (*mo
 		perPage = 20 // Default page size
 	}
 
-	// Try cache first
-	cacheKey := fmt.Sprintf("avatars:list:page:%d:per_page:%d", page, perPage)
+	// Try cache first (include collection so parallel test packages don't collide)
+	cacheKey := fmt.Sprintf("avatars:list:%s:page:%d:per_page:%d", config.AppConfig.AvatarsCollection, page, perPage)
 	cached, err := config.Redis.Get(ctx, cacheKey).Result()
 	if err == nil {
 		observability.CacheHits.WithLabelValues("list_avatars").Inc()
@@ -145,7 +145,7 @@ func (s *AvatarService) GetAvatarByID(ctx context.Context, avatarID string) (*mo
 	}
 
 	// Try cache first
-	cacheKey := fmt.Sprintf("avatar:id:%s", avatarID)
+	cacheKey := fmt.Sprintf("avatar:id:%s:%s", config.AppConfig.AvatarsCollection, avatarID)
 	cached, err := config.Redis.Get(ctx, cacheKey).Result()
 	if err == nil {
 		observability.CacheHits.WithLabelValues("get_avatar").Inc()
@@ -289,7 +289,7 @@ func (s *AvatarService) ValidateAvatarExists(ctx context.Context, avatarID strin
 
 // invalidateAvatarCache removes avatar from cache
 func (s *AvatarService) invalidateAvatarCache(ctx context.Context, avatarID string) {
-	cacheKey := fmt.Sprintf("avatar:id:%s", avatarID)
+	cacheKey := fmt.Sprintf("avatar:id:%s:%s", config.AppConfig.AvatarsCollection, avatarID)
 	err := config.Redis.Del(ctx, cacheKey).Err()
 	if err != nil {
 		s.logger.Warn("failed to invalidate avatar cache", zap.Error(err), zap.String("avatar_id", avatarID))

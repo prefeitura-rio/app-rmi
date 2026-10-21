@@ -547,3 +547,33 @@ func (op *SelfDeclaredDeficienciaDataOperation) GetTTL() time.Duration {
 func (op *SelfDeclaredDeficienciaDataOperation) GetType() string {
 	return "self_declared_deficiencia"
 }
+
+type SelfDeclaredBirthDateDataOperation struct {
+	CPF        string
+	Nascimento *models.Nascimento
+	UpdatedAt  time.Time
+}
+
+func (op *SelfDeclaredBirthDateDataOperation) GetKey() string {
+	return op.CPF
+}
+
+func (op *SelfDeclaredBirthDateDataOperation) GetCollection() string {
+	return "self_declared"
+}
+
+func (op *SelfDeclaredBirthDateDataOperation) GetData() interface{} {
+	return map[string]interface{}{
+		"cpf":        op.CPF,
+		"nascimento": op.Nascimento,
+		"updated_at": op.UpdatedAt,
+	}
+}
+
+func (op *SelfDeclaredBirthDateDataOperation) GetTTL() time.Duration {
+	return 24 * time.Hour
+}
+
+func (op *SelfDeclaredBirthDateDataOperation) GetType() string {
+	return "self_declared_nascimento"
+}

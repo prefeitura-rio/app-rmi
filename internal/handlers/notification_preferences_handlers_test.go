@@ -20,10 +20,17 @@ import (
 
 func setupNotificationPreferencesHandlersTest(t *testing.T) (*NotificationPreferencesHandlers, *gin.Engine, func()) {
 	// Use the shared MongoDB and Redis from common_test.go TestMain
+	setupTestEnvironment()
 	gin.SetMode(gin.TestMode)
 
-	// Always reinitialize config for test isolation
-	config.AppConfig = &config.Config{}
+	require.NotNil(t, config.AppConfig)
+
+	origUserConfig := config.AppConfig.UserConfigCollection
+	origPhoneMapping := config.AppConfig.PhoneMappingCollection
+	origOptInHistory := config.AppConfig.OptInHistoryCollection
+	origNotifCategory := config.AppConfig.NotificationCategoryCollection
+	origNotifTTL := config.AppConfig.NotificationCategoryCacheTTL
+
 	config.AppConfig.UserConfigCollection = "test_user_config"
 	config.AppConfig.PhoneMappingCollection = "test_phone_mapping"
 	config.AppConfig.OptInHistoryCollection = "test_opt_in_history"
@@ -85,7 +92,17 @@ func setupNotificationPreferencesHandlersTest(t *testing.T) (*NotificationPrefer
 			}
 		}
 
-		_ = database.Drop(ctx)
+		// Drop only this test's collections — never the whole rmi_test DB (shared across packages).
+		_ = database.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.OptInHistoryCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.NotificationCategoryCollection).Drop(ctx)
+
+		config.AppConfig.UserConfigCollection = origUserConfig
+		config.AppConfig.PhoneMappingCollection = origPhoneMapping
+		config.AppConfig.OptInHistoryCollection = origOptInHistory
+		config.AppConfig.NotificationCategoryCollection = origNotifCategory
+		config.AppConfig.NotificationCategoryCacheTTL = origNotifTTL
 	}
 }
 

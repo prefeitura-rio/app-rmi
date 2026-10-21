@@ -39,7 +39,9 @@ func setupAdminHandlersTest(t *testing.T) (*gin.Engine, func()) {
 		claims := &models.JWTClaims{
 			PreferredUsername: "03561350712",
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"go:admin"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"go:admin"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	}
@@ -82,9 +84,13 @@ func setupAdminHandlersTestWithAuth(t *testing.T, isAdmin bool) (*gin.Engine, fu
 			PreferredUsername: "03561350712",
 		}
 		if isAdmin {
-			claims.ResourceAccess.Superapp.Roles = []string{"go:admin"}
+			claims.ResourceAccess = map[string]models.ClientAccess{
+				"superapp.apps.rio.gov.br": {Roles: []string{"go:admin"}},
+			}
 		} else {
-			claims.ResourceAccess.Superapp.Roles = []string{"go:user"}
+			claims.ResourceAccess = map[string]models.ClientAccess{
+				"superapp.apps.rio.gov.br": {Roles: []string{"go:user"}},
+			}
 		}
 		c.Set("claims", claims)
 		c.Next()
@@ -804,21 +810,7 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 			}
 
 			// Check if user has admin role
-			isAdmin := false
-			for _, role := range jwtClaims.RealmAccess.Roles {
-				if role == config.AppConfig.AdminGroup {
-					isAdmin = true
-					break
-				}
-			}
-			if !isAdmin {
-				for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
-					if role == config.AppConfig.AdminGroup {
-						isAdmin = true
-						break
-					}
-				}
-			}
+			isAdmin := jwtClaims.HasRole(config.AppConfig.AdminGroup)
 
 			if !isAdmin {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required"})
@@ -905,21 +897,7 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 			}
 
 			// Check if user has admin role
-			isAdmin := false
-			for _, role := range jwtClaims.RealmAccess.Roles {
-				if role == config.AppConfig.AdminGroup {
-					isAdmin = true
-					break
-				}
-			}
-			if !isAdmin {
-				for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
-					if role == config.AppConfig.AdminGroup {
-						isAdmin = true
-						break
-					}
-				}
-			}
+			isAdmin := jwtClaims.HasRole(config.AppConfig.AdminGroup)
 
 			if !isAdmin {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required"})
@@ -996,21 +974,7 @@ func TestReadCacheKey_Authorization_WithMiddleware(t *testing.T) {
 			}
 
 			// Check if user has admin role
-			isAdmin := false
-			for _, role := range jwtClaims.RealmAccess.Roles {
-				if role == config.AppConfig.AdminGroup {
-					isAdmin = true
-					break
-				}
-			}
-			if !isAdmin {
-				for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
-					if role == config.AppConfig.AdminGroup {
-						isAdmin = true
-						break
-					}
-				}
-			}
+			isAdmin := jwtClaims.HasRole(config.AppConfig.AdminGroup)
 
 			if !isAdmin {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required"})

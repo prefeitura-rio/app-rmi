@@ -50,6 +50,9 @@ import (
 // @tag.name citizen
 // @tag.description Operações relacionadas a cidadãos, incluindo consulta e atualização de dados autodeclarados
 
+// @tag.name mobilidade
+// @tag.description Carteira de veículos (bicicleta elétrica, autopropelido, ciclomotor), condutores e catálogo
+
 // @tag.name departments
 // @tag.description Operações relacionadas a departamentos/unidades administrativas (UA)
 
@@ -61,6 +64,9 @@ import (
 
 // @tag.name health
 // @tag.description Operações de verificação de saúde da API
+
+// @tag.name salesforce
+// @tag.description Integração Salesforce Person Account: login sync, webhook inbound (delta em self_declared, sem gravar citizens), proxies CRM e push assíncrono RMI→SF via sync worker
 
 func main() {
 	// Initialize logger first
@@ -112,8 +118,15 @@ func main() {
 	// Initialize pet service for pets queries
 	services.InitPetService()
 
+	// Initialize Mobilidade (vehicles / conductors / catalog)
+	services.InitVehicleService()
+	services.InitVehicleConductorService()
+	services.InitMobilidadeCatalogService()
+
 	// Initialize department service for department/UA queries
 	services.InitDepartmentService()
+
+	services.InitCPFSecretariaService()
 
 	// Initialize CF rate limiter for CF lookup requests
 	services.InitCFRateLimiter(config.AppConfig.CFLookupGlobalRateLimit, observability.Logger())
@@ -155,6 +168,13 @@ func main() {
 		// Health check endpoint (no auth required)
 		v1.GET("/health", handlers.HealthCheck)
 
+		// Login sync orchestrator (Bearer JWT → Salesforce Person Account)
+		auth := v1.Group("/auth")
+		auth.Use(middleware.AuthMiddleware())
+		{
+			auth.GET("/validate", handlers.ValidateAuth)
+		}
+
 		// Metrics endpoint (no auth required) - for Prometheus scraping
 		v1.GET("/metrics", handlers.MetricsHandler)
 
@@ -186,6 +206,7 @@ func main() {
 			citizen.PUT("/:cpf/family-income", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredRendaFamiliar)
 			citizen.PUT("/:cpf/education", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredEscolaridade)
 			citizen.PUT("/:cpf/disability", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredDeficiencia)
+			citizen.PUT("/:cpf/birth-date", middleware.RequireOwnCPF(), handlers.UpdateSelfDeclaredBirthDate)
 			citizen.GET("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.GetFirstLogin)
 			citizen.PUT("/:cpf/firstlogin", middleware.RequireOwnCPF(), handlers.UpdateFirstLogin)
 			citizen.GET("/:cpf/optin", middleware.RequireOwnCPF(), handlers.GetOptIn)
@@ -197,9 +218,45 @@ func main() {
 			citizen.GET("/:cpf/pets/:pet_id", middleware.RequireOwnCPF(), handlers.GetPet)
 			citizen.GET("/:cpf/pets/stats", middleware.RequireOwnCPF(), handlers.GetPetStats)
 
+			// Mobilidade vehicles
+			citizen.GET("/:cpf/vehicles", middleware.RequireOwnCPF(), handlers.GetVehicles)
+			citizen.POST("/:cpf/vehicles", middleware.RequireOwnCPF(), handlers.CreateVehicle)
+			citizen.GET("/:cpf/vehicles/:vehicle_id", middleware.RequireOwnCPF(), handlers.GetVehicle)
+			citizen.PATCH("/:cpf/vehicles/:vehicle_id", middleware.RequireOwnCPF(), handlers.UpdateVehicle)
+			citizen.DELETE("/:cpf/vehicles/:vehicle_id", middleware.RequireOwnCPF(), handlers.DeleteVehicle)
+			citizen.GET("/:cpf/vehicle-invitations", middleware.RequireOwnCPF(), handlers.GetVehicleInvitations)
+			citizen.PATCH("/:cpf/vehicle-invitations/:conductor_id", middleware.RequireOwnCPF(), handlers.RespondVehicleInvitation)
+			citizen.GET("/:cpf/vehicles/:vehicle_id/conductors", middleware.RequireOwnCPF(), handlers.GetVehicleConductors)
+			citizen.POST("/:cpf/vehicles/:vehicle_id/conductors", middleware.RequireOwnCPF(), handlers.InviteVehicleConductor)
+			citizen.DELETE("/:cpf/vehicles/:vehicle_id/conductors/:conductor_id", middleware.RequireOwnCPF(), handlers.RemoveVehicleConductor)
+
 			// Avatar endpoints
 			citizen.GET("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.GetUserAvatar)
 			citizen.PUT("/:cpf/avatar", middleware.RequireOwnCPF(), handlers.UpdateUserAvatar)
+		}
+
+		// Mobilidade catalog (authenticated read-only)
+		mobilidade := v1.Group("/mobilidade")
+		mobilidade.Use(middleware.AuthMiddleware())
+		{
+			mobilidade.GET("/vehicle-brands", handlers.GetMobilidadeVehicleBrands)
+			mobilidade.GET("/vehicle-models", handlers.GetMobilidadeVehicleModels)
+			mobilidade.GET("/vehicle-colors", handlers.GetMobilidadeVehicleColors)
+		}
+
+		// Mobilidade catalog admin (protected)
+		adminMobilidade := v1.Group("/admin/mobilidade")
+		adminMobilidade.Use(middleware.AuthMiddleware(), middleware.RequireAdmin())
+		{
+			adminMobilidade.GET("/vehicle-brands", handlers.AdminListMobilidadeVehicleBrands)
+			adminMobilidade.POST("/vehicle-brands", handlers.CreateMobilidadeVehicleBrand)
+			adminMobilidade.PATCH("/vehicle-brands/:brand_id", handlers.UpdateMobilidadeVehicleBrand)
+			adminMobilidade.DELETE("/vehicle-brands/:brand_id", handlers.DeleteMobilidadeVehicleBrand)
+
+			adminMobilidade.GET("/vehicle-models", handlers.AdminListMobilidadeVehicleModels)
+			adminMobilidade.POST("/vehicle-models", handlers.CreateMobilidadeVehicleModel)
+			adminMobilidade.PATCH("/vehicle-models/:model_id", handlers.UpdateMobilidadeVehicleModel)
+			adminMobilidade.DELETE("/vehicle-models/:model_id", handlers.DeleteMobilidadeVehicleModel)
 		}
 
 		// Public citizen endpoints (no auth required)
@@ -210,6 +267,25 @@ func main() {
 			public.GET("/family-income/options", handlers.GetFamilyIncomeOptions)
 			public.GET("/education/options", handlers.GetEducationOptions)
 			public.GET("/disability/options", handlers.GetDisabilityOptions)
+		}
+
+		// Salesforce inbound webhook (Keycloak JWT from SF client — azp allowlist)
+		webhooks := v1.Group("/webhooks")
+		webhooks.Use(middleware.AuthMiddleware(), middleware.RequireSalesforceWebhookClient())
+		{
+			webhooks.POST("/salesforce/cidadao", handlers.HandleSalesforceCidadaoWebhook)
+		}
+
+		// Salesforce CRM proxies (user JWT forwarded to SF; additive — does not alter /citizen behavior)
+		sf := v1.Group("/salesforce")
+		sf.Use(middleware.AuthMiddleware())
+		{
+			sf.PATCH("/cidadao/:cpf/consentimento", middleware.RequireOwnCPF(), handlers.PatchSalesforceConsentimento)
+			sf.GET("/cidadao/:cpf/exportar", middleware.RequireOwnCPF(), handlers.ExportSalesforceCidadao)
+			sf.POST("/cidadao/:cpf/anonimizar", middleware.RequireOwnCPF(), handlers.AnonimizarSalesforceCidadao)
+			sf.GET("/anonimizacao/:numeroSolicitacao", handlers.GetSalesforceAnonimizacao)
+			sf.GET("/chamados", handlers.ListSalesforceChamados)
+			sf.GET("/chamados/:protocolo", handlers.GetSalesforceChamado)
 		}
 
 		// Public avatar endpoints (no auth required)
@@ -278,6 +354,16 @@ func main() {
 
 			// Cache management
 			adminGroup.POST("/cache/read", handlers.ReadCacheKey)
+
+			adminGroup.GET("/cpf-secretaria/:cpf", handlers.AdminListCPFSecretaria)
+			adminGroup.POST("/cpf-secretaria/:cpf", handlers.AdminAddCPFSecretaria)
+			adminGroup.DELETE("/cpf-secretaria/:cpf/:cd_ua", handlers.AdminRemoveCPFSecretaria)
+		}
+
+		cpfSecretariaGroup := v1.Group("/cpf-secretaria")
+		cpfSecretariaGroup.Use(middleware.AuthMiddleware())
+		{
+			cpfSecretariaGroup.GET("/:cpf", handlers.GetCPFSecretarias)
 		}
 
 		// Config routes (public)

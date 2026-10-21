@@ -38,7 +38,8 @@ func setupLegalEntityHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
 
 	return router, func() {
-		_ = database.Drop(ctx)
+		// Drop only this test's collection — never the whole rmi_test DB (shared across packages).
+		_ = database.Collection(config.AppConfig.LegalEntityCollection).Drop(ctx)
 		services.LegalEntityServiceInstance = nil
 	}
 }
@@ -49,7 +50,9 @@ func adminMiddleware() gin.HandlerFunc {
 		claims := &models.JWTClaims{
 			PreferredUsername: "03561350712",
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"go:admin"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"go:admin"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	}
@@ -61,7 +64,9 @@ func userMiddleware(cpf string) gin.HandlerFunc {
 		claims := &models.JWTClaims{
 			PreferredUsername: cpf,
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"user"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"user"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	}
@@ -671,7 +676,9 @@ func TestGetLegalEntityByCNPJ_MissingCPFInToken(t *testing.T) {
 		claims := &models.JWTClaims{
 			PreferredUsername: "", // Empty CPF
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"user"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"user"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	})

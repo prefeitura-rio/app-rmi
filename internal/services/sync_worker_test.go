@@ -35,6 +35,7 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 	config.AppConfig.CitizenCollection = "test_citizens"
 	config.AppConfig.SelfDeclaredCollection = "test_self_declared"
 	config.AppConfig.UserConfigCollection = "test_user_config"
+	config.AppConfig.SyncJobBearerEncryptionKey = testSyncJobBearerKey
 
 	// Use shared MongoDB connection
 	ctx := context.Background()
@@ -72,6 +73,7 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 			"self_declared:*",
 			"sync:queue:*",
 			"sync:dlq:*",
+			"salesforce:anonimizacao:*",
 			"phone_mapping:*",
 			"user_config:*",
 			"opt_in_history:*",
@@ -134,7 +136,11 @@ func TestNewSyncWorker(t *testing.T) {
 		"self_declared_renda_familiar",
 		"self_declared_escolaridade",
 		"self_declared_deficiencia",
+		"self_declared_nascimento",
 		"cf_lookup",
+		MobilidadeInviteEmailQueue,
+		SalesforceSyncQueue,
+		SalesforcePushQueue,
 	}
 
 	assert.Equal(t, len(expectedQueues), len(worker.queues))
@@ -340,6 +346,76 @@ func TestSyncWorker_ProcessQueuesParallel_MaxJobsLimit(t *testing.T) {
 	assert.Greater(t, queueLen, int64(0), "Should have some jobs remaining after processing")
 }
 
+func TestRotateQueueOrder(t *testing.T) {
+	queues := []string{"citizen", "phone_mapping", SalesforceSyncQueue}
+	assert.Equal(t, queues, rotateQueueOrder(queues, 0))
+	assert.Equal(t, []string{"phone_mapping", SalesforceSyncQueue, "citizen"}, rotateQueueOrder(queues, 1))
+	assert.Equal(t, []string{SalesforceSyncQueue, "citizen", "phone_mapping"}, rotateQueueOrder(queues, 2))
+	assert.Equal(t, queues, rotateQueueOrder(queues, 3))
+	assert.Empty(t, rotateQueueOrder(nil, 4))
+}
+
+func TestProcessQueuesParallel_RotatesStartSoLaterQueuesAreNotStarved(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queues := []string{"rr_starvation_a", "rr_starvation_b", "rr_starvation_c", "rr_starvation_sf"}
+	worker.queues = queues
+	worker.queueCursor = 0
+
+	keys := make([]string, len(queues))
+	for i, q := range queues {
+		keys[i] = "sync:queue:" + q
+	}
+	require.NoError(t, worker.redis.Del(ctx, keys...).Err())
+	t.Cleanup(func() {
+		_ = worker.redis.Del(ctx, keys...).Err()
+	})
+
+	pushJob := func(queue string, n int) {
+		t.Helper()
+		job := SyncJob{
+			ID:         uuid.New().String(),
+			Type:       "citizen",
+			Key:        fmt.Sprintf("rr%s%d", queue, n),
+			Collection: config.AppConfig.CitizenCollection,
+			Data: map[string]interface{}{
+				"cpf":  fmt.Sprintf("rr%s%d", queue, n),
+				"nome": queue,
+			},
+			Timestamp:  time.Now(),
+			RetryCount: 0,
+			MaxRetries: 3,
+		}
+		jobBytes, err := json.Marshal(job)
+		require.NoError(t, err)
+		require.NoError(t, worker.redis.LPush(ctx, "sync:queue:"+queue, string(jobBytes)).Err())
+	}
+
+	// Keep the first three queues non-empty so a cursor that always starts at 0
+	// would never reach the last queue (max 3 jobs, one per queue per cycle).
+	for _, q := range queues {
+		pushJob(q, 1)
+		pushJob(q, 2)
+	}
+
+	sfKey := "sync:queue:" + queues[3]
+	n, err := worker.redis.LLen(ctx, sfKey).Result()
+	require.NoError(t, err)
+	require.Equal(t, int64(2), n)
+
+	worker.processQueuesParallel()
+	n, err = worker.redis.LLen(ctx, sfKey).Result()
+	require.NoError(t, err)
+	require.Equal(t, int64(2), n, "first cycle starts at the front and exhausts the 3-job budget before Salesforce")
+
+	worker.processQueuesParallel()
+	n, err = worker.redis.LLen(ctx, sfKey).Result()
+	require.NoError(t, err)
+	require.Equal(t, int64(1), n, "second cycle must rotate so the last queue is visited")
+}
+
 // TestSyncWorker_SyncToMongoDB_CitizenSuccess tests successful citizen sync
 func TestSyncWorker_SyncToMongoDB_CitizenSuccess(t *testing.T) {
 	worker, db, cleanup := setupSyncWorkerTest(t)
@@ -361,7 +437,7 @@ func TestSyncWorker_SyncToMongoDB_CitizenSuccess(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.syncToMongoDB(testJob)
+	_, err := worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify data was written to MongoDB
@@ -394,7 +470,7 @@ func TestSyncWorker_SyncToMongoDB_PhoneMappingSuccess(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.syncToMongoDB(testJob)
+	_, err := worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify data was written to MongoDB
@@ -439,7 +515,7 @@ func TestSyncWorker_SyncToMongoDB_SelfDeclaredFieldSpecific(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err = worker.syncToMongoDB(testJob)
+	_, err = worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify only email was updated, other fields preserved
@@ -474,6 +550,7 @@ func TestSyncWorker_SyncToMongoDB_AllSelfDeclaredFields(t *testing.T) {
 		{"self_declared_renda_familiar", "renda_familiar", "2-4 salários"},
 		{"self_declared_escolaridade", "escolaridade", "superior completo"},
 		{"self_declared_deficiencia", "deficiencia", false},
+		{"self_declared_nascimento", "nascimento", bson.M{"data": "1990-01-01"}},
 	}
 
 	for _, tc := range testCases {
@@ -494,7 +571,7 @@ func TestSyncWorker_SyncToMongoDB_AllSelfDeclaredFields(t *testing.T) {
 				MaxRetries: 3,
 			}
 
-			err := worker.syncToMongoDB(testJob)
+			_, err := worker.syncToMongoDB(testJob)
 			assert.NoError(t, err)
 
 			// Verify field was written
@@ -528,7 +605,7 @@ func TestSyncWorker_SyncToMongoDB_DuplicateKey(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.syncToMongoDB(testJob)
+	_, err := worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Second sync with same key - should not error (upsert)
@@ -537,7 +614,7 @@ func TestSyncWorker_SyncToMongoDB_DuplicateKey(t *testing.T) {
 		"nome": "Updated User",
 	}
 
-	err = worker.syncToMongoDB(testJob)
+	_, err = worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify data was updated
@@ -564,7 +641,7 @@ func TestSyncWorker_SyncToMongoDB_InvalidData(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.syncToMongoDB(testJob)
+	_, err := worker.syncToMongoDB(testJob)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to marshal job data")
 }
@@ -740,10 +817,8 @@ func TestSyncWorker_MoveToDLQ(t *testing.T) {
 	assert.Equal(t, int64(1), dlqLen)
 }
 
-// TestSyncWorker_RequeueJob tests job requeuing with backoff
+// TestSyncWorker_RequeueJob tests job requeuing sets AvailableAt without blocking.
 func TestSyncWorker_RequeueJob(t *testing.T) {
-	t.Skip("Skipping timing-dependent test - requires 5+ second backoff delay")
-
 	worker, _, cleanup := setupSyncWorkerTest(t)
 	defer cleanup()
 
@@ -764,23 +839,23 @@ func TestSyncWorker_RequeueJob(t *testing.T) {
 	}
 
 	start := time.Now()
-	worker.requeueJob(testJob)
+	ok := worker.requeueJob(testJob)
 	duration := time.Since(start)
 
-	// Should have backoff delay of 5 seconds (1 * 5s)
-	assert.True(t, duration >= 5*time.Second)
+	require.True(t, ok)
+	assert.Less(t, duration, 500*time.Millisecond, "requeue must not sleep on the worker goroutine")
+	assert.False(t, testJob.AvailableAt.IsZero())
+	assert.True(t, testJob.AvailableAt.After(time.Now().Add(4*time.Second)))
+	assert.True(t, testJob.AvailableAt.Before(time.Now().Add(6*time.Second)))
 
-	// Verify job in queue
-	queueKey := fmt.Sprintf("sync:queue:%s", testJob.Type)
+	queueKey := syncQueueKey(testJob.Type)
 	queueLen, err := worker.redis.LLen(ctx, queueKey).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), queueLen)
 }
 
-// TestSyncWorker_RequeueJob_BackoffCap tests backoff cap at 60 seconds
+// TestSyncWorker_RequeueJob_BackoffCap tests AvailableAt backoff cap at 60 seconds.
 func TestSyncWorker_RequeueJob_BackoffCap(t *testing.T) {
-	t.Skip("Skipping long-running backoff test in CI - takes 60+ seconds")
-
 	worker, _, cleanup := setupSyncWorkerTest(t)
 	defer cleanup()
 
@@ -801,18 +876,32 @@ func TestSyncWorker_RequeueJob_BackoffCap(t *testing.T) {
 	}
 
 	start := time.Now()
-	worker.requeueJob(testJob)
+	ok := worker.requeueJob(testJob)
 	duration := time.Since(start)
 
-	// Should be capped at 60 seconds
-	assert.True(t, duration >= 60*time.Second)
-	assert.True(t, duration < 65*time.Second)
+	require.True(t, ok)
+	assert.Less(t, duration, 500*time.Millisecond)
+	assert.True(t, testJob.AvailableAt.After(time.Now().Add(59*time.Second)))
+	assert.True(t, testJob.AvailableAt.Before(time.Now().Add(61*time.Second)))
 
-	// Verify job in queue
-	queueKey := fmt.Sprintf("sync:queue:%s", testJob.Type)
+	queueKey := syncQueueKey(testJob.Type)
 	queueLen, err := worker.redis.LLen(ctx, queueKey).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), queueLen)
+}
+
+func TestSyncQueueKeys_HashTaggedForReliableQueue(t *testing.T) {
+	assert.Equal(t, "sync:queue:{mobilidade_invite_email}", syncQueueKey(MobilidadeInviteEmailQueue))
+	assert.Equal(t, "sync:processing:{mobilidade_invite_email}", syncProcessingKey(MobilidadeInviteEmailQueue))
+	assert.Equal(t, "sync:dlq:{mobilidade_invite_email}", syncDLQKey(MobilidadeInviteEmailQueue))
+	assert.Equal(t, "sync:queue:{salesforce_sync}", syncQueueKey(SalesforceSyncQueue))
+	assert.Equal(t, "sync:processing:{salesforce_sync}", syncProcessingKey(SalesforceSyncQueue))
+	assert.Equal(t, "sync:dlq:{salesforce_sync}", syncDLQKey(SalesforceSyncQueue))
+	assert.Equal(t, "sync:queue:{salesforce_push}", syncQueueKey(SalesforcePushQueue))
+	assert.Equal(t, "sync:dlq:{salesforce_push}", syncDLQKey(SalesforcePushQueue))
+	assert.True(t, usesReliableQueue(SalesforceSyncQueue))
+	assert.True(t, usesReliableQueue(SalesforcePushQueue))
+	assert.Equal(t, "sync:queue:citizen", syncQueueKey("citizen"))
 }
 
 // TestSyncWorker_ProcessJob_Success tests successful job processing
@@ -916,7 +1005,7 @@ func TestSyncWorker_HandleAvatarCleanup(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err = worker.syncToMongoDB(testJob)
+	_, err = worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify avatar_id was removed from affected users
@@ -1033,6 +1122,7 @@ func TestGetFieldNameFromJobType(t *testing.T) {
 		{"self_declared_renda_familiar", "renda_familiar"},
 		{"self_declared_escolaridade", "escolaridade"},
 		{"self_declared_deficiencia", "deficiencia"},
+		{"self_declared_nascimento", "nascimento"},
 		{"unknown_type", ""},
 		{"citizen", ""},
 	}
@@ -1277,7 +1367,7 @@ func TestSyncWorker_DataValidation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := worker.syncToMongoDB(tc.job)
+			_, err := worker.syncToMongoDB(tc.job)
 			if tc.shouldError {
 				assert.Error(t, err)
 			} else {
@@ -1305,7 +1395,7 @@ func TestSyncWorker_EmptyDataHandling(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	err := worker.syncToMongoDB(testJob)
+	_, err := worker.syncToMongoDB(testJob)
 	assert.NoError(t, err)
 
 	// Verify empty document was created
@@ -1508,7 +1598,7 @@ func TestSyncWorker_AllCollectionTypes(t *testing.T) {
 				MaxRetries: 3,
 			}
 
-			err := worker.syncToMongoDB(testJob)
+			_, err := worker.syncToMongoDB(testJob)
 			assert.NoError(t, err)
 
 			// Verify data was written

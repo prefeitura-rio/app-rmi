@@ -1176,3 +1176,101 @@ func setupMinimalEnv(t *testing.T) {
 		os.Unsetenv("CF_LOOKUP_ENABLED")
 	})
 }
+
+func TestLoadConfig_DefaultsToWetalkie(t *testing.T) {
+	originalConfig := AppConfig
+	defer func() { AppConfig = originalConfig }()
+
+	setupMinimalEnv(t)
+
+	if err := LoadConfig(); err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	if AppConfig.VerificationProvider != VerificationProviderWetalkie {
+		t.Errorf("VerificationProvider = %v, want %v (default)", AppConfig.VerificationProvider, VerificationProviderWetalkie)
+	}
+}
+
+func TestLoadConfig_InvalidVerificationProvider(t *testing.T) {
+	originalConfig := AppConfig
+	defer func() { AppConfig = originalConfig }()
+
+	setupMinimalEnv(t)
+	t.Setenv("VERIFICATION_PROVIDER", "twilio")
+
+	err := LoadConfig()
+	if err == nil {
+		t.Fatal("LoadConfig() should return error for invalid VERIFICATION_PROVIDER")
+	}
+	if !strings.Contains(err.Error(), "invalid VERIFICATION_PROVIDER") {
+		t.Errorf("LoadConfig() error = %v, want error containing 'invalid VERIFICATION_PROVIDER'", err)
+	}
+}
+
+func TestLoadConfig_SalesforceRequiresCredentials(t *testing.T) {
+	originalConfig := AppConfig
+	defer func() { AppConfig = originalConfig }()
+
+	setupMinimalEnv(t)
+	t.Setenv("VERIFICATION_PROVIDER", "salesforce")
+
+	err := LoadConfig()
+	if err == nil {
+		t.Fatal("LoadConfig() should return error when salesforce provider lacks credentials")
+	}
+	if !strings.Contains(err.Error(), "SFMC_SUBDOMAIN") {
+		t.Errorf("LoadConfig() error = %v, want error listing missing SFMC_SUBDOMAIN", err)
+	}
+}
+
+func TestLoadConfig_SalesforceSuccess(t *testing.T) {
+	originalConfig := AppConfig
+	defer func() { AppConfig = originalConfig }()
+
+	setupMinimalEnv(t)
+	t.Setenv("VERIFICATION_PROVIDER", "salesforce")
+	t.Setenv("SFMC_SUBDOMAIN", "mcpv1-test")
+	t.Setenv("SFMC_CLIENT_ID", "cid")
+	t.Setenv("SFMC_CLIENT_SECRET", "secret")
+	t.Setenv("SFMC_ACCOUNT_ID", "534019838")
+	t.Setenv("SFMC_DEFINITION_KEY", "PREFRIO-OTT-DEFINITION-TEST")
+
+	if err := LoadConfig(); err != nil {
+		t.Fatalf("LoadConfig() error = %v, want nil", err)
+	}
+	if AppConfig.VerificationProvider != VerificationProviderSalesforce {
+		t.Errorf("VerificationProvider = %v, want %v", AppConfig.VerificationProvider, VerificationProviderSalesforce)
+	}
+	if AppConfig.SFMCOTPAttribute != "codigo_otp" {
+		t.Errorf("SFMCOTPAttribute = %v, want codigo_otp (default)", AppConfig.SFMCOTPAttribute)
+	}
+	if AppConfig.SFMCSubdomain != "mcpv1-test" {
+		t.Errorf("SFMCSubdomain = %v, want mcpv1-test", AppConfig.SFMCSubdomain)
+	}
+}
+
+func TestParseSyncJobBearerEncryptionKey(t *testing.T) {
+	got, err := parseSyncJobBearerEncryptionKey("")
+	if err != nil {
+		t.Fatalf("empty key error = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("empty key = %v, want nil", got)
+	}
+
+	hexKey := strings.Repeat("ab", 32)
+	got, err = parseSyncJobBearerEncryptionKey(hexKey)
+	if err != nil {
+		t.Fatalf("valid hex error = %v", err)
+	}
+	if len(got) != 32 {
+		t.Fatalf("valid hex len = %d, want 32", len(got))
+	}
+
+	if _, err := parseSyncJobBearerEncryptionKey("not-hex"); err == nil {
+		t.Fatal("expected error for non-hex key")
+	}
+	if _, err := parseSyncJobBearerEncryptionKey("aa"); err == nil {
+		t.Fatal("expected error for short key")
+	}
+}

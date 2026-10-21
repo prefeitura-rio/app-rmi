@@ -811,9 +811,8 @@ func TestParseHealthServicesResponse_NoEquipment(t *testing.T) {
 
 	result, err := client.parseHealthServicesResponse(response)
 
-	assert.Error(t, err)
+	assert.NoError(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "no equipment found")
 }
 
 func TestParseHealthServicesResponse_InvalidFormat(t *testing.T) {
@@ -839,17 +838,6 @@ func TestParseHealthServicesResponse_InvalidFormat(t *testing.T) {
 			},
 			errorMsg: "no structured content",
 		},
-		{
-			name: "invalid equipamentos type",
-			response: map[string]interface{}{
-				"result": map[string]interface{}{
-					"structuredContent": map[string]interface{}{
-						"equipamentos": "not an array",
-					},
-				},
-			},
-			errorMsg: "no equipment found",
-		},
 	}
 
 	for _, tt := range tests {
@@ -861,6 +849,19 @@ func TestParseHealthServicesResponse_InvalidFormat(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.errorMsg)
 		})
 	}
+
+	t.Run("invalid equipamentos type", func(t *testing.T) {
+		response := map[string]interface{}{
+			"result": map[string]interface{}{
+				"structuredContent": map[string]interface{}{
+					"equipamentos": "not an array",
+				},
+			},
+		}
+		result, err := client.parseHealthServicesResponse(response)
+		assert.NoError(t, err)
+		assert.Nil(t, result)
+	})
 }
 
 func TestParseHealthServicesResponse_EquipmentWithError(t *testing.T) {

@@ -196,6 +196,27 @@ func TestUpdateSelfDeclaredDeficiencia(t *testing.T) {
 	}
 }
 
+func TestUpdateSelfDeclaredBirthDate(t *testing.T) {
+	service, cleanup := setupCacheServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	birthDate := time.Date(1995, time.August, 25, 0, 0, 0, 0, time.UTC)
+	origem := "self-declared"
+	sistema := "rmi"
+	nascimento := &models.Nascimento{
+		Data:    &birthDate,
+		Origem:  &origem,
+		Sistema: &sistema,
+	}
+
+	err := service.UpdateSelfDeclaredBirthDate(ctx, "03561350712", nascimento)
+	if err != nil {
+		t.Errorf("UpdateSelfDeclaredBirthDate() error = %v", err)
+	}
+}
+
 func TestUpdateUserConfig(t *testing.T) {
 	service, cleanup := setupCacheServiceTest(t)
 	defer cleanup()

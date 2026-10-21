@@ -134,6 +134,17 @@ func (s *CacheService) UpdateSelfDeclaredDeficiencia(ctx context.Context, cpf st
 	return dataManager.Write(ctx, op)
 }
 
+func (s *CacheService) UpdateSelfDeclaredBirthDate(ctx context.Context, cpf string, nascimento *models.Nascimento) error {
+	op := &SelfDeclaredBirthDateDataOperation{
+		CPF:        cpf,
+		Nascimento: nascimento,
+		UpdatedAt:  time.Now(),
+	}
+
+	dataManager := NewDataManager(config.Redis, config.MongoDB, s.logger)
+	return dataManager.Write(ctx, op)
+}
+
 // UpdateUserConfig updates user configuration via cache system
 func (s *CacheService) UpdateUserConfig(ctx context.Context, userID string, userConfig *models.UserConfig) error {
 	op := &UserConfigDataOperation{
@@ -222,14 +233,12 @@ func (s *CacheService) DeleteCitizen(ctx context.Context, cpf string) error {
 
 // GetQueueDepth returns the current depth of a sync queue
 func (s *CacheService) GetQueueDepth(ctx context.Context, queueType string) (int64, error) {
-	queueKey := fmt.Sprintf("sync:queue:%s", queueType)
-	return config.Redis.LLen(ctx, queueKey).Result()
+	return config.Redis.LLen(ctx, syncQueueKey(queueType)).Result()
 }
 
 // GetDLQDepth returns the current depth of a dead letter queue
 func (s *CacheService) GetDLQDepth(ctx context.Context, queueType string) (int64, error) {
-	dlqKey := fmt.Sprintf("sync:dlq:%s", queueType)
-	return config.Redis.LLen(ctx, dlqKey).Result()
+	return config.Redis.LLen(ctx, syncDLQKey(queueType)).Result()
 }
 
 // GetCacheStats returns cache statistics for monitoring

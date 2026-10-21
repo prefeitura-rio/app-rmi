@@ -19,10 +19,15 @@ import (
 
 func setupBetaGroupHandlersTest(t *testing.T) (*BetaGroupHandlers, *gin.Engine, func()) {
 	// Use the shared MongoDB and Redis from common_test.go TestMain
+	setupTestEnvironment()
 	gin.SetMode(gin.TestMode)
 
-	// Configure test collections
+	origBetaGroup := config.AppConfig.BetaGroupCollection
+	origPhoneMapping := config.AppConfig.PhoneMappingCollection
+	origAdminGroup := config.AppConfig.AdminGroup
+
 	config.AppConfig.BetaGroupCollection = "test_beta_groups"
+	config.AppConfig.PhoneMappingCollection = "test_phone_mappings_handlers"
 	config.AppConfig.AdminGroup = "go:admin"
 
 	ctx := context.Background()
@@ -56,7 +61,12 @@ func setupBetaGroupHandlersTest(t *testing.T) (*BetaGroupHandlers, *gin.Engine, 
 	router.GET("/admin/beta/groups/:group_id/whitelist", handlers.ListWhitelistedPhones)
 
 	return handlers, router, func() {
-		_ = database.Drop(ctx)
+		// Drop only this test's collections — never the whole rmi_test DB (shared across packages).
+		_ = database.Collection(config.AppConfig.BetaGroupCollection).Drop(ctx)
+		_ = database.Collection(config.AppConfig.PhoneMappingCollection).Drop(ctx)
+		config.AppConfig.BetaGroupCollection = origBetaGroup
+		config.AppConfig.PhoneMappingCollection = origPhoneMapping
+		config.AppConfig.AdminGroup = origAdminGroup
 	}
 }
 

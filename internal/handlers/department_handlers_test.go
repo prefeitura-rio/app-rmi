@@ -47,7 +47,8 @@ func setupDepartmentHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	router.GET("/departments/:cd_ua", GetDepartment)
 
 	return router, func() {
-		_ = database.Drop(ctx)
+		// Drop only this test's collection — never the whole rmi_test DB (shared across packages).
+		_ = database.Collection(config.AppConfig.DepartmentCollection).Drop(ctx)
 		services.DepartmentServiceInstance = nil
 		// Clear Redis cache after test
 		keys, err := config.Redis.Keys(ctx, "department:*").Result()

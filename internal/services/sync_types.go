@@ -4,16 +4,28 @@ import (
 	"time"
 )
 
+// Sync job origin values used for anti-loop on Salesforce bidirectional sync.
+const (
+	SyncOriginSalesforce = "salesforce"
+)
+
 // SyncJob represents a job to sync data from Redis to MongoDB
 type SyncJob struct {
-	ID         string      `json:"id"`
-	Type       string      `json:"type"`
-	Key        string      `json:"key"`
-	Collection string      `json:"collection"`
-	Data       interface{} `json:"data"`
-	Timestamp  time.Time   `json:"timestamp"`
-	RetryCount int         `json:"retry_count"`
-	MaxRetries int         `json:"max_retries"`
+	ID          string      `json:"id"`
+	Type        string      `json:"type"`
+	Key         string      `json:"key"`
+	Collection  string      `json:"collection"`
+	Data        interface{} `json:"data"`
+	Timestamp   time.Time   `json:"timestamp"`
+	RetryCount  int         `json:"retry_count"`
+	MaxRetries  int         `json:"max_retries"`
+	AvailableAt time.Time   `json:"available_at,omitempty"` // deferred retry; zero = process immediately
+	Origin      string      `json:"origin,omitempty"`       // e.g. SyncOriginSalesforce — skip outbound SF push
+	BearerToken string      `json:"bearer_token,omitempty"` // AES-GCM sealed JWT on the work queue; stripped in DLQ
+
+	// Transient fields for reliable-queue ack (not persisted in Redis payload JSON).
+	rawRedisPayload string `json:"-"`
+	fromInflight    bool   `json:"-"`
 }
 
 // DLQJob represents a job that has failed and been moved to the dead letter queue

@@ -1,11 +1,19 @@
 package config
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+)
+
+const (
+	// VerificationProviderWetalkie routes OTP dispatch through the legacy Wetalkie HSM API.
+	VerificationProviderWetalkie = "wetalkie"
+	// VerificationProviderSalesforce routes OTP dispatch through the Salesforce Marketing Cloud OTT API.
+	VerificationProviderSalesforce = "salesforce"
 )
 
 // Config holds all configuration values
@@ -57,6 +65,24 @@ type Config struct {
 	DepartmentCollection           string `json:"mongo_department_collection"`
 	NotificationCategoryCollection string `json:"mongo_notification_category_collection"`
 	CNAECollection                 string `json:"mongo_cnae_collection"`
+	CPFSecretariaCollection        string `json:"mongo_cpf_secretaria_collection"`
+	MobilidadeVehicleCollection    string `json:"mongo_mobilidade_vehicle_collection"`
+	MobilidadeConductorCollection  string `json:"mongo_mobilidade_conductor_collection"`
+	MobilidadeBrandCollection      string `json:"mongo_mobilidade_brand_collection"`
+	MobilidadeModelCollection      string `json:"mongo_mobilidade_model_collection"`
+
+	// Data Relay (transactional email / mailman)
+	DataRelayBaseURL string        `json:"data_relay_base_url"`
+	DataRelayAPIKey  string        `json:"data_relay_api_key"`
+	DataRelayTimeout time.Duration `json:"data_relay_timeout"`
+
+	// Salesforce CRM (Person Account sync) — optional; JWT-only auth (no OAuth)
+	SalesforceBaseURL string        `json:"salesforce_base_url"`
+	SalesforceTimeout time.Duration `json:"salesforce_timeout"`
+	// SalesforceWebhookClients are Keycloak client_ids (azp) allowed to call the SF→RMI webhook.
+	SalesforceWebhookClients []string `json:"salesforce_webhook_clients"`
+	// SyncJobBearerEncryptionKey is a 32-byte AES-256 key used to seal JWTs on Redis sync jobs.
+	SyncJobBearerEncryptionKey []byte `json:"-"`
 
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
@@ -93,6 +119,18 @@ type Config struct {
 	WhatsAppHSMID        string `json:"whatsapp_hsm_id"`
 	WhatsAppCostCenterID string `json:"whatsapp_cost_center_id"`
 	WhatsAppCampaignName string `json:"whatsapp_campaign_name"`
+
+	// Verification provider selection (wetalkie | salesforce)
+	VerificationProvider string `json:"verification_provider"`
+
+	// Salesforce Marketing Cloud (OTT) configuration
+	SFMCEnabled       bool   `json:"sfmc_enabled"`
+	SFMCSubdomain     string `json:"sfmc_subdomain"`
+	SFMCClientID      string `json:"sfmc_client_id"`
+	SFMCClientSecret  string `json:"sfmc_client_secret"`
+	SFMCAccountID     string `json:"sfmc_account_id"`
+	SFMCDefinitionKey string `json:"sfmc_definition_key"`
+	SFMCOTPAttribute  string `json:"sfmc_otp_attribute"`
 
 	// Tracing configuration
 	TracingEnabled  bool   `json:"tracing_enabled"`
@@ -259,7 +297,7 @@ func LoadConfig() error {
 		return fmt.Errorf("invalid CF_LOOKUP_GLOBAL_RATE_LIMIT: %w", err)
 	}
 
-	cfLookupSyncTimeout, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_SYNC_TIMEOUT", "8s")) // 8 seconds for synchronous lookups
+	cfLookupSyncTimeout, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_SYNC_TIMEOUT", "15s")) // 15 seconds for synchronous lookups
 	if err != nil {
 		return fmt.Errorf("invalid CF_LOOKUP_SYNC_TIMEOUT: %w", err)
 	}
@@ -304,9 +342,56 @@ func LoadConfig() error {
 		return fmt.Errorf("WHATSAPP_CAMPAIGN_NAME is required")
 	}
 
+	verificationProvider := strings.ToLower(getEnvOrDefault("VERIFICATION_PROVIDER", VerificationProviderWetalkie))
+	switch verificationProvider {
+	case VerificationProviderWetalkie, VerificationProviderSalesforce:
+	default:
+		return fmt.Errorf("invalid VERIFICATION_PROVIDER %q: must be %q or %q", verificationProvider, VerificationProviderWetalkie, VerificationProviderSalesforce)
+	}
+
+	sfmcEnabled, err := strconv.ParseBool(getEnvOrDefault("SFMC_ENABLED", "true"))
+	if err != nil {
+		return fmt.Errorf("invalid SFMC_ENABLED value: %w", err)
+	}
+
+	sfmcSubdomain := os.Getenv("SFMC_SUBDOMAIN")
+	sfmcClientID := os.Getenv("SFMC_CLIENT_ID")
+	sfmcClientSecret := os.Getenv("SFMC_CLIENT_SECRET")
+	sfmcAccountID := os.Getenv("SFMC_ACCOUNT_ID")
+	sfmcDefinitionKey := os.Getenv("SFMC_DEFINITION_KEY")
+	sfmcOTPAttribute := getEnvOrDefault("SFMC_OTP_ATTRIBUTE", "codigo_otp")
+
+	// Require SFMC credentials only when Salesforce is active, so Wetalkie deployments boot unchanged.
+	if verificationProvider == VerificationProviderSalesforce {
+		var missing []string
+		if sfmcSubdomain == "" {
+			missing = append(missing, "SFMC_SUBDOMAIN")
+		}
+		if sfmcClientID == "" {
+			missing = append(missing, "SFMC_CLIENT_ID")
+		}
+		if sfmcClientSecret == "" {
+			missing = append(missing, "SFMC_CLIENT_SECRET")
+		}
+		if sfmcAccountID == "" {
+			missing = append(missing, "SFMC_ACCOUNT_ID")
+		}
+		if sfmcDefinitionKey == "" {
+			missing = append(missing, "SFMC_DEFINITION_KEY")
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("VERIFICATION_PROVIDER=salesforce requires: %s", strings.Join(missing, ", "))
+		}
+	}
+
 	indexMaintenanceInterval, err := time.ParseDuration(getEnvOrDefault("INDEX_MAINTENANCE_INTERVAL", "1h"))
 	if err != nil {
 		return fmt.Errorf("invalid INDEX_MAINTENANCE_INTERVAL: %w", err)
+	}
+
+	bearerKey, err := parseSyncJobBearerEncryptionKey(os.Getenv("SYNC_JOB_BEARER_ENCRYPTION_KEY"))
+	if err != nil {
+		return fmt.Errorf("invalid SYNC_JOB_BEARER_ENCRYPTION_KEY: %w", err)
 	}
 
 	// Redis Cluster configuration
@@ -369,6 +454,22 @@ func LoadConfig() error {
 		DepartmentCollection:           departmentCollection,
 		NotificationCategoryCollection: notificationCategoryCollection,
 		CNAECollection:                 cnaeCollection,
+		CPFSecretariaCollection:        getEnvOrDefault("MONGODB_CPF_SECRETARIA_COLLECTION", "cpf_secretaria_mappings"),
+		MobilidadeVehicleCollection:    getEnvOrDefault("MONGODB_MOBILIDADE_VEHICLE_COLLECTION", "mobilidade_vehicles"),
+		MobilidadeConductorCollection:  getEnvOrDefault("MONGODB_MOBILIDADE_CONDUCTOR_COLLECTION", "mobilidade_vehicle_conductors"),
+		MobilidadeBrandCollection:      getEnvOrDefault("MONGODB_MOBILIDADE_BRAND_COLLECTION", "mobilidade_vehicle_brands"),
+		MobilidadeModelCollection:      getEnvOrDefault("MONGODB_MOBILIDADE_MODEL_COLLECTION", "mobilidade_vehicle_models"),
+
+		// Data Relay (optional — when unset, invite emails are logged only)
+		DataRelayBaseURL: getEnvOrDefault("DATA_RELAY_BASE_URL", ""),
+		DataRelayAPIKey:  getEnvOrDefault("DATA_RELAY_API_KEY", ""),
+		DataRelayTimeout: getEnvAsDurationOrDefault("DATA_RELAY_TIMEOUT", 30*time.Second),
+
+		// Salesforce CRM (optional — Bearer JWT only; no OAuth client-credentials)
+		SalesforceBaseURL:          getEnvOrDefault("SALESFORCE_BASE_URL", ""),
+		SalesforceTimeout:          getEnvAsDurationOrDefault("SALESFORCE_TIMEOUT", 30*time.Second),
+		SalesforceWebhookClients:   parseCommaSeparatedList(getEnvOrDefault("SALESFORCE_WEBHOOK_CLIENTS", "")),
+		SyncJobBearerEncryptionKey: bearerKey,
 
 		// Phone verification configuration
 		PhoneVerificationTTL:          phoneVerificationTTL,
@@ -404,6 +505,16 @@ func LoadConfig() error {
 		WhatsAppCostCenterID: whatsappCostCenterID,
 		WhatsAppCampaignName: whatsappCampaignName,
 
+		VerificationProvider: verificationProvider,
+
+		SFMCEnabled:       sfmcEnabled,
+		SFMCSubdomain:     sfmcSubdomain,
+		SFMCClientID:      sfmcClientID,
+		SFMCClientSecret:  sfmcClientSecret,
+		SFMCAccountID:     sfmcAccountID,
+		SFMCDefinitionKey: sfmcDefinitionKey,
+		SFMCOTPAttribute:  sfmcOTPAttribute,
+
 		// Tracing configuration
 		TracingEnabled:  getEnvOrDefault("TRACING_ENABLED", "false") == "true",
 		TracingEndpoint: getEnvOrDefault("TRACING_ENDPOINT", "localhost:4317"),
@@ -424,7 +535,7 @@ func LoadConfig() error {
 		DBBatchSize:   getEnvAsIntOrDefault("DB_BATCH_SIZE", 100),
 
 		// Authorization configuration
-		AdminGroup:            getEnvOrDefault("ADMIN_GROUP", "rmi-admin"),
+		AdminGroup:            getEnvOrDefault("ADMIN_GROUP", "heimdall-admin"),
 		TrustedServiceClients: parseCommaSeparatedList(getEnvOrDefault("TRUSTED_SERVICE_CLIENTS", "")),
 
 		// Index maintenance configuration
@@ -460,6 +571,21 @@ func getEnvAsDurationOrDefault(key string, defaultValue time.Duration) time.Dura
 		}
 	}
 	return defaultValue
+}
+
+const syncJobBearerAES256KeySize = 32
+
+// parseSyncJobBearerEncryptionKey accepts a 32-byte AES-256 key as 64 hex characters.
+func parseSyncJobBearerEncryptionKey(raw string) ([]byte, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	decoded, err := hex.DecodeString(raw)
+	if err != nil || len(decoded) != syncJobBearerAES256KeySize {
+		return nil, fmt.Errorf("must be 64 hex characters (32-byte AES-256 key)")
+	}
+	return decoded, nil
 }
 
 // parseCommaSeparatedList parses a comma-separated string into a slice of strings

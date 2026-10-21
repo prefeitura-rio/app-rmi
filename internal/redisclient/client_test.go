@@ -16,7 +16,7 @@ import (
 func setupRedisForTest(t *testing.T) (*Client, func()) {
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
-		t.Skip("Skipping Redis integration tests: REDIS_ADDR not set")
+		redisAddr = "localhost:6379"
 	}
 
 	// Initialize Redis client
@@ -33,7 +33,7 @@ func setupRedisForTest(t *testing.T) (*Client, func()) {
 	ctx := context.Background()
 	err := client.Ping(ctx).Err()
 	if err != nil {
-		t.Fatalf("Failed to connect to Redis: %v", err)
+		t.Skipf("Skipping Redis integration tests: %v", err)
 	}
 
 	// Return cleanup function
@@ -1024,4 +1024,66 @@ func TestClient_Eval_ErrorPath(t *testing.T) {
 		err := cmd.Err()
 		assert.Error(t, err, "Eval with cancelled context must return an error")
 	})
+}
+
+func TestClient_RPopLPush(t *testing.T) {
+	client, cleanup := setupRedisForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	src := "test:rpoplpush:src"
+	dst := "test:rpoplpush:dst"
+	_ = client.Del(ctx, src, dst)
+
+	require.NoError(t, client.LPush(ctx, src, "a", "b").Err())
+	cmd := client.RPopLPush(ctx, src, dst)
+	require.NoError(t, cmd.Err())
+	assert.Equal(t, "a", cmd.Val())
+
+	empty := client.RPopLPush(ctx, "test:rpoplpush:empty", dst)
+	assert.Equal(t, redis.Nil, empty.Err())
+}
+
+func TestClient_LRemAndLRange(t *testing.T) {
+	client, cleanup := setupRedisForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	key := "test:lrem:list"
+	_ = client.Del(ctx, key)
+
+	require.NoError(t, client.LPush(ctx, key, "x", "y", "x").Err())
+	vals, err := client.LRange(ctx, key, 0, -1).Result()
+	require.NoError(t, err)
+	assert.Len(t, vals, 3)
+
+	removed, err := client.LRem(ctx, key, 1, "x").Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), removed)
+
+	vals, err = client.LRange(ctx, key, 0, -1).Result()
+	require.NoError(t, err)
+	assert.Len(t, vals, 2)
+}
+
+func TestClient_ZSetOps(t *testing.T) {
+	client, cleanup := setupRedisForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	key := "test:zset:claims"
+	_ = client.Del(ctx, key)
+
+	n, err := client.ZAdd(ctx, key, redis.Z{Score: 10, Member: "job-a"}, redis.Z{Score: 20, Member: "job-b"}).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n)
+
+	score, err := client.ZScore(ctx, key, "job-a").Result()
+	require.NoError(t, err)
+	assert.Equal(t, float64(10), score)
+
+	_, err = client.ZScore(ctx, key, "missing").Result()
+	assert.ErrorIs(t, err, redis.Nil)
+
+	removed, err := client.ZRem(ctx, key, "job-a").Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), removed)
 }

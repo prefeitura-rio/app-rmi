@@ -255,3 +255,21 @@ func TestValidateCNPJ_InvalidCheckDigits(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeCPF(t *testing.T) {
+	assert.Equal(t, "12345678909", NormalizeCPF("123.456.789-09"))
+	assert.Equal(t, "12345678909", NormalizeCPF("12345678909"))
+	assert.Equal(t, "12345678909", NormalizeCPF(" 123.456.789-09 "))
+}
+
+func TestMaskEmail(t *testing.T) {
+	assert.Equal(t, "j***o@example.com", MaskEmail("joao@example.com"))
+	assert.Equal(t, "*@example.com", MaskEmail("a@example.com"))
+	assert.Equal(t, "***", MaskEmail("not-an-email"))
+}
+
+func TestMaskCPFForWebhookResponse(t *testing.T) {
+	assert.Equal(t, "***.456.789-**", MaskCPFForWebhookResponse("12345678909"))
+	assert.Equal(t, "***.982.247-**", MaskCPFForWebhookResponse("52998224725"))
+	assert.Equal(t, "***.***.***-**", MaskCPFForWebhookResponse("invalid"))
+}

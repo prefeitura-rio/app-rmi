@@ -475,6 +475,11 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure Mobilidade collections indexes
+	if err := ensureMobilidadeIndexes(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -2247,6 +2252,182 @@ func ensureCNAEIndex(ctx context.Context, logger *zap.Logger) error {
 	}
 
 	return nil
+}
+
+// ensureMobilidadeIndexes creates indexes for all Mobilidade collections.
+func ensureMobilidadeIndexes(ctx context.Context, logger *zap.Logger) error {
+	if err := ensureMobilidadeVehicleIndex(ctx, logger); err != nil {
+		return err
+	}
+	if err := ensureMobilidadeConductorIndex(ctx, logger); err != nil {
+		return err
+	}
+	if err := ensureMobilidadeBrandIndex(ctx, logger); err != nil {
+		return err
+	}
+	return ensureMobilidadeModelIndex(ctx, logger)
+}
+
+func listExistingIndexNames(ctx context.Context, collection *mongo.Collection) (map[string]bool, error) {
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	existing := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existing[name] = true
+		}
+	}
+	return existing, nil
+}
+
+func createMissingIndexes(ctx context.Context, logger *zap.Logger, collectionName string, collection *mongo.Collection, requiredIndexes []mongo.IndexModel, requiredNames []string) error {
+	existingIndexes, err := listExistingIndexNames(ctx, collection)
+	if err != nil {
+		logger.Error("failed to list indexes",
+			zap.String("collection", collectionName),
+			zap.Error(err))
+		return err
+	}
+
+	indexesToCreate := []mongo.IndexModel{}
+	for i, indexModel := range requiredIndexes {
+		if !existingIndexes[requiredNames[i]] {
+			indexesToCreate = append(indexesToCreate, indexModel)
+		}
+	}
+
+	if len(indexesToCreate) == 0 {
+		logger.Debug("indexes already exist", zap.String("collection", collectionName))
+		return nil
+	}
+
+	logger.Info("creating missing indexes",
+		zap.String("collection", collectionName),
+		zap.Int("count", len(indexesToCreate)))
+
+	_, err = collection.Indexes().CreateMany(ctx, indexesToCreate)
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			logger.Info("indexes already exist (created by another instance)",
+				zap.String("collection", collectionName))
+			return nil
+		}
+		logger.Error("failed to create indexes",
+			zap.String("collection", collectionName),
+			zap.Error(err))
+		return err
+	}
+
+	logger.Info("created indexes successfully",
+		zap.String("collection", collectionName),
+		zap.Int("created_count", len(indexesToCreate)))
+	return nil
+}
+
+// ensureMobilidadeVehicleIndex creates indexes for mobilidade_vehicles.
+func ensureMobilidadeVehicleIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.MobilidadeVehicleCollection)
+	requiredNames := []string{
+		"idx_mobilidade_vehicles_owner_active",
+		"idx_mobilidade_vehicles_registration_number",
+	}
+	requiredIndexes := []mongo.IndexModel{
+		// Wallet listing: vehicles owned by CPF that are not soft-deleted.
+		{
+			Keys: bson.D{{Key: "owner_cpf", Value: 1}},
+			Options: options.Index().
+				SetName("idx_mobilidade_vehicles_owner_active").
+				SetPartialFilterExpression(bson.M{"deleted_at": nil}),
+		},
+		// Short wallet registration number — unique among active vehicles.
+		{
+			Keys: bson.D{{Key: "registration_number", Value: 1}},
+			Options: options.Index().
+				SetName("idx_mobilidade_vehicles_registration_number").
+				SetUnique(true).
+				SetPartialFilterExpression(bson.M{"deleted_at": nil}),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.MobilidadeVehicleCollection, collection, requiredIndexes, requiredNames)
+}
+
+// ensureMobilidadeConductorIndex creates indexes for mobilidade_vehicle_conductors.
+func ensureMobilidadeConductorIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.MobilidadeConductorCollection)
+	requiredNames := []string{
+		"idx_mobilidade_conductors_vehicle_cpf_active",
+		"idx_mobilidade_conductors_cpf_status",
+		"idx_mobilidade_conductors_vehicle_status",
+	}
+	requiredIndexes := []mongo.IndexModel{
+		// Unique active link per (vehicle, conductor) — enforces 409 on duplicate invite.
+		{
+			Keys: bson.D{
+				{Key: "vehicle_id", Value: 1},
+				{Key: "conductor_cpf", Value: 1},
+			},
+			Options: options.Index().
+				SetName("idx_mobilidade_conductors_vehicle_cpf_active").
+				SetUnique(true).
+				SetPartialFilterExpression(bson.M{
+					"status": bson.M{"$in": bson.A{"pending", "accepted"}},
+				}),
+		},
+		// Pending invitations + accepted shared vehicles for a CPF.
+		{
+			Keys: bson.D{
+				{Key: "conductor_cpf", Value: 1},
+				{Key: "status", Value: 1},
+			},
+			Options: options.Index().SetName("idx_mobilidade_conductors_cpf_status"),
+		},
+		// Owner management of conductors on a vehicle.
+		{
+			Keys: bson.D{
+				{Key: "vehicle_id", Value: 1},
+				{Key: "status", Value: 1},
+			},
+			Options: options.Index().SetName("idx_mobilidade_conductors_vehicle_status"),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.MobilidadeConductorCollection, collection, requiredIndexes, requiredNames)
+}
+
+// ensureMobilidadeBrandIndex creates indexes for mobilidade_vehicle_brands.
+func ensureMobilidadeBrandIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.MobilidadeBrandCollection)
+	requiredNames := []string{"idx_mobilidade_brands_name"}
+	requiredIndexes := []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "name", Value: 1}},
+			Options: options.Index().SetName("idx_mobilidade_brands_name"),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.MobilidadeBrandCollection, collection, requiredIndexes, requiredNames)
+}
+
+// ensureMobilidadeModelIndex creates indexes for mobilidade_vehicle_models.
+func ensureMobilidadeModelIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.MobilidadeModelCollection)
+	requiredNames := []string{"idx_mobilidade_models_brand_name"}
+	requiredIndexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "brand_id", Value: 1},
+				{Key: "name", Value: 1},
+			},
+			Options: options.Index().SetName("idx_mobilidade_models_brand_name"),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.MobilidadeModelCollection, collection, requiredIndexes, requiredNames)
 }
 
 // isIndexBuildInProgress checks if an index build is currently running for a specific collection and index

@@ -58,6 +58,7 @@ const (
 	AuditResourceNotificationCategory = "notification_category"
 	AuditResourceMemory               = "memory"
 	AuditResourcePet                  = "pet"
+	AuditResourceBirthDate            = "birth_date"
 )
 
 // AuditContext contains context information for audit logging
@@ -355,6 +356,14 @@ func LogExhibitionNameUpdate(ctx context.Context, auditCtx AuditContext, oldExhi
 		"field":     "exhibition_name",
 	}
 	return LogAuditEvent(ctx, auditCtx, AuditActionUpdate, AuditResourceExhibitionName, auditCtx.CPF, oldExhibitionName, newExhibitionName, metadata)
+}
+
+func LogBirthDateUpdate(ctx context.Context, auditCtx AuditContext, oldBirthDate, newBirthDate interface{}) error {
+	metadata := map[string]string{
+		"operation": "self_declared_update",
+		"field":     "birth_date",
+	}
+	return LogAuditEvent(ctx, auditCtx, AuditActionUpdate, AuditResourceBirthDate, auditCtx.CPF, oldBirthDate, newBirthDate, metadata)
 }
 
 // LogUserConfigUpdate logs a user config update audit event
