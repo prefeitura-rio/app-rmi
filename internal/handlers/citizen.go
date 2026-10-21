@@ -588,7 +588,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 // @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou dados de endereço incorretos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
-// @Failure 409 {object} ErrorResponse "Conflito - endereço não alterado (dados idênticos aos atuais)"
+// @Failure 409 {object} ErrorResponse "Conflito - endereço idêntico e ainda dentro do prazo (180 dias)"
 // @Failure 422 {object} ErrorResponse "Dados não processáveis - informações de endereço inválidas"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
@@ -658,6 +658,13 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 
 	// Compare data with tracing
 	ctx, compareSpan := utils.TraceDataComparison(ctx, "address_comparison")
+	// Only return 409 if address fields match AND endereco.principal.updated_at is still within threshold.
+	// Allow re-declaration (renew updated_at only) when:
+	// 1. The address timestamp is outdated (updated_at > threshold ago)
+	// 2. No updated_at timestamp exists (legacy data)
+	// Use principal.updated_at (not document-level updated_at) because other self-declared
+	// fields bump the document timestamp without changing the address.
+	addressUnchanged := false
 	if current != nil && current.Principal != nil &&
 		*current.Principal.Bairro == input.Bairro &&
 		*current.Principal.CEP == input.CEP &&
@@ -669,9 +676,21 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		*current.Principal.Numero == input.Numero &&
 		(current.Principal.TipoLogradouro == nil && input.TipoLogradouro == nil ||
 			(current.Principal.TipoLogradouro != nil && input.TipoLogradouro != nil && *current.Principal.TipoLogradouro == *input.TipoLogradouro)) {
-		compareSpan.End()
-		c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: address matches current data"})
-		return
+
+		isOutdated := current.Principal.UpdatedAt == nil ||
+			time.Since(*current.Principal.UpdatedAt) > config.AppConfig.SelfDeclaredOutdatedThreshold
+
+		if !isOutdated {
+			compareSpan.End()
+			c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: address matches current data"})
+			return
+		}
+
+		addressUnchanged = true
+		logger.Debug("allowing address re-declaration for outdated data",
+			zap.String("cpf", cpf),
+			zap.Bool("has_updated_at", current.Principal.UpdatedAt != nil),
+			zap.Duration("threshold", config.AppConfig.SelfDeclaredOutdatedThreshold))
 	}
 	compareSpan.End()
 
@@ -755,9 +774,11 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	}
 	auditSpan.End()
 
-	// Handle CF data invalidation when address changes (only if enabled)
+	// Handle CF data invalidation when address content changes (skip date-only renewal)
 	ctx, cfInvalidateSpan := utils.TraceBusinessLogic(ctx, "cf_invalidate_on_address_change")
-	if services.CFLookupServiceInstance != nil {
+	if addressUnchanged {
+		logger.Debug("address content unchanged - skipping CF invalidation/lookup", zap.String("cpf", cpf))
+	} else if services.CFLookupServiceInstance != nil {
 		newAddress := fmt.Sprintf("%s, %s, %s, %s, %s, %s",
 			input.Logradouro, input.Numero,
 			func() string {
