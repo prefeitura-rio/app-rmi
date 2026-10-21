@@ -2473,7 +2473,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "Conflito - endereço não alterado (dados idênticos aos atuais)",
+                        "description": "Conflito - endereço idêntico e ainda dentro do prazo (180 dias)",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
