@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
 	"github.com/prefeitura-rio/app-rmi/internal/clients"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
-	"go.uber.org/zap"
 )
 
 // PatchSalesforceConsentimento proxies PATCH .../cidadao/{cpf}/consentimento.
@@ -60,7 +61,7 @@ func PatchSalesforceConsentimento(c *gin.Context) {
 	}
 	if err := services.EnqueueSalesforceConsentimentoMirror(c.Request.Context(), config.Redis, cpf, &req); err != nil {
 		observability.Logger().Warn("failed to enqueue salesforce consentimento mirror",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Error(err))
 	}
 	c.Status(http.StatusOK)

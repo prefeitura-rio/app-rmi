@@ -6,13 +6,15 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 )
 
 // LegalEntityService handles legal entity business logic
@@ -95,7 +97,7 @@ func (s *LegalEntityService) GetLegalEntitiesByCPF(ctx context.Context, cpf stri
 	response.Pagination.TotalPages = totalPages
 
 	s.logger.Debug("retrieved legal entities for CPF",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.Int("total", int(total)),

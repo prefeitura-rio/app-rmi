@@ -108,15 +108,20 @@ just stop-deps        # Stop dependency containers
 - **Input Validation**: CPF, phone number, data format validation
 
 ### Audit Logging System
-- **Automatic Audit Middleware**: All PUT/POST/DELETE requests are automatically logged via `middleware.AuditMiddleware()`
+- **Automatic Audit Middleware**: All PUT/POST/DELETE/PATCH requests are automatically logged via `middleware.AuditMiddleware()`
 - **Audit Coverage**: Captures endpoint, HTTP method, requester info, request body, timestamp, IP address, user agent
 - **Async Processing**: Audit logs processed asynchronously with batched MongoDB inserts (W=0 write concern)
 - **Resource Mapping**: Automatic extraction of resource type from request path
 - **CPF Extraction**: Attempts to extract CPF from URL params, authenticated claims, or request body
 - **Status Filtering**: Only logs successful requests (2xx status codes)
-- **Body Sanitization**: Request bodies truncated to 1000 characters to prevent excessive storage
+- **Body storage**: Request bodies truncated to 1000 characters; **not redacted** — may contain telefone, e-mail, endereço and other PII from write payloads. CPF on the audit document stays in clear text for rastreabilidade (by design; not masked like SigNoz logs/traces)
 - **MANDATORY REQUIREMENT**: All new write endpoints (POST/PUT/DELETE/PATCH) are automatically audited - no manual audit logging needed in handlers
 - **Location**: Audit middleware at `internal/middleware/audit.go`, integrated in main router before all routes
+
+### CPF masking in logs and traces (LGPD)
+- Never use `zap.String("cpf", …)` or `attribute.String("cpf", …)` outside `observability` helpers
+- Use `observability.CPFField(cpf)` / `observability.CPFAttr(cpf)` (sole mask: `observability.MaskCPF`)
+- CI/`just lint` runs `scripts/check_cpf_log_masking.sh` so new unmasked CPF logs fail the build
 
 ### Monitoring & Observability
 - **OpenTelemetry**: Request tracing with span context

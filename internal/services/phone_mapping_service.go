@@ -6,15 +6,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
 type PhoneMappingService struct {
@@ -83,7 +85,7 @@ func (s *PhoneMappingService) GetPhoneStatus(ctx context.Context, phoneNumber st
 		).Decode(&citizen)
 
 		if err == nil {
-			response.CPF = utils.MaskCPF(citizen.CPF)
+			response.CPF = observability.MaskCPF(citizen.CPF)
 			if citizen.Nome != nil {
 				response.Name = utils.MaskName(*citizen.Nome)
 			}
@@ -434,7 +436,7 @@ func (s *PhoneMappingService) GetQuarantinedPhones(ctx context.Context, page, pe
 		}
 
 		if mapping.CPF != "" {
-			quarantinedPhone.CPF = utils.MaskCPF(mapping.CPF)
+			quarantinedPhone.CPF = observability.MaskCPF(mapping.CPF)
 		}
 
 		quarantinedPhones = append(quarantinedPhones, quarantinedPhone)
@@ -599,16 +601,16 @@ func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber st
 			// Return not found instead of error
 			s.logger.Warn("phone mapping exists but citizen not found",
 				zap.String("phone_number", storagePhone),
-				zap.String("cpf", mapping.CPF))
+				observability.CPFField(mapping.CPF))
 			return &models.PhoneCitizenResponse{Found: false}, nil
 		}
-		s.logger.Error("failed to get citizen data", zap.Error(err), zap.String("cpf", mapping.CPF))
+		s.logger.Error("failed to get citizen data", zap.Error(err), observability.CPFField(mapping.CPF))
 		return nil, fmt.Errorf("failed to get citizen data: %w", err)
 	}
 
 	return &models.PhoneCitizenResponse{
 		Found: true,
-		CPF:   utils.MaskCPF(citizen.CPF),
+		CPF:   observability.MaskCPF(citizen.CPF),
 		Name: func() string {
 			if citizen.Nome != nil {
 				return utils.MaskName(*citizen.Nome)
@@ -654,7 +656,7 @@ func (s *PhoneMappingService) ValidateRegistration(ctx context.Context, phoneNum
 				Valid: false,
 			}, nil
 		}
-		s.logger.Error("failed to get citizen data", zap.Error(err), zap.String("cpf", cpf))
+		s.logger.Error("failed to get citizen data", zap.Error(err), observability.CPFField(cpf))
 		return nil, fmt.Errorf("failed to get citizen data: %w", err)
 	}
 

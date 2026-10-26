@@ -8,14 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prefeitura-rio/app-rmi/internal/clients"
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/clients"
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
 func parseSalesforceUpdatedAt(raw string) (*time.Time, error) {
@@ -87,7 +89,7 @@ func (w *SyncWorker) applySalesforceAnonimizacaoLocked(ctx context.Context, cpf 
 
 	if existingFound && isStaleSalesforceUpdatedAt(existing.SalesforceUpdatedAt, incomingUpdatedAt) {
 		w.logger.Info("salesforce inbound sync skipped: stale updatedAt",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.String("evento", SalesforceWebhookEventAnonimizacao))
 		return nil
 	}
@@ -130,7 +132,7 @@ func (w *SyncWorker) applySalesforceDeltaLocked(ctx context.Context, cpf, evento
 
 	if existingFound && isStaleSalesforceUpdatedAt(existing.SalesforceUpdatedAt, incomingUpdatedAt) {
 		w.logger.Info("salesforce inbound sync skipped: stale updatedAt",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.String("evento", evento))
 		return nil
 	}
@@ -143,7 +145,7 @@ func (w *SyncWorker) applySalesforceDeltaLocked(ctx context.Context, cpf, evento
 	set, unset := buildSelfDeclaredDeltaPatch(existingPtr, fields, evento, now, incomingUpdatedAt)
 	if !salesforceDeltaHasWork(fields, set, unset) {
 		w.logger.Info("salesforce inbound sync: empty delta",
-			zap.String("cpf", cpf))
+			observability.CPFField(cpf))
 		return nil
 	}
 
@@ -207,7 +209,7 @@ func (w *SyncWorker) withSalesforceInboundLock(ctx context.Context, cpf string, 
 			defer func() {
 				if delErr := w.redis.Del(ctx, lockKey).Err(); delErr != nil && w.logger != nil {
 					w.logger.Debug("salesforce inbound lock release failed",
-						zap.String("cpf", cpf),
+						observability.CPFField(cpf),
 						zap.Error(delErr))
 				}
 			}()
@@ -421,7 +423,7 @@ func (w *SyncWorker) stampSalesforceUpdatedAt(ctx context.Context, cpf string, i
 	}
 	if res.MatchedCount == 0 && w.logger != nil {
 		w.logger.Info("salesforce watermark stamp skipped: newer or equal updatedAt already present",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Time("incoming_updated_at", *incoming))
 	}
 	return nil
@@ -740,7 +742,7 @@ func (w *SyncWorker) applySalesforceConsentimentoDelta(ctx context.Context, cpf 
 		key := salesforceConsentimentoKey(categoria, canal)
 		if isUnsafeMongoMapKey(key) {
 			w.logger.Warn("skipping salesforce consentimento key with unsafe mongo path characters",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.String("key", key))
 			continue
 		}

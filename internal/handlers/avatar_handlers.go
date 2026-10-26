@@ -227,7 +227,7 @@ func (h *AvatarHandlers) GetUserAvatar(c *gin.Context) {
 			c.JSON(http.StatusOK, response)
 			return
 		}
-		h.logger.Error("failed to get user config", zap.Error(err), zap.String("cpf", cpf))
+		h.logger.Error("failed to get user config", zap.Error(err), observability.CPFField(cpf))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user avatar"})
 		return
 	}
@@ -242,7 +242,7 @@ func (h *AvatarHandlers) GetUserAvatar(c *gin.Context) {
 		avatar, err := services.AvatarServiceInstance.GetAvatarByID(ctx, *userConfig.AvatarID)
 		if err != nil {
 			h.logger.Warn("failed to get avatar details", zap.Error(err),
-				zap.String("cpf", cpf), zap.String("avatar_id", *userConfig.AvatarID))
+				observability.CPFField(cpf), zap.String("avatar_id", *userConfig.AvatarID))
 		} else if avatar != nil {
 			avatarResponse := avatar.ToResponse()
 			response.Avatar = &avatarResponse
@@ -328,7 +328,7 @@ func (h *AvatarHandlers) UpdateUserAvatar(c *gin.Context) {
 	err := dataManager.Read(ctx, cpf, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
 
 	if err != nil && err != services.ErrDocumentNotFound {
-		h.logger.Error("failed to get user config", zap.Error(err), zap.String("cpf", cpf))
+		h.logger.Error("failed to get user config", zap.Error(err), observability.CPFField(cpf))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user configuration"})
 		return
 	}
@@ -350,7 +350,7 @@ func (h *AvatarHandlers) UpdateUserAvatar(c *gin.Context) {
 	// Save via cache service
 	err = h.cacheService.UpdateUserConfig(ctx, cpf, &userConfig)
 	if err != nil {
-		h.logger.Error("failed to update user avatar", zap.Error(err), zap.String("cpf", cpf))
+		h.logger.Error("failed to update user avatar", zap.Error(err), observability.CPFField(cpf))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update avatar"})
 		return
 	}
@@ -366,7 +366,7 @@ func (h *AvatarHandlers) UpdateUserAvatar(c *gin.Context) {
 		avatar, err := services.AvatarServiceInstance.GetAvatarByID(ctx, *userConfig.AvatarID)
 		if err != nil {
 			h.logger.Warn("failed to get updated avatar details", zap.Error(err),
-				zap.String("cpf", cpf), zap.String("avatar_id", *userConfig.AvatarID))
+				observability.CPFField(cpf), zap.String("avatar_id", *userConfig.AvatarID))
 		} else if avatar != nil {
 			avatarResponse := avatar.ToResponse()
 			response.Avatar = &avatarResponse
@@ -386,7 +386,7 @@ func (h *AvatarHandlers) UpdateUserAvatar(c *gin.Context) {
 		userConfig.AvatarID, request.AvatarID)
 	auditSpan.End()
 	if err != nil {
-		h.logger.Warn("failed to log avatar update audit", zap.Error(err), zap.String("cpf", cpf))
+		h.logger.Warn("failed to log avatar update audit", zap.Error(err), observability.CPFField(cpf))
 	}
 
 	utils.AddSpanAttribute(span, "cpf", cpf)
@@ -514,7 +514,7 @@ func GetUserAvatar(c *gin.Context) {
 			c.JSON(http.StatusOK, response)
 			return
 		}
-		observability.Logger().Error("failed to get user config", zap.Error(err), zap.String("cpf", cpf))
+		observability.Logger().Error("failed to get user config", zap.Error(err), observability.CPFField(cpf))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user avatar"})
 		return
 	}
@@ -528,7 +528,7 @@ func GetUserAvatar(c *gin.Context) {
 		avatar, err := services.AvatarServiceInstance.GetAvatarByID(ctx, *userConfig.AvatarID)
 		if err != nil {
 			observability.Logger().Warn("failed to get avatar details", zap.Error(err),
-				zap.String("cpf", cpf), zap.String("avatar_id", *userConfig.AvatarID))
+				observability.CPFField(cpf), zap.String("avatar_id", *userConfig.AvatarID))
 		} else if avatar != nil {
 			avatarResponse := avatar.ToResponse()
 			response.Avatar = &avatarResponse
@@ -585,7 +585,7 @@ func UpdateUserAvatar(c *gin.Context) {
 	err := dataManager.Read(ctx, cpf, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
 
 	if err != nil && err != services.ErrDocumentNotFound {
-		observability.Logger().Error("failed to get user config", zap.Error(err), zap.String("cpf", cpf))
+		observability.Logger().Error("failed to get user config", zap.Error(err), observability.CPFField(cpf))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user configuration"})
 		return
 	}
@@ -605,7 +605,7 @@ func UpdateUserAvatar(c *gin.Context) {
 	cacheService := services.NewCacheService()
 	err = cacheService.UpdateUserConfig(ctx, cpf, &userConfig)
 	if err != nil {
-		observability.Logger().Error("failed to update user avatar", zap.Error(err), zap.String("cpf", cpf))
+		observability.Logger().Error("failed to update user avatar", zap.Error(err), observability.CPFField(cpf))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update avatar"})
 		return
 	}
@@ -619,7 +619,7 @@ func UpdateUserAvatar(c *gin.Context) {
 		avatar, err := services.AvatarServiceInstance.GetAvatarByID(ctx, *userConfig.AvatarID)
 		if err != nil {
 			observability.Logger().Warn("failed to get updated avatar details", zap.Error(err),
-				zap.String("cpf", cpf), zap.String("avatar_id", *userConfig.AvatarID))
+				observability.CPFField(cpf), zap.String("avatar_id", *userConfig.AvatarID))
 		} else if avatar != nil {
 			avatarResponse := avatar.ToResponse()
 			response.Avatar = &avatarResponse
@@ -638,7 +638,7 @@ func UpdateUserAvatar(c *gin.Context) {
 		userConfig.AvatarID, request.AvatarID)
 	auditSpan.End()
 	if err != nil {
-		observability.Logger().Warn("failed to log avatar update audit", zap.Error(err), zap.String("cpf", cpf))
+		observability.Logger().Warn("failed to log avatar update audit", zap.Error(err), observability.CPFField(cpf))
 	}
 
 	c.JSON(http.StatusOK, response)

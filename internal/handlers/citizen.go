@@ -11,17 +11,18 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/observability"
-	"github.com/prefeitura-rio/app-rmi/internal/services"
-	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/services"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
 // Version is set via ldflags during build
@@ -29,7 +30,7 @@ var Version = "dev"
 
 // queueCFLookupJob queues a background job to perform CF lookup for a citizen
 func queueCFLookupJob(ctx context.Context, cpf, address string) {
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Create CF lookup job
 	job := services.SyncJob{
@@ -58,7 +59,7 @@ func queueCFLookupJob(ctx context.Context, cpf, address string) {
 
 	if err == nil && !created {
 		logger.Debug("CF lookup job already pending, skipping",
-			zap.String("cpf", cpf))
+			observability.CPFField(cpf))
 		return
 	}
 
@@ -94,16 +95,16 @@ func GetCitizenData(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_citizen_data"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("GetCitizenData called", zap.String("cpf", cpf))
+	logger.Debug("GetCitizenData called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -183,11 +184,11 @@ func GetCitizenData(c *gin.Context) {
 			logger.Warn("failed to check CF lookup status", zap.Error(err))
 		} else if shouldLookup && address != "" {
 			// Queue background CF lookup job
-			logger.Debug("queuing CF lookup job", zap.String("cpf", cpf), zap.String("address", address))
+			logger.Debug("queuing CF lookup job", observability.CPFField(cpf), zap.String("address", address))
 			queueCFLookupJob(ctx, cpf, address)
 		}
 	} else {
-		logger.Debug("CF lookup service disabled - skipping CF lookup check", zap.String("cpf", cpf))
+		logger.Debug("CF lookup service disabled - skipping CF lookup check", observability.CPFField(cpf))
 	}
 	cfSpan.End()
 
@@ -204,7 +205,7 @@ func GetCitizenData(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetCitizenData completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -341,7 +342,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 	results, err := services.BatchReadMultiple(ctx, keys, observability.Logger().Unwrap())
 	if err != nil {
 		observability.Logger().Warn("batch read from write buffer failed",
-			zap.String("cpf", cpf), zap.Error(err))
+			observability.CPFField(cpf), zap.Error(err))
 	}
 
 	// Parse results from write buffer
@@ -466,11 +467,11 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		cacheResults, err := services.BatchReadMultiple(ctx, cacheKeys, observability.Logger().Unwrap())
 		if err != nil {
 			observability.Logger().Warn("batch read from cache failed",
-				zap.String("cpf", cpf), zap.Error(err))
+				observability.CPFField(cpf), zap.Error(err))
 		}
 
 		// Parse missing data from cache
-		parseCacheResult := func(key, dataType string, target interface{}) bool {
+		parseCacheResult := func(key, _ string, target interface{}) bool {
 			if data, exists := cacheResults[key]; exists && data != "" {
 				if err := json.Unmarshal([]byte(data), target); err == nil {
 					return true
@@ -518,7 +519,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		selfDeclared.Escolaridade == nil || selfDeclared.Deficiencia == nil || selfDeclared.Nascimento == nil {
 
 		observability.Logger().Debug("fallback to MongoDB for missing self-declared fields",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Bool("missing_endereco", selfDeclared.Endereco == nil),
 			zap.Bool("missing_email", selfDeclared.Email == nil),
 			zap.Bool("missing_telefone", selfDeclared.Telefone == nil),
@@ -533,7 +534,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&mongoSelfDeclared)
 		if err != nil && err != mongo.ErrNoDocuments {
 			observability.Logger().Warn("failed to fetch self-declared data from MongoDB",
-				zap.String("cpf", cpf), zap.Error(err))
+				observability.CPFField(cpf), zap.Error(err))
 		} else if err == nil {
 			// Fill in missing fields from MongoDB
 			if selfDeclared.Endereco == nil && mongoSelfDeclared.Endereco != nil {
@@ -568,7 +569,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			}
 
 			observability.Logger().Debug("filled missing self-declared fields from MongoDB",
-				zap.String("cpf", cpf))
+				observability.CPFField(cpf))
 		}
 	}
 
@@ -599,16 +600,16 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_self_declared_address"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredAddress called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredAddress called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -688,7 +689,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 
 		addressUnchanged = true
 		logger.Debug("allowing address re-declaration for outdated data",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Bool("has_updated_at", current.Principal.UpdatedAt != nil),
 			zap.Duration("threshold", config.AppConfig.SelfDeclaredOutdatedThreshold))
 	}
@@ -777,7 +778,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	// Handle CF data invalidation when address content changes (skip date-only renewal)
 	ctx, cfInvalidateSpan := utils.TraceBusinessLogic(ctx, "cf_invalidate_on_address_change")
 	if addressUnchanged {
-		logger.Debug("address content unchanged - skipping CF invalidation/lookup", zap.String("cpf", cpf))
+		logger.Debug("address content unchanged - skipping CF invalidation/lookup", observability.CPFField(cpf))
 	} else if services.CFLookupServiceInstance != nil {
 		newAddress := fmt.Sprintf("%s, %s, %s, %s, %s, %s",
 			input.Logradouro, input.Numero,
@@ -798,11 +799,11 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 			// Address changed (or no prior CF): allow a new lookup even if a pending
 			// lock still exists from a previous enqueue within the TTL window.
 			services.ClearCFLookupPending(ctx, cpf)
-			logger.Debug("queuing CF lookup for updated address", zap.String("cpf", cpf))
+			logger.Debug("queuing CF lookup for updated address", observability.CPFField(cpf))
 			queueCFLookupJob(ctx, cpf, newAddress)
 		}
 	} else {
-		logger.Debug("CF lookup service disabled - skipping CF data invalidation", zap.String("cpf", cpf))
+		logger.Debug("CF lookup service disabled - skipping CF data invalidation", observability.CPFField(cpf))
 	}
 	cfInvalidateSpan.End()
 
@@ -814,7 +815,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredAddress completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -845,16 +846,16 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_phone"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredPhone called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredPhone called", observability.CPFField(cpf))
 
 	// Parse input with tracing
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "phone")
@@ -927,7 +928,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 
 		// Data is outdated or has no timestamp - allow re-declaration
 		logger.Debug("allowing phone re-declaration for outdated data",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Bool("has_updated_at", current.UpdatedAt != nil),
 			zap.Duration("threshold", config.AppConfig.SelfDeclaredOutdatedThreshold))
 	}
@@ -958,7 +959,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	// This preserves any existing verified phone until the new one is verified
 	ctx, skipUpdateSpan := utils.TraceBusinessLogic(ctx, "skip_phone_update_until_verified")
 	logger.Debug("skipping phone update until verification - preserving existing verified phone",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("new_phone", fullPhone))
 	skipUpdateSpan.End()
 
@@ -1060,7 +1061,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredPhone completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -1090,16 +1091,16 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_email"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredEmail called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredEmail called", observability.CPFField(cpf))
 
 	// Parse input with tracing
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "email")
@@ -1179,7 +1180,7 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 
 		// Data is outdated or has no timestamp - allow re-declaration
 		logger.Debug("allowing email re-declaration for outdated data",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Bool("has_updated_at", current.UpdatedAt != nil),
 			zap.Duration("threshold", config.AppConfig.SelfDeclaredOutdatedThreshold))
 	}
@@ -1265,7 +1266,7 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredEmail completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -1294,16 +1295,16 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_ethnicity"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredRaca called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredRaca called", observability.CPFField(cpf))
 
 	// Parse input with tracing
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "ethnicity")
@@ -1423,7 +1424,7 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredRaca completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -1453,16 +1454,16 @@ func UpdateSelfDeclaredNomeExibicao(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_exhibition_name"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredNomeExibicao called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredNomeExibicao called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1580,7 +1581,7 @@ func UpdateSelfDeclaredNomeExibicao(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredNomeExibicao completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -1721,16 +1722,16 @@ func GetFirstLogin(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_first_login"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("GetFirstLogin called", zap.String("cpf", cpf))
+	logger.Debug("GetFirstLogin called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1761,7 +1762,7 @@ func GetFirstLogin(c *gin.Context) {
 			dbSpan.End()
 
 			logger.Debug("no user config found - returning first login true",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.String("reason", "document_not_found"))
 
 			// Serialize response with tracing
@@ -1772,7 +1773,7 @@ func GetFirstLogin(c *gin.Context) {
 			// Log total operation time
 			totalDuration := time.Since(startTime)
 			logger.Debug("GetFirstLogin completed (first login - no config)",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.Bool("first_login", true),
 				zap.Duration("total_duration", totalDuration),
 				zap.String("status", "success"))
@@ -1787,7 +1788,7 @@ func GetFirstLogin(c *gin.Context) {
 		})
 		dbSpan.End()
 		logger.Error("failed to get user config via DataManager",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get user config"})
 		return
@@ -1799,7 +1800,7 @@ func GetFirstLogin(c *gin.Context) {
 	dbSpan.End()
 
 	logger.Debug("user config found and returned",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("first_login", userConfig.FirstLogin),
 		zap.Bool("opt_in", userConfig.OptIn),
 		zap.Time("updated_at", userConfig.UpdatedAt))
@@ -1812,7 +1813,7 @@ func GetFirstLogin(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetFirstLogin completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("first_login", userConfig.FirstLogin),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -1839,16 +1840,16 @@ func UpdateFirstLogin(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_first_login"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateFirstLogin called", zap.String("cpf", cpf))
+	logger.Debug("UpdateFirstLogin called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1929,7 +1930,7 @@ func UpdateFirstLogin(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateFirstLogin completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -1955,16 +1956,16 @@ func GetOptIn(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_opt_in"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("GetOptIn called", zap.String("cpf", cpf))
+	logger.Debug("GetOptIn called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1994,7 +1995,7 @@ func GetOptIn(c *gin.Context) {
 			dbSpan.End()
 
 			logger.Debug("no user config found - returning default opt_in true",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.String("reason", "document_not_found"))
 
 			// Serialize response with tracing (with nil category_opt_ins for backward compatibility)
@@ -2009,7 +2010,7 @@ func GetOptIn(c *gin.Context) {
 			// Log total operation time
 			totalDuration := time.Since(startTime)
 			logger.Debug("GetOptIn completed (default value - no config)",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.Bool("opt_in", true),
 				zap.Bool("default_value", true),
 				zap.Duration("total_duration", totalDuration),
@@ -2042,7 +2043,7 @@ func GetOptIn(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetOptIn completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("opt_in", userConfig.OptIn),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -2071,16 +2072,16 @@ func UpdateOptIn(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_opt_in"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateOptIn called", zap.String("cpf", cpf))
+	logger.Debug("UpdateOptIn called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -2175,7 +2176,7 @@ func UpdateOptIn(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateOptIn completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Bool("new_opt_in_status", *input.OptIn),
 		zap.String("status", "success"))
@@ -2245,15 +2246,15 @@ func UpdateSelfDeclaredGenero(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_gender"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredGenero called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredGenero called", observability.CPFField(cpf))
 
 	// Validate CPF format
 	if !utils.ValidateCPF(cpf) {
@@ -2352,7 +2353,7 @@ func UpdateSelfDeclaredGenero(c *gin.Context) {
 
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredGenero completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -2419,15 +2420,15 @@ func UpdateSelfDeclaredRendaFamiliar(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_family_income"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredRendaFamiliar called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredRendaFamiliar called", observability.CPFField(cpf))
 
 	// Validate CPF format
 	if !utils.ValidateCPF(cpf) {
@@ -2526,7 +2527,7 @@ func UpdateSelfDeclaredRendaFamiliar(c *gin.Context) {
 
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredRendaFamiliar completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -2593,15 +2594,15 @@ func UpdateSelfDeclaredEscolaridade(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_education"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredEscolaridade called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredEscolaridade called", observability.CPFField(cpf))
 
 	// Validate CPF format
 	if !utils.ValidateCPF(cpf) {
@@ -2700,7 +2701,7 @@ func UpdateSelfDeclaredEscolaridade(c *gin.Context) {
 
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredEscolaridade completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -2767,15 +2768,15 @@ func UpdateSelfDeclaredDeficiencia(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_disability"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredDeficiencia called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredDeficiencia called", observability.CPFField(cpf))
 
 	// Validate CPF format
 	if !utils.ValidateCPF(cpf) {
@@ -2874,7 +2875,7 @@ func UpdateSelfDeclaredDeficiencia(c *gin.Context) {
 
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredDeficiencia completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -2902,15 +2903,15 @@ func UpdateSelfDeclaredBirthDate(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_birth_date"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredBirthDate called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredBirthDate called", observability.CPFField(cpf))
 
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
 	if !utils.ValidateCPF(cpf) {
@@ -3061,7 +3062,7 @@ func UpdateSelfDeclaredBirthDate(c *gin.Context) {
 
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredBirthDate completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -3127,16 +3128,16 @@ func GetCitizenWallet(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_citizen_wallet"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("GetCitizenWallet called", zap.String("cpf", cpf))
+	logger.Debug("GetCitizenWallet called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -3165,7 +3166,7 @@ func GetCitizenWallet(c *gin.Context) {
 		dataSpan.End()
 		if err == services.ErrDocumentNotFound {
 			logger.Debug("citizen wallet not found",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.String("collection", config.AppConfig.CitizenCollection))
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "citizen not found"})
 			return
@@ -3210,7 +3211,7 @@ func GetCitizenWallet(c *gin.Context) {
 	}
 
 	logger.Info("CF data integration detailed check",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("needs_cf_data", needsCFData),
 		zap.Bool("saude_is_nil", saudeIsNil),
 		zap.Bool("clinica_familia_is_nil", clinicaFamiliaIsNil),
@@ -3219,18 +3220,18 @@ func GetCitizenWallet(c *gin.Context) {
 		zap.String("operation", "cf_integration_debug"))
 
 	if needsCFData {
-		logger.Debug("attempting to get CF data for citizen", zap.String("cpf", cpf))
+		logger.Debug("attempting to get CF data for citizen", observability.CPFField(cpf))
 
 		// Check if CF lookup service is available
 		if services.CFLookupServiceInstance == nil {
-			logger.Info("CF lookup service disabled - skipping CF data integration", zap.String("cpf", cpf))
+			logger.Info("CF lookup service disabled - skipping CF data integration", observability.CPFField(cpf))
 		} else {
 			// First try to get existing cached CF data
-			logger.Info("CHECKING FOR CACHED CF DATA", zap.String("cpf", cpf))
+			logger.Info("CHECKING FOR CACHED CF DATA", observability.CPFField(cpf))
 			cfData, err := services.CFLookupServiceInstance.GetCFDataForCitizen(ctx, cpf)
 			if err != nil || cfData == nil || !cfData.IsActive {
 				// No cached data, try synchronous CF lookup
-				logger.Info("NO CACHED CF DATA - ATTEMPTING SYNCHRONOUS LOOKUP", zap.String("cpf", cpf))
+				logger.Info("NO CACHED CF DATA - ATTEMPTING SYNCHRONOUS LOOKUP", observability.CPFField(cpf))
 
 				// Gate coverage using the same address source as the lookup:
 				// self-declared when present, otherwise base citizen data.
@@ -3249,26 +3250,26 @@ func GetCitizenWallet(c *gin.Context) {
 					logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
 
 					if address != "" {
-						logger.Info("CALLING TrySynchronousCFLookup", zap.String("cpf", cpf), zap.String("address", address))
+						logger.Info("CALLING TrySynchronousCFLookup", observability.CPFField(cpf), zap.String("address", address))
 						cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
 						if err != nil {
-							logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), zap.String("cpf", cpf))
+							logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), observability.CPFField(cpf))
 						} else {
 							logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
 						}
 					} else {
-						logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", zap.String("cpf", cpf))
+						logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", observability.CPFField(cpf))
 					}
 				} else {
-					logger.Debug("município não coberto pelo MCP, ignorando lookup síncrono", zap.String("cpf", cpf))
+					logger.Debug("município não coberto pelo MCP, ignorando lookup síncrono", observability.CPFField(cpf))
 				}
 			} else {
-				logger.Info("FOUND CACHED CF DATA", zap.String("cpf", cpf), zap.Bool("is_active", cfData.IsActive))
+				logger.Info("FOUND CACHED CF DATA", observability.CPFField(cpf), zap.Bool("is_active", cfData.IsActive))
 			}
 
 			if cfData != nil && cfData.IsActive {
 				logger.Info("integrating CF data into wallet saude.clinica_familia",
-					zap.String("cpf", cpf),
+					observability.CPFField(cpf),
 					zap.String("cf_name", cfData.CFData.NomePopular),
 					zap.String("cf_address", cfData.AddressUsed),
 					zap.String("cf_source", cfData.LookupSource),
@@ -3285,7 +3286,7 @@ func GetCitizenWallet(c *gin.Context) {
 				// Replace/populate equipe_saude_familia with Family Health Team data if available
 				if cfData.EquipeSaudeData != nil {
 					logger.Info("integrating Family Health Team data into wallet saude.equipe_saude_familia",
-						zap.String("cpf", cpf),
+						observability.CPFField(cpf),
 						zap.String("team_name", cfData.EquipeSaudeData.NomeOficial),
 						zap.Int("doctors_count", len(cfData.EquipeSaudeData.Medicos)),
 						zap.Int("nurses_count", len(cfData.EquipeSaudeData.Enfermeiros)),
@@ -3295,7 +3296,7 @@ func GetCitizenWallet(c *gin.Context) {
 				}
 			} else {
 				logger.Debug("no CF data available for citizen",
-					zap.String("cpf", cpf),
+					observability.CPFField(cpf),
 					zap.Bool("cf_data_is_nil", cfData == nil),
 					zap.Bool("cf_data_is_active", cfData != nil && cfData.IsActive))
 			}
@@ -3316,7 +3317,7 @@ func GetCitizenWallet(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetCitizenWallet completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -3344,16 +3345,16 @@ func GetMaintenanceRequests(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_maintenance_requests"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("GetMaintenanceRequests called", zap.String("cpf", cpf))
+	logger.Debug("GetMaintenanceRequests called", observability.CPFField(cpf))
 
 	// Parse pagination parameters with tracing
 	ctx, paginationSpan := utils.TraceInputParsing(ctx, "pagination_parameters")
@@ -3411,7 +3412,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 			// Log total operation time
 			totalDuration := time.Since(startTime)
 			logger.Debug("GetMaintenanceRequests completed (cache hit)",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.Int("page", page),
 				zap.Int("per_page", perPage),
 				zap.Int("total_count", response.Pagination.Total),
@@ -3533,7 +3534,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetMaintenanceRequests completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.Int("total_count", int(total)),

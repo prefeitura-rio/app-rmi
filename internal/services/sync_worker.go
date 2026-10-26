@@ -7,16 +7,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
-	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
 // SyncWorker processes sync jobs from Redis queues
@@ -485,7 +487,7 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) (writeBufferJob bool, err error
 				zap.String("job_id", job.ID),
 				zap.String("job_type", job.Type),
 				zap.String("field_name", fieldName),
-				zap.String("cpf", job.Key))
+				observability.CPFField(job.Key))
 		} else {
 			// Fallback to full document update if field mapping fails
 			update = bson.M{"$set": bsonData}
@@ -493,7 +495,7 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) (writeBufferJob bool, err error
 				zap.String("job_id", job.ID),
 				zap.String("job_type", job.Type),
 				zap.String("field_name", fieldName),
-				zap.String("cpf", job.Key))
+				observability.CPFField(job.Key))
 		}
 	} else {
 		// For other collections, update the entire document
@@ -913,7 +915,7 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 	}
 
 	w.logger.Debug("extracted CF lookup job data",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("address", address))
 
 	// Perform CF lookup using the CF lookup service
@@ -925,13 +927,13 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 	if err != nil {
 		w.logger.Error("CF lookup failed",
 			zap.Error(err),
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.String("address", address))
 		return fmt.Errorf("CF lookup failed: %w", err)
 	}
 
 	w.logger.Info("CF lookup completed successfully",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("address", address))
 
 	// Invalidate wallet cache so fresh wallet requests get the new CF data
@@ -942,10 +944,10 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 	if err != nil {
 		w.logger.Warn("failed to invalidate wallet cache after CF lookup",
 			zap.Error(err),
-			zap.String("cpf", cpf))
+			observability.CPFField(cpf))
 		// Don't fail the job for cache invalidation errors
 	} else {
-		w.logger.Debug("invalidated wallet cache after CF lookup", zap.String("cpf", cpf))
+		w.logger.Debug("invalidated wallet cache after CF lookup", observability.CPFField(cpf))
 	}
 
 	return nil

@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 )
 
 // DatabaseOperation represents a database operation that can be rolled back
@@ -159,7 +161,7 @@ type PhoneVerificationData struct {
 // CreatePhoneVerification creates a phone verification record with proper error handling
 func CreatePhoneVerification(ctx context.Context, data PhoneVerificationData) error {
 	logger := logging.GetLogger().With(
-		zap.String("cpf", data.CPF),
+		observability.CPFField(data.CPF),
 		zap.String("phone", data.PhoneNumber),
 	)
 
@@ -203,7 +205,7 @@ func CreatePhoneVerification(ctx context.Context, data PhoneVerificationData) er
 
 // UpdateSelfDeclaredPendingPhone updates the pending phone in self-declared collection
 func UpdateSelfDeclaredPendingPhone(ctx context.Context, cpf string, data PhoneVerificationData) error {
-	logger := logging.GetLogger().With(zap.String("cpf", cpf))
+	logger := logging.GetLogger().With(observability.CPFField(cpf))
 
 	pendingPhone := &models.Telefone{
 		Indicador: BoolPtr(false),
@@ -239,7 +241,7 @@ func UpdateSelfDeclaredPendingPhone(ctx context.Context, cpf string, data PhoneV
 
 // InvalidateCitizenCache invalidates all cache entries related to a citizen
 func InvalidateCitizenCache(ctx context.Context, cpf string) error {
-	logger := logging.GetLogger().With(zap.String("cpf", cpf))
+	logger := logging.GetLogger().With(observability.CPFField(cpf))
 
 	// Invalidate main citizen cache
 	cacheKey := fmt.Sprintf("citizen:%s", cpf)

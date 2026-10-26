@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 )
 
 // RegistrationValidator defines the interface for registration validation
@@ -34,7 +36,7 @@ func NewBaseDataValidator(logger *logging.SafeLogger) *BaseDataValidator {
 // This is a placeholder implementation that can be enhanced later
 func (v *BaseDataValidator) ValidateRegistration(ctx context.Context, name, cpf, birthDate string) (bool, string, string, error) {
 	v.logger.Info("validating registration",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("name", name),
 		zap.String("birthDate", birthDate))
 
@@ -53,7 +55,7 @@ func (v *BaseDataValidator) ValidateRegistration(ctx context.Context, name, cpf,
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			v.logger.Info("CPF not found in base data", zap.String("cpf", cpf))
+			v.logger.Info("CPF not found in base data", observability.CPFField(cpf))
 			return false, "", "", nil
 		}
 		v.logger.Error("error querying base data", zap.Error(err))
@@ -89,7 +91,7 @@ func (v *BaseDataValidator) ValidateRegistration(ctx context.Context, name, cpf,
 	}
 
 	v.logger.Info("registration validation successful",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("name", baseName))
 
 	return true, cpf, baseName, nil

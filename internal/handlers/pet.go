@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
+
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 )
 
 // GetPets godoc
@@ -39,16 +40,16 @@ func GetPets(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_pets"),
 		attribute.String("service", "pet"),
 	)
 
-	logger.Debug("GetPets called", zap.String("cpf", cpf))
+	logger.Debug("GetPets called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -115,7 +116,7 @@ func GetPets(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetPets completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.Int("total_count", pets.Pagination.Total),
@@ -148,17 +149,17 @@ func GetPet(c *gin.Context) {
 
 	cpf := c.Param("cpf")
 	petIDStr := c.Param("pet_id")
-	logger := observability.Logger().With(zap.String("cpf", cpf), zap.String("pet_id", petIDStr))
+	logger := observability.Logger().With(observability.CPFField(cpf), zap.String("pet_id", petIDStr))
 
 	// Add parameters to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("pet_id", petIDStr),
 		attribute.String("operation", "get_pet"),
 		attribute.String("service", "pet"),
 	)
 
-	logger.Debug("GetPet called", zap.String("cpf", cpf), zap.String("pet_id", petIDStr))
+	logger.Debug("GetPet called", observability.CPFField(cpf), zap.String("pet_id", petIDStr))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -225,7 +226,7 @@ func GetPet(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetPet completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Int("pet_id", petID),
 		zap.String("pet_name", pet.Name),
 		zap.Duration("total_duration", totalDuration),
@@ -253,16 +254,16 @@ func GetPetStats(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_pet_stats"),
 		attribute.String("service", "pet"),
 	)
 
-	logger.Debug("GetPetStats called", zap.String("cpf", cpf))
+	logger.Debug("GetPetStats called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -309,7 +310,7 @@ func GetPetStats(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetPetStats completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("has_stats", stats.Statistics != nil),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -337,16 +338,16 @@ func RegisterPet(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "register_pet"),
 		attribute.String("service", "pet"),
 	)
 
-	logger.Debug("RegisterPet called", zap.String("cpf", cpf))
+	logger.Debug("RegisterPet called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -409,7 +410,7 @@ func RegisterPet(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Info("RegisterPet completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Int("pet_id", *pet.ID),
 		zap.String("pet_name", pet.Name),
 		zap.Duration("total_duration", totalDuration),

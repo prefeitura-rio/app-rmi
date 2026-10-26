@@ -6,13 +6,15 @@ import (
 	"math"
 	"time"
 
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 )
 
 // PetService handles pet business logic
@@ -65,7 +67,7 @@ func (s *PetService) GetPetsByCPF(ctx context.Context, cpf string, page, perPage
 		parsedPet, err := rawPet.ToCitizenPets()
 		if err != nil {
 			s.logger.Error("failed to parse curated pet data",
-				zap.String("cpf", rawPet.CPF),
+				observability.CPFField(rawPet.CPF),
 				zap.Error(err))
 			continue
 		}
@@ -122,7 +124,7 @@ func (s *PetService) GetPetsByCPF(ctx context.Context, cpf string, page, perPage
 	response.Pagination.TotalPages = totalPetsPages
 
 	s.logger.Debug("retrieved merged pets for CPF",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.Int("total", totalPets),
@@ -160,7 +162,7 @@ func (s *PetService) GetPetByID(ctx context.Context, cpf string, petID int) (*mo
 	if len(pets) > 0 {
 		pets[0].Source = "curated"
 		s.logger.Debug("retrieved curated pet",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Int("pet_id", petID),
 			zap.String("pet_name", pets[0].Name))
 		return &pets[0], nil
@@ -184,7 +186,7 @@ func (s *PetService) GetPetByID(ctx context.Context, cpf string, petID int) (*mo
 
 	pet := selfPet.ToPet()
 	s.logger.Debug("retrieved self-registered pet",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Int("pet_id", petID),
 		zap.String("pet_name", pet.Name))
 
@@ -229,7 +231,7 @@ func (s *PetService) GetPetStats(ctx context.Context, cpf string) (*models.PetSt
 	}
 
 	s.logger.Debug("retrieved pet statistics",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("has_curated_stats", stats != nil),
 		zap.Int("self_registered_count", int(selfRegisteredCount)))
 
@@ -272,7 +274,7 @@ func (s *PetService) RegisterPet(ctx context.Context, cpf string, req *models.Pe
 	}
 
 	s.logger.Info("registered new pet",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Int("pet_id", petID),
 		zap.String("pet_name", req.Name))
 

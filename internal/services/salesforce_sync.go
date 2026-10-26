@@ -10,14 +10,16 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/prefeitura-rio/app-rmi/internal/clients"
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
-	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/clients"
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
 const (
@@ -317,7 +319,7 @@ func (w *SyncWorker) logSalesforcePushEnqueue(job *SyncJob, reason, msg string, 
 		zap.String("reason", reason),
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
-		zap.String("cpf", job.Key),
+		observability.CPFField(job.Key),
 	}
 	if err != nil {
 		fields = append(fields, zap.Error(err))
@@ -356,7 +358,7 @@ func (w *SyncWorker) handleSalesforceSyncJob(ctx context.Context, job *SyncJob) 
 
 	w.logger.Info("applying salesforce inbound sync",
 		zap.String("job_id", job.ID),
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("evento", evento))
 
 	return w.applySalesforceDelta(ctx, cpf, evento, payload.UpdatedAt, payload.Dados, time.Now())
@@ -420,7 +422,7 @@ func (w *SyncWorker) handleSalesforcePushJob(ctx context.Context, job *SyncJob) 
 
 	w.logger.Info("pushing citizen data to salesforce",
 		zap.String("job_id", job.ID),
-		zap.String("cpf", cpf))
+		observability.CPFField(cpf))
 
 	citizen, selfDeclared, citizenFound, selfDeclaredFound, err := w.loadCitizenBundle(ctx, cpf)
 	if err != nil {
