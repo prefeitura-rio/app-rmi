@@ -168,6 +168,8 @@ lint:
         go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
     fi
     golangci-lint run
+    # LGPD: fail if CPF is logged/traced without masking (see observability.CPFField)
+    ./scripts/check_cpf_log_masking.sh
 
 # Check for outdated dependencies
 deps-check:

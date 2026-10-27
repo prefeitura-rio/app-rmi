@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"go.uber.org/zap"
+
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"go.uber.org/zap"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 )
 
 // CitizenCacheService provides cached access to citizen data
@@ -52,7 +54,7 @@ func (s *CitizenCacheService) UpdateCitizen(ctx context.Context, cpf string, cit
 	if err == nil {
 		// There's a pending write - log the overwrite
 		s.logger.Info("citizen update overwrite detected",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.String("existing_data", existingData))
 
 		// TODO: Add audit logging here

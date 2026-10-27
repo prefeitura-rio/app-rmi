@@ -13,9 +13,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/middleware"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
-	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -194,7 +194,7 @@ func TestHandleSalesforceCidadaoWebhook_Success_UsesPayloadNoGET(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	assert.Equal(t, "accepted", body.Status)
 	assert.Equal(t, "salesforce sync job enqueued", body.Message)
-	assert.Equal(t, utils.MaskCPFForWebhookResponse(testWebhookCPF), body.CPF)
+	assert.Equal(t, observability.MaskCPF(testWebhookCPF), body.CPF)
 	assert.Equal(t, services.SalesforceWebhookEventAtualizacao, body.Evento)
 
 	n, err := redisClient.LLen(context.Background(), "sync:queue:{"+services.SalesforceSyncQueue+"}").Result()

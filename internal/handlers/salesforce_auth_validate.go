@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
 	"github.com/prefeitura-rio/app-rmi/internal/clients"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
-	"go.uber.org/zap"
 )
 
 // ValidateAuth syncs the authenticated user with Salesforce Person Account on login.
@@ -63,7 +64,7 @@ func ValidateAuth(c *gin.Context) {
 	result, err := services.SyncSalesforceOnLogin(c.Request.Context(), sfClient, claims)
 	if err != nil {
 		logger.Error("salesforce auth validate failed",
-			zap.String("cpf", claims.PreferredUsername),
+			observability.CPFField(claims.PreferredUsername),
 			zap.Error(err))
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "failed to sync citizen with salesforce"})
 		return

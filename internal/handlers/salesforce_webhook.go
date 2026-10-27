@@ -6,11 +6,12 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
-	"go.uber.org/zap"
 )
 
 const (
@@ -111,7 +112,7 @@ func HandleSalesforceCidadaoWebhook(c *gin.Context) {
 
 	if err := services.EnqueueSalesforceSyncJob(c.Request.Context(), config.Redis, cpf, evento, req.UpdatedAt, dados); err != nil {
 		logger.Error("failed to enqueue salesforce sync job",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.String("evento", evento),
 			zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to enqueue sync job"})
@@ -119,13 +120,13 @@ func HandleSalesforceCidadaoWebhook(c *gin.Context) {
 	}
 
 	logger.Info("salesforce webhook accepted",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("evento", evento))
 
 	c.JSON(http.StatusAccepted, SalesforceWebhookResponse{
 		Status:  "accepted",
 		Message: "salesforce sync job enqueued",
-		CPF:     utils.MaskCPFForWebhookResponse(cpf),
+		CPF:     observability.MaskCPF(cpf),
 		Evento:  evento,
 	})
 }

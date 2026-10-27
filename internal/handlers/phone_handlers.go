@@ -9,14 +9,15 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/middleware"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
-	"go.uber.org/zap"
 )
 
 type PhoneHandlers struct {
@@ -651,7 +652,7 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("RejectRegistration completed",
 		zap.String("phone_number", phoneNumber),
-		zap.String("cpf", req.CPF),
+		observability.CPFField(req.CPF),
 		zap.String("channel", req.Channel),
 		zap.String("reason", req.Reason),
 		zap.Duration("total_duration", totalDuration),

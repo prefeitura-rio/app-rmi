@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 )
 
 // AuditLog represents an audit log entry
@@ -241,7 +243,7 @@ func LogAuditEvent(ctx context.Context, auditCtx AuditContext, action, resource,
 	default:
 		// Channel is full, fall back to synchronous logging
 		logging.GetLogger().Warn("audit channel full, falling back to synchronous logging",
-			zap.String("cpf", auditCtx.CPF),
+			observability.CPFField(auditCtx.CPF),
 			zap.String("action", action))
 		return logAuditEventSync(ctx, auditCtx, action, resource, resourceID, oldValue, newValue, metadata)
 	}
@@ -250,7 +252,7 @@ func LogAuditEvent(ctx context.Context, auditCtx AuditContext, action, resource,
 // logAuditEventSync logs an audit event synchronously (fallback method)
 func logAuditEventSync(ctx context.Context, auditCtx AuditContext, action, resource, resourceID string, oldValue, newValue interface{}, metadata map[string]string) error {
 	logger := logging.GetLogger().With(
-		zap.String("cpf", auditCtx.CPF),
+		observability.CPFField(auditCtx.CPF),
 		zap.String("action", action),
 		zap.String("resource", resource),
 	)

@@ -10,15 +10,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
 // Global CF lookup service instance
@@ -75,7 +77,7 @@ func (s *CFLookupService) ShouldLookupCF(ctx context.Context, cpf string, citize
 	defer span.End()
 	defer func() {
 		s.logger.Debug("CF lookup eligibility check completed",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Duration("duration", time.Since(startTime)),
 			zap.String("operation", "should_lookup_cf"))
 	}()
@@ -85,7 +87,7 @@ func (s *CFLookupService) ShouldLookupCF(ctx context.Context, cpf string, citize
 		citizenData.Saude.ClinicaFamilia != nil &&
 		citizenData.Saude.ClinicaFamilia.Indicador != nil &&
 		*citizenData.Saude.ClinicaFamilia.Indicador {
-		s.logger.Debug("citizen already has CF data from base data", zap.String("cpf", cpf))
+		s.logger.Debug("citizen already has CF data from base data", observability.CPFField(cpf))
 		return false, "", nil
 	}
 
@@ -94,13 +96,13 @@ func (s *CFLookupService) ShouldLookupCF(ctx context.Context, cpf string, citize
 	principal := preferredAddressPrincipal(citizenData)
 	if principal != nil && !isMunicipioCoberto(principal.Municipio) {
 		s.logger.Debug("município não coberto pelo MCP, ignorando lookup",
-			zap.String("cpf", cpf))
+			observability.CPFField(cpf))
 		return false, "", nil
 	}
 
 	address := s.ExtractAddress(citizenData)
 	if address == "" {
-		s.logger.Debug("no address available for CF lookup", zap.String("cpf", cpf))
+		s.logger.Debug("no address available for CF lookup", observability.CPFField(cpf))
 		return false, "", nil
 	}
 
@@ -108,14 +110,14 @@ func (s *CFLookupService) ShouldLookupCF(ctx context.Context, cpf string, citize
 	addressHash := s.GenerateAddressHash(address)
 	existingLookup, err := s.getExistingCFLookup(ctx, cpf, addressHash)
 	if err != nil {
-		s.logger.Warn("failed to check existing CF lookup", zap.Error(err), zap.String("cpf", cpf))
+		s.logger.Warn("failed to check existing CF lookup", zap.Error(err), observability.CPFField(cpf))
 		// Continue with lookup despite error
 	}
 
 	// If we have existing data for the same address, use it (no need to re-lookup)
 	if existingLookup != nil {
 		s.logger.Debug("using existing CF lookup for same address",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.String("address_hash", addressHash))
 		return false, address, nil
 	}
@@ -123,7 +125,7 @@ func (s *CFLookupService) ShouldLookupCF(ctx context.Context, cpf string, citize
 	// No rate limiting needed for CF lookups
 
 	s.logger.Debug("CF lookup should be performed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("address", address))
 
 	return true, address, nil
@@ -139,13 +141,13 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 	defer func() {
 		duration := time.Since(startTime)
 		s.logger.Info("CF lookup operation completed",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Duration("total_duration", duration),
 			zap.String("operation", "cf_lookup_complete"))
 	}()
 
 	s.logger.Info("performing CF lookup",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("address", address),
 		zap.String("operation", "cf_lookup_start"),
 		zap.String("address_hash", s.GenerateAddressHash(address)))
@@ -161,7 +163,7 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 		errorType := s.categorizeError(err)
 		s.logger.Error("MCP health services lookup failed",
 			zap.Error(err),
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.String("address", address),
 			zap.String("error_type", errorType))
 
@@ -182,7 +184,7 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 
 	if healthData == nil || healthData.HealthFacility == nil {
 		s.logger.Info("no health services found for address",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.String("address", address))
 		return nil
 	}
@@ -210,7 +212,7 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 	if err != nil {
 		s.logger.Error("failed to store CF lookup result",
 			zap.Error(err),
-			zap.String("cpf", cpf))
+			observability.CPFField(cpf))
 		return fmt.Errorf("failed to store CF lookup: %w", err)
 	}
 
@@ -219,12 +221,12 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 	if err != nil {
 		s.logger.Warn("failed to cache CF lookup result",
 			zap.Error(err),
-			zap.String("cpf", cpf))
+			observability.CPFField(cpf))
 		// Don't fail the operation for cache errors
 	}
 
 	s.logger.Info("CF lookup completed successfully",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("cf_name_popular", healthData.HealthFacility.NomePopular),
 		zap.String("cf_name_oficial", healthData.HealthFacility.NomeOficial),
 		zap.String("cf_bairro", healthData.HealthFacility.Bairro),
@@ -249,11 +251,11 @@ func (s *CFLookupService) GetCFDataForCitizen(ctx context.Context, cpf string) (
 	// Try cache first
 	cfData, err := s.getCachedCFData(ctx, cpf)
 	if err == nil && cfData != nil {
-		s.logger.Debug("CF data cache hit", zap.String("cpf", cpf))
+		s.logger.Debug("CF data cache hit", observability.CPFField(cpf))
 		return cfData, nil
 	}
 
-	s.logger.Debug("CF data cache miss", zap.String("cpf", cpf))
+	s.logger.Debug("CF data cache miss", observability.CPFField(cpf))
 
 	// Fallback to database
 	cfData, err = s.getActiveCFLookup(ctx, cpf)
@@ -268,7 +270,7 @@ func (s *CFLookupService) GetCFDataForCitizen(ctx context.Context, cpf string) (
 	if cfData != nil {
 		err = s.cacheCFData(ctx, cpf, cfData)
 		if err != nil {
-			s.logger.Warn("failed to cache CF data", zap.Error(err), zap.String("cpf", cpf))
+			s.logger.Warn("failed to cache CF data", zap.Error(err), observability.CPFField(cpf))
 		}
 	}
 
@@ -295,7 +297,7 @@ func (s *CFLookupService) InvalidateCFDataForAddress(ctx context.Context, cpf, n
 	// If address hasn't changed, don't invalidate
 	if currentLookup.AddressHash == newAddressHash {
 		s.logger.Debug("address hash unchanged, keeping CF data",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.String("address_hash", newAddressHash))
 		return nil
 	}
@@ -309,11 +311,11 @@ func (s *CFLookupService) InvalidateCFDataForAddress(ctx context.Context, cpf, n
 	// Invalidate cache
 	err = s.invalidateCFCache(ctx, cpf)
 	if err != nil {
-		s.logger.Warn("failed to invalidate CF cache", zap.Error(err), zap.String("cpf", cpf))
+		s.logger.Warn("failed to invalidate CF cache", zap.Error(err), observability.CPFField(cpf))
 	}
 
 	s.logger.Debug("invalidated CF data for address change",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("old_address_hash", currentLookup.AddressHash),
 		zap.String("new_address_hash", newAddressHash),
 		zap.Int64("deleted_count", result.DeletedCount))
@@ -528,7 +530,7 @@ func (s *CFLookupService) storeCFLookup(ctx context.Context, cfLookup *models.CF
 	}
 
 	s.logger.Debug("CF lookup stored successfully",
-		zap.String("cpf", cfLookup.CPF),
+		observability.CPFField(cfLookup.CPF),
 		zap.String("address_hash", cfLookup.AddressHash))
 
 	return nil
@@ -582,7 +584,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 
 	if s.mcpClient == nil {
 		if s.logger != nil {
-			s.logger.Error("MCP client is nil - CF lookup service not properly initialized", zap.String("cpf", cpf))
+			s.logger.Error("MCP client is nil - CF lookup service not properly initialized", observability.CPFField(cpf))
 		}
 		return nil, fmt.Errorf("MCP client not available")
 	}
@@ -590,7 +592,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	// Check if we already have cached CF data
 	cachedData, err := s.GetCFDataForCitizen(ctx, cpf)
 	if err == nil && cachedData != nil && cachedData.IsActive {
-		s.logger.Debug("found cached CF data for synchronous lookup", zap.String("cpf", cpf))
+		s.logger.Debug("found cached CF data for synchronous lookup", observability.CPFField(cpf))
 		return cachedData, nil
 	}
 
@@ -599,7 +601,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	syncCtx, cancel := context.WithTimeout(ctx, config.AppConfig.CFLookupSyncTimeout)
 	defer cancel()
 
-	s.logger.Debug("attempting synchronous CF lookup", zap.String("cpf", cpf))
+	s.logger.Debug("attempting synchronous CF lookup", observability.CPFField(cpf))
 
 	// No rate limiting needed for CF lookups
 
@@ -607,7 +609,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	healthData, err := s.mcpClient.FindNearestCF(syncCtx, address)
 
 	if err != nil {
-		s.logger.Debug("synchronous CF lookup failed", zap.Error(err), zap.String("cpf", cpf))
+		s.logger.Debug("synchronous CF lookup failed", zap.Error(err), observability.CPFField(cpf))
 		// Fall back to async lookup - queue a job manually
 		s.queueCFLookupJob(ctx, cpf, address)
 		return nil, err
@@ -616,7 +618,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	// Check if any health services were found
 	if healthData == nil || healthData.HealthFacility == nil {
 		s.logger.Debug("no health services found for address in synchronous lookup",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.String("address", address))
 		return nil, nil
 	}
@@ -649,7 +651,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	}
 
 	s.logger.Info("synchronous CF lookup successful",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("cf_name", healthData.HealthFacility.NomePopular))
 
 	ClearCFLookupPending(ctx, cpf)
@@ -682,7 +684,7 @@ func (s *CFLookupService) queueCFLookupJob(ctx context.Context, cpf, address str
 
 	if err == nil && !created {
 		s.logger.Debug("CF lookup job already pending, skipping",
-			zap.String("cpf", cpf))
+			observability.CPFField(cpf))
 		return
 	}
 

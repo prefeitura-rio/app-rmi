@@ -6,14 +6,15 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
+
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 )
 
 // GetLegalEntities godoc
@@ -40,16 +41,16 @@ func GetLegalEntities(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_legal_entities"),
 		attribute.String("service", "legal_entity"),
 	)
 
-	logger.Debug("GetLegalEntities called", zap.String("cpf", cpf))
+	logger.Debug("GetLegalEntities called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -123,7 +124,7 @@ func GetLegalEntities(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetLegalEntities completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.Int("total_count", entities.Pagination.Total),
@@ -292,7 +293,7 @@ func GetLegalEntityByCNPJ(c *gin.Context) {
 
 		logger.Debug("GetLegalEntityByCNPJ completed (responsible person access)",
 			zap.String("cnpj", cnpj),
-			zap.String("cpf", authenticatedCPF),
+			observability.CPFField(authenticatedCPF),
 			zap.Duration("total_duration", time.Since(startTime)),
 			zap.String("status", "success"))
 		return
@@ -311,7 +312,7 @@ func GetLegalEntityByCNPJ(c *gin.Context) {
 
 			logger.Debug("GetLegalEntityByCNPJ completed (partner access)",
 				zap.String("cnpj", cnpj),
-				zap.String("cpf", authenticatedCPF),
+				observability.CPFField(authenticatedCPF),
 				zap.Duration("total_duration", time.Since(startTime)),
 				zap.String("status", "success"))
 			return
@@ -327,6 +328,6 @@ func GetLegalEntityByCNPJ(c *gin.Context) {
 
 	logger.Warn("access denied - CPF not in responsible person or partners",
 		zap.String("cnpj", cnpj),
-		zap.String("cpf", authenticatedCPF))
+		observability.CPFField(authenticatedCPF))
 	c.JSON(http.StatusForbidden, ErrorResponse{Error: "Access denied - you are not authorized to view this legal entity"})
 }

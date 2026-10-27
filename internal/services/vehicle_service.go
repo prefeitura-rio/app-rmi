@@ -9,15 +9,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
 var (
@@ -820,7 +822,7 @@ func readCitizenContact(ctx context.Context, db *mongo.Database, dm *DataManager
 		}
 		if logger != nil {
 			logger.Warn("mobilidade citizen contact profile miss",
-				zap.String("cpf", utils.MaskCPF(cpf)),
+				observability.CPFField(cpf),
 				zap.Int("attempt", attempt),
 				zap.Error(err),
 			)
