@@ -72,6 +72,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | SALESFORCE_BASE_URL | URL base da API Salesforce CRM (host; o client acrescenta `/api/private/...`) | - | Não* |
 | SALESFORCE_TIMEOUT | Timeout HTTP do Salesforce CRM | 30s | Não |
 | SALESFORCE_WEBHOOK_CLIENTS | Client IDs Keycloak (`azp`) autorizados no webhook SF→RMI (lista separada por vírgula) | - | Não* |
+| TRUSTED_SERVICE_CLIENTS | Client IDs Keycloak (`azp`) com privilégio de service account (RequireOwnCPF/RequireAdmin) | - | Não* |
 | SYNC_JOB_BEARER_ENCRYPTION_KEY | Chave AES-256 em hex (64 caracteres) para cifrar JWTs nas filas de sync. Sem a chave o token não é gravado; `salesforce_push` exige a chave. | - | Não* |
 | CF_LOOKUP_COLLECTION | Nome da coleção de lookups de CF | cf_lookups | Não |
 | CF_LOOKUP_CACHE_TTL | TTL do cache de CF lookups (ex: "24h") | 24h | Não |

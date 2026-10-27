@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/middleware"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/stretchr/testify/assert"
@@ -261,4 +263,126 @@ func TestGetCPFSecretarias_WithMappings(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, testCPF, resp.CPF)
 	assert.Contains(t, resp.CdUAs, testCdUA)
+}
+
+// setupCPFSecretariaQueryRouter mounts GET /cpf-secretaria/:cpf with RequireOwnCPF,
+// mirroring cmd/api/main.go. claimsInjector sets JWT claims before the guard.
+func setupCPFSecretariaQueryRouter(t *testing.T, claimsInjector gin.HandlerFunc) (*gin.Engine, func()) {
+	t.Helper()
+	setupTestEnvironment()
+	require.NotNil(t, services.CPFSecretariaServiceInstance)
+
+	_ = logging.InitLogger()
+	gin.SetMode(gin.TestMode)
+
+	if config.AppConfig == nil {
+		config.AppConfig = &config.Config{}
+	}
+
+	r := gin.New()
+	r.Use(claimsInjector)
+	r.GET("/cpf-secretaria/:cpf", middleware.RequireOwnCPF(), GetCPFSecretarias)
+
+	cleanup := func() {
+		ctx := context.Background()
+		coll := config.MongoDB.Collection(config.AppConfig.CPFSecretariaCollection)
+		_, _ = coll.DeleteMany(ctx, map[string]interface{}{"cpf": testCPF})
+	}
+	cleanup()
+
+	return r, cleanup
+}
+
+func TestGetCPFSecretarias_OwnCPF_Allowed(t *testing.T) {
+	r, cleanup := setupCPFSecretariaQueryRouter(t, func(c *gin.Context) {
+		c.Set("claims", &models.JWTClaims{PreferredUsername: testCPF})
+		c.Next()
+	})
+	defer cleanup()
+
+	req, _ := http.NewRequest(http.MethodGet, "/cpf-secretaria/"+testCPF, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGetCPFSecretarias_ThirdPartyCPF_Forbidden(t *testing.T) {
+	const ownCPF = "03561350712"
+	r, cleanup := setupCPFSecretariaQueryRouter(t, func(c *gin.Context) {
+		c.Set("claims", &models.JWTClaims{PreferredUsername: ownCPF})
+		c.Next()
+	})
+	defer cleanup()
+
+	req, _ := http.NewRequest(http.MethodGet, "/cpf-secretaria/"+testCPF, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestGetCPFSecretarias_Admin_Allowed(t *testing.T) {
+	origAdmin := config.AppConfig.AdminGroup
+	config.AppConfig.AdminGroup = "go:admin"
+	defer func() { config.AppConfig.AdminGroup = origAdmin }()
+
+	r, cleanup := setupCPFSecretariaQueryRouter(t, func(c *gin.Context) {
+		claims := &models.JWTClaims{PreferredUsername: "99999999999"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"go:admin"}},
+		}
+		c.Set("claims", claims)
+		c.Next()
+	})
+	defer cleanup()
+
+	req, _ := http.NewRequest(http.MethodGet, "/cpf-secretaria/"+testCPF, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGetCPFSecretarias_TrustedServiceAccount_Allowed(t *testing.T) {
+	origTrusted := config.AppConfig.TrustedServiceClients
+	config.AppConfig.TrustedServiceClients = []string{"app-go-api-service"}
+	defer func() { config.AppConfig.TrustedServiceClients = origTrusted }()
+
+	r, cleanup := setupCPFSecretariaQueryRouter(t, func(c *gin.Context) {
+		c.Set("claims", &models.JWTClaims{
+			PreferredUsername: "service-account-app-go-api-service",
+			AZP:               "app-go-api-service",
+		})
+		c.Next()
+	})
+	defer cleanup()
+
+	req, _ := http.NewRequest(http.MethodGet, "/cpf-secretaria/"+testCPF, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGetCPFSecretarias_InternalError_NoLeak(t *testing.T) {
+	r, cleanup := setupCPFSecretariaQueryRouter(t, func(c *gin.Context) {
+		c.Set("claims", &models.JWTClaims{PreferredUsername: testCPF})
+		c.Next()
+	})
+	defer cleanup()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "/cpf-secretaria/"+testCPF, nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "failed to retrieve secretaria mappings")
+	assert.False(t, strings.Contains(strings.ToLower(body), "mongo"), "must not leak mongo details: %s", body)
+	assert.False(t, strings.Contains(strings.ToLower(body), "context canceled"), "must not leak context error: %s", body)
+	assert.False(t, strings.Contains(body, "cpf_secretaria:"), "must not leak internal error prefix: %s", body)
 }

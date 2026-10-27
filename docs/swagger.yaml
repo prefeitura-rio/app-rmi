@@ -6220,8 +6220,9 @@ paths:
       - config
   /cpf-secretaria/{cpf}:
     get:
-      description: Retorna a lista de cd_uas vinculados ao CPF na base de apoio. Usado
-        por outras APIs (app-go-api) via service account.
+      description: Retorna a lista de cd_uas vinculados ao CPF na base de apoio. Acesso:
+        CPF próprio, admin, ou service account com azp em TRUSTED_SERVICE_CLIENTS
+        (app-go-api).
       parameters:
       - description: CPF do usuário (11 dígitos)
         in: path
@@ -6241,6 +6242,10 @@ paths:
             $ref: '#/definitions/handlers.ErrorResponse'
         "401":
           description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "500":
