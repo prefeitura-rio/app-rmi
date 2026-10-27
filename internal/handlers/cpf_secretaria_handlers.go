@@ -180,7 +180,7 @@ func GetCPFSecretarias(c *gin.Context) {
 	cdUAs, err := services.CPFSecretariaServiceInstance.GetCdUAsByCPF(c.Request.Context(), cpf)
 	if err != nil {
 		observability.Logger().Error("failed to get cpf secretarias",
-			zap.String("cpf", observability.MaskCPF(cpf)),
+			observability.CPFField(cpf),
 			zap.Error(err),
 		)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to retrieve secretaria mappings"})
