@@ -6940,7 +6940,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Retorna a lista de cd_uas vinculados ao CPF na base de apoio. Usado por outras APIs (app-go-api) via service account.",
+        "description": "Retorna a lista de cd_uas vinculados ao CPF na base de apoio. Acesso: CPF próprio, admin, ou service account com azp em TRUSTED_SERVICE_CLIENTS (app-go-api).",
         "tags": [
           "cpf-secretaria"
         ],
@@ -6979,6 +6979,16 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {

@@ -8,7 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prefeitura-rio/app-rmi/internal/middleware"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
+	"go.uber.org/zap"
 )
 
 // AdminListCPFSecretaria godoc
@@ -152,7 +154,7 @@ func AdminRemoveCPFSecretaria(c *gin.Context) {
 
 // GetCPFSecretarias godoc
 // @Summary Consultar secretarias de um CPF
-// @Description Retorna a lista de cd_uas vinculados ao CPF na base de apoio. Usado por outras APIs (app-go-api) via service account.
+// @Description Retorna a lista de cd_uas vinculados ao CPF na base de apoio. Acesso: CPF próprio, admin, ou service account com azp em TRUSTED_SERVICE_CLIENTS (app-go-api).
 // @Tags cpf-secretaria
 // @Produce json
 // @Param cpf path string true "CPF do usuário (11 dígitos)"
@@ -160,6 +162,7 @@ func AdminRemoveCPFSecretaria(c *gin.Context) {
 // @Success 200 {object} models.CPFSecretariaQueryResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 401 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /cpf-secretaria/{cpf} [get]
 func GetCPFSecretarias(c *gin.Context) {
@@ -176,7 +179,11 @@ func GetCPFSecretarias(c *gin.Context) {
 
 	cdUAs, err := services.CPFSecretariaServiceInstance.GetCdUAsByCPF(c.Request.Context(), cpf)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		observability.Logger().Error("failed to get cpf secretarias",
+			zap.String("cpf", observability.MaskCPF(cpf)),
+			zap.Error(err),
+		)
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to retrieve secretaria mappings"})
 		return
 	}
 
