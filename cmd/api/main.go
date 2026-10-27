@@ -363,7 +363,8 @@ func main() {
 		cpfSecretariaGroup := v1.Group("/cpf-secretaria")
 		cpfSecretariaGroup.Use(middleware.AuthMiddleware())
 		{
-			cpfSecretariaGroup.GET("/:cpf", handlers.GetCPFSecretarias)
+			// RequireOwnCPF: own CPF, admin, or azp in TRUSTED_SERVICE_CLIENTS (app-go-api service account).
+			cpfSecretariaGroup.GET("/:cpf", middleware.RequireOwnCPF(), handlers.GetCPFSecretarias)
 		}
 
 		// Config routes (public)
