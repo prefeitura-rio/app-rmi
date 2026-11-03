@@ -67,8 +67,26 @@ func TestRedisStaleConnsTracker_CounterWentBackwards(t *testing.T) {
 
 	tracker.observe(client, 5000, 50)
 	reset := tracker.observe(client, 3, 50)
-	assert.Equal(t, uint32(3), reset.RemovedInInterval, "a counter reset never yields a wrapped uint32 delta")
+	assert.Equal(t, uint32(0), reset.RemovedInInterval, "a counter reset starts a new baseline, never a wrapped uint32 delta")
 	assert.False(t, reset.Alert)
+
+	next := tracker.observe(client, 5, 50)
+	assert.Equal(t, uint32(2), next.RemovedInInterval)
+}
+
+func TestRedisStaleConnsTracker_ClusterNodeLeavingDoesNotAlert(t *testing.T) {
+	client := &redisclient.Client{}
+	var tracker redisStaleConnsTracker
+
+	// ClusterClient.PoolStats sums every node; a node leaving lowers the summed counter.
+	tracker.observe(client, 5000, 50)
+	nodeLeft := tracker.observe(client, 4990, 50)
+	assert.Equal(t, uint32(0), nodeLeft.RemovedInInterval)
+	assert.False(t, nodeLeft.Alert, "a smaller cluster-wide sum is not a burst of stale removals")
+
+	next := tracker.observe(client, 4993, 50)
+	assert.Equal(t, uint32(3), next.RemovedInInterval)
+	assert.False(t, next.Alert)
 }
 
 func TestRedisStaleConnsTracker_EmptyPoolHasNoPercent(t *testing.T) {

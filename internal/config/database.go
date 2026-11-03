@@ -1712,13 +1712,9 @@ type redisStaleConnsTracker struct {
 func (t *redisStaleConnsTracker) observe(client *redisclient.Client, removedTotal, totalConns uint32) redisStaleConnsSample {
 	sample := redisStaleConnsSample{RemovedTotal: removedTotal}
 
-	isBaseline := !t.primed || t.client != client
-	counterWentBack := removedTotal < t.lastTotal
-	switch {
-	case isBaseline:
-	case counterWentBack:
-		sample.RemovedInInterval = removedTotal
-	default:
+	// A lower total means the counter was reset or, in cluster mode, a node's pool left the sum.
+	isBaseline := !t.primed || t.client != client || removedTotal < t.lastTotal
+	if !isBaseline {
 		sample.RemovedInInterval = removedTotal - t.lastTotal
 	}
 
