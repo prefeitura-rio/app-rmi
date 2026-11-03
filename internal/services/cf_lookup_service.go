@@ -120,16 +120,14 @@ func (s *CFLookupService) ShouldLookupCF(ctx context.Context, cpf string, citize
 	// If we have existing data for the same address, use it (no need to re-lookup)
 	if existingLookup != nil {
 		s.logger.Debug("using existing CF lookup for same address",
-			observability.CPFField(cpf),
-			zap.String("address_hash", addressHash))
+			observability.CPFField(cpf))
 		return false, address, nil
 	}
 
 	// No rate limiting needed for CF lookups
 
 	s.logger.Debug("CF lookup should be performed",
-		observability.CPFField(cpf),
-		zap.String("address_hash", addressHash))
+		observability.CPFField(cpf))
 
 	return true, address, nil
 }
@@ -151,8 +149,7 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 
 	s.logger.Info("performing CF lookup",
 		observability.CPFField(cpf),
-		zap.String("operation", "cf_lookup_start"),
-		zap.String("address_hash", s.GenerateAddressHash(address)))
+		zap.String("operation", "cf_lookup_start"))
 
 	// Add timeout for the entire operation
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
@@ -164,16 +161,14 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 		cfErr := &CFLookupError{Category: s.categorizeError(err), Err: err}
 		s.logger.Warn("MCP health services lookup failed",
 			append(CFLookupErrorFields(cfErr),
-				observability.CPFField(cpf),
-				zap.String("address_hash", s.GenerateAddressHash(address)))...)
+				observability.CPFField(cpf))...)
 
 		return cfErr
 	}
 
 	if healthData == nil || healthData.HealthFacility == nil {
 		s.logger.Info("no health services found for address",
-			observability.CPFField(cpf),
-			zap.String("address_hash", s.GenerateAddressHash(address)))
+			observability.CPFField(cpf))
 		return nil
 	}
 
@@ -220,7 +215,6 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 		zap.String("cf_bairro", healthData.HealthFacility.Bairro),
 		zap.String("cf_logradouro", healthData.HealthFacility.Logradouro),
 		zap.String("operation", "cf_lookup_success"),
-		zap.String("address_hash", addressHash),
 		zap.Int("distance_meters", cfLookup.DistanceMeters),
 		zap.Bool("cf_ativo", healthData.HealthFacility.Ativo),
 		zap.Bool("cf_aberto_publico", healthData.HealthFacility.AbertoAoPublico))
@@ -285,8 +279,7 @@ func (s *CFLookupService) InvalidateCFDataForAddress(ctx context.Context, cpf, n
 	// If address hasn't changed, don't invalidate
 	if currentLookup.AddressHash == newAddressHash {
 		s.logger.Debug("address hash unchanged, keeping CF data",
-			observability.CPFField(cpf),
-			zap.String("address_hash", newAddressHash))
+			observability.CPFField(cpf))
 		return nil
 	}
 
@@ -304,8 +297,6 @@ func (s *CFLookupService) InvalidateCFDataForAddress(ctx context.Context, cpf, n
 
 	s.logger.Debug("invalidated CF data for address change",
 		observability.CPFField(cpf),
-		zap.String("old_address_hash", currentLookup.AddressHash),
-		zap.String("new_address_hash", newAddressHash),
 		zap.Int64("deleted_count", result.DeletedCount))
 
 	return nil
@@ -316,7 +307,8 @@ func (s *CFLookupService) GenerateAddressHash(address string) string {
 	return hashAddress(address)
 }
 
-// hashAddress is the SHA-256 of the normalized address. Logs carry it instead of the address (LGPD).
+// hashAddress is the SHA-256 of the normalized address, persisted in cf_lookups.address_hash to detect address changes.
+// It is unkeyed, so a dictionary of street addresses recovers it: never log it (LGPD).
 func hashAddress(address string) string {
 	// Normalize address (lowercase, trim spaces)
 	normalized := strings.TrimSpace(strings.ToLower(address))
@@ -642,8 +634,7 @@ func (s *CFLookupService) storeCFLookup(ctx context.Context, cfLookup *models.CF
 	}
 
 	s.logger.Debug("CF lookup stored successfully",
-		observability.CPFField(cfLookup.CPF),
-		zap.String("address_hash", cfLookup.AddressHash))
+		observability.CPFField(cfLookup.CPF))
 
 	return nil
 }
@@ -732,8 +723,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	// Check if any health services were found
 	if healthData == nil || healthData.HealthFacility == nil {
 		s.logger.Debug("no health services found for address in synchronous lookup",
-			observability.CPFField(cpf),
-			zap.String("address_hash", s.GenerateAddressHash(address)))
+			observability.CPFField(cpf))
 		return nil, nil
 	}
 
