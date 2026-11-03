@@ -358,12 +358,6 @@ func (w *SyncWorker) getJobNonBlocking(queue string) (*SyncJob, error) {
 func (w *SyncWorker) processJob(job *SyncJob) {
 	start := time.Now()
 
-	w.logger.Info("processing sync job",
-		zap.String("job_id", job.ID),
-		zap.String("type", job.Type),
-		zap.String("key", job.Key),
-		zap.String("collection", job.Collection))
-
 	if !job.AvailableAt.IsZero() && time.Now().Before(job.AvailableAt) {
 		if err := w.returnJobToQueue(job); err != nil {
 			w.logger.Error("failed to defer sync job until available_at",
@@ -380,6 +374,12 @@ func (w *SyncWorker) processJob(job *SyncJob) {
 			zap.Time("available_at", job.AvailableAt))
 		return
 	}
+
+	w.logger.Info("processing sync job",
+		zap.String("job_id", job.ID),
+		zap.String("type", job.Type),
+		zap.String("key", job.Key),
+		zap.String("collection", job.Collection))
 
 	writeBufferJob, err := w.syncToMongoDB(job)
 
@@ -423,7 +423,7 @@ func (w *SyncWorker) ackInflightJob(job *SyncJob) {
 // syncToMongoDB syncs a job to MongoDB.
 // writeBufferJob is true for normal Redis write-buffer → Mongo syncs that need handleSyncSuccess.
 func (w *SyncWorker) syncToMongoDB(job *SyncJob) (writeBufferJob bool, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), syncJobTimeout(job))
 	defer cancel()
 
 	// Handle special job types
@@ -586,7 +586,7 @@ func (w *SyncWorker) handleSyncFailure(job *SyncJob, err error) {
 		persisted = w.moveToDLQ(job, err)
 	} else {
 		job.RetryCount++
-		if job.RetryCount >= job.MaxRetries {
+		if job.RetryCount >= syncJobMaxRetries(job) {
 			persisted = w.moveToDLQ(job, err)
 		} else {
 			persisted = w.requeueJob(job)
@@ -709,14 +709,66 @@ func (w *SyncWorker) moveToDLQ(job *SyncJob, err error) bool {
 	return true
 }
 
+const (
+	cfLookupQueue = "cf_lookup"
+	// cfLookupMaxAttempts and cfLookupBaseBackoff let cf_lookup jobs ride out a few minutes of
+	// MCP instability (backoff 15s, 30s, 60s, 60s) instead of reaching the DLQ in ~15s.
+	cfLookupMaxAttempts       = 5
+	cfLookupBaseBackoff       = 15 * time.Second
+	defaultCFLookupJobTimeout = 90 * time.Second
+	defaultSyncJobTimeout     = 30 * time.Second
+	syncRequeueMaxBackoff     = 60 * time.Second
+)
+
+func isCFLookupJob(job *SyncJob) bool {
+	return job.Type == cfLookupQueue || job.Collection == cfLookupQueue
+}
+
+// syncJobTimeout is the budget of one attempt. A cf_lookup makes several sequential MCP calls
+// and is only queued after the synchronous lookup timed out, so it needs more than the default.
+func syncJobTimeout(job *SyncJob) time.Duration {
+	if !isCFLookupJob(job) {
+		return defaultSyncJobTimeout
+	}
+	if config.AppConfig != nil && config.AppConfig.CFLookupJobTimeout > 0 {
+		return config.AppConfig.CFLookupJobTimeout
+	}
+	return defaultCFLookupJobTimeout
+}
+
+// syncJobMaxRetries is the number of attempts before a retryable failure goes to the DLQ.
+func syncJobMaxRetries(job *SyncJob) int {
+	if isCFLookupJob(job) && job.MaxRetries < cfLookupMaxAttempts {
+		return cfLookupMaxAttempts
+	}
+	return job.MaxRetries
+}
+
+// syncJobBackoff is the delay before the next attempt, given the failures so far (job.RetryCount).
+func syncJobBackoff(job *SyncJob) time.Duration {
+	if job.RetryCount <= 0 {
+		return 0
+	}
+	var delay time.Duration
+	if isCFLookupJob(job) {
+		delay = syncRequeueMaxBackoff
+		if job.RetryCount <= 3 {
+			delay = cfLookupBaseBackoff << (job.RetryCount - 1)
+		}
+	} else {
+		delay = time.Duration(job.RetryCount) * 5 * time.Second
+	}
+	if delay > syncRequeueMaxBackoff {
+		delay = syncRequeueMaxBackoff
+	}
+	return delay
+}
+
 // requeueJob re-queues a job for retry without blocking the worker goroutine.
 // Sets AvailableAt for deferred visibility; processJob returns the job to the queue until then.
 // Returns true when the job was successfully written back to the queue.
 func (w *SyncWorker) requeueJob(job *SyncJob) bool {
-	backoffDelay := time.Duration(job.RetryCount) * 5 * time.Second
-	if backoffDelay > 60*time.Second {
-		backoffDelay = 60 * time.Second
-	}
+	backoffDelay := syncJobBackoff(job)
 	job.AvailableAt = time.Now().UTC().Add(backoffDelay)
 
 	jobBytes, marshalErr := json.Marshal(job)
@@ -836,7 +888,7 @@ func (w *SyncWorker) handleSpecialJobTypes(ctx context.Context, job *SyncJob) er
 	}
 
 	// Check if this is a CF lookup job (identified by job type or collection)
-	if job.Type == "cf_lookup" || job.Collection == "cf_lookup" {
+	if isCFLookupJob(job) {
 		return w.handleCFLookupJob(ctx, job)
 	}
 
@@ -914,27 +966,37 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 		return fmt.Errorf("missing or invalid address in CF lookup job")
 	}
 
-	w.logger.Debug("extracted CF lookup job data",
-		observability.CPFField(cpf),
-		zap.String("address", address))
-
 	// Perform CF lookup using the CF lookup service
 	if CFLookupServiceInstance == nil {
 		return fmt.Errorf("CF lookup service disabled")
 	}
 
+	addressHash := CFLookupServiceInstance.GenerateAddressHash(address)
+	w.logger.Debug("extracted CF lookup job data",
+		observability.CPFField(cpf),
+		zap.String("address_hash", addressHash))
+
 	err := CFLookupServiceInstance.PerformCFLookup(ctx, cpf, address)
 	if err != nil {
-		w.logger.Error("CF lookup failed",
+		permanent := IsPermanentCFLookupError(err)
+		// Warn per attempt: moveToDLQ logs the final failure at error level.
+		w.logger.Warn("CF lookup failed",
 			zap.Error(err),
 			observability.CPFField(cpf),
-			zap.String("address", address))
+			zap.String("address_hash", addressHash),
+			zap.String("job_id", job.ID),
+			zap.Int("attempt", job.RetryCount+1),
+			zap.Int("max_attempts", syncJobMaxRetries(job)),
+			zap.Bool("permanent", permanent))
+		if permanent {
+			return newNonRetryableSyncError(fmt.Errorf("CF lookup failed: %w", err))
+		}
 		return fmt.Errorf("CF lookup failed: %w", err)
 	}
 
 	w.logger.Info("CF lookup completed successfully",
 		observability.CPFField(cpf),
-		zap.String("address", address))
+		zap.String("address_hash", addressHash))
 
 	// Invalidate wallet cache so fresh wallet requests get the new CF data
 	// Note: We don't invalidate citizen cache since CF data only appears in wallet endpoint

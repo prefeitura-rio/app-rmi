@@ -159,6 +159,12 @@ When asked to do the "commit thing":
 - **Proxies (user JWT, additive under `/v1/salesforce`)**: consentimento, exportar, anonimizar (+ polling), chamados list/detail — do not alter `/v1/citizen` behavior. Anonimização polling fails closed: persist `numeroSolicitacao→CPF` in Redis at POST; GET without CPF in the upstream payload requires that mapping.
 - **Consentimento PATCH**: `categoria` must be a Salesforce picklist value (e.g. `PREF_Lembrete_Pagamento`, not free text). Upstream JWT policy returns 400 (missing token) / 401 (invalid) before Mule — not RMI `errors[]`.
 
+### CF Lookup jobs (Clínica da Família via MCP)
+- **Flow**: wallet tries a synchronous MCP lookup (`CF_LOOKUP_SYNC_TIMEOUT`, 15s); on failure it enqueues a `cf_lookup` job (deduped per CPF by `cf_lookup:pending:<cpf>`, 1h) processed by the sync worker (`handleCFLookupJob` → `PerformCFLookup` → `MCPClient.FindNearestCF`).
+- **Timeout**: each job attempt gets `CF_LOOKUP_JOB_TIMEOUT` (default 90s) instead of the worker's generic 30s, since one lookup makes several sequential MCP calls.
+- **Retry policy**: MCP failures become `CFLookupError` with a category. Transient (`timeout`, `network`, `session`, `server`, `unknown`) are requeued with backoff 15s, 30s, 60s, 60s, up to 5 attempts (`cfLookupMaxAttempts`, overrides a smaller `max_retries` in the payload). Permanent (`authorization`, `validation`, `tool` = JSON-RPC error from `equipments_by_address`) go straight to the DLQ as non-retryable. "No health services found" is a success, not an error.
+- **Logs**: `CF lookup failed` is a WARN per attempt (with `attempt`, `max_attempts`, `permanent`); only `job moved to DLQ` is an ERROR. Errors and these logs carry `address_hash`, never the address.
+
 ### Performance-Critical Paths
 - **GetCitizenData**: Uses batched Redis operations via `getBatchedSelfDeclaredData()`
 - **UpdateSelfDeclared***: Field-specific queries vs full citizen data retrieval

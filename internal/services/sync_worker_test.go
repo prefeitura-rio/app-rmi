@@ -1609,3 +1609,61 @@ func TestSyncWorker_AllCollectionTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestSyncWorker_HandleSyncFailure_CFLookupTransientErrorIsRequeuedWithBackoff(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	job := newCFLookupTestJob(2)
+
+	worker.handleSyncFailure(job, fmt.Errorf("CF lookup failed: %w", &CFLookupError{Category: "timeout", Err: context.DeadlineExceeded}))
+
+	dlqLen, err := worker.redis.LLen(ctx, syncDLQKey(job.Type)).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), dlqLen, "a third transient failure must not reach the DLQ")
+
+	jobJSON, err := worker.redis.RPop(ctx, syncQueueKey(job.Type)).Result()
+	require.NoError(t, err)
+	var requeued SyncJob
+	require.NoError(t, json.Unmarshal([]byte(jobJSON), &requeued))
+	assert.Equal(t, 3, requeued.RetryCount)
+	assert.True(t, requeued.AvailableAt.After(time.Now().Add(55*time.Second)))
+	assert.True(t, requeued.AvailableAt.Before(time.Now().Add(61*time.Second)))
+}
+
+func TestSyncWorker_HandleSyncFailure_CFLookupGivesUpAfterBudget(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	job := newCFLookupTestJob(cfLookupMaxAttempts - 1)
+
+	worker.handleSyncFailure(job, fmt.Errorf("CF lookup failed: %w", &CFLookupError{Category: "server", Err: fmt.Errorf("server error: 503")}))
+
+	dlqLen, err := worker.redis.LLen(ctx, syncDLQKey(job.Type)).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), dlqLen)
+}
+
+func TestSyncWorker_HandleSyncFailure_CFLookupPermanentErrorGoesStraightToDLQ(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	job := newCFLookupTestJob(0)
+	permanent := newNonRetryableSyncError(fmt.Errorf("CF lookup failed: %w", &CFLookupError{Category: "authorization", Err: fmt.Errorf("status 401")}))
+
+	worker.handleSyncFailure(job, permanent)
+
+	queueLen, err := worker.redis.LLen(ctx, syncQueueKey(job.Type)).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), queueLen)
+
+	dlqJSON, err := worker.redis.RPop(ctx, syncDLQKey(job.Type)).Result()
+	require.NoError(t, err)
+	var dlqJob DLQJob
+	require.NoError(t, json.Unmarshal([]byte(dlqJSON), &dlqJob))
+	assert.Contains(t, dlqJob.Error, "(authorization)")
+	assert.NotContains(t, dlqJob.Error, retryTestAddress)
+}

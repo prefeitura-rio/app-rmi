@@ -50,6 +50,33 @@ type MCPError struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
+// MCPToolError is a JSON-RPC error returned by an MCP tool call.
+type MCPToolError struct {
+	Tool    string
+	Code    int
+	Message string
+}
+
+func (e *MCPToolError) Error() string {
+	return fmt.Sprintf("MCP tool %s error (code %d): %s", e.Tool, e.Code, e.Message)
+}
+
+func newMCPToolError(tool string, errorObj interface{}) *MCPToolError {
+	toolErr := &MCPToolError{Tool: tool}
+	fields, ok := errorObj.(map[string]interface{})
+	if !ok {
+		toolErr.Message = fmt.Sprintf("%v", errorObj)
+		return toolErr
+	}
+	if code, ok := fields["code"].(float64); ok {
+		toolErr.Code = int(code)
+	}
+	if message, ok := fields["message"].(string); ok {
+		toolErr.Message = message
+	}
+	return toolErr
+}
+
 // RetryConfig defines retry behavior for MCP requests
 type RetryConfig struct {
 	MaxRetries    int
@@ -467,6 +494,11 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 	result, err := c.makeRequest(ctx, sessionID, cfPayload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find CF: %w", err)
+	}
+
+	// A JSON-RPC error has no "result"; report it as a tool error instead of a malformed response.
+	if errorObj, exists := result["error"]; exists && errorObj != nil {
+		return nil, newMCPToolError("equipments_by_address", errorObj)
 	}
 
 	// Parse response

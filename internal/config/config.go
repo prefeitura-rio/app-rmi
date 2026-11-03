@@ -110,6 +110,7 @@ type Config struct {
 	CFLookupRateLimit       time.Duration `json:"cf_lookup_rate_limit"`
 	CFLookupGlobalRateLimit int           `json:"cf_lookup_global_rate_limit"`
 	CFLookupSyncTimeout     time.Duration `json:"cf_lookup_sync_timeout"`
+	CFLookupJobTimeout      time.Duration `json:"cf_lookup_job_timeout"`
 
 	// WhatsApp configuration
 	WhatsAppEnabled      bool   `json:"whatsapp_enabled"`
@@ -300,6 +301,14 @@ func LoadConfig() error {
 	cfLookupSyncTimeout, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_SYNC_TIMEOUT", "15s")) // 15 seconds for synchronous lookups
 	if err != nil {
 		return fmt.Errorf("invalid CF_LOOKUP_SYNC_TIMEOUT: %w", err)
+	}
+
+	cfLookupJobTimeout, err := time.ParseDuration(getEnvOrDefault("CF_LOOKUP_JOB_TIMEOUT", "90s")) // budget for one background cf_lookup job attempt
+	if err != nil {
+		return fmt.Errorf("invalid CF_LOOKUP_JOB_TIMEOUT: %w", err)
+	}
+	if cfLookupJobTimeout <= 0 {
+		return fmt.Errorf("invalid CF_LOOKUP_JOB_TIMEOUT: must be positive")
 	}
 
 	// WhatsApp configuration
@@ -495,6 +504,7 @@ func LoadConfig() error {
 		CFLookupRateLimit:       cfLookupRateLimit,
 		CFLookupGlobalRateLimit: cfLookupGlobalRateLimit,
 		CFLookupSyncTimeout:     cfLookupSyncTimeout,
+		CFLookupJobTimeout:      cfLookupJobTimeout,
 
 		// WhatsApp configuration
 		WhatsAppEnabled:      whatsappEnabledBool,
