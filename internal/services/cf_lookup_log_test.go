@@ -291,3 +291,41 @@ func TestFindNearestCF_DebugLogsOmitPayloadAndResponseBody(t *testing.T) {
 	_, hasPayload := notification.ContextMap()["payload"]
 	assert.False(t, hasPayload)
 }
+
+func TestFindNearestCF_DebugLogsOmitUpstreamReasonText(t *testing.T) {
+	cases := map[string]map[string]interface{}{
+		"isError textContent": {
+			"isError":     true,
+			"textContent": "nenhum equipamento para " + syntheticCFAddress,
+		},
+		"equipment error": {
+			"structuredContent": map[string]interface{}{
+				"equipamentos": []interface{}{
+					map[string]interface{}{"error": "endereco nao localizado: " + syntheticCFAddress},
+				},
+			},
+		},
+	}
+
+	for name, cfResult := range cases {
+		t.Run(name, func(t *testing.T) {
+			client, server := setupMCPTest(t, mcpHandlerWithEquipments(cfResult))
+			defer server.Close()
+
+			logger, logs := observedLogger(zapcore.DebugLevel)
+			client.logger = logger
+
+			result, err := client.FindNearestCF(context.Background(), syntheticCFAddress)
+			require.NoError(t, err)
+			if result != nil {
+				assert.Nil(t, result.HealthFacility)
+			}
+
+			assertNoAddressInLogs(t, logs, syntheticCFAddress)
+			for _, entry := range logs.All() {
+				_, hasReason := entry.ContextMap()["reason"]
+				assert.False(t, hasReason, "log %q must not carry the upstream reason text", entry.Message)
+			}
+		})
+	}
+}
