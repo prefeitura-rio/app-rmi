@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -414,7 +415,7 @@ func (e *CFLookupError) Unwrap() error {
 }
 
 // Permanent reports whether retrying the same address cannot succeed: rejected credentials,
-// a request the MCP server refuses, or a tool error for the address.
+// a request the MCP server refuses, or a tool call with invalid params or an unknown tool.
 func (e *CFLookupError) Permanent() bool {
 	switch e.Category {
 	case "authorization", "validation", "tool":
@@ -430,11 +431,52 @@ func IsPermanentCFLookupError(err error) bool {
 	return errors.As(err, &cfErr) && cfErr.Permanent()
 }
 
+// categorizeTypedMCPError classifies the errors the MCP client returns as types, so a status code
+// or a JSON-RPC code decides the category instead of words in the message.
+func categorizeTypedMCPError(err error) (string, bool) {
+	var toolErr *MCPToolError
+	if errors.As(err, &toolErr) {
+		switch {
+		case toolErr.Code == jsonRPCInvalidParams || toolErr.Code == jsonRPCMethodNotFound:
+			return "tool", true
+		case strings.Contains(strings.ToLower(toolErr.Message), "session"):
+			return "session", true
+		default:
+			return "server", true
+		}
+	}
+
+	var statusErr *MCPHTTPStatusError
+	if errors.As(err, &statusErr) {
+		switch statusErr.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return "authorization", true
+		case http.StatusNotFound:
+			return "session", true
+		case http.StatusRequestTimeout:
+			return "timeout", true
+		default:
+			return "server", true
+		}
+	}
+
+	var protocolErr *MCPProtocolError
+	if errors.As(err, &protocolErr) {
+		return "protocol", true
+	}
+
+	return "", false
+}
+
+const (
+	jsonRPCMethodNotFound = -32601
+	jsonRPCInvalidParams  = -32602
+)
+
 // categorizeError categorizes errors for better handling and monitoring
 func (s *CFLookupService) categorizeError(err error) string {
-	var toolErr *MCPToolError
-	if errors.As(err, &toolErr) && !strings.Contains(strings.ToLower(toolErr.Message), "session") {
-		return "tool"
+	if category, ok := categorizeTypedMCPError(err); ok {
+		return category
 	}
 
 	errStr := strings.ToLower(err.Error())

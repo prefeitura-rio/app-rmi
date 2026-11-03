@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -142,13 +143,58 @@ func TestCategorizeError_ToolAndSessionErrors(t *testing.T) {
 
 	authErr := errors.New("failed to get session ID: session request failed with status 401")
 	assert.Equal(t, "authorization", service.categorizeError(authErr))
+
+	internalToolErr := &MCPToolError{Tool: "equipments_by_address", Code: -32603, Message: "Internal error"}
+	assert.Equal(t, "server", service.categorizeError(internalToolErr))
+
+	unknownToolErr := &MCPToolError{Tool: "equipments_by_address", Code: -32601, Message: "Method not found"}
+	assert.Equal(t, "tool", service.categorizeError(unknownToolErr))
+}
+
+func TestCategorizeError_HTTPStatusAndProtocolErrors(t *testing.T) {
+	service := &CFLookupService{}
+	expected := map[int]string{
+		http.StatusUnauthorized:        "authorization",
+		http.StatusForbidden:           "authorization",
+		http.StatusNotFound:            "session",
+		http.StatusRequestTimeout:      "timeout",
+		http.StatusTooManyRequests:     "server",
+		http.StatusServiceUnavailable:  "server",
+		http.StatusInternalServerError: "server",
+	}
+	for code, want := range expected {
+		err := fmt.Errorf("failed to find CF: %w", &MCPHTTPStatusError{StatusCode: code})
+		assert.Equal(t, want, service.categorizeError(err), "status %d", code)
+	}
+
+	garbage := fmt.Errorf("failed to find CF: %w", &MCPProtocolError{Err: errors.New("failed to unmarshal response: invalid character '<' looking for beginning of value")})
+	assert.Equal(t, "protocol", service.categorizeError(garbage), "an unreadable body is not an address validation error")
+}
+
+func TestMakeRequest_RetriesTooManyRequests(t *testing.T) {
+	requests := 0
+	client, server := setupMCPTest(t, func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte("rate limited"))
+	})
+	defer server.Close()
+	client.retryConfig.MaxRetries = 1
+	client.retryConfig.BaseDelay = time.Millisecond
+
+	_, err := client.makeRequest(context.Background(), "test-session", MCPRequest{JSONRPC: "2.0", Method: "tools/call"})
+
+	var statusErr *MCPHTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusTooManyRequests, statusErr.StatusCode)
+	assert.Equal(t, 2, requests, "429 is retried inside the MCP client")
 }
 
 func TestCFLookupError_Permanent(t *testing.T) {
 	for _, category := range []string{"authorization", "validation", "tool"} {
 		assert.True(t, IsPermanentCFLookupError(&CFLookupError{Category: category, Err: errors.New("x")}), category)
 	}
-	for _, category := range []string{"timeout", "network", "session", "server", "unknown"} {
+	for _, category := range []string{"timeout", "network", "session", "server", "protocol", "unknown"} {
 		assert.False(t, IsPermanentCFLookupError(&CFLookupError{Category: category, Err: errors.New("x")}), category)
 	}
 	assert.False(t, IsPermanentCFLookupError(errors.New("plain error")))
@@ -214,4 +260,75 @@ func TestHandleCFLookupJob_ToolErrorIsNotRetried(t *testing.T) {
 	assert.True(t, isNonRetryableSyncError(err))
 	assert.Contains(t, err.Error(), "(tool)")
 	assert.NotContains(t, err.Error(), retryTestAddress)
+}
+
+func TestHandleCFLookupJob_RateLimitedToolCallIsRetryable(t *testing.T) {
+	useCFLookupServiceWithMCP(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.Header().Set("mcp-session-id", "test-session")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req MCPRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		switch req.Method {
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusAccepted)
+		case "initialize":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{}})
+		default:
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte("rate limited"))
+		}
+	})
+	worker := newBareSyncWorker(t)
+
+	err := worker.handleCFLookupJob(context.Background(), newCFLookupTestJob(0))
+
+	require.Error(t, err)
+	assert.False(t, isNonRetryableSyncError(err), "a rate-limited MCP must be retried with backoff, not sent to the DLQ")
+	assert.Contains(t, err.Error(), "(server)")
+}
+
+func TestHandleCFLookupJob_UnreadableToolResponseIsRetryable(t *testing.T) {
+	useCFLookupServiceWithMCP(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.Header().Set("mcp-session-id", "test-session")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var req MCPRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		switch req.Method {
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusAccepted)
+		case "initialize":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{}})
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("<html>gateway</html>"))
+		}
+	})
+	worker := newBareSyncWorker(t)
+
+	err := worker.handleCFLookupJob(context.Background(), newCFLookupTestJob(0))
+
+	require.Error(t, err)
+	assert.False(t, isNonRetryableSyncError(err))
+	assert.Contains(t, err.Error(), "(protocol)")
+}
+
+func TestHandleCFLookupJob_InternalToolErrorIsRetryable(t *testing.T) {
+	useCFLookupServiceWithMCP(t, mcpHandlerWithToolResponse(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"error":   map[string]interface{}{"code": -32603, "message": "Internal error"},
+	}))
+	worker := newBareSyncWorker(t)
+
+	err := worker.handleCFLookupJob(context.Background(), newCFLookupTestJob(0))
+
+	require.Error(t, err)
+	assert.False(t, isNonRetryableSyncError(err), "JSON-RPC internal error is a server failure, not a property of the address")
+	assert.Contains(t, err.Error(), "(server)")
 }
