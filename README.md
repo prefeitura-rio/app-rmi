@@ -72,6 +72,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | SALESFORCE_BASE_URL | URL base da API Salesforce CRM (host; o client acrescenta `/api/private/...`) | - | Não* |
 | SALESFORCE_TIMEOUT | Timeout HTTP do Salesforce CRM | 30s | Não |
 | SALESFORCE_WEBHOOK_CLIENTS | Client IDs Keycloak (`azp`) autorizados no webhook SF→RMI (lista separada por vírgula) | - | Não* |
+| JWT_ISSUER_URL | Issuer do realm Keycloak (`https://<host>/realms/<realm>`); o RMI verifica a assinatura do JWT pelo JWKS desse issuer na consulta pública de chamados por protocolo. Sem ele, essa rota só serve a visão pública | - | Não |
 | TRUSTED_SERVICE_CLIENTS | Client IDs Keycloak (`azp`) com privilégio de service account (RequireOwnCPF/RequireAdmin) | - | Não* |
 | SYNC_JOB_BEARER_ENCRYPTION_KEY | Chave AES-256 em hex (64 caracteres) para cifrar JWTs nas filas de sync. Sem a chave o token não é gravado; `salesforce_push` exige a chave. | - | Não* |
 | CF_LOOKUP_COLLECTION | Nome da coleção de lookups de CF | cf_lookups | Não |
@@ -935,6 +936,16 @@ Recupera os chamados do 1746 de um cidadão por CPF com paginação.
 - Parâmetros de paginação:
   - `page`: Número da página (padrão: 1, mínimo: 1)
   - `per_page`: Itens por página (padrão: 10, máximo: 100)
+- Cada chamado traz `protocolo` (SGRC, `RIO-12345678-9`) quando a coleção já o tem
+
+### GET /maintenance-request/{protocolo}
+Consulta pública dos chamados históricos do 1746/SGRC de um protocolo (um protocolo pode agrupar mais de um chamado).
+- Não exige autenticação (precisa de mapeamento `public` da rota no Heimdall/Cerbos)
+- Protocolo no formato `RIO-12345678-9` (400 fora do formato, 404 sem chamado)
+- Visão pública: categoria, tipo, subtipo, status, datas, `bairro`, `andamentos` (só os com `fl_publico = 1`) e `loaded_at`; nunca CPF, descrição nem logradouro
+- Titular: com `Authorization: Bearer <JWT>` cuja assinatura o RMI verifica no JWKS de `JWT_ISSUER_URL` e cujo `preferred_username` é o CPF do chamado, o chamado vem com `titular: true`, `logradouro` e `descricao`. Token inválido, expirado, de outro CPF ou não verificável (sem `JWT_ISSUER_URL`, JWKS fora do ar) recebe a visão pública
+- Campos lidos do documento Mongo (contrato com o pipeline de dados; todos opcionais): `protocolo` (string), `bairro` (string), `logradouro` (string), `andamentos` (lista de `{data, tipo, descricao, fl_publico}`), `loaded_at` (string ISO-8601 ou datetime)
+- Índice `protocolo_1` (não único) criado na inicialização
 
 ### PUT /citizen/{cpf}/address
 Atualiza ou cria o endereço autodeclarado de um cidadão.

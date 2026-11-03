@@ -18,11 +18,11 @@ type BSONTimeString string
 func (s *BSONTimeString) UnmarshalBSONValue(t bsontype.Type, data []byte) error {
 	raw := bson.RawValue{Type: t, Value: data}
 	switch t {
-	case bsontype.Null, bsontype.Undefined:
+	case bson.TypeNull, bson.TypeUndefined:
 		*s = ""
-	case bsontype.String:
+	case bson.TypeString:
 		*s = BSONTimeString(raw.StringValue())
-	case bsontype.DateTime:
+	case bson.TypeDateTime:
 		*s = BSONTimeString(raw.Time().UTC().Format(time.RFC3339))
 	default:
 		return fmt.Errorf("unsupported BSON type %s for timestamp", t)
@@ -41,17 +41,17 @@ func (f BSONFlag) IsSet() bool { return bool(f) }
 func (f *BSONFlag) UnmarshalBSONValue(t bsontype.Type, data []byte) error {
 	raw := bson.RawValue{Type: t, Value: data}
 	switch t {
-	case bsontype.Null, bsontype.Undefined:
+	case bson.TypeNull, bson.TypeUndefined:
 		*f = false
-	case bsontype.Int32:
+	case bson.TypeInt32:
 		*f = raw.Int32() == 1
-	case bsontype.Int64:
+	case bson.TypeInt64:
 		*f = raw.Int64() == 1
-	case bsontype.Double:
+	case bson.TypeDouble:
 		*f = raw.Double() == 1
-	case bsontype.Boolean:
+	case bson.TypeBoolean:
 		*f = BSONFlag(raw.Boolean())
-	case bsontype.String:
+	case bson.TypeString:
 		n, err := strconv.Atoi(strings.TrimSpace(raw.StringValue()))
 		*f = err == nil && n == 1
 	default:

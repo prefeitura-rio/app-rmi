@@ -159,6 +159,12 @@ When asked to do the "commit thing":
 - **Proxies (user JWT, additive under `/v1/salesforce`)**: consentimento, exportar, anonimizar (+ polling), chamados list/detail — do not alter `/v1/citizen` behavior. Anonimização polling fails closed: persist `numeroSolicitacao→CPF` in Redis at POST; GET without CPF in the upstream payload requires that mapping.
 - **Consentimento PATCH**: `categoria` must be a Salesforce picklist value (e.g. `PREF_Lembrete_Pagamento`, not free text). Upstream JWT policy returns 400 (missing token) / 401 (invalid) before Mule — not RMI `errors[]`.
 
+### Public SGRC lookup by protocol (chamados históricos do 1746)
+- **Route**: `GET /v1/maintenance-request/{protocolo}` (`internal/handlers/maintenance_request_public.go`), no `AuthMiddleware`; the gateway action must be `public` in Heimdall/Cerbos. `GET /v1/citizen/{cpf}/maintenance-request` also returns `protocolo`.
+- **Never trust an unverified JWT on a public route**: for `public` actions Cerbos skips token validation and Istio has no `RequestAuthentication` for RMI, so `extractClaims` (decode only) is unsafe there. The owner view (`titular`, `logradouro`, `descricao`) requires `middleware.JWTVerifier` (RS256 signature against the JWKS of `JWT_ISSUER_URL`, issuer, `exp`); no issuer, JWKS down, or any verification error → public view.
+- **Public view**: never CPF, `descricao`, `logradouro`, `endereco`, `_id` or per-CPF totals; `andamentos` only with `fl_publico = 1` (`models.BSONFlag`, anything else is not public).
+- **Data contract** (pipeline do time de dados, all optional on the chamado document): `protocolo`, `bairro`, `logradouro`, `andamentos[] {data, tipo, descricao, fl_publico}`, `loaded_at`. Index `protocolo_1` (non-unique: a protocol may group several chamados).
+
 ### CF Lookup jobs (Clínica da Família via MCP)
 - **Flow**: wallet tries a synchronous MCP lookup (`CF_LOOKUP_SYNC_TIMEOUT`, 15s); on failure it enqueues a `cf_lookup` job (deduped per CPF by `cf_lookup:pending:<cpf>`, 1h) processed by the sync worker (`handleCFLookupJob` → `PerformCFLookup` → `MCPClient.FindNearestCF`).
 - **Timeout**: each job attempt gets `CF_LOOKUP_JOB_TIMEOUT` (default 90s) instead of the worker's generic 30s, since one lookup makes several sequential MCP calls.

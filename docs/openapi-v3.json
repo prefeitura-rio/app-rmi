@@ -7330,6 +7330,76 @@
         }
       }
     },
+    "/maintenance-request/{protocolo}": {
+      "get": {
+        "description": "Consulta pública dos chamados históricos do 1746/SGRC de um protocolo (um protocolo pode ter mais de um chamado). Sem autenticação, ou com o JWT de outra pessoa, a resposta traz categoria, tipo, status, datas, bairro, andamentos públicos (fl_publico = 1) e loaded_at, e nunca CPF, descrição nem logradouro. Com um JWT do Keycloak de assinatura válida cujo preferred_username é o CPF do chamado, o chamado vem com titular = true, logradouro e descrição. Token inválido, expirado ou não verificável é tratado como anônimo.",
+        "tags": [
+          "maintenance-request"
+        ],
+        "summary": "Consultar chamado do 1746 (SGRC) por protocolo",
+        "parameters": [
+          {
+            "description": "Protocolo do SGRC (formato RIO-12345678-9)",
+            "name": "protocolo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bearer <JWT> opcional: libera logradouro e descrição para o titular",
+            "name": "Authorization",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chamados do protocolo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/models.PublicMaintenanceRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Protocolo em formato inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nenhum chamado com esse protocolo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/memory/{phone_number}": {
       "get": {
         "security": [
@@ -12301,6 +12371,9 @@
           "origem_ocorrencia": {
             "type": "string"
           },
+          "protocolo": {
+            "type": "string"
+          },
           "status": {
             "type": "string"
           },
@@ -12905,6 +12978,93 @@
             "type": "string"
           },
           "nome": {
+            "type": "string"
+          }
+        }
+      },
+      "models.PublicMaintenanceRequest": {
+        "type": "object",
+        "properties": {
+          "andamentos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.PublicMaintenanceRequestAndamento"
+            }
+          },
+          "bairro": {
+            "type": "string"
+          },
+          "categoria": {
+            "type": "string"
+          },
+          "data_alvo_finalizacao": {
+            "type": "string"
+          },
+          "data_fim": {
+            "type": "string"
+          },
+          "data_inicio": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": "string"
+          },
+          "id_chamado": {
+            "type": "string"
+          },
+          "loaded_at": {
+            "type": "string"
+          },
+          "logradouro": {
+            "type": "string"
+          },
+          "nome_unidade_organizacional": {
+            "type": "string"
+          },
+          "origem_ocorrencia": {
+            "type": "string"
+          },
+          "protocolo": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subtipo": {
+            "type": "string"
+          },
+          "tipo": {
+            "type": "string"
+          },
+          "titular": {
+            "type": "boolean"
+          }
+        }
+      },
+      "models.PublicMaintenanceRequestAndamento": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": "string"
+          },
+          "tipo": {
+            "type": "string"
+          }
+        }
+      },
+      "models.PublicMaintenanceRequestResponse": {
+        "type": "object",
+        "properties": {
+          "chamados": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/models.PublicMaintenanceRequest"
+            }
+          },
+          "protocolo": {
             "type": "string"
           }
         }

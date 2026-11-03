@@ -142,7 +142,7 @@ func findMaintenanceRequestsByProtocolo(ctx context.Context, protocolo string) (
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	var docs []models.MaintenanceRequestProtocolDocument
 	if err := cursor.All(ctx, &docs); err != nil {

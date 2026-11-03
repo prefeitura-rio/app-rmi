@@ -275,6 +275,27 @@ make_request "GET" "/citizen/$CPF/wallet" "" "Get Citizen Wallet"
 # Test 7: Get Maintenance Requests (with address verification)
 make_request "GET" "/citizen/$CPF/maintenance-request" "" "Get Maintenance Requests (with Address Verification)"
 
+# Test 7b: Public SGRC lookup by protocol (no auth; invalid format must be exactly 400)
+make_request "GET" "/maintenance-request/RIO-00000000-0" "" "Get Maintenance Request by Protocolo (unknown)"
+protocolo_invalid_status=$(curl -s -o /dev/null -w "%{http_code}" "$API_BASE_URL/maintenance-request/protocolo-invalido")
+if [[ "$protocolo_invalid_status" -eq 400 ]]; then
+    print_result "Get Maintenance Request by Protocolo (Invalid format)" "PASS" ""
+else
+    print_result "Get Maintenance Request by Protocolo (Invalid format)" "FAIL" "Status: $protocolo_invalid_status (expected 400)"
+fi
+maintenance_protocolo=$(jq -r '[.data[]? | select(.protocolo != null and .protocolo != "") | .protocolo][0] // empty' \
+    "/tmp/api_response_Get_Maintenance_Requests__with_Address_Verification_" 2>/dev/null)
+if [[ -n "$maintenance_protocolo" ]]; then
+    anon_body=$(curl -s -w "\n%{http_code}" "$API_BASE_URL/maintenance-request/$maintenance_protocolo")
+    anon_status=$(echo "$anon_body" | tail -n1)
+    anon_json=$(echo "$anon_body" | sed '$d')
+    if [[ "$anon_status" -eq 200 ]] && echo "$anon_json" | jq -e '[.chamados[] | select(.titular or has("cpf") or has("logradouro") or has("descricao"))] | length == 0' >/dev/null 2>&1; then
+        print_result "Get Maintenance Request by Protocolo (anonymous public view)" "PASS" ""
+    else
+        print_result "Get Maintenance Request by Protocolo (anonymous public view)" "FAIL" "Status: $anon_status, Response: $anon_json"
+    fi
+fi
+
 # Test 8: Get First Login Status (Original)
 make_request "GET" "/citizen/$CPF/firstlogin" "" "Get First Login Status (Original)"
 
