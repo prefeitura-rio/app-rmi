@@ -84,6 +84,10 @@ type Config struct {
 	// SyncJobBearerEncryptionKey is a 32-byte AES-256 key used to seal JWTs on Redis sync jobs.
 	SyncJobBearerEncryptionKey []byte `json:"-"`
 
+	// JWTIssuerURL is the Keycloak realm issuer whose JWKS verifies tokens on public routes
+	// (empty disables the owner view of GET /v1/maintenance-request/{protocolo}).
+	JWTIssuerURL string `json:"jwt_issuer_url"`
+
 	// Phone verification configuration
 	PhoneVerificationTTL time.Duration `json:"phone_verification_ttl"`
 	PhoneQuarantineTTL   time.Duration `json:"phone_quarantine_ttl"` // 6 months
@@ -478,6 +482,7 @@ func LoadConfig() error {
 		SalesforceBaseURL:          getEnvOrDefault("SALESFORCE_BASE_URL", ""),
 		SalesforceTimeout:          getEnvAsDurationOrDefault("SALESFORCE_TIMEOUT", 30*time.Second),
 		SalesforceWebhookClients:   parseCommaSeparatedList(getEnvOrDefault("SALESFORCE_WEBHOOK_CLIENTS", "")),
+		JWTIssuerURL:               strings.TrimRight(strings.TrimSpace(getEnvOrDefault("JWT_ISSUER_URL", "")), "/"),
 		SyncJobBearerEncryptionKey: bearerKey,
 
 		// Phone verification configuration
