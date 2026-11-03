@@ -971,10 +971,9 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 		return fmt.Errorf("CF lookup service disabled")
 	}
 
-	addressHash := CFLookupServiceInstance.GenerateAddressHash(address)
 	w.logger.Debug("extracted CF lookup job data",
 		observability.CPFField(cpf),
-		zap.String("address_hash", addressHash))
+		zap.String("job_id", job.ID))
 
 	err := CFLookupServiceInstance.PerformCFLookup(ctx, cpf, address)
 	if err != nil {
@@ -983,7 +982,6 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 		w.logger.Warn("CF lookup failed",
 			zap.Error(err),
 			observability.CPFField(cpf),
-			zap.String("address_hash", addressHash),
 			zap.String("job_id", job.ID),
 			zap.Int("attempt", job.RetryCount+1),
 			zap.Int("max_attempts", syncJobMaxRetries(job)),
@@ -996,7 +994,7 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 
 	w.logger.Info("CF lookup completed successfully",
 		observability.CPFField(cpf),
-		zap.String("address_hash", addressHash))
+		zap.String("job_id", job.ID))
 
 	// Invalidate wallet cache so fresh wallet requests get the new CF data
 	// Note: We don't invalidate citizen cache since CF data only appears in wallet endpoint
