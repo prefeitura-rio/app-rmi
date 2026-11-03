@@ -5698,7 +5698,7 @@ const docTemplate = `{
                         "maxLength": 14,
                         "minLength": 14,
                         "type": "string",
-                        "description": "CNPJ da entidade (14 dígitos)",
+                        "description": "CNPJ da entidade (14 caracteres, 12 alfanuméricos A-Z/0-9 e 2 dígitos verificadores; numérico ou alfanumérico da Receita Federal)",
                         "name": "cnpj",
                         "in": "path",
                         "required": true

@@ -256,6 +256,48 @@ func TestValidateCNPJ_InvalidCheckDigits(t *testing.T) {
 	}
 }
 
+func TestValidateCNPJ_Alphanumeric(t *testing.T) {
+	tests := []struct {
+		name  string
+		cnpj  string
+		valid bool
+	}{
+		{name: "valid alphanumeric", cnpj: "12ABC34501DE35", valid: true},
+		{name: "valid alphanumeric with formatting", cnpj: "12.ABC.345/01DE-35", valid: true},
+		{name: "valid alphanumeric lowercase", cnpj: "12abc34501de35", valid: true},
+		{name: "valid alphanumeric surrounded by spaces", cnpj: " 12ABC34501DE35 ", valid: true},
+		{name: "wrong second check digit", cnpj: "12ABC34501DE36", valid: false},
+		{name: "wrong first check digit", cnpj: "12ABC34501DE45", valid: false},
+		{name: "letter in check digit", cnpj: "12ABC34501DEA5", valid: false},
+		{name: "too short", cnpj: "12ABC34501DE3", valid: false},
+		{name: "too long", cnpj: "12ABC34501DE355", valid: false},
+		{name: "accented letter", cnpj: "12ÁBC34501DE35", valid: false},
+		{name: "symbol in base", cnpj: "12AB*34501DE35", valid: false},
+		{name: "underscore in base", cnpj: "12AB_34501DE35", valid: false},
+		{name: "numeric with trailing letters", cnpj: "11222333000181AB", valid: false},
+		{name: "only letters", cnpj: "ABCDEFGHIJKLMN", valid: false},
+		{name: "valid alphanumeric with I and S", cnpj: "12ISC34501DE05", valid: true},
+		{name: "valid alphanumeric with i and s lowercase", cnpj: "12isc34501de05", valid: true},
+		{name: "non-ASCII dotless i", cnpj: "12ıSC34501DE05", valid: false},
+		{name: "non-ASCII long s", cnpj: "12IſC34501DE05", valid: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.valid, ValidateCNPJ(tt.cnpj), "ValidateCNPJ(%q) should be %v", tt.cnpj, tt.valid)
+		})
+	}
+}
+
+func TestNormalizeCNPJ(t *testing.T) {
+	assert.Equal(t, "12ABC34501DE35", NormalizeCNPJ("12.abc.345/01de-35"))
+	assert.Equal(t, "12ABC34501DE35", NormalizeCNPJ(" 12ABC34501DE35 "))
+	assert.Equal(t, "11222333000181", NormalizeCNPJ("11.222.333/0001-81"))
+	assert.Equal(t, "11222333000181", NormalizeCNPJ("11222333000181"))
+	assert.Equal(t, "12AB*34501DE35", NormalizeCNPJ("12ab*34501de35"))
+	assert.Equal(t, "12ıſC34501DE05", NormalizeCNPJ("12ıſc34501de05"))
+}
+
 func TestNormalizeCPF(t *testing.T) {
 	assert.Equal(t, "12345678909", NormalizeCPF("123.456.789-09"))
 	assert.Equal(t, "12345678909", NormalizeCPF("12345678909"))
