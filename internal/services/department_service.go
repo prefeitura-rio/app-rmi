@@ -40,18 +40,18 @@ var DepartmentServiceInstance *DepartmentService
 
 // InitDepartmentService initializes the global department service instance
 func InitDepartmentService() {
-	logger := zap.L().Named("department_service")
+	logger := logging.NewSafeLogger(logging.GetLogger().Unwrap().Named("department_service"))
 
 	// Create DataManager for cache-aware operations if Redis is available
 	var dataManager *DataManager
 	if config.Redis != nil {
-		dataManager = NewDataManager(config.Redis, config.MongoDB, &logging.SafeLogger{})
+		dataManager = NewDataManager(config.Redis, config.MongoDB, logger)
 		logger.Info("department service initialized successfully with DataManager caching")
 	} else {
 		logger.Warn("Redis not available, department service will operate without caching")
 	}
 
-	DepartmentServiceInstance = NewDepartmentService(config.MongoDB, dataManager, &logging.SafeLogger{})
+	DepartmentServiceInstance = NewDepartmentService(config.MongoDB, dataManager, logger)
 
 	logger.Info("indexes will be managed by global database maintenance system")
 }

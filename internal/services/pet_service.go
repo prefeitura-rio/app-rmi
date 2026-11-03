@@ -36,9 +36,9 @@ var PetServiceInstance *PetService
 
 // InitPetService initializes the global pet service instance
 func InitPetService() {
-	logger := zap.L().Named("pet_service")
+	logger := logging.NewSafeLogger(logging.GetLogger().Unwrap().Named("pet_service"))
 
-	PetServiceInstance = NewPetService(config.MongoDB, &logging.SafeLogger{})
+	PetServiceInstance = NewPetService(config.MongoDB, logger)
 
 	logger.Info("pet service initialized successfully")
 	logger.Info("indexes will be managed by global database maintenance system")
