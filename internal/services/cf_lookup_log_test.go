@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -68,6 +72,20 @@ func assertNoAddressInLogs(t *testing.T, logs *observer.ObservedLogs, address st
 	}
 }
 
+// assertNoAddressHashInLogs fails when a log carries an address_hash field or the address hash value. The hash is an
+// unkeyed SHA-256 of the normalized address, so a dictionary of street addresses recovers it.
+func assertNoAddressHashInLogs(t *testing.T, logs *observer.ObservedLogs, address string) {
+	t.Helper()
+	hash := hashAddress(address)
+	for _, entry := range logs.All() {
+		assert.NotContains(t, entry.Message, hash, "address hash in log message %q", entry.Message)
+		for key, value := range entry.ContextMap() {
+			assert.NotContains(t, key, "address_hash", "field %q in log %q", key, entry.Message)
+			assert.NotContains(t, fmt.Sprint(value), hash, "address hash in field %q of log %q", key, entry.Message)
+		}
+	}
+}
+
 func requireLogEntry(t *testing.T, logs *observer.ObservedLogs, message string) observer.LoggedEntry {
 	t.Helper()
 	entries := logs.FilterMessage(message).All()
@@ -75,7 +93,7 @@ func requireLogEntry(t *testing.T, logs *observer.ObservedLogs, message string) 
 	return entries[0]
 }
 
-func TestFindNearestCF_LogsAddressHashInsteadOfAddress(t *testing.T) {
+func TestFindNearestCF_LogsNeitherAddressNorAddressHash(t *testing.T) {
 	cfResult := map[string]interface{}{
 		"structuredContent": map[string]interface{}{
 			"equipamentos": []interface{}{
@@ -105,14 +123,14 @@ func TestFindNearestCF_LogsAddressHashInsteadOfAddress(t *testing.T) {
 	require.NotNil(t, result.HealthFacility)
 
 	assertNoAddressInLogs(t, logs, syntheticCFAddress)
+	assertNoAddressHashInLogs(t, logs, syntheticCFAddress)
 
-	expectedHash := hashAddress(syntheticCFAddress)
 	for _, message := range []string{"starting CF lookup via MCP", "MCP CF LOOKUP REQUEST", "CF lookup via MCP completed"} {
 		entry := requireLogEntry(t, logs, message)
-		assert.Equal(t, expectedHash, entry.ContextMap()["address_hash"], "address_hash on %q", message)
 		_, hasAddress := entry.ContextMap()["address"]
 		assert.False(t, hasAddress, "%q must not carry the address field", message)
 	}
+	assert.Equal(t, "equipments_by_address", requireLogEntry(t, logs, "MCP CF LOOKUP REQUEST").ContextMap()["tool"])
 
 	for _, entry := range logs.All() {
 		assert.False(t, strings.EqualFold(entry.Message, "RAW MCP RESPONSE"), "raw MCP response body must not be logged at INFO")
@@ -121,7 +139,7 @@ func TestFindNearestCF_LogsAddressHashInsteadOfAddress(t *testing.T) {
 	}
 }
 
-func TestPerformCFLookup_NoResults_LogsAddressHashInsteadOfAddress(t *testing.T) {
+func TestPerformCFLookup_NoResults_LogsNeitherAddressNorAddressHash(t *testing.T) {
 	cfResult := map[string]interface{}{
 		"isError":     true,
 		"textContent": "no equipment found",
@@ -137,13 +155,88 @@ func TestPerformCFLookup_NoResults_LogsAddressHashInsteadOfAddress(t *testing.T)
 	require.NoError(t, err)
 
 	assertNoAddressInLogs(t, logs, syntheticCFAddress)
+	assertNoAddressHashInLogs(t, logs, syntheticCFAddress)
 
-	expectedHash := service.GenerateAddressHash(syntheticCFAddress)
 	for _, message := range []string{"performing CF lookup", "no health services found for address"} {
 		entry := requireLogEntry(t, logs, message)
-		assert.Equal(t, expectedHash, entry.ContextMap()["address_hash"], "address_hash on %q", message)
 		_, hasAddress := entry.ContextMap()["address"]
 		assert.False(t, hasAddress, "%q must not carry the address field", message)
+		assert.Contains(t, entry.ContextMap(), "cpf", "%q must stay correlatable by the masked CPF", message)
+	}
+}
+
+func TestPerformCFLookup_MCPFailure_LogsNeitherAddressNorAddressHash(t *testing.T) {
+	mcpClient, server := setupMCPTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+	defer server.Close()
+	mcpClient.retryConfig.MaxRetries = 0
+
+	logger, logs := observedLogger(zapcore.DebugLevel)
+	mcpClient.logger = logger
+	service := NewCFLookupService(nil, mcpClient, logger)
+
+	err := service.PerformCFLookup(context.Background(), "12345678909", syntheticCFAddress)
+	require.Error(t, err)
+
+	entry := requireLogEntry(t, logs, "MCP health services lookup failed")
+	assert.NotEmpty(t, entry.ContextMap()["error_type"])
+	assert.Contains(t, entry.ContextMap(), "cpf")
+	assertNoAddressInLogs(t, logs, syntheticCFAddress)
+	assertNoAddressHashInLogs(t, logs, syntheticCFAddress)
+}
+
+func TestHandleCFLookupJob_LogsJobIDInsteadOfAddressHash(t *testing.T) {
+	mcpClient, server := setupMCPTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+	defer server.Close()
+	mcpClient.retryConfig.MaxRetries = 0
+
+	logger, logs := observedLogger(zapcore.DebugLevel)
+	mcpClient.logger = logger
+	previous := CFLookupServiceInstance
+	CFLookupServiceInstance = NewCFLookupService(nil, mcpClient, logger)
+	t.Cleanup(func() { CFLookupServiceInstance = previous })
+
+	job := newCFLookupTestJob(0)
+	job.Data = map[string]interface{}{"cpf": retryTestCPF, "address": syntheticCFAddress}
+	worker := &SyncWorker{logger: logger}
+
+	err := worker.handleCFLookupJob(context.Background(), job)
+	require.Error(t, err)
+
+	for _, message := range []string{"extracted CF lookup job data", "CF lookup failed"} {
+		entry := requireLogEntry(t, logs, message)
+		assert.Equal(t, job.ID, entry.ContextMap()["job_id"], "job_id on %q", message)
+		assert.Contains(t, entry.ContextMap(), "cpf", "%q must stay correlatable by the masked CPF", message)
+	}
+	assertNoAddressInLogs(t, logs, syntheticCFAddress)
+	assertNoAddressHashInLogs(t, logs, syntheticCFAddress)
+}
+
+// TestNoAddressHashLogFields guards the code paths the tests above cannot reach without MongoDB (store, invalidation,
+// wallet handler): no zap field named address_hash, old_address_hash or new_address_hash in production code.
+func TestNoAddressHashLogFields(t *testing.T) {
+	fieldPattern := regexp.MustCompile(`zap\.\w+\(\s*"[a-z_]*address_hash"`)
+	for _, root := range []string{"../../internal", "../../cmd"} {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			for i, line := range strings.Split(string(content), "\n") {
+				assert.False(t, fieldPattern.MatchString(line), "%s:%d logs an address_hash field: %s", path, i+1, strings.TrimSpace(line))
+			}
+			return nil
+		})
+		require.NoError(t, err)
 	}
 }
 
