@@ -46,7 +46,8 @@ func NewCFLookupService(database *mongo.Database, mcpClient *MCPClient, logger *
 
 // InitCFLookupService initializes the global CF lookup service instance
 func InitCFLookupService() {
-	logger := zap.L().Named("cf_lookup_service")
+	baseLogger := logging.GetLogger().Unwrap()
+	logger := logging.NewSafeLogger(baseLogger.Named("cf_lookup_service"))
 
 	// Check if CF lookup is enabled
 	if !config.AppConfig.CFLookupEnabled {
@@ -61,14 +62,14 @@ func InitCFLookupService() {
 		zap.Duration("cache_ttl", config.AppConfig.CFLookupCacheTTL))
 
 	// Initialize MCP client with error handling
-	mcpClient := NewMCPClient(config.AppConfig, &logging.SafeLogger{})
+	mcpClient := NewMCPClient(config.AppConfig, logging.NewSafeLogger(baseLogger.Named("mcp_client")))
 	if mcpClient == nil {
 		logger.Error("failed to initialize MCP client - CF lookup service disabled")
 		CFLookupServiceInstance = nil
 		return
 	}
 
-	CFLookupServiceInstance = NewCFLookupService(config.MongoDB, mcpClient, &logging.SafeLogger{})
+	CFLookupServiceInstance = NewCFLookupService(config.MongoDB, mcpClient, logger)
 	logger.Info("CF lookup service initialized successfully")
 }
 
