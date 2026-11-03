@@ -286,6 +286,24 @@ func (c *MCPClient) getSessionID(ctx context.Context) (string, error) {
 	return sessionID, nil
 }
 
+// describeMCPPayload returns the JSON-RPC method and, for tools/call, the tool name. Logs carry these instead of the
+// payload, whose arguments hold the citizen's address (LGPD).
+func describeMCPPayload(payload interface{}) (method, tool string) {
+	req, ok := payload.(MCPRequest)
+	if !ok {
+		if ptr, isPtr := payload.(*MCPRequest); isPtr && ptr != nil {
+			req, ok = *ptr, true
+		}
+	}
+	if !ok {
+		return "", ""
+	}
+	if params, isMap := req.Params.(map[string]interface{}); isMap {
+		tool, _ = params["name"].(string)
+	}
+	return req.Method, tool
+}
+
 // makeRequest sends a JSON-RPC request to the MCP server
 func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload interface{}) (map[string]interface{}, error) {
 	jsonData, err := json.Marshal(payload)
@@ -306,9 +324,12 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 		req.Header.Set("Accept", "application/json, text/event-stream")
 		req.Header.Set("mcp-session-id", sessionID)
 
+		method, tool := describeMCPPayload(payload)
 		c.logger.Debug("sending MCP request",
 			zap.String("session_id", sessionID),
-			zap.String("payload", string(jsonData)))
+			zap.String("method", method),
+			zap.String("tool", tool),
+			zap.Int("payload_bytes", len(jsonData)))
 
 		resp, err := c.client.Do(req)
 		if err != nil {
@@ -327,7 +348,9 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 
 		// Handle Server-Sent Events format
 		bodyStr := string(body)
-		c.logger.Debug("raw MCP response", zap.String("body", bodyStr))
+		c.logger.Debug("raw MCP response",
+			zap.Int("status", resp.StatusCode),
+			zap.Int("body_bytes", len(body)))
 
 		if strings.Contains(bodyStr, "event: message") {
 			// Parse SSE format more robustly
@@ -346,7 +369,8 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 			return &MCPProtocolError{Err: fmt.Errorf("failed to unmarshal response: %w", err)}
 		}
 
-		c.logger.Debug("received MCP response", zap.Any("response", result))
+		_, hasError := result["error"]
+		c.logger.Debug("received MCP response", zap.Bool("has_error", hasError))
 
 		return nil
 	})
@@ -376,9 +400,11 @@ func (c *MCPClient) sendNotification(ctx context.Context, sessionID string, payl
 		req.Header.Set("Accept", "application/json, text/event-stream")
 		req.Header.Set("mcp-session-id", sessionID)
 
+		method, _ := describeMCPPayload(payload)
 		c.logger.Debug("sending MCP notification",
 			zap.String("session_id", sessionID),
-			zap.String("payload", string(jsonData)))
+			zap.String("method", method),
+			zap.Int("payload_bytes", len(jsonData)))
 
 		resp, err := c.client.Do(req)
 		if err != nil {

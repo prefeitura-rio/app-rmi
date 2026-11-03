@@ -151,3 +151,100 @@ func TestHashAddress_MatchesGenerateAddressHash(t *testing.T) {
 	assert.Len(t, hashAddress(syntheticCFAddress), 64)
 	assert.NotContains(t, hashAddress(syntheticCFAddress), "Rua")
 }
+
+// TestFindNearestCF_DebugLogsCarryNoAddress runs the lookup with DEBUG enabled against an MCP server that echoes the
+// address back, so neither the request payload nor the response body may reach the logs.
+func TestFindNearestCF_DebugLogsCarryNoAddress(t *testing.T) {
+	cfResult := map[string]interface{}{
+		"structuredContent": map[string]interface{}{
+			"endereco_consultado": syntheticCFAddress,
+			"equipamentos": []interface{}{
+				map[string]interface{}{
+					"categoria":      "CF",
+					"id_equipamento": "cf-debug-1",
+					"nome_oficial":   "CF Oficial Debug",
+					"nome_popular":   "Clinica Debug",
+					"logradouro":     "Rua da Clinica",
+					"numero":         "2",
+					"bairro":         "Centro",
+					"ativo":          true,
+				},
+			},
+		},
+	}
+
+	client, server := setupMCPTest(t, mcpHandlerWithEquipments(cfResult))
+	defer server.Close()
+
+	logger, logs := observedLogger(zapcore.DebugLevel)
+	client.logger = logger
+
+	result, err := client.FindNearestCF(context.Background(), syntheticCFAddress)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.HealthFacility)
+
+	assertNoAddressInLogs(t, logs, syntheticCFAddress)
+
+	requests := logs.FilterMessage("sending MCP request").All()
+	require.Len(t, requests, 3, "initialize, equipments_instructions and equipments_by_address")
+	var lookupRequest *observer.LoggedEntry
+	for i := range requests {
+		fields := requests[i].ContextMap()
+		_, hasPayload := fields["payload"]
+		assert.False(t, hasPayload, "sending MCP request must not carry the payload")
+		assert.Greater(t, fields["payload_bytes"], int64(0))
+		if fields["tool"] == "equipments_by_address" {
+			lookupRequest = &requests[i]
+		}
+	}
+	require.NotNil(t, lookupRequest, "the equipments_by_address request is logged with its tool name")
+	assert.Equal(t, "tools/call", lookupRequest.ContextMap()["method"])
+
+	for _, message := range []string{"raw MCP response", "received MCP response"} {
+		for _, entry := range logs.FilterMessage(message).All() {
+			fields := entry.ContextMap()
+			for _, forbidden := range []string{"body", "response"} {
+				_, has := fields[forbidden]
+				assert.False(t, has, "%q must not carry the field %q", message, forbidden)
+			}
+		}
+	}
+	responses := logs.FilterMessage("raw MCP response").All()
+	require.Len(t, responses, 3)
+	for _, entry := range responses {
+		assert.Greater(t, entry.ContextMap()["body_bytes"], int64(0))
+	}
+}
+
+func TestDescribeMCPPayload(t *testing.T) {
+	toolCall := MCPRequest{
+		JSONRPC: "2.0",
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "equipments_by_address",
+			"arguments": map[string]interface{}{"address": syntheticCFAddress},
+		},
+	}
+
+	method, tool := describeMCPPayload(toolCall)
+	assert.Equal(t, "tools/call", method)
+	assert.Equal(t, "equipments_by_address", tool)
+
+	method, tool = describeMCPPayload(&toolCall)
+	assert.Equal(t, "tools/call", method)
+	assert.Equal(t, "equipments_by_address", tool)
+
+	method, tool = describeMCPPayload(MCPRequest{JSONRPC: "2.0", Method: "notifications/initialized"})
+	assert.Equal(t, "notifications/initialized", method)
+	assert.Empty(t, tool)
+
+	var nilRequest *MCPRequest
+	method, tool = describeMCPPayload(nilRequest)
+	assert.Empty(t, method)
+	assert.Empty(t, tool)
+
+	method, tool = describeMCPPayload(map[string]interface{}{"method": "tools/call"})
+	assert.Empty(t, method)
+	assert.Empty(t, tool)
+}
