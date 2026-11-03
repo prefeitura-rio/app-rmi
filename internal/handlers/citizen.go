@@ -184,7 +184,8 @@ func GetCitizenData(c *gin.Context) {
 			logger.Warn("failed to check CF lookup status", zap.Error(err))
 		} else if shouldLookup && address != "" {
 			// Queue background CF lookup job
-			logger.Debug("queuing CF lookup job", observability.CPFField(cpf), zap.String("address", address))
+			logger.Debug("queuing CF lookup job", observability.CPFField(cpf),
+				zap.String("address_hash", services.CFLookupServiceInstance.GenerateAddressHash(address)))
 			queueCFLookupJob(ctx, cpf, address)
 		}
 	} else {
@@ -3247,10 +3248,11 @@ func GetCitizenWallet(c *gin.Context) {
 					address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
 				}
 				if services.IsMunicipioCoberto(municipio) {
-					logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
+					addressHash := services.CFLookupServiceInstance.GenerateAddressHash(address)
+					logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address_hash", addressHash))
 
 					if address != "" {
-						logger.Info("CALLING TrySynchronousCFLookup", observability.CPFField(cpf), zap.String("address", address))
+						logger.Info("CALLING TrySynchronousCFLookup", observability.CPFField(cpf), zap.String("address_hash", addressHash))
 						cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
 						if err != nil {
 							logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), observability.CPFField(cpf))
@@ -3271,7 +3273,7 @@ func GetCitizenWallet(c *gin.Context) {
 				logger.Info("integrating CF data into wallet saude.clinica_familia",
 					observability.CPFField(cpf),
 					zap.String("cf_name", cfData.CFData.NomePopular),
-					zap.String("cf_address", cfData.AddressUsed),
+					zap.String("address_hash", cfData.AddressHash),
 					zap.String("cf_source", cfData.LookupSource),
 					zap.String("operation", "cf_integration_success"))
 

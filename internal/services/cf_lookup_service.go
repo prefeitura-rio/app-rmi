@@ -126,7 +126,7 @@ func (s *CFLookupService) ShouldLookupCF(ctx context.Context, cpf string, citize
 
 	s.logger.Debug("CF lookup should be performed",
 		observability.CPFField(cpf),
-		zap.String("address", address))
+		zap.String("address_hash", addressHash))
 
 	return true, address, nil
 }
@@ -148,7 +148,6 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 
 	s.logger.Info("performing CF lookup",
 		observability.CPFField(cpf),
-		zap.String("address", address),
 		zap.String("operation", "cf_lookup_start"),
 		zap.String("address_hash", s.GenerateAddressHash(address)))
 
@@ -185,7 +184,7 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 	if healthData == nil || healthData.HealthFacility == nil {
 		s.logger.Info("no health services found for address",
 			observability.CPFField(cpf),
-			zap.String("address", address))
+			zap.String("address_hash", s.GenerateAddressHash(address)))
 		return nil
 	}
 
@@ -325,6 +324,11 @@ func (s *CFLookupService) InvalidateCFDataForAddress(ctx context.Context, cpf, n
 
 // GenerateAddressHash creates a hash of the address for tracking changes
 func (s *CFLookupService) GenerateAddressHash(address string) string {
+	return hashAddress(address)
+}
+
+// hashAddress is the SHA-256 of the normalized address. Logs carry it instead of the address (LGPD).
+func hashAddress(address string) string {
 	// Normalize address (lowercase, trim spaces)
 	normalized := strings.TrimSpace(strings.ToLower(address))
 
@@ -619,7 +623,7 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	if healthData == nil || healthData.HealthFacility == nil {
 		s.logger.Debug("no health services found for address in synchronous lookup",
 			observability.CPFField(cpf),
-			zap.String("address", address))
+			zap.String("address_hash", s.GenerateAddressHash(address)))
 		return nil, nil
 	}
 
