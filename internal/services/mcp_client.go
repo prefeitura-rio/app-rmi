@@ -286,6 +286,20 @@ func (c *MCPClient) getSessionID(ctx context.Context) (string, error) {
 	return sessionID, nil
 }
 
+// mcpPayloadMethod returns the JSON-RPC method of a payload, so debug logs can name the
+// request without its params (tools/call carries the citizen's address).
+func mcpPayloadMethod(payload interface{}) string {
+	switch p := payload.(type) {
+	case MCPRequest:
+		return p.Method
+	case *MCPRequest:
+		if p != nil {
+			return p.Method
+		}
+	}
+	return "unknown"
+}
+
 // makeRequest sends a JSON-RPC request to the MCP server
 func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload interface{}) (map[string]interface{}, error) {
 	jsonData, err := json.Marshal(payload)
@@ -308,7 +322,8 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 
 		c.logger.Debug("sending MCP request",
 			zap.String("session_id", sessionID),
-			zap.String("payload", string(jsonData)))
+			zap.String("method", mcpPayloadMethod(payload)),
+			zap.Int("payload_bytes", len(jsonData)))
 
 		resp, err := c.client.Do(req)
 		if err != nil {
@@ -327,7 +342,9 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 
 		// Handle Server-Sent Events format
 		bodyStr := string(body)
-		c.logger.Debug("raw MCP response", zap.String("body", bodyStr))
+		c.logger.Debug("raw MCP response",
+			zap.Int("status", resp.StatusCode),
+			zap.Int("body_bytes", len(body)))
 
 		if strings.Contains(bodyStr, "event: message") {
 			// Parse SSE format more robustly
@@ -346,7 +363,8 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 			return &MCPProtocolError{Err: fmt.Errorf("failed to unmarshal response: %w", err)}
 		}
 
-		c.logger.Debug("received MCP response", zap.Any("response", result))
+		_, hasError := result["error"]
+		c.logger.Debug("received MCP response", zap.Bool("has_error", hasError))
 
 		return nil
 	})
@@ -378,7 +396,8 @@ func (c *MCPClient) sendNotification(ctx context.Context, sessionID string, payl
 
 		c.logger.Debug("sending MCP notification",
 			zap.String("session_id", sessionID),
-			zap.String("payload", string(jsonData)))
+			zap.String("method", mcpPayloadMethod(payload)),
+			zap.Int("payload_bytes", len(jsonData)))
 
 		resp, err := c.client.Do(req)
 		if err != nil {

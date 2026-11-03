@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -150,4 +152,142 @@ func TestHashAddress_MatchesGenerateAddressHash(t *testing.T) {
 	assert.Equal(t, service.GenerateAddressHash(syntheticCFAddress), hashAddress(syntheticCFAddress))
 	assert.Len(t, hashAddress(syntheticCFAddress), 64)
 	assert.NotContains(t, hashAddress(syntheticCFAddress), "Rua")
+}
+
+// useGlobalLogger swaps the process-wide logger the way logging.InitLogger does in cmd/api and cmd/sync.
+func useGlobalLogger(t *testing.T, logger *logging.SafeLogger) {
+	t.Helper()
+	previous := logging.Logger
+	logging.Logger = logger
+	t.Cleanup(func() { logging.Logger = previous })
+}
+
+func TestInitCFLookupService_WiresGlobalLoggerIntoServiceAndMCPClient(t *testing.T) {
+	server := httptest.NewServer(mcpHandlerWithEquipments(map[string]interface{}{
+		"isError":     true,
+		"textContent": "no equipment found",
+	}))
+	defer server.Close()
+
+	previousConfig := config.AppConfig
+	previousInstance := CFLookupServiceInstance
+	t.Cleanup(func() {
+		config.AppConfig = previousConfig
+		CFLookupServiceInstance = previousInstance
+	})
+	config.AppConfig = &config.Config{
+		CFLookupEnabled: true,
+		MCPServerURL:    server.URL,
+		MCPAuthToken:    "test-token",
+	}
+
+	logger, logs := observedLogger(zapcore.DebugLevel)
+	useGlobalLogger(t, logger)
+
+	InitCFLookupService()
+	require.NotNil(t, CFLookupServiceInstance)
+	requireLogEntry(t, logs, "CF lookup service initialized successfully")
+
+	err := CFLookupServiceInstance.PerformCFLookup(context.Background(), "12345678909", syntheticCFAddress)
+	require.NoError(t, err)
+
+	assert.Equal(t, "cf_lookup_service", requireLogEntry(t, logs, "performing CF lookup").LoggerName)
+	assert.Equal(t, "cf_lookup_service", requireLogEntry(t, logs, "no health services found for address").LoggerName)
+	assert.Equal(t, "mcp_client", requireLogEntry(t, logs, "starting CF lookup via MCP").LoggerName)
+	assert.Equal(t, "mcp_client", requireLogEntry(t, logs, "MCP CF LOOKUP REQUEST").LoggerName)
+	assert.Equal(t, "mcp_client", requireLogEntry(t, logs, "CF lookup via MCP completed").LoggerName)
+
+	assertNoAddressInLogs(t, logs, syntheticCFAddress)
+}
+
+func TestInitCFLookupService_LogsMCPSessionFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	previousConfig := config.AppConfig
+	previousInstance := CFLookupServiceInstance
+	t.Cleanup(func() {
+		config.AppConfig = previousConfig
+		CFLookupServiceInstance = previousInstance
+	})
+	config.AppConfig = &config.Config{
+		CFLookupEnabled: true,
+		MCPServerURL:    server.URL,
+		MCPAuthToken:    "test-token",
+	}
+
+	logger, logs := observedLogger(zapcore.InfoLevel)
+	useGlobalLogger(t, logger)
+
+	InitCFLookupService()
+	require.NotNil(t, CFLookupServiceInstance)
+	CFLookupServiceInstance.mcpClient.retryConfig.MaxRetries = 0
+
+	_, err := CFLookupServiceInstance.mcpClient.FindNearestCF(context.Background(), syntheticCFAddress)
+	require.Error(t, err)
+
+	entry := requireLogEntry(t, logs, "session ID acquisition failed")
+	assert.Equal(t, zapcore.ErrorLevel, entry.Level)
+	assert.Equal(t, "mcp_client", entry.LoggerName)
+	assertNoAddressInLogs(t, logs, syntheticCFAddress)
+}
+
+func TestFindNearestCF_DebugLogsOmitPayloadAndResponseBody(t *testing.T) {
+	cfResult := map[string]interface{}{
+		"structuredContent": map[string]interface{}{
+			"endereco_consultado": syntheticCFAddress,
+			"equipamentos": []interface{}{
+				map[string]interface{}{
+					"categoria":      "CF",
+					"id_equipamento": "cf-debug-1",
+					"nome_oficial":   "CF Oficial Teste",
+					"nome_popular":   "Clinica Teste",
+					"logradouro":     "Rua da Clinica",
+					"numero":         "1",
+					"bairro":         "Centro",
+					"ativo":          true,
+				},
+			},
+		},
+	}
+
+	client, server := setupMCPTest(t, mcpHandlerWithEquipments(cfResult))
+	defer server.Close()
+
+	logger, logs := observedLogger(zapcore.DebugLevel)
+	client.logger = logger
+
+	result, err := client.FindNearestCF(context.Background(), syntheticCFAddress)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assertNoAddressInLogs(t, logs, syntheticCFAddress)
+
+	requests := logs.FilterMessage("sending MCP request").All()
+	require.NotEmpty(t, requests)
+	methods := make([]string, 0, len(requests))
+	for _, entry := range requests {
+		fields := entry.ContextMap()
+		_, hasPayload := fields["payload"]
+		assert.False(t, hasPayload, "sending MCP request must not carry the JSON-RPC payload")
+		assert.NotZero(t, fields["payload_bytes"])
+		methods = append(methods, fmt.Sprint(fields["method"]))
+	}
+	assert.Contains(t, methods, "tools/call")
+	assert.Contains(t, methods, "initialize")
+
+	for _, entry := range logs.All() {
+		fields := entry.ContextMap()
+		_, hasBody := fields["body"]
+		_, hasResponse := fields["response"]
+		assert.False(t, hasBody, "log %q must not carry the raw MCP body", entry.Message)
+		assert.False(t, hasResponse, "log %q must not carry the parsed MCP response", entry.Message)
+	}
+
+	notification := requireLogEntry(t, logs, "sending MCP notification")
+	assert.Equal(t, "notifications/initialized", notification.ContextMap()["method"])
+	_, hasPayload := notification.ContextMap()["payload"]
+	assert.False(t, hasPayload)
 }
