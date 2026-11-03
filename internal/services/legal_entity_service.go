@@ -36,9 +36,9 @@ var LegalEntityServiceInstance *LegalEntityService
 
 // InitLegalEntityService initializes the global legal entity service instance
 func InitLegalEntityService() {
-	logger := zap.L().Named("legal_entity_service")
+	logger := logging.NewSafeLogger(logging.GetLogger().Unwrap().Named("legal_entity_service"))
 
-	LegalEntityServiceInstance = NewLegalEntityService(config.MongoDB, &logging.SafeLogger{})
+	LegalEntityServiceInstance = NewLegalEntityService(config.MongoDB, logger)
 
 	logger.Info("legal entity service initialized successfully")
 	logger.Info("indexes will be managed by global database maintenance system")
