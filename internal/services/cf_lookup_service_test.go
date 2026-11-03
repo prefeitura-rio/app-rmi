@@ -14,9 +14,11 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.uber.org/zap/zapcore"
 )
 
 // setupCFLookupTest initializes MongoDB and Redis for CF lookup service tests
@@ -1085,4 +1087,38 @@ func TestTrySynchronousCFLookup_CachedData(t *testing.T) {
 // Helper function to create string pointers
 func strPtr(s string) *string {
 	return &s
+}
+
+func TestTrySynchronousCFLookup_MCPErrorEchoingAddressIsNotLogged(t *testing.T) {
+	service, cleanup := setupCFLookupTest(t)
+	defer cleanup()
+
+	const address = "Rua Sintetica Sincrona, 77, Bairro Ficticio"
+	client, server := setupMCPTest(t, mcpHandlerWithToolResponse(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"error":   map[string]interface{}{"code": -32602, "message": "endereco invalido: " + address},
+	}))
+	defer server.Close()
+	client.retryConfig.MaxRetries = 0
+
+	logger, logs := observedLogger(zapcore.DebugLevel)
+	client.logger = logger
+	service.mcpClient = client
+	service.logger = logger
+
+	cpf := "00000000272"
+	ClearCFLookupPending(context.Background(), cpf)
+	t.Cleanup(func() { ClearCFLookupPending(context.Background(), cpf) })
+
+	result, err := service.TrySynchronousCFLookup(context.Background(), cpf, address)
+
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.True(t, IsPermanentCFLookupError(err))
+	assert.NotContains(t, err.Error(), address, "the wallet handler logs this error")
+	assertNoAddressInLogs(t, logs, address)
+	fields := requireLogEntry(t, logs, "synchronous CF lookup failed").ContextMap()
+	assert.Equal(t, "tool", fields["error_type"])
+	assert.EqualValues(t, -32602, fields["error_code"])
 }

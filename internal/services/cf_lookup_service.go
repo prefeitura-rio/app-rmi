@@ -161,15 +161,13 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 	// Call MCP server to find CF with enhanced error handling
 	healthData, err := s.mcpClient.FindNearestCF(ctx, address)
 	if err != nil {
-		// Categorize the error for better handling
-		errorType := s.categorizeError(err)
+		cfErr := &CFLookupError{Category: s.categorizeError(err), Err: err}
 		s.logger.Warn("MCP health services lookup failed",
-			zap.Error(err),
-			observability.CPFField(cpf),
-			zap.String("address_hash", s.GenerateAddressHash(address)),
-			zap.String("error_type", errorType))
+			append(CFLookupErrorFields(cfErr),
+				observability.CPFField(cpf),
+				zap.String("address_hash", s.GenerateAddressHash(address)))...)
 
-		return &CFLookupError{Category: errorType, Err: err}
+		return cfErr
 	}
 
 	if healthData == nil || healthData.HealthFacility == nil {
@@ -405,14 +403,32 @@ func SanitizeAddressField(address string) string {
 }
 
 // CFLookupError is an MCP failure during a CF lookup, tagged with the category from categorizeError.
-// The message never carries the citizen's address, so it is safe for logs and the DLQ.
+// Its message carries only the category and the code, never the text of the wrapped error: the MCP
+// server may echo the citizen's address there, and this message goes to logs and to the DLQ.
 type CFLookupError struct {
 	Category string
 	Err      error
 }
 
 func (e *CFLookupError) Error() string {
-	return fmt.Sprintf("health services lookup failed (%s): %v", e.Category, e.Err)
+	if code := e.Code(); code != 0 {
+		return fmt.Sprintf("health services lookup failed (%s): code %d", e.Category, code)
+	}
+	return fmt.Sprintf("health services lookup failed (%s)", e.Category)
+}
+
+// Code is the JSON-RPC error code of an MCP tool error or the HTTP status the MCP server answered,
+// and 0 when the failure has neither.
+func (e *CFLookupError) Code() int {
+	var toolErr *MCPToolError
+	if errors.As(e.Err, &toolErr) {
+		return toolErr.Code
+	}
+	var statusErr *MCPHTTPStatusError
+	if errors.As(e.Err, &statusErr) {
+		return statusErr.StatusCode
+	}
+	return 0
 }
 
 func (e *CFLookupError) Unwrap() error {
@@ -434,6 +450,24 @@ func (e *CFLookupError) Permanent() bool {
 func IsPermanentCFLookupError(err error) bool {
 	var cfErr *CFLookupError
 	return errors.As(err, &cfErr) && cfErr.Permanent()
+}
+
+// CFLookupErrorFields describes a CF lookup failure for logs by its category (error_type) and code
+// (error_code), leaving out the free text returned by the MCP server, which may repeat the address.
+// Errors that are not a CFLookupError are local messages and are logged as they are.
+func CFLookupErrorFields(err error) []zap.Field {
+	var cfErr *CFLookupError
+	if !errors.As(err, &cfErr) {
+		return []zap.Field{zap.Error(err)}
+	}
+	fields := []zap.Field{
+		zap.String("error", cfErr.Error()),
+		zap.String("error_type", cfErr.Category),
+	}
+	if code := cfErr.Code(); code != 0 {
+		fields = append(fields, zap.Int("error_code", code))
+	}
+	return fields
 }
 
 // categorizeTypedMCPError classifies the errors the MCP client returns as types, so a status code
@@ -687,10 +721,12 @@ func (s *CFLookupService) TrySynchronousCFLookup(ctx context.Context, cpf, addre
 	healthData, err := s.mcpClient.FindNearestCF(syncCtx, address)
 
 	if err != nil {
-		s.logger.Debug("synchronous CF lookup failed", zap.Error(err), observability.CPFField(cpf))
+		cfErr := &CFLookupError{Category: s.categorizeError(err), Err: err}
+		s.logger.Debug("synchronous CF lookup failed",
+			append(CFLookupErrorFields(cfErr), observability.CPFField(cpf))...)
 		// Fall back to async lookup - queue a job manually
 		s.queueCFLookupJob(ctx, cpf, address)
-		return nil, err
+		return nil, cfErr
 	}
 
 	// Check if any health services were found

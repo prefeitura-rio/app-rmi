@@ -3255,7 +3255,10 @@ func GetCitizenWallet(c *gin.Context) {
 						logger.Info("CALLING TrySynchronousCFLookup", observability.CPFField(cpf), zap.String("address_hash", addressHash))
 						cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
 						if err != nil {
-							logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), observability.CPFField(cpf))
+							logger.Info("SYNCHRONOUS CF LOOKUP FAILED",
+								append(services.CFLookupErrorFields(err),
+									observability.CPFField(cpf),
+									zap.String("address_hash", addressHash))...)
 						} else {
 							logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
 						}
