@@ -1432,6 +1432,8 @@ definitions:
         type: string
       origem_ocorrencia:
         type: string
+      protocolo:
+        type: string
       status:
         type: string
       subtipo:
@@ -1833,6 +1835,63 @@ definitions:
       id_profissional_sus:
         type: string
       nome:
+        type: string
+    type: object
+  models.PublicMaintenanceRequest:
+    properties:
+      andamentos:
+        items:
+          $ref: '#/definitions/models.PublicMaintenanceRequestAndamento'
+        type: array
+      bairro:
+        type: string
+      categoria:
+        type: string
+      data_alvo_finalizacao:
+        type: string
+      data_fim:
+        type: string
+      data_inicio:
+        type: string
+      descricao:
+        type: string
+      id_chamado:
+        type: string
+      loaded_at:
+        type: string
+      logradouro:
+        type: string
+      nome_unidade_organizacional:
+        type: string
+      origem_ocorrencia:
+        type: string
+      protocolo:
+        type: string
+      status:
+        type: string
+      subtipo:
+        type: string
+      tipo:
+        type: string
+      titular:
+        type: boolean
+    type: object
+  models.PublicMaintenanceRequestAndamento:
+    properties:
+      data:
+        type: string
+      descricao:
+        type: string
+      tipo:
+        type: string
+    type: object
+  models.PublicMaintenanceRequestResponse:
+    properties:
+      chamados:
+        items:
+          $ref: '#/definitions/models.PublicMaintenanceRequest'
+        type: array
+      protocolo:
         type: string
     type: object
   models.QuarantineResponse:
@@ -6422,6 +6481,48 @@ paths:
       summary: Obter informações de uma entidade jurídica por CNPJ
       tags:
       - legal-entity
+  /maintenance-request/{protocolo}:
+    get:
+      description: Consulta pública dos chamados históricos do 1746/SGRC de um protocolo
+        (um protocolo pode ter mais de um chamado). Sem autenticação, ou com o JWT
+        de outra pessoa, a resposta traz categoria, tipo, status, datas, bairro, andamentos
+        públicos (fl_publico = 1) e loaded_at, e nunca CPF, descrição nem logradouro.
+        Com um JWT do Keycloak de assinatura válida cujo preferred_username é o CPF
+        do chamado, o chamado vem com titular = true, logradouro e descrição. Token
+        inválido, expirado ou não verificável é tratado como anônimo.
+      parameters:
+      - description: Protocolo do SGRC (formato RIO-12345678-9)
+        in: path
+        name: protocolo
+        required: true
+        type: string
+      - description: 'Bearer <JWT> opcional: libera logradouro e descrição para o
+          titular'
+        in: header
+        name: Authorization
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Chamados do protocolo
+          schema:
+            $ref: '#/definitions/models.PublicMaintenanceRequestResponse'
+        "400":
+          description: Protocolo em formato inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Nenhum chamado com esse protocolo
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Erro interno do servidor
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      summary: Consultar chamado do 1746 (SGRC) por protocolo
+      tags:
+      - maintenance-request
   /memory/{phone_number}:
     get:
       consumes:

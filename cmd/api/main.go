@@ -134,6 +134,12 @@ func main() {
 	// Initialize CF lookup service for automatic Clínica da Família lookup
 	services.InitCFLookupService()
 
+	// Owner view of the public SGRC lookup by protocol needs a locally verified JWT
+	handlers.SetMaintenanceRequestJWTVerifier(middleware.NewJWTVerifier(config.AppConfig.JWTIssuerURL, nil))
+	if config.AppConfig.JWTIssuerURL == "" {
+		observability.Logger().Warn("JWT_ISSUER_URL not set: GET /v1/maintenance-request/{protocolo} serves only the public view")
+	}
+
 	// Initialize handlers
 	phoneHandlers := handlers.NewPhoneHandlers(observability.Logger(), phoneMappingService, configService)
 	betaGroupHandlers := handlers.NewBetaGroupHandlers(observability.Logger(), betaGroupService)
@@ -268,6 +274,9 @@ func main() {
 			public.GET("/education/options", handlers.GetEducationOptions)
 			public.GET("/disability/options", handlers.GetDisabilityOptions)
 		}
+
+		// Public SGRC lookup by protocol (optional JWT, verified locally, unlocks the owner view)
+		v1.GET("/maintenance-request/:protocolo", handlers.GetMaintenanceRequestByProtocolo)
 
 		// Salesforce inbound webhook (Keycloak JWT from SF client — azp allowlist)
 		webhooks := v1.Group("/webhooks")

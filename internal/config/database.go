@@ -580,11 +580,21 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 	return nil
 }
 
-// ensureMaintenanceRequestIndex creates the index on cpf for maintenance request collection
+// maintenanceRequestIndexes are the non-unique indexes of the maintenance request collection:
+// cpf for the citizen listing and protocolo for the public lookup (a protocol may group
+// several chamados, so neither is unique).
+var maintenanceRequestIndexes = []struct {
+	name  string
+	field string
+}{
+	{name: "cpf_1", field: "cpf"},
+	{name: "protocolo_1", field: "protocolo"},
+}
+
+// ensureMaintenanceRequestIndex creates the missing indexes of the maintenance request collection
 func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.MaintenanceRequestCollection)
 
-	// Check if index already exists
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
 		logger.Error("failed to list indexes", zap.Error(err))
@@ -592,48 +602,48 @@ func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) erro
 	}
 	defer cursor.Close(ctx)
 
-	indexExists := false
+	existing := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
 		if err := cursor.Decode(&index); err != nil {
 			continue
 		}
-		if name, ok := index["name"].(string); ok && name == "cpf_1" {
-			indexExists = true
-			break
+		if name, ok := index["name"].(string); ok {
+			existing[name] = true
 		}
 	}
 
-	if indexExists {
-		logger.Debug("maintenance request collection index already exists",
-			zap.String("collection", AppConfig.MaintenanceRequestCollection))
-		return nil
-	}
-
-	// Create non-unique index on cpf
-	indexModel := mongo.IndexModel{
-		Keys: bson.D{{Key: "cpf", Value: 1}},
-		Options: options.Index().
-			SetName("cpf_1"),
-	}
-
-	_, err = collection.Indexes().CreateOne(ctx, indexModel)
-	if err != nil {
-		// Check if it's a duplicate key error (another instance created it)
-		if mongo.IsDuplicateKeyError(err) {
-			logger.Info("maintenance request index already exists (created by another instance)",
-				zap.String("collection", AppConfig.MaintenanceRequestCollection))
-			return nil
+	for _, idx := range maintenanceRequestIndexes {
+		if existing[idx.name] {
+			logger.Debug("maintenance request collection index already exists",
+				zap.String("collection", AppConfig.MaintenanceRequestCollection),
+				zap.String("index", idx.name))
+			continue
 		}
-		logger.Error("failed to create maintenance request index",
+
+		indexModel := mongo.IndexModel{
+			Keys:    bson.D{{Key: idx.field, Value: 1}},
+			Options: options.Index().SetName(idx.name),
+		}
+
+		if _, err := collection.Indexes().CreateOne(ctx, indexModel); err != nil {
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("maintenance request index already exists (created by another instance)",
+					zap.String("collection", AppConfig.MaintenanceRequestCollection),
+					zap.String("index", idx.name))
+				continue
+			}
+			logger.Error("failed to create maintenance request index",
+				zap.String("collection", AppConfig.MaintenanceRequestCollection),
+				zap.String("index", idx.name),
+				zap.Error(err))
+			return err
+		}
+
+		logger.Info("created maintenance request collection index",
 			zap.String("collection", AppConfig.MaintenanceRequestCollection),
-			zap.Error(err))
-		return err
+			zap.String("index", idx.name))
 	}
-
-	logger.Info("created maintenance request collection index",
-		zap.String("collection", AppConfig.MaintenanceRequestCollection),
-		zap.String("index", "cpf_1"))
 	return nil
 }
 
