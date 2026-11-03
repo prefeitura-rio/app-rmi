@@ -99,10 +99,17 @@ var cnpjFormatRE = regexp.MustCompile(`^[0-9A-Z]{12}[0-9]{2}$`)
 var cnpjFirstDVWeights = []int{5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2}
 var cnpjSecondDVWeights = []int{6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2}
 
-// NormalizeCNPJ uppercases a CNPJ and strips its formatting (dots, slash, hyphen
-// and whitespace), producing the form stored in the database.
+// NormalizeCNPJ uppercases the ASCII letters of a CNPJ and strips its formatting
+// (dots, slash, hyphen and whitespace), producing the form stored in the database.
+// Only a-z is uppercased: strings.ToUpper would turn non-ASCII runes such as 'ı'
+// or 'ſ' into 'I' or 'S', making them pass as a valid CNPJ.
 func NormalizeCNPJ(cnpj string) string {
-	return strings.ToUpper(cnpjFormattingRE.ReplaceAllString(cnpj, ""))
+	return strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' {
+			return r - ('a' - 'A')
+		}
+		return r
+	}, cnpjFormattingRE.ReplaceAllString(cnpj, ""))
 }
 
 // ValidateCNPJ validates a CNPJ, numeric or alphanumeric (Receita Federal format).

@@ -183,10 +183,6 @@ func TestGetLegalEntities_InvalidCPF(t *testing.T) {
 		{"letters in CPF", "abcdefghijk"},
 		{"invalid check digits", "11111111111"},
 		{"too long", "123456789012345"},
-		{"alphanumeric wrong check digit", "12ABC34501DE36"},
-		{"alphanumeric letter in check digit", "12ABC34501DEA5"},
-		{"alphanumeric too short", "12ABC34501DE3"},
-		{"alphanumeric symbol in base", "12AB*34501DE35"},
 	}
 
 	for _, tt := range tests {

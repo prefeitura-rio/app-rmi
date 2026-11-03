@@ -276,6 +276,10 @@ func TestValidateCNPJ_Alphanumeric(t *testing.T) {
 		{name: "underscore in base", cnpj: "12AB_34501DE35", valid: false},
 		{name: "numeric with trailing letters", cnpj: "11222333000181AB", valid: false},
 		{name: "only letters", cnpj: "ABCDEFGHIJKLMN", valid: false},
+		{name: "valid alphanumeric with I and S", cnpj: "12ISC34501DE05", valid: true},
+		{name: "valid alphanumeric with i and s lowercase", cnpj: "12isc34501de05", valid: true},
+		{name: "non-ASCII dotless i", cnpj: "12ıSC34501DE05", valid: false},
+		{name: "non-ASCII long s", cnpj: "12IſC34501DE05", valid: false},
 	}
 
 	for _, tt := range tests {
@@ -291,6 +295,7 @@ func TestNormalizeCNPJ(t *testing.T) {
 	assert.Equal(t, "11222333000181", NormalizeCNPJ("11.222.333/0001-81"))
 	assert.Equal(t, "11222333000181", NormalizeCNPJ("11222333000181"))
 	assert.Equal(t, "12AB*34501DE35", NormalizeCNPJ("12ab*34501de35"))
+	assert.Equal(t, "12ıſC34501DE05", NormalizeCNPJ("12ıſc34501de05"))
 }
 
 func TestNormalizeCPF(t *testing.T) {
