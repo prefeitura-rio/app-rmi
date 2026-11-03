@@ -78,6 +78,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | CF_LOOKUP_CACHE_TTL | TTL do cache de CF lookups (ex: "24h") | 24h | Não |
 | CF_LOOKUP_RATE_LIMIT | Rate limit por CPF para CF lookups (ex: "1h") | 1h | Não |
 | CF_LOOKUP_GLOBAL_RATE_LIMIT | Rate limit global de CF lookups por minuto | 60 | Não |
+| CF_LOOKUP_JOB_TIMEOUT | Timeout de cada tentativa de um job `cf_lookup` no worker de sync | 90s | Não |
 | LOG_LEVEL | Nível de log (debug, info, warn, error) | info | Não |
 | METRICS_PORT | Porta para métricas Prometheus | 9090 | Não |
 | TRACING_ENABLED | Habilitar rastreamento OpenTelemetry | false | Não |

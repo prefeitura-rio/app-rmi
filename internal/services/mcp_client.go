@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -48,6 +49,69 @@ type MCPError struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
+}
+
+// MCPToolError is a JSON-RPC error returned by an MCP tool call.
+type MCPToolError struct {
+	Tool    string
+	Code    int
+	Message string
+}
+
+func (e *MCPToolError) Error() string {
+	return fmt.Sprintf("MCP tool %s error (code %d): %s", e.Tool, e.Code, e.Message)
+}
+
+func newMCPToolError(tool string, errorObj interface{}) *MCPToolError {
+	toolErr := &MCPToolError{Tool: tool}
+	fields, ok := errorObj.(map[string]interface{})
+	if !ok {
+		toolErr.Message = fmt.Sprintf("%v", errorObj)
+		return toolErr
+	}
+	if code, ok := fields["code"].(float64); ok {
+		toolErr.Code = int(code)
+	}
+	if message, ok := fields["message"].(string); ok {
+		toolErr.Message = message
+	}
+	return toolErr
+}
+
+// MCPHTTPStatusError is an HTTP status from the MCP server that the client handles by code:
+// 5xx, 401, 403, 404 (unknown session), 408 and 429.
+type MCPHTTPStatusError struct {
+	StatusCode int
+}
+
+func (e *MCPHTTPStatusError) Error() string {
+	if e.StatusCode >= 500 {
+		return fmt.Sprintf("server error: %d", e.StatusCode)
+	}
+	return fmt.Sprintf("MCP server returned status %d", e.StatusCode)
+}
+
+func isHandledMCPStatus(code int) bool {
+	switch code {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound,
+		http.StatusRequestTimeout, http.StatusTooManyRequests:
+		return true
+	default:
+		return code >= 500
+	}
+}
+
+// MCPProtocolError is a response body that is not the expected JSON-RPC message.
+type MCPProtocolError struct {
+	Err error
+}
+
+func (e *MCPProtocolError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *MCPProtocolError) Unwrap() error {
+	return e.Err
 }
 
 // RetryConfig defines retry behavior for MCP requests
@@ -141,6 +205,12 @@ func (c *MCPClient) withRetry(ctx context.Context, operation string, fn func() e
 
 // isRetryableError determines if an error should trigger a retry
 func (c *MCPClient) isRetryableError(err error) bool {
+	var statusErr *MCPHTTPStatusError
+	if errors.As(err, &statusErr) {
+		code := statusErr.StatusCode
+		return code >= 500 || code == http.StatusRequestTimeout || code == http.StatusTooManyRequests
+	}
+
 	// Network errors are generally retryable
 	if strings.Contains(err.Error(), "timeout") ||
 		strings.Contains(err.Error(), "connection") ||
@@ -246,8 +316,8 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode >= 500 {
-			return fmt.Errorf("server error: %d", resp.StatusCode)
+		if isHandledMCPStatus(resp.StatusCode) {
+			return &MCPHTTPStatusError{StatusCode: resp.StatusCode}
 		}
 
 		body, err := io.ReadAll(resp.Body)
@@ -273,7 +343,7 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 
 		err = json.Unmarshal([]byte(bodyStr), &result)
 		if err != nil {
-			return fmt.Errorf("failed to unmarshal response: %w", err)
+			return &MCPProtocolError{Err: fmt.Errorf("failed to unmarshal response: %w", err)}
 		}
 
 		c.logger.Debug("received MCP response", zap.Any("response", result))
@@ -469,6 +539,11 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 		return nil, fmt.Errorf("failed to find CF: %w", err)
 	}
 
+	// A JSON-RPC error has no "result"; report it as a tool error instead of a malformed response.
+	if errorObj, exists := result["error"]; exists && errorObj != nil {
+		return nil, newMCPToolError("equipments_by_address", errorObj)
+	}
+
 	// Parse response
 	return c.parseHealthServicesResponse(result)
 }
@@ -477,7 +552,7 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 func (c *MCPClient) parseHealthServicesResponse(result map[string]interface{}) (*models.HealthServicesResult, error) {
 	resultData, ok := result["result"].(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("invalid response format: missing result")
+		return nil, &MCPProtocolError{Err: fmt.Errorf("invalid response format: missing result")}
 	}
 
 	// Check for error flag
@@ -500,7 +575,7 @@ func (c *MCPClient) parseHealthServicesResponse(result map[string]interface{}) (
 
 	structuredContent, ok := resultData["structuredContent"].(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("no structured content in response")
+		return nil, &MCPProtocolError{Err: fmt.Errorf("no structured content in response")}
 	}
 
 	equipamentos, ok := structuredContent["equipamentos"].([]interface{})

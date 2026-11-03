@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -160,25 +162,13 @@ func (s *CFLookupService) PerformCFLookup(ctx context.Context, cpf, address stri
 	if err != nil {
 		// Categorize the error for better handling
 		errorType := s.categorizeError(err)
-		s.logger.Error("MCP health services lookup failed",
+		s.logger.Warn("MCP health services lookup failed",
 			zap.Error(err),
 			observability.CPFField(cpf),
-			zap.String("address", address),
+			zap.String("address_hash", s.GenerateAddressHash(address)),
 			zap.String("error_type", errorType))
 
-		// Return different error messages based on error type
-		switch errorType {
-		case "timeout":
-			return fmt.Errorf("health services lookup timed out for address: %s", address)
-		case "network":
-			return fmt.Errorf("network error during health services lookup: %w", err)
-		case "authorization":
-			return fmt.Errorf("authorization failed for health services lookup: %w", err)
-		case "validation":
-			return fmt.Errorf("address validation failed: %w", err)
-		default:
-			return fmt.Errorf("health services lookup failed: %w", err)
-		}
+		return &CFLookupError{Category: errorType, Err: err}
 	}
 
 	if healthData == nil || healthData.HealthFacility == nil {
@@ -413,8 +403,86 @@ func SanitizeAddressField(address string) string {
 	return strings.TrimSpace(addressParensRE.ReplaceAllString(address, ""))
 }
 
+// CFLookupError is an MCP failure during a CF lookup, tagged with the category from categorizeError.
+// The message never carries the citizen's address, so it is safe for logs and the DLQ.
+type CFLookupError struct {
+	Category string
+	Err      error
+}
+
+func (e *CFLookupError) Error() string {
+	return fmt.Sprintf("health services lookup failed (%s): %v", e.Category, e.Err)
+}
+
+func (e *CFLookupError) Unwrap() error {
+	return e.Err
+}
+
+// Permanent reports whether retrying the same address cannot succeed: rejected credentials,
+// a request the MCP server refuses, or a tool call with invalid params or an unknown tool.
+func (e *CFLookupError) Permanent() bool {
+	switch e.Category {
+	case "authorization", "validation", "tool":
+		return true
+	default:
+		return false
+	}
+}
+
+// IsPermanentCFLookupError reports whether err is a CF lookup failure that retries cannot fix.
+func IsPermanentCFLookupError(err error) bool {
+	var cfErr *CFLookupError
+	return errors.As(err, &cfErr) && cfErr.Permanent()
+}
+
+// categorizeTypedMCPError classifies the errors the MCP client returns as types, so a status code
+// or a JSON-RPC code decides the category instead of words in the message.
+func categorizeTypedMCPError(err error) (string, bool) {
+	var toolErr *MCPToolError
+	if errors.As(err, &toolErr) {
+		switch {
+		case toolErr.Code == jsonRPCInvalidParams || toolErr.Code == jsonRPCMethodNotFound:
+			return "tool", true
+		case strings.Contains(strings.ToLower(toolErr.Message), "session"):
+			return "session", true
+		default:
+			return "server", true
+		}
+	}
+
+	var statusErr *MCPHTTPStatusError
+	if errors.As(err, &statusErr) {
+		switch statusErr.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return "authorization", true
+		case http.StatusNotFound:
+			return "session", true
+		case http.StatusRequestTimeout:
+			return "timeout", true
+		default:
+			return "server", true
+		}
+	}
+
+	var protocolErr *MCPProtocolError
+	if errors.As(err, &protocolErr) {
+		return "protocol", true
+	}
+
+	return "", false
+}
+
+const (
+	jsonRPCMethodNotFound = -32601
+	jsonRPCInvalidParams  = -32602
+)
+
 // categorizeError categorizes errors for better handling and monitoring
 func (s *CFLookupService) categorizeError(err error) string {
+	if category, ok := categorizeTypedMCPError(err); ok {
+		return category
+	}
+
 	errStr := strings.ToLower(err.Error())
 
 	// Timeout errors
@@ -438,6 +506,11 @@ func (s *CFLookupService) categorizeError(err error) string {
 		strings.Contains(errStr, "forbidden") ||
 		strings.Contains(errStr, "403") {
 		return "authorization"
+	}
+
+	// Session errors (expired or unknown MCP session) clear up with a new session on retry.
+	if strings.Contains(errStr, "session") {
+		return "session"
 	}
 
 	// Validation errors
