@@ -980,12 +980,12 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 		permanent := IsPermanentCFLookupError(err)
 		// Warn per attempt: moveToDLQ logs the final failure at error level.
 		w.logger.Warn("CF lookup failed",
-			zap.Error(err),
-			observability.CPFField(cpf),
-			zap.String("job_id", job.ID),
-			zap.Int("attempt", job.RetryCount+1),
-			zap.Int("max_attempts", syncJobMaxRetries(job)),
-			zap.Bool("permanent", permanent))
+			append(CFLookupErrorFields(err),
+				observability.CPFField(cpf),
+				zap.String("job_id", job.ID),
+				zap.Int("attempt", job.RetryCount+1),
+				zap.Int("max_attempts", syncJobMaxRetries(job)),
+				zap.Bool("permanent", permanent))...)
 		if permanent {
 			return newNonRetryableSyncError(fmt.Errorf("CF lookup failed: %w", err))
 		}

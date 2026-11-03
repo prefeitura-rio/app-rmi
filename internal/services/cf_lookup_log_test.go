@@ -422,3 +422,113 @@ func TestFindNearestCF_DebugLogsOmitUpstreamReasonText(t *testing.T) {
 		})
 	}
 }
+
+// mcpErrorsEchoingAddress are JSON-RPC errors whose message and data repeat the address the tool received.
+func mcpErrorsEchoingAddress() map[string]map[string]interface{} {
+	return map[string]map[string]interface{}{
+		"invalid params": {
+			"code":    -32602,
+			"message": "endereco invalido: " + syntheticCFAddress,
+			"data":    map[string]interface{}{"address": syntheticCFAddress},
+		},
+		"internal error": {
+			"code":    -32603,
+			"message": "falha ao geocodificar " + syntheticCFAddress,
+		},
+	}
+}
+
+func mcpHandlerWithToolError(errorObj map[string]interface{}) http.HandlerFunc {
+	return mcpHandlerWithToolResponse(map[string]interface{}{"jsonrpc": "2.0", "id": 3, "error": errorObj})
+}
+
+func TestPerformCFLookup_MCPErrorEchoingAddressIsNotLogged(t *testing.T) {
+	for name, errorObj := range mcpErrorsEchoingAddress() {
+		t.Run(name, func(t *testing.T) {
+			client, server := setupMCPTest(t, mcpHandlerWithToolError(errorObj))
+			defer server.Close()
+			client.retryConfig.MaxRetries = 0
+
+			logger, logs := observedLogger(zapcore.DebugLevel)
+			client.logger = logger
+			service := NewCFLookupService(nil, client, logger)
+
+			err := service.PerformCFLookup(context.Background(), retryTestCPF, syntheticCFAddress)
+
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), syntheticCFAddress, "the error goes to the DLQ and must not carry the address")
+			assertNoAddressInLogs(t, logs, syntheticCFAddress)
+			assertNoAddressHashInLogs(t, logs, syntheticCFAddress)
+
+			entry := requireLogEntry(t, logs, "MCP health services lookup failed")
+			assert.Equal(t, zapcore.WarnLevel, entry.Level)
+			fields := entry.ContextMap()
+			assert.Equal(t, service.categorizeError(&MCPToolError{Code: errorObj["code"].(int)}), fields["error_type"])
+			assert.EqualValues(t, errorObj["code"], fields["error_code"])
+		})
+	}
+}
+
+func TestHandleCFLookupJob_MCPErrorEchoingAddressIsNotLogged(t *testing.T) {
+	for name, errorObj := range mcpErrorsEchoingAddress() {
+		t.Run(name, func(t *testing.T) {
+			client, server := setupMCPTest(t, mcpHandlerWithToolError(errorObj))
+			defer server.Close()
+			client.retryConfig.MaxRetries = 0
+
+			logger, logs := observedLogger(zapcore.DebugLevel)
+			client.logger = logger
+			previous := CFLookupServiceInstance
+			CFLookupServiceInstance = NewCFLookupService(nil, client, logger)
+			t.Cleanup(func() { CFLookupServiceInstance = previous })
+			worker := &SyncWorker{logger: logger}
+
+			job := newCFLookupTestJob(0)
+			job.Data.(map[string]interface{})["address"] = syntheticCFAddress
+			err := worker.handleCFLookupJob(context.Background(), job)
+
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), syntheticCFAddress, "the error goes to the DLQ and must not carry the address")
+			assertNoAddressInLogs(t, logs, syntheticCFAddress)
+			assertNoAddressHashInLogs(t, logs, syntheticCFAddress)
+
+			entry := requireLogEntry(t, logs, "CF lookup failed")
+			assert.Equal(t, zapcore.WarnLevel, entry.Level)
+			fields := entry.ContextMap()
+			assert.NotEmpty(t, fields["error_type"])
+			assert.EqualValues(t, errorObj["code"], fields["error_code"])
+		})
+	}
+}
+
+func TestCFLookupErrorFields_OmitMCPText(t *testing.T) {
+	toolErr := &MCPToolError{Tool: "equipments_by_address", Code: -32602, Message: "endereco invalido: " + syntheticCFAddress}
+	err := fmt.Errorf("CF lookup failed: %w", &CFLookupError{Category: "tool", Err: fmt.Errorf("failed to find CF: %w", toolErr)})
+
+	logger, logs := observedLogger(zapcore.DebugLevel)
+	logger.Info("SYNCHRONOUS CF LOOKUP FAILED", CFLookupErrorFields(err)...)
+
+	assertNoAddressInLogs(t, logs, syntheticCFAddress)
+	fields := requireLogEntry(t, logs, "SYNCHRONOUS CF LOOKUP FAILED").ContextMap()
+	assert.Equal(t, "tool", fields["error_type"])
+	assert.EqualValues(t, -32602, fields["error_code"])
+	assert.Equal(t, "health services lookup failed (tool): code -32602", fields["error"])
+}
+
+func TestCFLookupErrorFields_HTTPStatusAndLocalErrors(t *testing.T) {
+	logger, logs := observedLogger(zapcore.DebugLevel)
+	logger.Info("http", CFLookupErrorFields(&CFLookupError{Category: "server", Err: &MCPHTTPStatusError{StatusCode: 503}})...)
+	logger.Info("timeout", CFLookupErrorFields(&CFLookupError{Category: "timeout", Err: context.DeadlineExceeded})...)
+	logger.Info("local", CFLookupErrorFields(fmt.Errorf("MCP client not available"))...)
+
+	httpFields := requireLogEntry(t, logs, "http").ContextMap()
+	assert.EqualValues(t, 503, httpFields["error_code"])
+	assert.Equal(t, "server", httpFields["error_type"])
+
+	timeoutFields := requireLogEntry(t, logs, "timeout").ContextMap()
+	assert.Equal(t, "health services lookup failed (timeout)", timeoutFields["error"])
+	_, hasCode := timeoutFields["error_code"]
+	assert.False(t, hasCode, "a failure without JSON-RPC code or HTTP status has no error_code")
+
+	assert.Equal(t, "MCP client not available", requireLogEntry(t, logs, "local").ContextMap()["error"])
+}
