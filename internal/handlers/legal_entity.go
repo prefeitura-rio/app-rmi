@@ -139,7 +139,7 @@ func GetLegalEntities(c *gin.Context) {
 // @Tags legal-entity
 // @Accept json
 // @Produce json
-// @Param cnpj path string true "CNPJ da entidade (14 dígitos)" minLength(14) maxLength(14)
+// @Param cnpj path string true "CNPJ da entidade (14 caracteres, 12 alfanuméricos A-Z/0-9 e 2 dígitos verificadores; numérico ou alfanumérico da Receita Federal)" minLength(14) maxLength(14)
 // @Security BearerAuth
 // @Success 200 {object} models.LegalEntity "Informações da entidade jurídica obtidas com sucesso"
 // @Failure 400 {object} ErrorResponse "Formato de CNPJ inválido"
@@ -154,7 +154,8 @@ func GetLegalEntityByCNPJ(c *gin.Context) {
 	ctx, span := otel.Tracer("").Start(c.Request.Context(), "GetLegalEntityByCNPJ")
 	defer span.End()
 
-	cnpj := c.Param("cnpj")
+	// Uppercase and strip formatting so the alphanumeric CNPJ matches the stored form
+	cnpj := utils.NormalizeCNPJ(c.Param("cnpj"))
 	logger := observability.Logger().With(zap.String("cnpj", cnpj))
 
 	// Add CNPJ to span attributes

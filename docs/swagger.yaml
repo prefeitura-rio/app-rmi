@@ -6379,7 +6379,7 @@ paths:
         jurídica) pelo CNPJ. O acesso é permitido para administradores ou se o CPF
         do JWT estiver como responsável ou sócio da entidade.
       parameters:
-      - description: CNPJ da entidade (14 dígitos)
+      - description: CNPJ da entidade (14 caracteres, 12 alfanuméricos A-Z/0-9 e 2 dígitos verificadores; numérico ou alfanumérico da Receita Federal)
         in: path
         maxLength: 14
         minLength: 14

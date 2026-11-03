@@ -183,6 +183,10 @@ func TestGetLegalEntities_InvalidCPF(t *testing.T) {
 		{"letters in CPF", "abcdefghijk"},
 		{"invalid check digits", "11111111111"},
 		{"too long", "123456789012345"},
+		{"alphanumeric wrong check digit", "12ABC34501DE36"},
+		{"alphanumeric letter in check digit", "12ABC34501DEA5"},
+		{"alphanumeric too short", "12ABC34501DE3"},
+		{"alphanumeric symbol in base", "12AB*34501DE35"},
 	}
 
 	for _, tt := range tests {
@@ -511,6 +515,10 @@ func TestGetLegalEntityByCNPJ_InvalidCNPJ(t *testing.T) {
 		{"invalid check digits", "00000000000000"},
 		{"all same digits", "11111111111111"},
 		{"too long", "123456789012345"},
+		{"alphanumeric wrong check digit", "12ABC34501DE36"},
+		{"alphanumeric letter in check digit", "12ABC34501DEA5"},
+		{"alphanumeric too short", "12ABC34501DE3"},
+		{"alphanumeric symbol in base", "12AB*34501DE35"},
 	}
 
 	for _, tt := range tests {
@@ -545,6 +553,65 @@ func TestGetLegalEntityByCNPJ_NotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, response.Error, "Legal entity not found")
+}
+
+func TestGetLegalEntityByCNPJ_AlphanumericNotFound(t *testing.T) {
+	_, cleanup := setupLegalEntityHandlersTest(t)
+	defer cleanup()
+
+	router := gin.New()
+	router.Use(userMiddleware("03561350712"))
+	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
+
+	// Valid alphanumeric CNPJ (Receita Federal format) that doesn't exist in DB
+	req, _ := http.NewRequest("GET", "/legal-entity/12ABC34501DE35", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	var response ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Contains(t, response.Error, "Legal entity not found")
+}
+
+func TestGetLegalEntityByCNPJ_Alphanumeric_AdminAccess(t *testing.T) {
+	_, cleanup := setupLegalEntityHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	collection := config.MongoDB.Collection(config.AppConfig.LegalEntityCollection)
+
+	entity := bson.M{
+		"cnpj":         "12ABC34501DE35",
+		"razao_social": "Test Company Alphanumeric",
+		"responsavel": bson.M{
+			"cpf": "99999999999",
+		},
+	}
+
+	_, err := collection.InsertOne(ctx, entity)
+	require.NoError(t, err)
+
+	router := gin.New()
+	router.Use(adminMiddleware())
+	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
+
+	// Lowercase input is normalized to the stored uppercase form
+	for _, cnpj := range []string{"12ABC34501DE35", "12abc34501de35"} {
+		req, _ := http.NewRequest("GET", "/legal-entity/"+cnpj, nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code, "GET /legal-entity/%s", cnpj)
+
+		var response models.LegalEntity
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		assert.Equal(t, "12ABC34501DE35", response.CNPJ)
+		assert.Equal(t, "Test Company Alphanumeric", response.CompanyName)
+	}
 }
 
 func TestGetLegalEntityByCNPJ_NoAuthClaims(t *testing.T) {

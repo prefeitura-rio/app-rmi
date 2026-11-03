@@ -7245,7 +7245,7 @@
         "summary": "Obter informações de uma entidade jurídica por CNPJ",
         "parameters": [
           {
-            "description": "CNPJ da entidade (14 dígitos)",
+            "description": "CNPJ da entidade (14 caracteres, 12 alfanuméricos A-Z/0-9 e 2 dígitos verificadores; numérico ou alfanumérico da Receita Federal)",
             "name": "cnpj",
             "in": "path",
             "required": true,
