@@ -591,8 +591,9 @@ func (c *MCPClient) parseHealthServicesResponse(result map[string]interface{}) (
 			}
 		}
 
+		// The server's text may echo the queried address, so only its size is logged (LGPD).
 		c.logger.Debug("MCP server reported no health services available",
-			zap.String("reason", errorMsg),
+			zap.Int("reason_bytes", len(errorMsg)),
 			zap.String("operation", "health_services_lookup_no_results"))
 
 		// Return nil (no services found) instead of error - this is expected behavior
@@ -622,7 +623,7 @@ func (c *MCPClient) parseHealthServicesResponse(result map[string]interface{}) (
 		// Check for error in equipment data
 		if errorMsg, exists := equipamento["error"]; exists {
 			c.logger.Debug("MCP server reported no equipment found",
-				zap.String("reason", fmt.Sprintf("%v", errorMsg)),
+				zap.Int("reason_bytes", len(fmt.Sprintf("%v", errorMsg))),
 				zap.String("operation", "equipment_lookup_no_equipment"))
 			continue
 		}

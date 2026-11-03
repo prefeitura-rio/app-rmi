@@ -248,3 +248,53 @@ func TestDescribeMCPPayload(t *testing.T) {
 	assert.Empty(t, method)
 	assert.Empty(t, tool)
 }
+
+// TestFindNearestCF_DebugNoResultReasonsCarryNoAddress covers the "no results" answers whose server text echoes the
+// queried address: the reason reaches the DEBUG log only as its size.
+func TestFindNearestCF_DebugNoResultReasonsCarryNoAddress(t *testing.T) {
+	cases := map[string]struct {
+		cfResult map[string]interface{}
+		message  string
+	}{
+		"isError with textContent": {
+			cfResult: map[string]interface{}{
+				"isError":     true,
+				"textContent": "Nenhum equipamento encontrado para " + syntheticCFAddress,
+			},
+			message: "MCP server reported no health services available",
+		},
+		"equipment error": {
+			cfResult: map[string]interface{}{
+				"structuredContent": map[string]interface{}{
+					"equipamentos": []interface{}{
+						map[string]interface{}{"error": "endereco nao localizado: " + syntheticCFAddress},
+					},
+				},
+			},
+			message: "MCP server reported no equipment found",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			client, server := setupMCPTest(t, mcpHandlerWithEquipments(tc.cfResult))
+			defer server.Close()
+
+			logger, logs := observedLogger(zapcore.DebugLevel)
+			client.logger = logger
+
+			result, err := client.FindNearestCF(context.Background(), syntheticCFAddress)
+			require.NoError(t, err)
+			if result != nil {
+				assert.Nil(t, result.HealthFacility)
+			}
+
+			assertNoAddressInLogs(t, logs, syntheticCFAddress)
+
+			entry := requireLogEntry(t, logs, tc.message)
+			_, hasReason := entry.ContextMap()["reason"]
+			assert.False(t, hasReason, "%q must not carry the server text", tc.message)
+			assert.Greater(t, entry.ContextMap()["reason_bytes"], int64(0))
+		})
+	}
+}
