@@ -1684,10 +1684,62 @@ func _() {
 	optimizeConnectionPool()
 }
 
+const (
+	redisPoolMonitorInterval = 10 * time.Second
+	redisStaleAlertPercent   = 20.0
+)
+
+type redisStaleConnsSample struct {
+	RemovedTotal      uint32
+	RemovedInInterval uint32
+	Percent           float64
+	Alert             bool
+}
+
+// redisStaleConnsTracker turns the go-redis StaleConns counter into per-interval values.
+//
+// go-redis exposes PoolStats.StaleConns as a cumulative counter of connections removed
+// from the pool since the client was created (idle/lifetime expiry, bad connections),
+// not as a gauge of connections that are stale right now. It grows forever with normal
+// connection rotation, so it must be diffed between samples before being compared with
+// the pool size.
+type redisStaleConnsTracker struct {
+	client    *redisclient.Client
+	lastTotal uint32
+	primed    bool
+}
+
+func (t *redisStaleConnsTracker) observe(client *redisclient.Client, removedTotal, totalConns uint32) redisStaleConnsSample {
+	sample := redisStaleConnsSample{RemovedTotal: removedTotal}
+
+	isBaseline := !t.primed || t.client != client
+	counterWentBack := removedTotal < t.lastTotal
+	switch {
+	case isBaseline:
+	case counterWentBack:
+		sample.RemovedInInterval = removedTotal
+	default:
+		sample.RemovedInInterval = removedTotal - t.lastTotal
+	}
+
+	t.client = client
+	t.lastTotal = removedTotal
+	t.primed = true
+
+	if totalConns > 0 {
+		sample.Percent = float64(sample.RemovedInInterval) / float64(totalConns) * 100
+		sample.Alert = sample.RemovedInInterval > 0 && sample.Percent > redisStaleAlertPercent
+	}
+
+	return sample
+}
+
 // monitorRedisConnectionPool monitors Redis connection pool health with cluster support
 func monitorRedisConnectionPool() {
-	ticker := time.NewTicker(10 * time.Second) // More frequent monitoring for cluster
+	ticker := time.NewTicker(redisPoolMonitorInterval) // More frequent monitoring for cluster
 	defer ticker.Stop()
+
+	var staleTracker redisStaleConnsTracker
 
 	for range ticker.C {
 		redisClient := getRedis()
@@ -1697,6 +1749,7 @@ func monitorRedisConnectionPool() {
 
 		// Get Redis pool stats
 		poolStats := redisClient.PoolStats()
+		stale := staleTracker.observe(redisClient, poolStats.StaleConns, poolStats.TotalConns)
 
 		// Determine Redis type for logging
 		redisType := "single"
@@ -1714,7 +1767,8 @@ func monitorRedisConnectionPool() {
 			zap.String("redis_type", redisType),
 			zap.Int("total_connections", int(poolStats.TotalConns)),
 			zap.Int("idle_connections", int(poolStats.IdleConns)),
-			zap.Int("stale_connections", int(poolStats.StaleConns)),
+			zap.Uint32("stale_connections_removed_total", stale.RemovedTotal),
+			zap.Uint32("stale_connections_removed_interval", stale.RemovedInInterval),
 			zap.Int("max_pool_size", AppConfig.RedisPoolSize),
 			zap.Float64("usage_percent", totalUsagePercent),
 			zap.String("addr", redisAddr))
@@ -1744,12 +1798,13 @@ func monitorRedisConnectionPool() {
 				zap.String("impact", "New requests may be queued or timeout"))
 		}
 
-		// Alert on high stale connections (connection issues)
-		stalePercent := float64(poolStats.StaleConns) / float64(poolStats.TotalConns) * 100
-		if poolStats.StaleConns > 0 && stalePercent > 20 {
+		// Alert when many connections were removed as stale within this interval
+		if stale.Alert {
 			logging.GetLogger().Warn("High number of stale Redis connections",
-				zap.Int("stale_connections", int(poolStats.StaleConns)),
-				zap.Float64("stale_percent", stalePercent),
+				zap.Uint32("stale_connections_removed_interval", stale.RemovedInInterval),
+				zap.Duration("interval", redisPoolMonitorInterval),
+				zap.Int("total_connections", int(poolStats.TotalConns)),
+				zap.Float64("stale_percent", stale.Percent),
 				zap.String("redis_type", redisType),
 				zap.String("cause", "Network issues or Redis cluster instability"))
 		}
