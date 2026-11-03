@@ -22,6 +22,14 @@ var (
 	loggerMu sync.RWMutex
 )
 
+// NewSafeLogger wraps an existing zap.Logger; a nil logger behaves as a no-op.
+func NewSafeLogger(logger *zap.Logger) *SafeLogger {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	return &SafeLogger{logger: logger}
+}
+
 // GetLogger returns the global logger instance in a thread-safe manner.
 // Use this instead of accessing Logger directly to avoid data races when
 // InitLogger() is called concurrently with goroutines that read the logger.

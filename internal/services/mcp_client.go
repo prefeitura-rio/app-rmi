@@ -327,7 +327,6 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 
 		// Handle Server-Sent Events format
 		bodyStr := string(body)
-		c.logger.Info("RAW MCP RESPONSE", zap.String("body", bodyStr))
 		c.logger.Debug("raw MCP response", zap.String("body", bodyStr))
 
 		if strings.Contains(bodyStr, "event: message") {
@@ -473,13 +472,14 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 	ctx, span := utils.TraceBusinessLogic(ctx, "mcp_find_nearest_cf")
 	defer span.End()
 
+	addrHash := hashAddress(address)
 	c.logger.Info("starting CF lookup via MCP",
-		zap.String("address", address),
+		zap.String("address_hash", addrHash),
 		zap.String("operation", "mcp_cf_lookup_start"))
 
 	defer func() {
 		c.logger.Info("CF lookup via MCP completed",
-			zap.String("address", address),
+			zap.String("address_hash", addrHash),
 			zap.Duration("total_duration", time.Since(startTime)),
 			zap.String("operation", "mcp_cf_lookup_complete"))
 	}()
@@ -520,7 +520,7 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 	}
 
 	// Step 4: Find nearest CF
-	c.logger.Info("MCP CF LOOKUP REQUEST", zap.String("address", address))
+	c.logger.Info("MCP CF LOOKUP REQUEST", zap.String("address_hash", addrHash))
 	cfPayload := MCPRequest{
 		JSONRPC: "2.0",
 		ID:      intPtr(3),

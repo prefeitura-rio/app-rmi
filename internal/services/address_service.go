@@ -256,7 +256,6 @@ func (s *AddressService) BuildAddress(ctx context.Context, bairroID, logradouroI
 	}
 
 	s.logger.Debug("address built successfully",
-		zap.String("address", address),
 		zap.String("bairro_id", bairroID),
 		zap.String("logradouro_id", logradouroID))
 
