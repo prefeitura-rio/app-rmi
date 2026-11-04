@@ -123,9 +123,44 @@ func min(a, b int) int {
 	return b
 }
 
+// serviceAccountUsernamePrefix is the prefix Keycloak gives the user behind a
+// client's service account ("service-account-<client id>", lowercased).
+const serviceAccountUsernamePrefix = "service-account-"
+
+// IsTrustedServiceClient reports whether the token was issued to a service account
+// of a client listed in TrustedServiceClients. The azp alone is not enough: a public
+// login client (e.g. the Superapp) puts its own azp on every citizen token, so the
+// token must also be a client-credentials token of that same client, identified by
+// preferred_username "service-account-<azp>" or the client_id/clientId claim.
+func IsTrustedServiceClient(jwtClaims *models.JWTClaims) bool {
+	if jwtClaims == nil || config.AppConfig == nil {
+		return false
+	}
+	azp := strings.TrimSpace(jwtClaims.AZP)
+	if azp == "" {
+		return false
+	}
+
+	listed := false
+	for _, clientID := range config.AppConfig.TrustedServiceClients {
+		if azp == strings.TrimSpace(clientID) {
+			listed = true
+			break
+		}
+	}
+	if !listed {
+		return false
+	}
+
+	if strings.EqualFold(strings.TrimSpace(jwtClaims.PreferredUsername), serviceAccountUsernamePrefix+azp) {
+		return true
+	}
+	return strings.TrimSpace(jwtClaims.ServiceAccountClientID()) == azp
+}
+
 // HasAdminPrivileges checks if the JWT claims grant administrative access to RMI.
 // A caller is considered admin if they carry the configured AdminGroup (e.g. "heimdall-admin"),
-// the standard "rmi-admin" role, or if their authorized party (azp) is in TrustedServiceClients.
+// the standard "rmi-admin" role, or a service account token of a TrustedServiceClients client.
 func HasAdminPrivileges(jwtClaims *models.JWTClaims) bool {
 	if jwtClaims == nil {
 		return false
@@ -133,20 +168,10 @@ func HasAdminPrivileges(jwtClaims *models.JWTClaims) bool {
 	if jwtClaims.HasRole("rmi-admin") {
 		return true
 	}
-	if config.AppConfig != nil {
-		if config.AppConfig.AdminGroup != "" && jwtClaims.HasRole(config.AppConfig.AdminGroup) {
-			return true
-		}
-		azp := strings.TrimSpace(jwtClaims.AZP)
-		if azp != "" {
-			for _, clientID := range config.AppConfig.TrustedServiceClients {
-				if azp == strings.TrimSpace(clientID) {
-					return true
-				}
-			}
-		}
+	if config.AppConfig != nil && config.AppConfig.AdminGroup != "" && jwtClaims.HasRole(config.AppConfig.AdminGroup) {
+		return true
 	}
-	return false
+	return IsTrustedServiceClient(jwtClaims)
 }
 
 // RequireAdmin checks if the user has admin privileges

@@ -352,7 +352,7 @@ func TestRequireOwnCPF_TrustedServiceClient(t *testing.T) {
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		claims := &models.JWTClaims{
-			PreferredUsername: "service-account-superapp",
+			PreferredUsername: "service-account-superapp.apps.rio.gov.br",
 			AZP:               "superapp.apps.rio.gov.br",
 		}
 		c.Set("claims", claims)
@@ -408,7 +408,7 @@ func TestRequireAdmin_TrustedServiceClient(t *testing.T) {
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		claims := &models.JWTClaims{
-			PreferredUsername: "service-account-superapp",
+			PreferredUsername: "service-account-superapp.apps.rio.gov.br",
 			AZP:               "superapp.apps.rio.gov.br",
 		}
 		c.Set("claims", claims)

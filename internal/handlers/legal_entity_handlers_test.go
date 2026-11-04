@@ -1044,6 +1044,42 @@ func TestGetLegalEntityByCNPJ_UntrustedServiceDenied(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
+func TestGetLegalEntityByCNPJ_CitizenTokenWithTrustedAZPDenied(t *testing.T) {
+	_, cleanup := setupLegalEntityHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	collection := config.MongoDB.Collection(config.AppConfig.LegalEntityCollection)
+
+	entity := bson.M{
+		"cnpj":         "11222333000181",
+		"razao_social": "Test Company Service",
+		"responsavel": bson.M{
+			"cpf": "99999999999",
+		},
+	}
+	_, err := collection.InsertOne(ctx, entity)
+	require.NoError(t, err)
+
+	// The public login client is (wrongly) listed as trusted; a citizen token from it
+	// carries that azp but is not a service account token.
+	config.AppConfig.TrustedServiceClients = []string{"superapp"}
+	defer func() { config.AppConfig.TrustedServiceClients = nil }()
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("claims", &models.JWTClaims{AZP: "superapp", PreferredUsername: "52998224725"})
+		c.Next()
+	})
+	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
+
+	req, _ := http.NewRequest("GET", "/legal-entity/11222333000181", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
 func TestGetLegalEntityByCNPJ_EmptyTrustedServiceList(t *testing.T) {
 	_, cleanup := setupLegalEntityHandlersTest(t)
 	defer cleanup()

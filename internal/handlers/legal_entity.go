@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
-	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/middleware"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
@@ -228,24 +228,22 @@ func GetLegalEntityByCNPJ(c *gin.Context) {
 		return
 	}
 
-	for _, clientID := range config.AppConfig.TrustedServiceClients {
-		if jwtClaims.AZP == clientID {
-			utils.AddSpanAttribute(accessSpan, "access_granted", "trusted_service")
-			utils.AddSpanAttribute(accessSpan, "trusted_azp", jwtClaims.AZP)
-			accessSpan.End()
-			observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
+	if middleware.IsTrustedServiceClient(jwtClaims) {
+		utils.AddSpanAttribute(accessSpan, "access_granted", "trusted_service")
+		utils.AddSpanAttribute(accessSpan, "trusted_azp", jwtClaims.AZP)
+		accessSpan.End()
+		observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
 
-			_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
-			c.JSON(http.StatusOK, entity)
-			responseSpan.End()
+		_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+		c.JSON(http.StatusOK, entity)
+		responseSpan.End()
 
-			logger.Debug("GetLegalEntityByCNPJ completed (trusted service access)",
-				zap.String("cnpj", cnpj),
-				zap.String("azp", jwtClaims.AZP),
-				zap.Duration("total_duration", time.Since(startTime)),
-				zap.String("status", "success"))
-			return
-		}
+		logger.Debug("GetLegalEntityByCNPJ completed (trusted service access)",
+			zap.String("cnpj", cnpj),
+			zap.String("azp", jwtClaims.AZP),
+			zap.Duration("total_duration", time.Since(startTime)),
+			zap.String("status", "success"))
+		return
 	}
 
 	// Check if user is admin
