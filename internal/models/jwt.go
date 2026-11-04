@@ -33,6 +33,19 @@ type JWTClaims struct {
 	GivenName         string                  `json:"given_name"`
 	FamilyName        string                  `json:"family_name"`
 	Email             string                  `json:"email"`
+	// ClientID is set by Keycloak only on client-credentials (service account) tokens.
+	ClientID string `json:"client_id"`
+	// LegacyClientID is the same claim as emitted by Keycloak before version 20.
+	LegacyClientID string `json:"clientId"`
+}
+
+// ServiceAccountClientID returns the client id Keycloak stamps on service account
+// tokens (client_id, or clientId on older versions), or "" for user tokens.
+func (c *JWTClaims) ServiceAccountClientID() string {
+	if c.ClientID != "" {
+		return c.ClientID
+	}
+	return c.LegacyClientID
 }
 
 // GetAudiences returns the audience(s) as a slice of strings
