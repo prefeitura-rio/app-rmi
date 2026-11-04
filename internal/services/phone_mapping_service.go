@@ -555,6 +555,32 @@ func (s *PhoneMappingService) GetQuarantineStats(ctx context.Context) (*models.Q
 	}, nil
 }
 
+// GetBoundCPF returns the CPF currently stored on the mapping of phoneNumber, whatever
+// its status, or "" when the phone has no mapping or the mapping has no CPF. It is
+// used to authorize operations on the phone, so the CPF is never masked here and must
+// not be returned to the client.
+func (s *PhoneMappingService) GetBoundCPF(ctx context.Context, phoneNumber string) (string, error) {
+	components, err := utils.ParsePhoneNumber(phoneNumber)
+	if err != nil {
+		return "", fmt.Errorf("invalid phone number: %w", err)
+	}
+	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+
+	var mapping models.PhoneCPFMapping
+	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+		options.FindOne().SetProjection(bson.M{"cpf": 1}),
+	).Decode(&mapping)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to get phone mapping: %w", err)
+	}
+	return mapping.CPF, nil
+}
+
 // FindCPFByPhone finds a CPF by phone number (existing method, updated for new model)
 func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber string) (*models.PhoneCitizenResponse, error) {
 	// Parse phone number for storage format
