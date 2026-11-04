@@ -2,7 +2,7 @@
 FROM golang:1.27.3-alpine AS builder
 
 # Install ca-certificates and git
-RUN apk add --no-cache ca-certificates=20251003-r0 git=2.52.0-r0
+RUN apk add --no-cache ca-certificates=20261020-r0 git=2.54.0-r0
 
 WORKDIR /app
 
