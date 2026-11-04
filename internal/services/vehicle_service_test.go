@@ -100,7 +100,7 @@ func ensureMobilidadeConductorUniqueIndex(t *testing.T) {
 
 	cursor, err := coll.Indexes().List(ctx)
 	require.NoError(t, err)
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 	found := false
 	for cursor.Next(ctx) {
 		var idx bson.M

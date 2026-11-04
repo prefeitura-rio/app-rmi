@@ -295,6 +295,7 @@ func rotateQueueOrder(queues []string, cursor uint64) []string {
 	if n == 0 {
 		return queues
 	}
+	//nolint:gosec // G115: bounded conversion for metrics/status/memory counters
 	start := int(cursor % uint64(n))
 	if start == 0 {
 		return queues
@@ -771,6 +772,7 @@ func (w *SyncWorker) requeueJob(job *SyncJob) bool {
 	backoffDelay := syncJobBackoff(job)
 	job.AvailableAt = time.Now().UTC().Add(backoffDelay)
 
+	//nolint:gosec // G117: internal job payload serialization; token not logged
 	jobBytes, marshalErr := json.Marshal(job)
 	if marshalErr != nil {
 		w.logger.Error("failed to marshal job for requeue",
@@ -833,6 +835,7 @@ func (w *SyncWorker) requeueJob(job *SyncJob) bool {
 
 // returnJobToQueue puts a not-yet-available job back on the main queue and acks inflight.
 func (w *SyncWorker) returnJobToQueue(job *SyncJob) error {
+	//nolint:gosec // G117: internal job payload serialization; token not logged
 	jobBytes, err := json.Marshal(job)
 	if err != nil {
 		return fmt.Errorf("marshal deferred job: %w", err)
@@ -1092,6 +1095,7 @@ func (w *SyncWorker) checkpointInviteDeliveryOutcome(ctx context.Context, job *S
 		return nil
 	}
 	job.Data = payload
+	//nolint:gosec // G117: internal job payload serialization; token not logged
 	jobBytes, err := json.Marshal(job)
 	if err != nil {
 		return err

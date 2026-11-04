@@ -419,8 +419,7 @@ func (s *PhoneMappingService) GetQuarantinedPhones(ctx context.Context, page, pe
 		s.logger.Error("failed to find quarantined phones", zap.Error(err))
 		return nil, fmt.Errorf("failed to find quarantined phones: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var quarantinedPhones []models.QuarantinedPhone
 	for cursor.Next(ctx) {
 		var mapping models.PhoneCPFMapping
@@ -530,8 +529,7 @@ func (s *PhoneMappingService) GetQuarantineStats(ctx context.Context) (*models.Q
 		s.logger.Error("failed to count quarantine history", zap.Error(err))
 		return nil, fmt.Errorf("failed to count quarantine history: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var historyResult []bson.M
 	if err := cursor.All(ctx, &historyResult); err != nil {
 		s.logger.Error("failed to decode quarantine history count", zap.Error(err))

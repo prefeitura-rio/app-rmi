@@ -80,8 +80,7 @@ func (c *DataRelayClient) SendEmail(ctx context.Context, req *EmailRequest) erro
 	if err != nil {
 		return fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close()
-
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("data relay API returned status %d: %s", resp.StatusCode, string(body))

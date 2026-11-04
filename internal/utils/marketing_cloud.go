@@ -87,8 +87,7 @@ func getMarketingCloudToken(ctx context.Context) (string, error) {
 		logger.Error("failed to send SFMC auth request", zap.Error(err))
 		return "", fmt.Errorf("failed to send SFMC auth request: %w", err)
 	}
-	defer resp.Body.Close()
-
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Error("failed to read SFMC auth response body", zap.Error(err))
@@ -167,8 +166,7 @@ func SendMarketingCloudOTP(ctx context.Context, contactKey, phone, code string) 
 		logger.Error("failed to send SFMC message request", zap.Error(err))
 		return fmt.Errorf("failed to send SFMC message request: %w", err)
 	}
-	defer resp.Body.Close()
-
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Error("failed to read SFMC response body", zap.Error(err))

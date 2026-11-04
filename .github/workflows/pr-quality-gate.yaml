@@ -58,6 +58,20 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
 
+
+  # Default source mode only reports vulns reachable from the module's code
+  # (call-graph analysis). Text output makes the job fail when any are found.
+  govulncheck:
+    name: Go Vulnerability Check
+    runs-on: ubuntu-latest
+    steps:
+      - id: govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: go.mod
+          go-package: ./...
+          output-format: text
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -256,7 +270,7 @@ jobs:
   build:
     name: Docker Build Dry Run
     runs-on: ubuntu-latest
-    needs: [lint, security-scan, test]
+    needs: [lint, security-scan, govulncheck, test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -305,7 +319,7 @@ jobs:
   summary:
     name: Quality Gate Summary
     runs-on: ubuntu-latest
-    needs: [lint, security-scan, test, build]
+    needs: [lint, security-scan, govulncheck, test, build]
     if: always()
     permissions:
       pull-requests: write
@@ -331,6 +345,7 @@ jobs:
             |-------|--------|
             | Code Linting | ${{ needs.lint.result == 'success' && '✅ Passed' || needs.lint.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
             | Security Scanning | ${{ needs.security-scan.result == 'success' && '✅ Passed' || needs.security-scan.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
+            | Go Vulnerability Check | ${{ needs.govulncheck.result == 'success' && '✅ Passed' || needs.govulncheck.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
             | Unit Tests | ${{ needs.test.result == 'success' && '✅ Passed' || needs.test.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
             | **Coverage** | **${{ needs.test.outputs.coverage_current }}%** (${{ needs.test.outputs.coverage_diff }}%) ${{ needs.test.outputs.coverage_status }} |
             | Docker Build | ${{ needs.build.result == 'success' && '✅ Passed' || needs.build.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
@@ -342,7 +357,7 @@ jobs:
 
             ---
 
-            ${{ needs.lint.result == 'success' && needs.security-scan.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' && '### ✅ All quality checks passed - PR is ready to merge' || '### ❌ Quality gate failed - PR is not ready to merge' }}
+            ${{ needs.lint.result == 'success' && needs.security-scan.result == 'success' && needs.govulncheck.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' && '### ✅ All quality checks passed - PR is ready to merge' || '### ❌ Quality gate failed - PR is not ready to merge' }}
 
             **Commit**: ${{ github.event.pull_request.head.sha }}
             **Run**: [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
@@ -351,6 +366,7 @@ jobs:
         run: |
           if [ "${{ needs.lint.result }}" != "success" ] || \
              [ "${{ needs.security-scan.result }}" != "success" ] || \
+             [ "${{ needs.govulncheck.result }}" != "success" ] || \
              [ "${{ needs.test.result }}" != "success" ] || \
              [ "${{ needs.build.result }}" != "success" ]; then
             exit 1

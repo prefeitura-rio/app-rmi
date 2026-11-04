@@ -837,7 +837,6 @@ func TestDataRelayEmailSender_Send(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
-
 	client := clients.NewDataRelayClient(srv.URL, "k", time.Second)
 	sender := NewDataRelayEmailSender(client, nil)
 	err := sender.Send(context.Background(), EmailMessage{

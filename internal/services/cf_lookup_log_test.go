@@ -113,7 +113,6 @@ func TestFindNearestCF_LogsNeitherAddressNorAddressHash(t *testing.T) {
 
 	client, server := setupMCPTest(t, mcpHandlerWithEquipments(cfResult))
 	defer server.Close()
-
 	logger, logs := observedLogger(zapcore.InfoLevel)
 	client.logger = logger
 
@@ -147,7 +146,6 @@ func TestPerformCFLookup_NoResults_LogsNeitherAddressNorAddressHash(t *testing.T
 
 	mcpClient, server := setupMCPTest(t, mcpHandlerWithEquipments(cfResult))
 	defer server.Close()
-
 	logger, logs := observedLogger(zapcore.DebugLevel)
 	service := NewCFLookupService(nil, mcpClient, logger)
 
@@ -261,7 +259,6 @@ func TestInitCFLookupService_WiresGlobalLoggerIntoServiceAndMCPClient(t *testing
 		"textContent": "no equipment found",
 	}))
 	defer server.Close()
-
 	previousConfig := config.AppConfig
 	previousInstance := CFLookupServiceInstance
 	t.Cleanup(func() {
@@ -298,7 +295,6 @@ func TestInitCFLookupService_LogsMCPSessionFailure(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer server.Close()
-
 	previousConfig := config.AppConfig
 	previousInstance := CFLookupServiceInstance
 	t.Cleanup(func() {
@@ -348,7 +344,6 @@ func TestFindNearestCF_DebugLogsOmitPayloadAndResponseBody(t *testing.T) {
 
 	client, server := setupMCPTest(t, mcpHandlerWithEquipments(cfResult))
 	defer server.Close()
-
 	logger, logs := observedLogger(zapcore.DebugLevel)
 	client.logger = logger
 
@@ -404,7 +399,6 @@ func TestFindNearestCF_DebugLogsOmitUpstreamReasonText(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			client, server := setupMCPTest(t, mcpHandlerWithEquipments(cfResult))
 			defer server.Close()
-
 			logger, logs := observedLogger(zapcore.DebugLevel)
 			client.logger = logger
 

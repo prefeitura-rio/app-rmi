@@ -171,6 +171,12 @@ lint:
     # LGPD: fail if CPF is logged/traced without masking (see observability.CPFField)
     ./scripts/check_cpf_log_masking.sh
 
+# Fail on Go vulnerabilities reachable from this module's code (same as PR gate).
+# Needs a Go toolchain matching go.mod (nix/direnv, or unset GOROOT if using GVM).
+govulncheck:
+    go install golang.org/x/vuln/cmd/govulncheck@latest
+    govulncheck ./...
+
 # Check for outdated dependencies
 deps-check:
     go list -u -m all

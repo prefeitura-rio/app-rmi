@@ -54,7 +54,7 @@ func (s *PetService) GetPetsByCPF(ctx context.Context, cpf string, page, perPage
 	if err != nil {
 		return nil, fmt.Errorf("failed to find curated pets: %w", err)
 	}
-	defer curatedCursor.Close(ctx)
+	defer func() { _ = curatedCursor.Close(ctx) }()
 
 	var rawCuratedPets []models.RawCitizenPets
 	if err = curatedCursor.All(ctx, &rawCuratedPets); err != nil {
@@ -86,7 +86,7 @@ func (s *PetService) GetPetsByCPF(ctx context.Context, cpf string, page, perPage
 	if err != nil {
 		return nil, fmt.Errorf("failed to find self-registered pets: %w", err)
 	}
-	defer selfRegisteredCursor.Close(ctx)
+	defer func() { _ = selfRegisteredCursor.Close(ctx) }()
 
 	var selfRegisteredPets []models.SelfRegisteredPet
 	if err = selfRegisteredCursor.All(ctx, &selfRegisteredPets); err != nil {
@@ -152,8 +152,7 @@ func (s *PetService) GetPetByID(ctx context.Context, cpf string, petID int) (*mo
 	if err != nil {
 		return nil, fmt.Errorf("failed to find curated pet: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var pets []models.Pet
 	if err = cursor.All(ctx, &pets); err != nil {
 		return nil, fmt.Errorf("failed to decode curated pet: %w", err)

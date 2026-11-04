@@ -94,8 +94,7 @@ func (s *AvatarService) ListAvatars(ctx context.Context, page, perPage int) (*mo
 		s.logger.Error("failed to query avatars", zap.Error(err))
 		return nil, fmt.Errorf("failed to query avatars: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var avatars []models.Avatar
 	if err := cursor.All(ctx, &avatars); err != nil {
 		s.logger.Error("failed to decode avatars", zap.Error(err))

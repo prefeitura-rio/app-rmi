@@ -27,7 +27,6 @@ func TestDataRelayClient_SendEmail_Success(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
-
 	client := NewDataRelayClient(srv.URL, "test-api-key", time.Second)
 	err := client.SendEmail(context.Background(), &EmailRequest{
 		ToAddresses: []string{"joao@example.com"},
@@ -48,7 +47,6 @@ func TestDataRelayClient_SendEmail_Non2xx(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":"upstream"}`))
 	}))
 	defer srv.Close()
-
 	client := NewDataRelayClient(srv.URL, "key", time.Second)
 	err := client.SendEmail(context.Background(), &EmailRequest{
 		ToAddresses: []string{"a@example.com"},
@@ -87,7 +85,6 @@ func TestDataRelayClient_TrimsTrailingSlash(t *testing.T) {
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	defer srv.Close()
-
 	client := NewDataRelayClient(srv.URL+"/", "k", time.Second)
 	require.NoError(t, client.SendEmail(context.Background(), &EmailRequest{
 		ToAddresses: []string{"a@example.com"}, Subject: "s", Body: "b",

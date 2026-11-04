@@ -57,6 +57,7 @@ func (pm *PerformanceMonitor) Checkpoint(name string) {
 	pm.logger.Info("performance checkpoint",
 		zap.String("checkpoint", name),
 		zap.Duration("duration", checkpoint.Duration),
+		//nolint:gosec // G115: bounded conversion for metrics/status/memory counters
 		zap.Int64("memory_delta_bytes", int64(checkpoint.Memory)),
 	)
 }
@@ -73,6 +74,7 @@ func (pm *PerformanceMonitor) End() {
 	pm.logger.Info("performance monitoring completed",
 		zap.String("operation", pm.operation),
 		zap.Duration("total_duration", totalDuration),
+		//nolint:gosec // G115: bounded conversion for metrics/status/memory counters
 		zap.Int64("total_memory_delta_bytes", int64(totalMemoryDelta)),
 		zap.Int("checkpoint_count", len(pm.checkpoints)),
 	)
@@ -84,6 +86,7 @@ func (pm *PerformanceMonitor) End() {
 				zap.String("operation", pm.operation),
 				zap.String("checkpoint", cp.Name),
 				zap.Duration("duration", cp.Duration),
+				//nolint:gosec // G115: bounded conversion for metrics/status/memory counters
 				zap.Int64("memory_delta_bytes", int64(cp.Memory)),
 			)
 		}
@@ -112,6 +115,7 @@ func (pm *PerformanceMonitor) MemoryWarning(thresholdBytes int64, message string
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
+	//nolint:gosec // G115: bounded conversion for metrics/status/memory counters
 	memoryDelta := int64(memStats.Alloc - pm.memoryBefore.Alloc)
 	if memoryDelta > thresholdBytes {
 		pm.logger.Warn("memory usage warning",

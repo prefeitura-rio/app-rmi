@@ -184,19 +184,19 @@ func configureCollectionWriteConcerns() {
 		// performance over durability. These collections are either frequently synced from
 		// external sources (CitizenCollection) or have Redis-based write buffers (PhoneMappingCollection)
 		// that provide eventual consistency recovery paths.
-		AppConfig.CitizenCollection:            &writeconcern.WriteConcern{W: 0},
-		AppConfig.UserConfigCollection:         &writeconcern.WriteConcern{W: 0},
-		AppConfig.PhoneMappingCollection:       &writeconcern.WriteConcern{W: 0},
-		AppConfig.OptInHistoryCollection:       &writeconcern.WriteConcern{W: 0},
-		AppConfig.BetaGroupCollection:          &writeconcern.WriteConcern{W: 0},
-		AppConfig.PhoneVerificationCollection:  &writeconcern.WriteConcern{W: 0},
-		AppConfig.MaintenanceRequestCollection: &writeconcern.WriteConcern{W: 0},
+		AppConfig.CitizenCollection:            {W: 0},
+		AppConfig.UserConfigCollection:         {W: 0},
+		AppConfig.PhoneMappingCollection:       {W: 0},
+		AppConfig.OptInHistoryCollection:       {W: 0},
+		AppConfig.BetaGroupCollection:          {W: 0},
+		AppConfig.PhoneVerificationCollection:  {W: 0},
+		AppConfig.MaintenanceRequestCollection: {W: 0},
 
 		// Data integrity collections (W=1 for consistency)
-		AppConfig.SelfDeclaredCollection: &writeconcern.WriteConcern{W: 1},
+		AppConfig.SelfDeclaredCollection: {W: 1},
 
 		// Fire-and-forget collections (W=0 for maximum performance)
-		AppConfig.AuditLogsCollection: &writeconcern.WriteConcern{W: 0},
+		AppConfig.AuditLogsCollection: {W: 0},
 	}
 
 	// Apply write concerns to collections
@@ -520,7 +520,7 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	indexExists := false
 	for cursor.Next(ctx) {
@@ -600,7 +600,7 @@ func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) erro
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existing := make(map[string]bool)
 	for cursor.Next(ctx) {
@@ -681,7 +681,7 @@ func ensureSelfDeclaredIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	indexExists := false
 	for cursor.Next(ctx) {
@@ -739,7 +739,7 @@ func ensurePhoneVerificationIndex(ctx context.Context, logger *zap.Logger) error
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
@@ -817,7 +817,7 @@ func ensureUserConfigIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	indexExists := false
 	for cursor.Next(ctx) {
@@ -875,7 +875,7 @@ func ensureAuditLogsIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
@@ -952,7 +952,7 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bson.M)
 	for cursor.Next(ctx) {
@@ -1077,7 +1077,7 @@ func ensureOptInHistoryIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
@@ -1153,7 +1153,7 @@ func ensureBetaGroupIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
@@ -1227,7 +1227,7 @@ func ensureCFLookupIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
@@ -1322,8 +1322,7 @@ func ensureLegalEntityIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list legal entity indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -1427,8 +1426,7 @@ func ensurePetIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list pet indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -1511,8 +1509,7 @@ func ensureSelfRegisteredPetIndex(ctx context.Context, logger *zap.Logger) error
 		logger.Error("failed to list self-registered pet indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -1595,8 +1592,7 @@ func ensureChatMemoryIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list chat memory indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -2052,8 +2048,7 @@ func ensureDepartmentIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list department indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -2160,8 +2155,7 @@ func ensureNotificationCategoryIndex(ctx context.Context, logger *zap.Logger) er
 		logger.Error("failed to list notification_category indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -2244,8 +2238,7 @@ func ensureCNAEIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list CNAE indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -2334,8 +2327,7 @@ func listExistingIndexNames(ctx context.Context, collection *mongo.Collection) (
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existing := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M

@@ -115,10 +115,12 @@ func (rp *RedisPipeline) BatchGet(keys []string) (map[string]interface{}, error)
 	for i, cmd := range cmds {
 		val, err := cmd.Result()
 		if err == nil {
+			//nolint:gosec // G602: pipeline result index aligned with requested keys length
 			results[keys[i]] = val
 		} else if err != redis.Nil {
 			// Log non-nil errors but don't fail the whole operation
 			logging.GetLogger().Warn("failed to get key in batch",
+				//nolint:gosec // G602: pipeline result index aligned with requested keys length
 				zap.String("key", keys[i]),
 				zap.Error(err))
 		}
@@ -196,6 +198,7 @@ func (rp *RedisPipeline) BatchExists(keys []string) (map[string]bool, error) {
 	results := make(map[string]bool)
 	for i, cmd := range cmds {
 		if existsCmd, ok := cmd.(interface{ Val() int64 }); ok {
+			//nolint:gosec // G602: pipeline result index aligned with requested keys length
 			results[keys[i]] = existsCmd.Val() > 0
 		}
 	}
@@ -238,6 +241,7 @@ func (rp *RedisPipeline) BatchIncr(keys []string) (map[string]int64, error) {
 	results := make(map[string]int64)
 	for i, cmd := range cmds {
 		if incrCmd, ok := cmd.(interface{ Val() int64 }); ok {
+			//nolint:gosec // G602: pipeline result index aligned with requested keys length
 			results[keys[i]] = incrCmd.Val()
 		}
 	}

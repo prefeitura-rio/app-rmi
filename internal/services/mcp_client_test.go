@@ -274,7 +274,6 @@ func TestGetSessionID_Success(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	sessionID, err := client.getSessionID(ctx)
 
@@ -290,7 +289,6 @@ func TestGetSessionID_WithWhitespace(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	sessionID, err := client.getSessionID(ctx)
 
@@ -305,7 +303,6 @@ func TestGetSessionID_NoSessionID(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	sessionID, err := client.getSessionID(ctx)
 
@@ -321,7 +318,6 @@ func TestGetSessionID_UnexpectedStatusCode(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	// Override retry config to fail faster
 	client.retryConfig.MaxRetries = 1
 	client.retryConfig.BaseDelay = 10 * time.Millisecond
@@ -354,7 +350,6 @@ func TestMakeRequest_Success(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	payload := MCPRequest{
 		JSONRPC: "2.0",
@@ -383,7 +378,6 @@ data: {"result":{"status":"success","data":"sse data"}}
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	payload := MCPRequest{
 		JSONRPC: "2.0",
@@ -405,7 +399,6 @@ func TestMakeRequest_ServerError(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	// Override retry config to fail faster
 	client.retryConfig.MaxRetries = 1
 	client.retryConfig.BaseDelay = 10 * time.Millisecond
@@ -433,7 +426,6 @@ func TestSendNotification_Success(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	payload := MCPRequest{
 		JSONRPC: "2.0",
@@ -452,7 +444,6 @@ func TestSendNotification_WithOKStatus(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	payload := MCPRequest{
 		JSONRPC: "2.0",
@@ -471,7 +462,6 @@ func TestSendNotification_FailedStatus(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	// Override retry config to fail faster
 	client.retryConfig.MaxRetries = 0
 
@@ -510,7 +500,6 @@ func TestInitializeSession_Success(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	err := client.initializeSession(ctx, "test-session")
 
@@ -532,7 +521,6 @@ func TestInitializeSession_InitializeError(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	err := client.initializeSession(ctx, "test-session")
 
@@ -553,7 +541,6 @@ func TestLoadEquipmentInstructions_Success(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	err := client.loadEquipmentInstructions(ctx, "test-session")
 
@@ -574,7 +561,6 @@ func TestLoadEquipmentInstructions_Error(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	err := client.loadEquipmentInstructions(ctx, "test-session")
 
@@ -964,7 +950,6 @@ func TestFindNearestCF_Integration(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	result, err := client.FindNearestCF(ctx, "Rua Test, 100, Centro")
 
@@ -982,7 +967,6 @@ func TestFindNearestCF_SessionError(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	// Override retry config to fail faster
 	client.retryConfig.MaxRetries = 1
 	client.retryConfig.BaseDelay = 10 * time.Millisecond
@@ -1146,7 +1130,6 @@ func TestMakeRequest_InvalidJSON(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	// Override retry config to fail faster
 	client.retryConfig.MaxRetries = 0
 

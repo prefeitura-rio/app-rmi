@@ -64,8 +64,7 @@ func (s *VehicleConductorService) ListInvitations(ctx context.Context, cpf strin
 	if err != nil {
 		return nil, fmt.Errorf("list invitations: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var links []models.VehicleConductor
 	if err := cursor.All(ctx, &links); err != nil {
 		return nil, fmt.Errorf("decode invitations: %w", err)
@@ -174,8 +173,7 @@ func (s *VehicleConductorService) ListConductors(ctx context.Context, cpf, vehic
 	if err != nil {
 		return nil, fmt.Errorf("list conductors: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var list []models.VehicleConductor
 	if err := cursor.All(ctx, &list); err != nil {
 		return nil, fmt.Errorf("decode conductors: %w", err)
@@ -400,6 +398,7 @@ func (s *VehicleConductorService) enqueueInviteEmail(ctx context.Context, link *
 		MaxRetries: 3,
 	}
 
+	//nolint:gosec // G117: internal job payload serialization; token not logged
 	jobBytes, err := json.Marshal(job)
 	if err != nil {
 		if s.logger != nil {

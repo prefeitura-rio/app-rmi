@@ -358,7 +358,6 @@ func TestHandleSalesforcePushJob_PatchThenCreateOn404(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-
 	worker.SetSalesforceClient(clients.NewSalesforceClient(srv.URL, time.Second, clients.StaticBearerToken("jwt")))
 
 	nome := "Joao"
@@ -403,7 +402,6 @@ func TestHandleSalesforcePushJob_PatchConflictIsSuccess(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-
 	worker.SetSalesforceClient(clients.NewSalesforceClient(srv.URL, time.Second, clients.StaticBearerToken("jwt")))
 	nome := "Joao"
 	_, err := worker.mongo.Collection(config.AppConfig.CitizenCollection).InsertOne(context.Background(), models.Citizen{

@@ -101,12 +101,12 @@ type catalogRow struct {
 }
 
 func readCatalogCSV(path string) ([]catalogRow, error) {
+	//nolint:gosec // G703: CLI operator-supplied path for local seed tool
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
-
 	r := csv.NewReader(f)
 	r.TrimLeadingSpace = true
 	records, err := r.ReadAll()

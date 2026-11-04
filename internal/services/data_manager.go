@@ -114,6 +114,7 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 		BearerToken: sealed,
 	}
 
+	//nolint:gosec // G117: internal job payload serialization; token not logged
 	jobBytes, err := json.Marshal(syncJob)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sync job: %w", err)

@@ -82,8 +82,7 @@ func (s *MobilidadeCatalogService) listBrands(ctx context.Context, filter bson.M
 	if err != nil {
 		return nil, fmt.Errorf("list brands: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var brands []models.VehicleBrand
 	if err := cursor.All(ctx, &brands); err != nil {
 		return nil, fmt.Errorf("decode brands: %w", err)
@@ -119,8 +118,7 @@ func (s *MobilidadeCatalogService) listModels(ctx context.Context, filter bson.M
 	if err != nil {
 		return nil, fmt.Errorf("list models: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var list []models.VehicleModel
 	if err := cursor.All(ctx, &list); err != nil {
 		return nil, fmt.Errorf("decode models: %w", err)

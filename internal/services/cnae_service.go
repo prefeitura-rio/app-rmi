@@ -87,8 +87,7 @@ func (s *CNAEService) ListCNAEs(ctx context.Context, filters models.CNAEFilters)
 		s.logger.Error("failed to list CNAEs", zap.Error(err))
 		return nil, fmt.Errorf("failed to list CNAEs: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	// Decode results with flexible bson.M to handle type variations
 	var cnaes []models.CNAE
 	for cursor.Next(ctx) {
