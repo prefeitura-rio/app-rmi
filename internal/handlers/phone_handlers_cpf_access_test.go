@@ -128,7 +128,10 @@ func TestValidateCPFAccess(t *testing.T) {
 		{name: "empty target CPF", claims: ownerClaims(), targetCPF: "", allowed: false},
 		{name: "token without CPF", claims: &models.JWTClaims{PreferredUsername: "service-account-x"}, targetCPF: "", allowed: false},
 		{name: "admin role on any CPF", claims: adminClaims(), targetCPF: accessOtherCPF, allowed: true},
-		{name: "trusted service client on any CPF", claims: &models.JWTClaims{AZP: "trusted-service"}, targetCPF: accessOtherCPF, allowed: true},
+		{name: "trusted service account on any CPF", claims: &models.JWTClaims{AZP: "trusted-service", PreferredUsername: "service-account-trusted-service"}, targetCPF: accessOtherCPF, allowed: true},
+		{name: "trusted service account by client_id on any CPF", claims: &models.JWTClaims{AZP: "trusted-service", ClientID: "trusted-service"}, targetCPF: accessOtherCPF, allowed: true},
+		{name: "citizen token with trusted azp on third party CPF", claims: &models.JWTClaims{AZP: "trusted-service", PreferredUsername: accessOwnerCPF}, targetCPF: accessOtherCPF, allowed: false},
+		{name: "citizen token with trusted azp on own CPF", claims: &models.JWTClaims{AZP: "trusted-service", PreferredUsername: accessOwnerCPF}, targetCPF: accessOwnerCPF, allowed: true},
 		{name: "untrusted client on third party CPF", claims: &models.JWTClaims{AZP: "superapp-like", PreferredUsername: accessOwnerCPF}, targetCPF: accessOtherCPF, allowed: false},
 	}
 

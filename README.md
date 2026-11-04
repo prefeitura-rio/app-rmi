@@ -1014,7 +1014,7 @@ Valida um número de telefone usando um código de verificação.
 Busca um cidadão por número de telefone e retorna dados mascarados.
 - Retorna CPF e nome mascarados se encontrado
 - Retorna `{"found": false}` se não encontrado
-- Não requer autenticação
+- Requer JWT: admin/service account confiável vê qualquer número; cidadão só o telefone vinculado ao próprio CPF (`preferred_username`), senão 403
 - Suporte a números internacionais
 
 ### POST /phone/{phone_number}/validate-registration
@@ -1022,11 +1022,11 @@ Valida dados de registro (nome, CPF, data de nascimento) contra dados base.
 - Validação contra coleção de dados base (read-only)
 - Retorna resultado da validação e dados encontrados
 - Registra tentativas de validação para auditoria
-- Não requer autenticação
+- Requer JWT: cidadão só valida o próprio CPF (`cpf` do corpo = `preferred_username`), senão 403; admin/service account confiável valida qualquer CPF
 
 ### POST /phone/{phone_number}/opt-in
 Processa opt-in para um número de telefone.
-- Requer autenticação JWT com acesso ao CPF
+- Requer JWT: `cpf` do corpo = `preferred_username` do token (ou admin/service account confiável), senão 403
 - Cria mapeamento phone-CPF ativo
 - Registra histórico de opt-in
 - Atualiza dados autodeclarados se validado
@@ -1035,16 +1035,15 @@ Processa opt-in para um número de telefone.
 ### POST /phone/{phone_number}/opt-out
 Processa opt-out para um número de telefone.
 - **Nova funcionalidade**: Números que nunca fizeram opt-in podem agora fazer opt-out
-- Cria mapeamento phone-CPF com status "blocked" para números desconhecidos
-- Não requer autenticação JWT para números desconhecidos
+- Cria mapeamento phone-CPF com status "blocked" para números desconhecidos (só admin/service account confiável)
+- Requer JWT: cidadão só faz opt-out de telefone vinculado ao próprio CPF; número desconhecido ou de outro CPF → 403
 - Registra histórico de opt-out com motivo
-- Para números conhecidos: requer autenticação e atualiza dados autodeclarados
 - **Status na resposta**: `"opted_out"` para todas as operações de opt-out bem-sucedidas
 - **Campo opted_out**: Adicionado ao modelo `PhoneStatusResponse` para indicar status de opt-out
 
 ### POST /phone/{phone_number}/reject-registration
 Rejeita um registro e bloqueia mapeamento phone-CPF.
-- Requer autenticação JWT com acesso ao CPF
+- Requer JWT: `cpf` do corpo e o CPF já vinculado ao telefone devem ser o do token (ou admin/service account confiável), senão 403
 - Bloqueia mapeamento existente
 - Registra rejeição no histórico
 - Permite novo registro para o número
@@ -1304,6 +1303,7 @@ DELETE /v1/phone/{phone_number}/quarantine
 ```http
 POST /v1/phone/{phone_number}/bind
 ```
+Requer JWT: `cpf` do corpo = `preferred_username` do token (ou admin/service account confiável), senão 403.
 **Corpo da Requisição:**
 ```json
 {
