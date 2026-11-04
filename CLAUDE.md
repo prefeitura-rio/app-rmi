@@ -106,6 +106,7 @@ just stop-deps        # Stop dependency containers
 - **Route Protection**: Public phone endpoints, protected citizen data
 - **Audit Trail**: Comprehensive logging with async workers
 - **Input Validation**: CPF, phone number, data format validation
+- **Phone routes with the CPF in the body** (`/v1/phone/{phone}/opt-in|opt-out|bind|reject-registration|validate-registration|citizen`): `RequireOwnCPF()` does not apply (no `:cpf` in the URL), so `PhoneHandlers.validateCPFAccess(c, cpf)` enforces it: admin/trusted service client (`HasAdminPrivileges`) or `cpf` == JWT `preferred_username`, else 403. `opt-out`, `citizen` and `reject-registration` also check the CPF already bound to the phone (`PhoneMappingService.GetBoundCPF`); a citizen cannot opt out a phone without a bound CPF.
 
 ### Audit Logging System
 - **Automatic Audit Middleware**: All PUT/POST/DELETE/PATCH requests are automatically logged via `middleware.AuditMiddleware()`
