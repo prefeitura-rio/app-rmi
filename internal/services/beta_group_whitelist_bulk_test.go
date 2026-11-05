@@ -13,29 +13,32 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// setupBetaBulkTest uses the collections already configured for the package instead of
-// renaming them: config.AppConfig is read concurrently by the index maintenance goroutine
-// started in TestMain, so writing to it here would be a data race. Everything the test
-// creates (groups and phones) is removed at the end.
+// setupBetaBulkTest points the service at collections used by no other test: the shared
+// test_beta_groups is also used by the handlers package, which runs in parallel. Redis
+// status keys of the phones are removed before and after.
 func setupBetaBulkTest(t *testing.T, phones ...string) *BetaGroupService {
 	t.Helper()
 	if config.MongoDB == nil || config.Redis == nil {
 		t.Skip("MongoDB/Redis not initialized")
 	}
-	service := NewBetaGroupService(logging.GetLogger())
-	groups := config.MongoDB.Collection(config.AppConfig.BetaGroupCollection)
-	mappings := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
+	cfg := config.AppConfig
+	origGroups, origMappings := cfg.BetaGroupCollection, cfg.PhoneMappingCollection
+	cfg.BetaGroupCollection = "bulk_test_beta_groups"
+	cfg.PhoneMappingCollection = "bulk_test_phone_mappings"
 	clean := func() {
 		ctx := context.Background()
-		_, _ = groups.DeleteMany(ctx, bson.M{"name": bson.M{"$regex": "^Bulk Teste "}})
-		_, _ = mappings.DeleteMany(ctx, bson.M{"phone_number": bson.M{"$in": phones}})
+		_ = config.MongoDB.Collection(cfg.BetaGroupCollection).Drop(ctx)
+		_ = config.MongoDB.Collection(cfg.PhoneMappingCollection).Drop(ctx)
 		for _, p := range phones {
 			_ = config.Redis.Del(ctx, "beta_status:"+p).Err()
 		}
 	}
 	clean()
-	t.Cleanup(clean)
-	return service
+	t.Cleanup(func() {
+		clean()
+		cfg.BetaGroupCollection, cfg.PhoneMappingCollection = origGroups, origMappings
+	})
+	return NewBetaGroupService(logging.GetLogger())
 }
 
 func betaGroupOf(t *testing.T, storagePhone string) string {

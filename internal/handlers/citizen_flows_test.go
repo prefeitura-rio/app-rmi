@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
@@ -19,25 +22,40 @@ import (
 // flowsCPF is a synthetic, check-digit-valid CPF reserved for these tests.
 const flowsCPF = "86288366757"
 
-// resetCitizenFlowState removes every Redis key and Mongo document of flowsCPF so the
-// tests start from "citizen never seen" and leave nothing behind.
+// citizenFlowsRedisDB isolates the write buffer and the sync queues of these tests from
+// Redis DB 0, where the services package (running in parallel under go test ./...)
+// deletes user_config:* and sync:queue:* keys between its tests.
+const citizenFlowsRedisDB = 12
+
+// resetCitizenFlowState points config.Redis at an empty database of its own and removes
+// the Mongo documents of flowsCPF, so the tests start from "citizen never seen" and leave
+// nothing behind.
 func resetCitizenFlowState(t *testing.T) {
 	t.Helper()
 	if config.MongoDB == nil || config.Redis == nil {
 		t.Skip("MongoDB/Redis not initialized")
 	}
+	addr := os.Getenv("REDIS_ADDR")
+	if addr == "" {
+		addr = "localhost:6379"
+	}
+	rc := redisclient.NewClient(redis.NewClient(&redis.Options{Addr: addr, Password: os.Getenv("REDIS_PASSWORD"), DB: citizenFlowsRedisDB}))
+	require.NoError(t, rc.Ping(context.Background()).Err())
+	prevRedis := config.Redis
+	config.SetRedis(rc)
+
 	clean := func() {
 		ctx := context.Background()
-		keys, _ := config.Redis.Keys(ctx, "*"+flowsCPF+"*").Result()
-		if len(keys) > 0 {
-			_ = config.Redis.Del(ctx, keys...).Err()
-		}
+		_ = rc.FlushDB(ctx).Err()
 		for _, coll := range []string{config.AppConfig.UserConfigCollection, config.AppConfig.CitizenCollection, config.AppConfig.SelfDeclaredCollection} {
 			_, _ = config.MongoDB.Collection(coll).DeleteMany(ctx, bson.M{"cpf": flowsCPF})
 		}
 	}
 	clean()
-	t.Cleanup(clean)
+	t.Cleanup(func() {
+		clean()
+		config.SetRedis(prevRedis)
+	})
 }
 
 func citizenFlowsRouter() *gin.Engine {

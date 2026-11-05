@@ -4,14 +4,45 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 	"time"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 const reliabilityCPF = "11144477735" // synthetic, check-digit valid
+
+// reliabilityRedisDB keeps these queues away from Redis DB 0, where other tests of this
+// and of the handlers package (running in parallel) enqueue jobs and delete sync:queue:*.
+const reliabilityRedisDB = 11
+
+// setupReliabilityWorker returns a sync worker on its own Redis database, emptied before
+// and after the test. It does not touch the package-wide config.
+func setupReliabilityWorker(t *testing.T) *SyncWorker {
+	t.Helper()
+	setupTestEnvironment()
+	if config.MongoDB == nil {
+		t.Skip("Skipping sync worker reliability tests: MongoDB not initialized")
+	}
+	addr := os.Getenv("REDIS_ADDR")
+	if addr == "" {
+		addr = "localhost:6379"
+	}
+	rc := redisclient.NewClient(redis.NewClient(&redis.Options{Addr: addr, Password: os.Getenv("REDIS_PASSWORD"), DB: reliabilityRedisDB}))
+	ctx := context.Background()
+	require.NoError(t, rc.Ping(ctx).Err())
+	require.NoError(t, rc.FlushDB(ctx).Err())
+	t.Cleanup(func() { _ = rc.FlushDB(context.Background()).Err() })
+	metrics := NewMetrics()
+	return NewSyncWorker(rc, config.MongoDB, 1, logging.GetLogger(), metrics, NewDegradedMode(rc, config.MongoDB, metrics))
+}
 
 func reliableQueueLens(t *testing.T, worker *SyncWorker, queue string) (queued, processing, claimed, dlq int64) {
 	t.Helper()
@@ -36,19 +67,6 @@ func firstListItem(t *testing.T, worker *SyncWorker, key string) string {
 	return items[0]
 }
 
-func clearReliableQueue(t *testing.T, worker *SyncWorker, queue string) {
-	t.Helper()
-	ctx := context.Background()
-	require.NoError(t, worker.redis.Del(ctx,
-		syncQueueKey(queue), syncProcessingKey(queue), syncProcessingClaimKey(queue), syncDLQKey(queue),
-	).Err())
-	t.Cleanup(func() {
-		_ = worker.redis.Del(context.Background(),
-			syncQueueKey(queue), syncProcessingKey(queue), syncProcessingClaimKey(queue), syncDLQKey(queue),
-		).Err()
-	})
-}
-
 // claimSalesforceSyncJob enqueues an anonimizacao job and claims it from the reliable queue,
 // leaving it in flight (processing list + claim set) as the worker does.
 func claimSalesforceSyncJob(t *testing.T, worker *SyncWorker) *SyncJob {
@@ -68,9 +86,7 @@ func claimSalesforceSyncJob(t *testing.T, worker *SyncWorker) *SyncJob {
 }
 
 func TestReliableQueue_RetryableFailureMovesInflightJobBackToQueue(t *testing.T) {
-	worker, _, cleanup := setupSyncWorkerTest(t)
-	defer cleanup()
-	clearReliableQueue(t, worker, SalesforceSyncQueue)
+	worker := setupReliabilityWorker(t)
 
 	job := claimSalesforceSyncJob(t, worker)
 	worker.handleSyncFailure(job, fmt.Errorf("mongo unavailable"))
@@ -90,9 +106,7 @@ func TestReliableQueue_RetryableFailureMovesInflightJobBackToQueue(t *testing.T)
 }
 
 func TestReliableQueue_DeferredJobIsReturnedUntilAvailable(t *testing.T) {
-	worker, _, cleanup := setupSyncWorkerTest(t)
-	defer cleanup()
-	clearReliableQueue(t, worker, SalesforceSyncQueue)
+	worker := setupReliabilityWorker(t)
 
 	job := claimSalesforceSyncJob(t, worker)
 	worker.handleSyncFailure(job, fmt.Errorf("transient"))
@@ -117,9 +131,7 @@ func TestReliableQueue_DeferredJobIsReturnedUntilAvailable(t *testing.T) {
 }
 
 func TestReliableQueue_ExhaustedRetriesGoToDLQWithoutBearer(t *testing.T) {
-	worker, _, cleanup := setupSyncWorkerTest(t)
-	defer cleanup()
-	clearReliableQueue(t, worker, SalesforceSyncQueue)
+	worker := setupReliabilityWorker(t)
 
 	job := claimSalesforceSyncJob(t, worker)
 	job.RetryCount = job.MaxRetries - 1
@@ -142,9 +154,7 @@ func TestReliableQueue_ExhaustedRetriesGoToDLQWithoutBearer(t *testing.T) {
 }
 
 func TestReliableQueue_NonRetryableFailureGoesStraightToDLQ(t *testing.T) {
-	worker, _, cleanup := setupSyncWorkerTest(t)
-	defer cleanup()
-	clearReliableQueue(t, worker, SalesforceSyncQueue)
+	worker := setupReliabilityWorker(t)
 
 	job := claimSalesforceSyncJob(t, worker)
 	worker.handleSyncFailure(job, newNonRetryableSyncError(fmt.Errorf("salesforce 401")))
@@ -157,9 +167,7 @@ func TestReliableQueue_NonRetryableFailureGoesStraightToDLQ(t *testing.T) {
 }
 
 func TestReliableQueue_MissingInflightPayloadIsNotPersisted(t *testing.T) {
-	worker, _, cleanup := setupSyncWorkerTest(t)
-	defer cleanup()
-	clearReliableQueue(t, worker, SalesforceSyncQueue)
+	worker := setupReliabilityWorker(t)
 
 	job := claimSalesforceSyncJob(t, worker)
 	// Another worker recovered/acked the payload in the meantime.
@@ -176,11 +184,9 @@ func TestReliableQueue_MissingInflightPayloadIsNotPersisted(t *testing.T) {
 }
 
 func TestReturnJobToQueue_PlainQueue(t *testing.T) {
-	worker, _, cleanup := setupSyncWorkerTest(t)
-	defer cleanup()
+	worker := setupReliabilityWorker(t)
 	ctx := context.Background()
 	queue := "self_declared_email"
-	require.NoError(t, worker.redis.Del(ctx, syncQueueKey(queue)).Err())
 
 	job := &SyncJob{ID: "deferred-plain", Type: queue, Key: reliabilityCPF, AvailableAt: time.Now().Add(time.Minute), MaxRetries: 3}
 	worker.processJob(job)

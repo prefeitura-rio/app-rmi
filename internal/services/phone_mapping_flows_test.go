@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,39 @@ const (
 	flowCPFOwner = "11144477735"
 	flowCPFOther = "52998224725"
 )
+
+// setupPhoneFlowsTest points the phone flows at collections used by no other test. The
+// shared test_* collections are also used, and dropped, by the handlers package, whose
+// tests run in parallel with these under go test ./....
+func setupPhoneFlowsTest(t *testing.T) (*PhoneMappingService, func()) {
+	t.Helper()
+	setupTestEnvironment()
+	if config.MongoDB == nil {
+		t.Skip("Skipping phone flows tests: MongoDB not available")
+	}
+	cfg := config.AppConfig
+	orig := [5]interface{}{cfg.CitizenCollection, cfg.PhoneMappingCollection, cfg.OptInHistoryCollection, cfg.BetaGroupCollection, cfg.PhoneQuarantineTTL}
+	cfg.CitizenCollection = "flows_test_citizens"
+	cfg.PhoneMappingCollection = "flows_test_phone_mappings"
+	cfg.OptInHistoryCollection = "flows_test_opt_in_history"
+	cfg.BetaGroupCollection = "flows_test_beta_groups"
+	cfg.PhoneQuarantineTTL = 6 * 30 * 24 * time.Hour
+	drop := func() {
+		ctx := context.Background()
+		for _, c := range []string{cfg.CitizenCollection, cfg.PhoneMappingCollection, cfg.OptInHistoryCollection, cfg.BetaGroupCollection} {
+			_ = config.MongoDB.Collection(c).Drop(ctx)
+		}
+	}
+	drop()
+	return NewPhoneMappingService(logging.GetLogger()), func() {
+		drop()
+		cfg.CitizenCollection = orig[0].(string)
+		cfg.PhoneMappingCollection = orig[1].(string)
+		cfg.OptInHistoryCollection = orig[2].(string)
+		cfg.BetaGroupCollection = orig[3].(string)
+		cfg.PhoneQuarantineTTL = orig[4].(time.Duration)
+	}
+}
 
 func findMapping(t *testing.T, storagePhone string) models.PhoneCPFMapping {
 	t.Helper()
@@ -45,7 +79,7 @@ func insertFlowCitizen(t *testing.T, cpf, nome string, nascimento time.Time) {
 }
 
 func TestBindPhoneToCPF_NewPhoneCreatesActiveMappingWithoutOptIn(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 
 	resp, err := service.BindPhoneToCPF(context.Background(), "+5521987650001", flowCPFOwner, "whatsapp")
@@ -63,7 +97,7 @@ func TestBindPhoneToCPF_NewPhoneCreatesActiveMappingWithoutOptIn(t *testing.T) {
 }
 
 func TestBindPhoneToCPF_ExistingQuarantinedPhoneIsReleasedAndRebound(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -94,7 +128,7 @@ func TestBindPhoneToCPF_ExistingQuarantinedPhoneIsReleasedAndRebound(t *testing.
 }
 
 func TestBindPhoneToCPF_RejectsInvalidInput(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -110,7 +144,7 @@ func TestBindPhoneToCPF_RejectsInvalidInput(t *testing.T) {
 }
 
 func TestGetBoundCPF(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -136,7 +170,7 @@ func TestGetBoundCPF(t *testing.T) {
 }
 
 func TestOptIn_RebindsPhoneOfAnotherCPFAndReleasesQuarantine(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -167,7 +201,7 @@ func TestOptIn_RebindsPhoneOfAnotherCPFAndReleasesQuarantine(t *testing.T) {
 }
 
 func TestOptIn_RejectsInvalidInput(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -179,7 +213,7 @@ func TestOptIn_RejectsInvalidInput(t *testing.T) {
 }
 
 func TestOptOut_BoundPhoneBlocksMappingAndRecordsHistory(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -204,7 +238,7 @@ func TestOptOut_BoundPhoneBlocksMappingAndRecordsHistory(t *testing.T) {
 }
 
 func TestRejectRegistration(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -229,7 +263,7 @@ func TestRejectRegistration(t *testing.T) {
 }
 
 func TestValidateRegistration(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -283,7 +317,7 @@ func TestValidateRegistration(t *testing.T) {
 }
 
 func TestGetQuarantinedPhones_ActiveAndExpiredWithPagination(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -331,7 +365,7 @@ func TestGetQuarantinedPhones_ActiveAndExpiredWithPagination(t *testing.T) {
 }
 
 func TestGetQuarantineStats_CountsHistoryAndCPF(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -358,7 +392,7 @@ func TestGetQuarantineStats_CountsHistoryAndCPF(t *testing.T) {
 }
 
 func TestBulkPhoneMappingOperations(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -383,7 +417,7 @@ func TestBulkPhoneMappingOperations(t *testing.T) {
 }
 
 func TestFindCPFByPhone_EdgeCases(t *testing.T) {
-	service, cleanup := setupPhoneMappingTest(t)
+	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
