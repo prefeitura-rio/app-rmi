@@ -14,9 +14,9 @@ import (
 //	"/v1/memory/5521987654321/preferencias"  → "/v1/memory/***/preferencias"
 //	"/v1/health"                             → "/v1/health"
 //
-// Any other identifier with 8 or more digits (e.g. a protocol number) is masked as well,
-// and so is a segment that only embeds a CPF or a phone ("12345678901x", "cpf-12345678901"):
-// see hasPersonalDataDigitRun.
+// Any other segment made only of digits and separators with 8 or more digits (e.g. a
+// numeric protocol number) is masked as well, and so is a segment that embeds 10 or more
+// consecutive digits ("12345678901x", "cpf-12345678901"): see hasPersonalDataDigitRun.
 func MaskURLPath(path string) string {
 	if path == "" {
 		return ""
@@ -37,18 +37,17 @@ func MaskURLPath(path string) string {
 //	"cpf=12345678901&page=2" → "cpf=***&page=2"
 //	"email=fulano%40example.com" → "email=***"
 //
-// A parameter without "=" is treated as a value and masked by the same rule.
+// A parameter whose name looks like personal data ("12345678901=1"), or one
+// without "=", is replaced by "***" as a whole.
 func MaskQuery(rawQuery string) string {
 	if rawQuery == "" {
 		return ""
 	}
 	pairs := strings.Split(rawQuery, "&")
 	for i, pair := range pairs {
-		name, value, hasValue := strings.Cut(pair, "=")
-		if !hasValue {
-			if isPersonalDataValue(name) {
-				pairs[i] = CacheKeyRedacted
-			}
+		name, value, _ := strings.Cut(pair, "=")
+		if isPersonalDataValue(name) {
+			pairs[i] = CacheKeyRedacted
 			continue
 		}
 		if isPersonalDataValue(value) {

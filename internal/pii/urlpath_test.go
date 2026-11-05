@@ -26,6 +26,8 @@ func TestMaskURLPath(t *testing.T) {
 		{name: "phone in a file name", path: "/v1/memory/5521987654321.json", want: "/v1/memory/***"},
 		{name: "uuid kept", path: "/v1/jobs/3f2b7c1e-9a4d-4e2b-8c1a-0d9e8f7a6b5c", want: "/v1/jobs/3f2b7c1e-9a4d-4e2b-8c1a-0d9e8f7a6b5c"},
 		{name: "date kept", path: "/v1/report/2026-11", want: "/v1/report/2026-11"},
+		{name: "numeric protocol masked", path: "/v1/maintenance-request/20261105", want: "/v1/maintenance-request/***"},
+		{name: "alphanumeric protocol kept", path: "/v1/salesforce/chamados/RIO-12345678-9", want: "/v1/salesforce/chamados/RIO-12345678-9"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,6 +52,8 @@ func TestMaskQuery(t *testing.T) {
 		{name: "list with a CPF", query: "ids=1,12345678901", want: "ids=***"},
 		{name: "bare value", query: "12345678901", want: "***"},
 		{name: "bare flag kept", query: "debug", want: "debug"},
+		{name: "CPF as parameter name", query: "12345678901=1&page=2", want: "***&page=2"},
+		{name: "escaped e-mail as parameter name", query: "fulano%40example.com=", want: "***"},
 		{name: "empty value kept", query: "cpf=", want: "cpf="},
 		{name: "invalid escape still checked", query: "cpf=12345678901%zz", want: "cpf=***"},
 		{name: "CPF embedded in text", query: "q=cpf12345678901", want: "q=***"},
