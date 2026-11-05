@@ -4,6 +4,8 @@
 
 API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autodeclaração de informações e verificação de contato.
 
+**Operação e incidentes:** [docs/runbook.md](docs/runbook.md) (dependências, onde olhar, alertas, rollback, DLQ e filas do sync worker, Salesforce 401, variáveis críticas).
+
 ## Funcionalidades
 
 - 🔍 Consulta de dados do cidadão por CPF
