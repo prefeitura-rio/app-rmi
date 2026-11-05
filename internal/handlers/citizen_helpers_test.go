@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"testing"
 	"time"
 
@@ -219,4 +220,15 @@ func TestQueueCFLookupJob(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), length, "Only one job should be queued while pending")
 	})
+}
+
+// TestCFLookupJobID_HasNoCPF checks that cf_lookup job IDs, which go to the sync
+// worker logs, never carry the CPF (LGPD) and stay unique.
+func TestCFLookupJobID_HasNoCPF(t *testing.T) {
+	first := cfLookupJobID()
+	second := cfLookupJobID()
+
+	jobID := regexp.MustCompile(`^cf_lookup_[0-9a-f]{16,32}$`)
+	assert.Regexp(t, jobID, first, "job ID is cf_lookup_<random hex>, without the CPF")
+	assert.NotEqual(t, first, second, "job IDs must be unique")
 }

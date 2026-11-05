@@ -28,13 +28,19 @@ import (
 // Version is set via ldflags during build
 var Version = "dev"
 
+// cfLookupJobID returns a cf_lookup job ID without the CPF: job IDs go to logs
+// (LGPD) and deduplication already uses cf_lookup:pending:<cpf>.
+func cfLookupJobID() string {
+	return "cf_lookup_" + utils.GenerateUUID()
+}
+
 // queueCFLookupJob queues a background job to perform CF lookup for a citizen
 func queueCFLookupJob(ctx context.Context, cpf, address string) {
 	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Create CF lookup job
 	job := services.SyncJob{
-		ID:         fmt.Sprintf("cf_lookup_%s_%d", cpf, time.Now().UnixNano()),
+		ID:         cfLookupJobID(),
 		Type:       "cf_lookup",
 		Key:        cpf,
 		Collection: "cf_lookup",
@@ -1330,7 +1336,7 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 			"invalid_value": input.Valor,
 		})
 		validationSpan.End()
-		logger.Error("invalid ethnicity value", zap.String("value", input.Valor))
+		logger.Error("invalid ethnicity value", zap.Int("value_length", len(input.Valor)))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid ethnicity value"})
 		return
 	}
@@ -1501,7 +1507,7 @@ func UpdateSelfDeclaredNomeExibicao(c *gin.Context) {
 			"invalid_value": input.Valor,
 		})
 		validationSpan.End()
-		logger.Error("exhibition name cannot be empty", zap.String("value", input.Valor))
+		logger.Error("exhibition name cannot be empty", zap.Int("value_length", len(input.Valor)))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "exhibition name cannot be empty"})
 		return
 	}
@@ -1511,7 +1517,7 @@ func UpdateSelfDeclaredNomeExibicao(c *gin.Context) {
 			"length":        len(input.Valor),
 		})
 		validationSpan.End()
-		logger.Error("exhibition name too long", zap.String("value", input.Valor), zap.Int("length", len(input.Valor)))
+		logger.Error("exhibition name too long", zap.Int("length", len(input.Valor)))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "exhibition name too long (maximum 255 characters)"})
 		return
 	}
@@ -2285,7 +2291,7 @@ func UpdateSelfDeclaredGenero(c *gin.Context) {
 			"invalid_value": input.Valor,
 		})
 		validationSpan.End()
-		logger.Error("invalid gender value", zap.String("value", input.Valor))
+		logger.Error("invalid gender value", zap.Int("value_length", len(input.Valor)))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "gender cannot be empty"})
 		return
 	}
@@ -2459,7 +2465,7 @@ func UpdateSelfDeclaredRendaFamiliar(c *gin.Context) {
 			"invalid_value": input.Valor,
 		})
 		validationSpan.End()
-		logger.Error("invalid family income value", zap.String("value", input.Valor))
+		logger.Error("invalid family income value", zap.Int("value_length", len(input.Valor)))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid family income value"})
 		return
 	}
@@ -2633,7 +2639,7 @@ func UpdateSelfDeclaredEscolaridade(c *gin.Context) {
 			"invalid_value": input.Valor,
 		})
 		validationSpan.End()
-		logger.Error("invalid education value", zap.String("value", input.Valor))
+		logger.Error("invalid education value", zap.Int("value_length", len(input.Valor)))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid education value"})
 		return
 	}
@@ -2807,7 +2813,7 @@ func UpdateSelfDeclaredDeficiencia(c *gin.Context) {
 			"invalid_value": input.Valor,
 		})
 		validationSpan.End()
-		logger.Error("invalid disability value", zap.String("value", input.Valor))
+		logger.Error("invalid disability value", zap.Int("value_length", len(input.Valor)))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid disability value"})
 		return
 	}

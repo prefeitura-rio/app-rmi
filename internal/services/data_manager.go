@@ -170,14 +170,11 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 		observability.KeyField(key))
 
 	if data, err := dm.redis.Get(ctx, writeKey).Result(); err == nil {
-		dataStr := string(data)
-		if len(dataStr) > 100 {
-			dataStr = dataStr[:100] + "..."
-		}
+		// The buffered JSON holds personal data (CPF, name...): log only its size.
 		dm.logger.Debug("found data in write buffer",
 			zap.String("type", dataType),
 			observability.KeyField(key),
-			zap.String("data_preview", dataStr))
+			zap.Int("data_size", len(data)))
 
 		if err := json.Unmarshal([]byte(data), result); err == nil {
 			dm.logger.Debug("successfully read from write buffer",
