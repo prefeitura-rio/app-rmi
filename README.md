@@ -33,6 +33,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | Variável | Descrição | Padrão | Obrigatório |
 |----------|-----------|---------|------------|
 | PORT | Porta do servidor | 8080 | Não |
+| CORS_ALLOWED_ORIGINS | Origens de browser permitidas no CORS (lista separada por vírgula, sem barra final). Ex.: `https://app.example.com,https://admin.example.com`. Vazio = fail-closed (nenhuma origem cross-origin recebe headers CORS). Valores reais ficam só no Infisical/`rmi-secrets` | - | Sim* |
 | MONGODB_URI | String de conexão MongoDB | mongodb://localhost:27017 | Sim |
 | MONGODB_DATABASE | Nome do banco de dados MongoDB | citizen_data | Não |
 | MONGODB_CITIZEN_COLLECTION | Nome da coleção de dados do cidadão | citizens | Não |
@@ -77,6 +78,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | WHATSAPP_COD_PARAMETER | Parâmetro do código no template HSM do WhatsApp | COD | Não |
 
 **Notas:**
+- `*` `CORS_ALLOWED_ORIGINS` deve ser configurado em staging/produção via Infisical/`rmi-secrets` com as origens dos frontends autorizados. Sem a variável (ou com origem fora da lista), requests cross-origin não recebem `Access-Control-*` (gin-contrib responde 403).
 - `*` MCP_AUTH_TOKEN é obrigatório apenas se a funcionalidade de CF lookup estiver habilitada
 
 ## 🏥 **CF (Clínica da Família) Lookup - Nova Funcionalidade**

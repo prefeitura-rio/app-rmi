@@ -428,6 +428,70 @@ func TestLoadConfig_Success(t *testing.T) {
 	if AppConfig.CitizenCollection != "citizens" {
 		t.Errorf("AppConfig.CitizenCollection = %v, want citizens", AppConfig.CitizenCollection)
 	}
+
+	if len(AppConfig.CORSAllowedOrigins) != 0 {
+		t.Errorf("AppConfig.CORSAllowedOrigins = %v, want empty when CORS_ALLOWED_ORIGINS unset", AppConfig.CORSAllowedOrigins)
+	}
+}
+
+func TestLoadConfig_CORSAllowedOrigins(t *testing.T) {
+	originalConfig := AppConfig
+	defer func() { AppConfig = originalConfig }()
+
+	os.Setenv("PORT", "8080")
+	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
+	os.Setenv("MONGODB_PET_COLLECTION", "pets")
+	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
+	os.Setenv("MONGODB_CHAT_MEMORY_COLLECTION", "chat_memory")
+	os.Setenv("MONGODB_DEPARTMENT_COLLECTION", "departments")
+	os.Setenv("MONGODB_CNAE_COLLECTION", "cnae")
+	os.Setenv("WHATSAPP_API_BASE_URL", "https://api.whatsapp.com")
+	os.Setenv("WHATSAPP_API_USERNAME", "test_user")
+	os.Setenv("WHATSAPP_API_PASSWORD", "test_pass")
+	os.Setenv("WHATSAPP_HSM_ID", "hsm123")
+	os.Setenv("WHATSAPP_COST_CENTER_ID", "cc123")
+	os.Setenv("WHATSAPP_CAMPAIGN_NAME", "test_campaign")
+	os.Setenv("CF_LOOKUP_ENABLED", "false")
+	os.Setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com, https://admin.example.com, https://staging.example.com")
+	defer func() {
+		os.Unsetenv("PORT")
+		os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
+		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+		os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
+		os.Unsetenv("MONGODB_PET_COLLECTION")
+		os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
+		os.Unsetenv("MONGODB_CHAT_MEMORY_COLLECTION")
+		os.Unsetenv("MONGODB_DEPARTMENT_COLLECTION")
+		os.Unsetenv("MONGODB_CNAE_COLLECTION")
+		os.Unsetenv("WHATSAPP_API_BASE_URL")
+		os.Unsetenv("WHATSAPP_API_USERNAME")
+		os.Unsetenv("WHATSAPP_API_PASSWORD")
+		os.Unsetenv("WHATSAPP_HSM_ID")
+		os.Unsetenv("WHATSAPP_COST_CENTER_ID")
+		os.Unsetenv("WHATSAPP_CAMPAIGN_NAME")
+		os.Unsetenv("CF_LOOKUP_ENABLED")
+		os.Unsetenv("CORS_ALLOWED_ORIGINS")
+	}()
+
+	if err := LoadConfig(); err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+
+	want := []string{
+		"https://app.example.com",
+		"https://admin.example.com",
+		"https://staging.example.com",
+	}
+	if len(AppConfig.CORSAllowedOrigins) != len(want) {
+		t.Fatalf("CORSAllowedOrigins length = %d, want %d (%v)", len(AppConfig.CORSAllowedOrigins), len(want), AppConfig.CORSAllowedOrigins)
+	}
+	for i, origin := range want {
+		if AppConfig.CORSAllowedOrigins[i] != origin {
+			t.Errorf("CORSAllowedOrigins[%d] = %q, want %q", i, AppConfig.CORSAllowedOrigins[i], origin)
+		}
+	}
 }
 
 func TestLoadConfig_InvalidPort(t *testing.T) {

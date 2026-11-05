@@ -103,6 +103,7 @@ just stop-deps        # Stop dependency containers
 
 ### Authentication & Security
 - **Keycloak Integration**: JWT token validation via middleware
+- **CORS allowlist**: `CORS_ALLOWED_ORIGINS` (comma-separated) via `middleware.CORS` — replaces open `cors.Default()`; unknown origins get no `Access-Control-*` headers (403 from gin-contrib/cors)
 - **Route Protection**: Public phone endpoints, protected citizen data
 - **Audit Trail**: Comprehensive logging with async workers
 - **Input Validation**: CPF, phone number, data format validation
