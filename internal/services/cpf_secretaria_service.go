@@ -57,8 +57,7 @@ func (s *CPFSecretariaService) ListByCPF(ctx context.Context, cpf string) ([]mod
 	if err != nil {
 		return nil, fmt.Errorf("cpf_secretaria: list: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var mappings []models.CPFSecretariaMapping
 	if err := cursor.All(ctx, &mappings); err != nil {
 		return nil, fmt.Errorf("cpf_secretaria: decode: %w", err)

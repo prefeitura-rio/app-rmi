@@ -36,7 +36,6 @@ func TestSalesforceClient_CreateOrUpdateCidadao_Success(t *testing.T) {
 		_, _ = w.Write([]byte(`{"status":"created","accountId":"001be00000ZPNrIAAX"}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("test-jwt"))
 	resp, err := client.CreateOrUpdateCidadao(context.Background(), &SalesforceCidadaoCreateRequest{
 		CPF:         "14202478754",
@@ -61,7 +60,6 @@ func TestSalesforceClient_CreateOrUpdateCidadao_StringBody(t *testing.T) {
 		_, _ = w.Write([]byte(`"001be00000ZPNrIAAX"`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	resp, err := client.CreateOrUpdateCidadao(context.Background(), &SalesforceCidadaoCreateRequest{
 		CPF:  "14202478754",
@@ -106,7 +104,6 @@ func TestSalesforceClient_GetCidadao_Success(t *testing.T) {
 		}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL+"/", time.Second, StaticBearerToken("keycloak-jwt"))
 	got, err := client.GetCidadao(context.Background(), "14202478754")
 	require.NoError(t, err)
@@ -147,7 +144,6 @@ func TestSalesforceClient_WithBearerToken_ForwardsJWT(t *testing.T) {
 		_, _ = w.Write([]byte(`{"accountId":"001","cpf":"14202478754"}`))
 	}))
 	defer srv.Close()
-
 	base := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("service-jwt"))
 	got, err := base.WithBearerToken("inbound-jwt").GetCidadao(context.Background(), "14202478754")
 	require.NoError(t, err)
@@ -173,7 +169,6 @@ func TestSalesforceClient_PatchCidadao_Success(t *testing.T) {
 		}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	patch := NewSalesforcePatch()
 	patch.Put("email", "a@b.com")
@@ -206,7 +201,6 @@ func TestSalesforceClient_PatchCidadao_AckReGets(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	patch := NewSalesforcePatch()
 	patch.PutIfNonempty("email", "a@b.com")
@@ -286,7 +280,6 @@ func TestSalesforceClient_APIError(t *testing.T) {
 		_, _ = w.Write([]byte(`{"errors":[{"code":"DADOS_INVALIDOS","message":"O campo Telefone 1 é obrigatório."}]}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	_, err := client.GetCidadao(context.Background(), "14202478754")
 	require.Error(t, err)
@@ -305,7 +298,6 @@ func TestSalesforceClient_NotFound(t *testing.T) {
 		_, _ = w.Write([]byte(`{"errors":[{"code":"NAO_ENCONTRADO","message":"not found"}]}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	_, err := client.PatchCidadao(context.Background(), "14202478754", NewSalesforcePatch().Put("email", "a@b.com"))
 	require.Error(t, err)
@@ -339,7 +331,6 @@ func TestSalesforceClient_PatchCidadaoConsentimento_Success(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("user-jwt"))
 	err := client.PatchCidadaoConsentimento(context.Background(), "14202478754", &SalesforceConsentimentoPatchRequest{
 		Categoria: "PREF_Lembrete_Pagamento",
@@ -381,7 +372,6 @@ func TestSalesforceClient_ExportarCidadao_Success(t *testing.T) {
 		}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	got, err := client.ExportarCidadao(context.Background(), "52998224725")
 	require.NoError(t, err)
@@ -408,7 +398,6 @@ func TestSalesforceClient_AnonimizarCidadao_Accepted(t *testing.T) {
 		}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	got, err := client.AnonimizarCidadao(context.Background(), "52998224725")
 	require.NoError(t, err)
@@ -427,7 +416,6 @@ func TestSalesforceClient_AnonimizarCidadao_Conflict(t *testing.T) {
 		}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	got, err := client.AnonimizarCidadao(context.Background(), "52998224725")
 	require.Error(t, err)
@@ -450,7 +438,6 @@ func TestSalesforceClient_GetAnonimizacao_Success(t *testing.T) {
 		}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	got, err := client.GetAnonimizacao(context.Background(), "PRIVRTBF-00000002")
 	require.NoError(t, err)
@@ -466,7 +453,6 @@ func TestSalesforceClient_ListChamados_Success(t *testing.T) {
 		_, _ = w.Write([]byte(`{"protocolos":[{"protocolo":"RIO-2026-00011171","status":"Em andamento","ordens_de_servico":[]}]}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("user-jwt"))
 	got, err := client.ListChamados(context.Background())
 	require.NoError(t, err)
@@ -481,7 +467,6 @@ func TestSalesforceClient_GetChamado_Success(t *testing.T) {
 		_, _ = w.Write([]byte(`{"protocolo":"RIO-2026-00011171","status":"Em andamento","ordens_de_servico":[{"codigoOs":"00000109","isClosed":false,"isOverdue":false}]}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	got, err := client.GetChamado(context.Background(), "RIO-2026-00011171")
 	require.NoError(t, err)
@@ -545,7 +530,6 @@ func TestSalesforceClient_PrivacyAndChamados_UpstreamErrors(t *testing.T) {
 				_, _ = w.Write([]byte(tc.body))
 			}))
 			defer srv.Close()
-
 			client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 
 			err := client.PatchCidadaoConsentimento(context.Background(), "14202478754", &SalesforceConsentimentoPatchRequest{
@@ -590,7 +574,6 @@ func TestSalesforceClient_AnonimizarCidadao_Upstream400WithoutStatusBody(t *test
 		_, _ = w.Write([]byte(`{"errors":[{"code":"DADOS_INVALIDOS","message":"cpf inválido"}]}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	got, err := client.AnonimizarCidadao(context.Background(), "14202478754")
 	require.Error(t, err)
@@ -622,7 +605,6 @@ func TestSalesforceClient_PatchCidadaoConsentimento_ConflictIsSuccess(t *testing
 		_, _ = w.Write([]byte(`{"errors":[{"code":"CONFLICT","message":"já no status"}]}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	err := client.PatchCidadaoConsentimento(context.Background(), "14202478754", &SalesforceConsentimentoPatchRequest{
 		Categoria: "PREF_Lembrete_Pagamento",
@@ -644,7 +626,6 @@ func TestSalesforceClient_RetriesTransientThenSucceeds(t *testing.T) {
 		_, _ = w.Write([]byte(`{"cpf":"14202478754","accountId":"001"}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	got, err := client.GetCidadao(context.Background(), "14202478754")
 	require.NoError(t, err)
@@ -660,7 +641,6 @@ func TestSalesforceClient_DoesNotRetryClientErrors(t *testing.T) {
 		_, _ = w.Write([]byte(`{"errors":[{"code":"DADOS_INVALIDOS","message":"bad"}]}`))
 	}))
 	defer srv.Close()
-
 	client := NewSalesforceClient(srv.URL, time.Second, StaticBearerToken("jwt"))
 	_, err := client.GetCidadao(context.Background(), "14202478754")
 	require.Error(t, err)

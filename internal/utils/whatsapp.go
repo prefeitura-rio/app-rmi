@@ -98,8 +98,7 @@ func getAuthToken(ctx context.Context) (string, error) {
 		logger.Error("failed to send auth request", zap.Error(err))
 		return "", fmt.Errorf("failed to send auth request: %w", err)
 	}
-	defer resp.Body.Close()
-
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Error("failed to read auth response body", zap.Error(err))
@@ -206,8 +205,7 @@ func SendWhatsAppMessage(ctx context.Context, phones []string, hsmID string, var
 		logger.Error("failed to send message request", zap.Error(err))
 		return fmt.Errorf("failed to send message request: %w", err)
 	}
-	defer resp.Body.Close()
-
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Error("failed to read response body", zap.Error(err))

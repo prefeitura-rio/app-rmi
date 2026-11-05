@@ -240,6 +240,7 @@ func EnqueueSalesforceConsentimentoMirror(ctx context.Context, redis *redisclien
 }
 
 func enqueueNamedSyncJob(ctx context.Context, redis *redisclient.Client, job SyncJob) error {
+	//nolint:gosec // G117: internal job payload serialization; token not logged
 	jobBytes, err := json.Marshal(job)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sync job: %w", err)

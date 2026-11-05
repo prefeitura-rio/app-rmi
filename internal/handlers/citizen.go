@@ -47,6 +47,7 @@ func queueCFLookupJob(ctx context.Context, cpf, address string) {
 		MaxRetries: 3,
 	}
 
+	//nolint:gosec // G117: internal job payload serialization; token not logged
 	jobBytes, err := json.Marshal(job)
 	if err != nil {
 		logger.Error("failed to marshal CF lookup job", zap.Error(err))
@@ -3465,8 +3466,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
 		return
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var docs []models.MaintenanceRequestDocument
 	if err = cursor.All(ctx, &docs); err != nil {
 		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{

@@ -29,8 +29,7 @@ func TestCitizenDataWorkflow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Request failed: %v", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
 			t.Fatalf("Expected status 200, got %d. Body: %s", resp.StatusCode, string(body))
@@ -75,8 +74,7 @@ func TestCitizenDataWorkflow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Request failed: %v", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		// Accept 200 (updated) or 409 (already exists with same data)
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusConflict {
 			body, _ := io.ReadAll(resp.Body)
@@ -109,8 +107,7 @@ func TestCitizenDataWorkflow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Request failed: %v", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusConflict {
 			body, _ := io.ReadAll(resp.Body)
 			t.Fatalf("Expected status 200 or 409, got %d. Body: %s", resp.StatusCode, string(body))
@@ -152,8 +149,7 @@ func getAuthToken(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("Failed to authenticate: %v", err)
 	}
-	defer resp.Body.Close()
-
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("Authentication failed with status %d: %s", resp.StatusCode, string(body))

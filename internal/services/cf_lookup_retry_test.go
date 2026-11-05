@@ -207,7 +207,6 @@ func TestFindNearestCF_ReportsToolError(t *testing.T) {
 		"error":   map[string]interface{}{"code": -32602, "message": "endereço não encontrado"},
 	}))
 	defer server.Close()
-
 	result, err := client.FindNearestCF(context.Background(), retryTestAddress)
 
 	assert.Nil(t, result)

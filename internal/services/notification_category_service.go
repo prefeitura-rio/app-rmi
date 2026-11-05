@@ -52,8 +52,7 @@ func (s *NotificationCategoryService) ListActive(ctx context.Context) ([]models.
 		s.logger.Error("failed to list active categories", zap.Error(err))
 		return nil, fmt.Errorf("failed to list categories: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	if err := cursor.All(ctx, &categories); err != nil {
 		s.logger.Error("failed to decode categories", zap.Error(err))
 		return nil, fmt.Errorf("failed to decode categories: %w", err)

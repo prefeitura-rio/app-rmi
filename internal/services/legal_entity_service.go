@@ -79,8 +79,7 @@ func (s *LegalEntityService) GetLegalEntitiesByCPF(ctx context.Context, cpf stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to find legal entities: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	// Decode results
 	var entities []models.LegalEntity
 	if err = cursor.All(ctx, &entities); err != nil {

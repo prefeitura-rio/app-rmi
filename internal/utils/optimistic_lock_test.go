@@ -475,8 +475,7 @@ func TestInitializeDocumentVersion(t *testing.T) {
 	// Verify all documents have version field
 	cursor, err := config.MongoDB.Collection(collection).Find(ctx, bson.M{})
 	require.NoError(t, err)
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	count := 0
 	for cursor.Next(ctx) {
 		var doc bson.M

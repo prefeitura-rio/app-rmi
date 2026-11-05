@@ -22,7 +22,6 @@ func TestSyncSalesforceOnLogin_Match(t *testing.T) {
 		_, _ = w.Write([]byte(`{"accountId":"001","cpf":"52998224725","email":"a@test.com","nome":"Ana"}`))
 	}))
 	defer srv.Close()
-
 	sf := clients.NewSalesforceClient(srv.URL, time.Second, clients.StaticBearerToken("jwt"))
 	result, err := SyncSalesforceOnLogin(context.Background(), sf, &models.JWTClaims{
 		PreferredUsername: "52998224725",
@@ -57,7 +56,6 @@ func TestSyncSalesforceOnLogin_SilentEmailUpdate(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-
 	prev := config.AppConfig
 	config.AppConfig = &config.Config{}
 	defer func() { config.AppConfig = prev }()
@@ -100,7 +98,6 @@ func TestSyncSalesforceOnLogin_CreateOn404(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-
 	sf := clients.NewSalesforceClient(srv.URL, time.Second, clients.StaticBearerToken("jwt"))
 	result, err := SyncSalesforceOnLogin(context.Background(), sf, &models.JWTClaims{
 		PreferredUsername: "52998224725",

@@ -166,8 +166,7 @@ func TestFindWithTimeout(t *testing.T) {
 		// Find all documents
 		cursor, err := FindWithTimeout(ctx, collection, bson.M{}, 5*time.Second)
 		require.NoError(t, err)
-		defer cursor.Close(ctx)
-
+		defer func() { _ = cursor.Close(ctx) }()
 		var results []bson.M
 		err = cursor.All(ctx, &results)
 		require.NoError(t, err)
@@ -179,8 +178,7 @@ func TestFindWithTimeout(t *testing.T) {
 		// Find documents with filter
 		cursor, err := FindWithTimeout(ctx, collection, bson.M{"type": "A"}, 5*time.Second)
 		require.NoError(t, err)
-		defer cursor.Close(ctx)
-
+		defer func() { _ = cursor.Close(ctx) }()
 		var results []bson.M
 		err = cursor.All(ctx, &results)
 		require.NoError(t, err)
@@ -194,8 +192,7 @@ func TestFindWithTimeout(t *testing.T) {
 	t.Run("Success - Empty Result", func(t *testing.T) {
 		cursor, err := FindWithTimeout(ctx, collection, bson.M{"type": "Z"}, 5*time.Second)
 		require.NoError(t, err)
-		defer cursor.Close(ctx)
-
+		defer func() { _ = cursor.Close(ctx) }()
 		var results []bson.M
 		err = cursor.All(ctx, &results)
 		require.NoError(t, err)
@@ -223,8 +220,7 @@ func TestFindWithProjectionAndTimeout(t *testing.T) {
 		projection := bson.M{"password": 0}
 		cursor, err := FindWithProjectionAndTimeout(ctx, collection, bson.M{}, projection, 5*time.Second)
 		require.NoError(t, err)
-		defer cursor.Close(ctx)
-
+		defer func() { _ = cursor.Close(ctx) }()
 		var results []bson.M
 		err = cursor.All(ctx, &results)
 		require.NoError(t, err)
@@ -242,8 +238,7 @@ func TestFindWithProjectionAndTimeout(t *testing.T) {
 		projection := bson.M{"name": 1}
 		cursor, err := FindWithProjectionAndTimeout(ctx, collection, bson.M{}, projection, 5*time.Second)
 		require.NoError(t, err)
-		defer cursor.Close(ctx)
-
+		defer func() { _ = cursor.Close(ctx) }()
 		var results []bson.M
 		err = cursor.All(ctx, &results)
 		require.NoError(t, err)
@@ -277,8 +272,7 @@ func TestFindWithLimitAndTimeout(t *testing.T) {
 		// Find with limit
 		cursor, err := FindWithLimitAndTimeout(ctx, collection, bson.M{}, 2, 5*time.Second)
 		require.NoError(t, err)
-		defer cursor.Close(ctx)
-
+		defer func() { _ = cursor.Close(ctx) }()
 		var results []bson.M
 		err = cursor.All(ctx, &results)
 		require.NoError(t, err)
@@ -290,8 +284,7 @@ func TestFindWithLimitAndTimeout(t *testing.T) {
 		// Find with limit greater than available documents
 		cursor, err := FindWithLimitAndTimeout(ctx, collection, bson.M{}, 100, 5*time.Second)
 		require.NoError(t, err)
-		defer cursor.Close(ctx)
-
+		defer func() { _ = cursor.Close(ctx) }()
 		var results []bson.M
 		err = cursor.All(ctx, &results)
 		require.NoError(t, err)
@@ -303,8 +296,7 @@ func TestFindWithLimitAndTimeout(t *testing.T) {
 		// Limit of 0 in MongoDB means no limit
 		cursor, err := FindWithLimitAndTimeout(ctx, collection, bson.M{}, 0, 5*time.Second)
 		require.NoError(t, err)
-		defer cursor.Close(ctx)
-
+		defer func() { _ = cursor.Close(ctx) }()
 		var results []bson.M
 		err = cursor.All(ctx, &results)
 		require.NoError(t, err)
@@ -569,8 +561,7 @@ func TestComplexQueries(t *testing.T) {
 		projection := bson.M{"category": 1, "score": 1, "_id": 0}
 		cursor, err := FindWithProjectionAndTimeout(ctx, collection, bson.M{"status": "active"}, projection, 5*time.Second)
 		require.NoError(t, err)
-		defer cursor.Close(ctx)
-
+		defer func() { _ = cursor.Close(ctx) }()
 		var results []bson.M
 		err = cursor.All(ctx, &results)
 		require.NoError(t, err)

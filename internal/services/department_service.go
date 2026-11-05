@@ -201,8 +201,7 @@ func (s *DepartmentService) ListDepartments(ctx context.Context, filters Departm
 		s.logger.Error("failed to list departments", zap.Error(err))
 		return nil, fmt.Errorf("failed to list departments: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	// Decode results with flexible bson.M to handle type variations
 	var departments []models.Department
 	for cursor.Next(ctx) {

@@ -1,8 +1,8 @@
 # Build stage
-FROM golang:1.24-alpine@sha256:ef75fa8822a4c0fb53a390548b3dc1c39639339ec3373c58f5441117e1ff46ae AS builder
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 
 # Install ca-certificates and git
-RUN apk add --no-cache ca-certificates=20251003-r0 git=2.52.0-r0
+RUN apk add --no-cache ca-certificates=20261020-r0 git=2.54.0-r0
 
 WORKDIR /app
 

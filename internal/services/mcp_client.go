@@ -257,8 +257,7 @@ func (c *MCPClient) getSessionID(ctx context.Context) (string, error) {
 		if err != nil {
 			return fmt.Errorf("failed to get session ID: %w", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		// MCP server returns 405 for HEAD but includes session ID in response headers
 		// This is expected behavior - extract session ID even from 405 response
 		if resp.StatusCode == http.StatusMethodNotAllowed {
@@ -329,8 +328,7 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 		if err != nil {
 			return fmt.Errorf("failed to send request: %w", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		if isHandledMCPStatus(resp.StatusCode) {
 			return &MCPHTTPStatusError{StatusCode: resp.StatusCode}
 		}
@@ -403,8 +401,7 @@ func (c *MCPClient) sendNotification(ctx context.Context, sessionID string, payl
 		if err != nil {
 			return fmt.Errorf("failed to send notification: %w", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		// Notifications should return 202 (Accepted) with empty body
 		if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("notification failed with status: %d", resp.StatusCode)

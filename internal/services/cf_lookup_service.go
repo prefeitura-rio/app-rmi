@@ -778,6 +778,7 @@ func (s *CFLookupService) queueCFLookupJob(ctx context.Context, cpf, address str
 		MaxRetries: 3,
 	}
 
+	//nolint:gosec // G117: internal job payload serialization; token not logged
 	jobBytes, err := json.Marshal(job)
 	if err != nil {
 		s.logger.Error("failed to marshal CF lookup job", zap.Error(err))
