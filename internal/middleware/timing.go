@@ -24,7 +24,7 @@ func RequestTiming() gin.HandlerFunc {
 		// Set attributes after span creation
 		span.SetAttributes(
 			attribute.String("http.method", c.Request.Method),
-			attribute.String("http.url", c.Request.URL.String()),
+			attribute.String("http.url", observability.MaskURL(c.Request.URL)),
 			attribute.String("http.route", c.FullPath()),
 			attribute.String("http.user_agent", c.Request.UserAgent()),
 			attribute.String("http.client_ip", c.ClientIP()),
@@ -51,7 +51,7 @@ func RequestTiming() gin.HandlerFunc {
 		// Log request completion with timing
 		observability.Logger().Info("request completed",
 			zap.String("method", c.Request.Method),
-			zap.String("path", c.Request.URL.Path),
+			observability.PathField(c.Request.URL.Path),
 			zap.String("route", c.FullPath()),
 			zap.Int("status", status),
 			zap.Duration("latency", latency),

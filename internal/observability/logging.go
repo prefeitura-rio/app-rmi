@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"net/url"
 	"strings"
 
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
@@ -157,6 +158,44 @@ func KeyField(key string) zap.Field {
 // (use instead of zap.String("cache_key", ...)).
 func CacheKeyField(key string) zap.Field {
 	return zap.String("cache_key", MaskCacheKey(key))
+}
+
+// MaskURLPath masks the CPF, phone and e-mail segments of a request path, keeping
+// the route segments (e.g. "/v1/citizen/12345678901/wallet" → "/v1/citizen/***/wallet").
+// Use it whenever a request path (c.Request.URL.Path) goes to a log, a span or a metric label.
+func MaskURLPath(path string) string {
+	return pii.MaskURLPath(path)
+}
+
+// MaskQuery masks the CPF, phone and e-mail values of a raw query string, keeping
+// the parameter names (e.g. "cpf=12345678901&page=2" → "cpf=***&page=2").
+func MaskQuery(rawQuery string) string {
+	return pii.MaskQuery(rawQuery)
+}
+
+// MaskURL returns the request path and query with MaskURLPath and MaskQuery applied
+// (use instead of u.String() in logs and spans). A nil URL returns "".
+func MaskURL(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	masked := MaskURLPath(u.Path)
+	if u.RawQuery != "" {
+		masked += "?" + MaskQuery(u.RawQuery)
+	}
+	return masked
+}
+
+// PathField returns a zap field "path" with a masked request path
+// (use instead of zap.String("path", c.Request.URL.Path)).
+func PathField(path string) zap.Field {
+	return zap.String("path", MaskURLPath(path))
+}
+
+// QueryField returns a zap field "query" with a masked raw query string
+// (use instead of zap.String("query", c.Request.URL.RawQuery)).
+func QueryField(rawQuery string) zap.Field {
+	return zap.String("query", MaskQuery(rawQuery))
 }
 
 // MaskSensitiveData masks sensitive data in a map
