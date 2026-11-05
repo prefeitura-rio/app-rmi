@@ -1,9 +1,11 @@
 package services
 
 import (
+	"context"
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"go.uber.org/zap"
@@ -112,6 +114,27 @@ func setupTestEnvironment() {
 	})
 }
 
+// guardInitialIndexMaintenance waits for the index check that InitMongoDB starts in a
+// background goroutine and keeps it from starting late. That goroutine reads
+// config.AppConfig while it runs, and many tests replace or edit config.AppConfig, so a
+// test running at the same time is a data race under -race. ensureIndexes holds
+// indexCreationLockKey for its whole run and skips when someone else holds it: taking
+// the lock here means the initial run already finished or will skip. The short TTL
+// releases it on its own, long before the next periodic run.
+func guardInitialIndexMaintenance() {
+	if config.Redis == nil {
+		return
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		ok, err := config.Redis.SetNX(context.Background(), "rmi:index_creation_lock", "test-main-guard", 5*time.Second).Result()
+		if err != nil || ok {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // TestMain is the entry point for all tests in the services package
 func TestMain(m *testing.M) {
 	// Setup test environment once
@@ -120,6 +143,7 @@ func TestMain(m *testing.M) {
 	if testInitError != nil {
 		panic(testInitError)
 	}
+	guardInitialIndexMaintenance()
 
 	// Run all tests
 	exitCode := m.Run()
