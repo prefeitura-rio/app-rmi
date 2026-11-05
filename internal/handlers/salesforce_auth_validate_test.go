@@ -47,7 +47,11 @@ func TestValidateAuth_MatchForwardsTheCitizenJWT(t *testing.T) {
 	var gotAuth []string
 	sf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = append(gotAuth, r.Header.Get("Authorization"))
-		require.Equal(t, http.MethodGet, r.Method)
+		if r.Method != http.MethodGet {
+			t.Errorf("Salesforce called with %s, want GET for an existing account", r.Method)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"accountId":"001TEST","cpf":"` + testWebhookCPF + `","nome":"Ana"}`))
 	}))

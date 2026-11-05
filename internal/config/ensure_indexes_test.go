@@ -16,6 +16,10 @@ import (
 
 const indexCreationLockKey = "rmi:index_creation_lock"
 
+// indexTestRedisDB isolates the index lock used here from the one in Redis DB 0, which
+// the TestMain of other packages, running in parallel under go test ./..., holds.
+const indexTestRedisDB = 10
+
 // The connection settings are captured when the test binary starts: the
 // LoadConfig tests of this package set and unset MONGODB_URI and REDIS_ADDR,
 // so reading them inside a test would depend on the test order.
@@ -87,7 +91,7 @@ func setupIndexTest(t *testing.T) (*Config, *redisclient.Client) {
 	if err != nil {
 		t.Fatalf("connect mongo: %v", err)
 	}
-	rc := redisclient.NewClient(redis.NewClient(&redis.Options{Addr: redisAddr, Password: testRedisPass}))
+	rc := redisclient.NewClient(redis.NewClient(&redis.Options{Addr: redisAddr, Password: testRedisPass, DB: indexTestRedisDB}))
 	if err := rc.Ping(ctx).Err(); err != nil {
 		t.Fatalf("connect redis: %v", err)
 	}
