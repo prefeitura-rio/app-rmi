@@ -10,6 +10,7 @@ import (
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -131,13 +132,13 @@ func (vq *VerificationQueue) processJob(job VerificationJob, workerID int) {
 		result.Error = err.Error()
 		logging.GetLogger().Error("verification failed",
 			zap.Int("worker_id", workerID),
-			zap.String("phone_number", job.PhoneNumber),
+			observability.PhoneField(job.PhoneNumber),
 			zap.Error(err))
 	} else {
 		result.Success = true
 		logging.GetLogger().Info("verification successful",
 			zap.Int("worker_id", workerID),
-			zap.String("phone_number", job.PhoneNumber))
+			observability.PhoneField(job.PhoneNumber))
 	}
 
 	// Send result
@@ -362,7 +363,7 @@ func (vq *VerificationQueue) BulkEnqueueJobs(jobs []VerificationJob) error {
 		default:
 			// Queue is full, log warning
 			logging.GetLogger().Warn("verification queue is full, job dropped",
-				zap.String("phone_number", job.PhoneNumber))
+				observability.PhoneField(job.PhoneNumber))
 		}
 	}
 

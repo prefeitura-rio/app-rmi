@@ -948,7 +948,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 			"length": len(fullPhone),
 		})
 		validationSpan.End()
-		logger.Warn("invalid phone number length", zap.String("phone", fullPhone), zap.Int("length", len(fullPhone)))
+		logger.Warn("invalid phone number length", observability.PhoneField(fullPhone), zap.Int("length", len(fullPhone)))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
 		return
 	}
@@ -961,7 +961,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	ctx, skipUpdateSpan := utils.TraceBusinessLogic(ctx, "skip_phone_update_until_verified")
 	logger.Debug("skipping phone update until verification - preserving existing verified phone",
 		observability.CPFField(cpf),
-		zap.String("new_phone", fullPhone))
+		zap.String("new_phone", observability.MaskPhone(fullPhone)))
 	skipUpdateSpan.End()
 
 	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
@@ -2944,10 +2944,10 @@ func UpdateSelfDeclaredBirthDate(c *gin.Context) {
 	parsedDate, err := models.ParseBirthDate(dateStr)
 	if err != nil {
 		utils.RecordErrorInSpan(validationSpan, err, map[string]interface{}{
-			"invalid_value": dateStr,
+			"error.type": "invalid_birth_date",
 		})
 		validationSpan.End()
-		logger.Error("invalid birth date value", zap.String("value", dateStr), zap.Error(err))
+		logger.Error("invalid birth date value", zap.Error(err))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}

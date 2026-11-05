@@ -168,7 +168,7 @@ lint:
         go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
     fi
     golangci-lint run
-    # LGPD: fail if CPF is logged/traced without masking (see observability.CPFField)
+    # LGPD: fail if CPF, phone, name or birth date is logged/traced without masking (see observability.CPFField)
     ./scripts/check_cpf_log_masking.sh
 
 # Fail on Go vulnerabilities reachable from this module's code (same as PR gate).

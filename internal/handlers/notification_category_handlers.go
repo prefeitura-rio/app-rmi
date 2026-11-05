@@ -116,7 +116,7 @@ func (h *NotificationCategoryHandlers) CreateCategory(c *gin.Context) {
 		return
 	}
 	utils.AddSpanAttribute(inputSpan, "input.id", req.ID)
-	utils.AddSpanAttribute(inputSpan, "input.name", req.Name)
+	utils.AddSpanAttribute(inputSpan, "input.category_name", req.Name)
 	inputSpan.End()
 
 	// Create category with tracing

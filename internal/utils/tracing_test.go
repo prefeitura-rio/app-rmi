@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -566,4 +569,143 @@ func TestAddSpanAttribute_AllTypes(t *testing.T) {
 	AddSpanAttribute(span, "bool_key", true)
 	AddSpanAttribute(span, "float64_key", 3.14)
 	AddSpanAttribute(span, "unknown_key", []int{1, 2, 3})
+}
+
+func recordSpanAttributes(t *testing.T, fn func(span trace.Span)) map[string]string {
+	t.Helper()
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	defer func() { _ = provider.Shutdown(context.Background()) }()
+
+	_, span := provider.Tracer("pii-test").Start(context.Background(), "pii")
+	fn(span)
+	span.End()
+
+	ended := recorder.Ended()
+	if len(ended) != 1 {
+		t.Fatalf("expected 1 ended span, got %d", len(ended))
+	}
+	attrs := make(map[string]string)
+	for _, kv := range ended[0].Attributes() {
+		attrs[string(kv.Key)] = kv.Value.Emit()
+	}
+	return attrs
+}
+
+func TestAddSpanAttribute_MasksPersonalData(t *testing.T) {
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		AddSpanAttribute(span, "cpf", "12345678901")
+		AddSpanAttribute(span, "input.cpf", "12345678901")
+		AddSpanAttribute(span, "response.matched_cpf", "12345678901")
+		AddSpanAttribute(span, "phone", "5521987654321")
+		AddSpanAttribute(span, "full_phone_number", "5521987654321")
+		AddSpanAttribute(span, "verification.phone_number", "21987654321")
+		AddSpanAttribute(span, "national_number", "21987654321")
+		AddSpanAttribute(span, "subscriber", "987654321")
+		AddSpanAttribute(span, "input.name", "Maria Clara Souza Lima")
+		AddSpanAttribute(span, "response.first_name", "Maria")
+		AddSpanAttribute(span, "response.matched_name", "Maria Souza")
+		AddSpanAttribute(span, "input.channel", "whatsapp")
+		AddSpanAttribute(span, "input.group_name", "Beta Testers")
+	})
+
+	expected := map[string]string{
+		"cpf":                       "123.***.789-**",
+		"input.cpf":                 "123.***.789-**",
+		"response.matched_cpf":      "123.***.789-**",
+		"phone":                     "+55 21 *****4321",
+		"full_phone_number":         "+55 21 *****4321",
+		"verification.phone_number": "21 *****4321",
+		"national_number":           "21 *****4321",
+		"subscriber":                "*****4321",
+		"input.name":                "Maria C**** S**** Lima",
+		"response.first_name":       "M****",
+		"response.matched_name":     "Maria S****",
+		"input.channel":             "whatsapp",
+		"input.group_name":          "Beta Testers",
+	}
+	for key, want := range expected {
+		if got := attrs[key]; got != want {
+			t.Errorf("attribute %q = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestAddSpanAttribute_DropsBirthDate(t *testing.T) {
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		AddSpanAttribute(span, "input.birth_date", "1990-01-31")
+		AddSpanAttribute(span, "birthDate", "1990-01-31")
+		AddSpanAttribute(span, "data_nascimento", "1990-01-31")
+		AddSpanAttribute(span, "input.channel", "whatsapp")
+	})
+
+	for _, key := range []string{"input.birth_date", "birthDate", "data_nascimento"} {
+		if v, ok := attrs[key]; ok {
+			t.Errorf("birth date attribute %q must not be recorded, got %q", key, v)
+		}
+	}
+	if attrs["input.channel"] != "whatsapp" {
+		t.Errorf("non-personal attribute dropped: %v", attrs)
+	}
+}
+
+func TestRecordErrorInSpan_MasksPersonalDataAndDropsBirthDate(t *testing.T) {
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		RecordErrorInSpan(span, errors.New("boom"), map[string]interface{}{
+			"phone":          "21987654321",
+			"phone_number":   "5521987654321",
+			"parse.phone":    "+5521987654321",
+			"invalid_birth":  "1990-01-31",
+			"nascimento":     "1990-01-31",
+			"error.type":     "input_parsing",
+			"operation.name": "x",
+		})
+	})
+
+	if attrs["phone"] != "21 *****4321" || attrs["phone_number"] != "+55 21 *****4321" || attrs["parse.phone"] != "+55 21 *****4321" {
+		t.Errorf("phone attributes not masked: %v", attrs)
+	}
+	if _, ok := attrs["invalid_birth"]; ok {
+		t.Errorf("birth date attribute recorded: %v", attrs)
+	}
+	if _, ok := attrs["nascimento"]; ok {
+		t.Errorf("birth date attribute recorded: %v", attrs)
+	}
+	if attrs["error.type"] != "input_parsing" {
+		t.Errorf("non-personal attribute changed: %v", attrs)
+	}
+}
+
+func TestTraceEndpointStep_MasksPersonalData(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	defer func() { _ = provider.Shutdown(context.Background()) }()
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	defer otel.SetTracerProvider(previous)
+
+	_, span := TraceEndpointStep(context.Background(), "step", map[string]interface{}{
+		"phone_number": "5521987654321",
+		"birth_date":   "1990-01-31",
+		"db.filter":    "cpf",
+	})
+	span.End()
+
+	ended := recorder.Ended()
+	if len(ended) != 1 {
+		t.Fatalf("expected 1 ended span, got %d", len(ended))
+	}
+	attrs := make(map[string]string)
+	for _, kv := range ended[0].Attributes() {
+		attrs[string(kv.Key)] = kv.Value.Emit()
+	}
+	if attrs["phone_number"] != "+55 21 *****4321" {
+		t.Errorf("phone_number = %q, want masked", attrs["phone_number"])
+	}
+	if _, ok := attrs["birth_date"]; ok {
+		t.Errorf("birth_date must not be recorded: %v", attrs)
+	}
+	if attrs["db.filter"] != "cpf" {
+		t.Errorf("db.filter = %q, want cpf", attrs["db.filter"])
+	}
 }

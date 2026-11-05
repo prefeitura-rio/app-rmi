@@ -162,7 +162,7 @@ type PhoneVerificationData struct {
 func CreatePhoneVerification(ctx context.Context, data PhoneVerificationData) error {
 	logger := logging.GetLogger().With(
 		observability.CPFField(data.CPF),
-		zap.String("phone", data.PhoneNumber),
+		observability.PhoneField(data.PhoneNumber),
 	)
 
 	// First, try to send WhatsApp message

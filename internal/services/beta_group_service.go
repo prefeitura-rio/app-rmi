@@ -10,6 +10,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -455,7 +456,6 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 		if !ok {
 			s.logger.Warn("phone mapping has non-string phone_number field",
 				zap.String("collection", config.AppConfig.PhoneMappingCollection),
-				zap.Any("phone_number_value", rawDoc["phone_number"]),
 				zap.String("phone_number_type", fmt.Sprintf("%T", rawDoc["phone_number"])),
 				zap.Any("beta_group_id", rawDoc["beta_group_id"]))
 			continue
@@ -476,7 +476,7 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 			betaGroupID = v.Hex()
 		default:
 			s.logger.Warn("phone mapping has invalid beta_group_id type",
-				zap.String("phone_number", phoneNumber),
+				observability.PhoneField(phoneNumber),
 				zap.String("collection", config.AppConfig.PhoneMappingCollection),
 				zap.Any("beta_group_id", rawDoc["beta_group_id"]))
 			continue
@@ -484,7 +484,7 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 
 		if betaGroupID == "" {
 			s.logger.Warn("phone mapping has empty beta_group_id",
-				zap.String("phone_number", phoneNumber),
+				observability.PhoneField(phoneNumber),
 				zap.String("collection", config.AppConfig.PhoneMappingCollection))
 			continue
 		}

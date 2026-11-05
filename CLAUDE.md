@@ -122,7 +122,11 @@ just stop-deps        # Stop dependency containers
 ### CPF masking in logs and traces (LGPD)
 - Never use `zap.String("cpf", …)` or `attribute.String("cpf", …)` outside `observability` helpers
 - Use `observability.CPFField(cpf)` / `observability.CPFAttr(cpf)` (sole mask: `observability.MaskCPF`)
-- CI/`just lint` runs `scripts/check_cpf_log_masking.sh` so new unmasked CPF logs fail the build
+- Phone: `observability.PhoneField(phone)` / `PhonesField(phones)` / `PhoneAttr(phone)` (`MaskPhone` keeps DDI, DDD and the last 4 digits); never `zap.String("phone_number"|"phone", …)`
+- Person name: `observability.NameField(name)` (`MaskName`; `utils.MaskName` delegates to it); names of other things use a specific key (`avatar_name`, `group_name`, `circuit_breaker`), never `name`/`nome`
+- Birth date is never logged nor recorded in spans
+- `utils.AddSpanAttribute` / `RecordErrorInSpan` / `TraceOperation` / `TraceEndpointStep` mask CPF, phone and name values by key (last dotted segment, e.g. `input.cpf`, `response.name`) and drop birth-date keys
+- CI/`just lint` runs `scripts/check_cpf_log_masking.sh` so new unmasked CPF, phone, name or birth-date logs/spans fail the build
 
 ### Monitoring & Observability
 - **OpenTelemetry**: Request tracing with span context

@@ -130,7 +130,7 @@ func getAuthToken(ctx context.Context) (string, error) {
 // SendWhatsAppMessage sends a message to multiple phone numbers using the WhatsApp API
 func SendWhatsAppMessage(ctx context.Context, phones []string, hsmID string, varsList []map[string]interface{}) error {
 	logger := logging.GetLogger().With(
-		zap.Strings("phones", phones),
+		observability.PhonesField(phones),
 		zap.String("hsm_id", hsmID),
 	)
 

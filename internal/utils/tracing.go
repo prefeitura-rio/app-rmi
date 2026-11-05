@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -18,6 +19,9 @@ func TraceOperation(ctx context.Context, operationName string, attributes map[st
 	// Convert attributes to OpenTelemetry attributes
 	otelAttrs := make([]attribute.KeyValue, 0, len(attributes))
 	for k, v := range attributes {
+		if isBirthDateSpanKey(k) {
+			continue
+		}
 		switch val := v.(type) {
 		case string:
 			otelAttrs = append(otelAttrs, attribute.String(k, maskSpanStringAttr(k, val)))
@@ -124,9 +128,12 @@ func TraceEndpointStep(ctx context.Context, stepName string, attributes map[stri
 	// Convert attributes to OpenTelemetry attributes
 	otelAttrs := make([]attribute.KeyValue, 0, len(stepAttributes))
 	for k, v := range stepAttributes {
+		if isBirthDateSpanKey(k) {
+			continue
+		}
 		switch val := v.(type) {
 		case string:
-			otelAttrs = append(otelAttrs, attribute.String(k, val))
+			otelAttrs = append(otelAttrs, attribute.String(k, maskSpanStringAttr(k, val)))
 		case int:
 			otelAttrs = append(otelAttrs, attribute.Int(k, val))
 		case int64:
@@ -274,12 +281,15 @@ func AddTimingToSpan(span trace.Span, startTime time.Time) {
 }
 
 // RecordErrorInSpan records an error in a span with additional context.
-// String values under key "cpf" are masked (LGPD).
+// CPF, phone and name values are masked and birth dates are dropped (LGPD).
 func RecordErrorInSpan(span trace.Span, err error, context map[string]interface{}) {
 	span.RecordError(err)
 
 	// Add context attributes
 	for k, v := range context {
+		if isBirthDateSpanKey(k) {
+			continue
+		}
 		switch val := v.(type) {
 		case string:
 			span.SetAttributes(attribute.String(k, maskSpanStringAttr(k, val)))
@@ -294,8 +304,11 @@ func RecordErrorInSpan(span trace.Span, err error, context map[string]interface{
 }
 
 // AddSpanAttribute adds a single attribute to a span.
-// String values under key "cpf" are masked (LGPD).
+// CPF, phone and name values are masked and birth dates are dropped (LGPD).
 func AddSpanAttribute(span trace.Span, key string, value interface{}) {
+	if isBirthDateSpanKey(key) {
+		return
+	}
 	switch val := value.(type) {
 	case string:
 		span.SetAttributes(attribute.String(key, maskSpanStringAttr(key, val)))
@@ -312,9 +325,48 @@ func AddSpanAttribute(span trace.Span, key string, value interface{}) {
 	}
 }
 
+// maskSpanStringAttr masks personal data by the last dot-separated segment of
+// the attribute key, so "cpf", "input.cpf" and "response.matched_cpf" are all masked.
 func maskSpanStringAttr(key, value string) string {
-	if key == "cpf" {
+	field := spanKeyField(key)
+	switch {
+	case field == "cpf" || strings.HasSuffix(field, "_cpf"):
 		return observability.MaskCPF(value)
+	case isPhoneSpanField(field):
+		return observability.MaskPhone(value)
+	case isNameSpanField(field):
+		return observability.MaskName(value)
 	}
 	return value
+}
+
+func spanKeyField(key string) string {
+	key = strings.ToLower(key)
+	if i := strings.LastIndex(key, "."); i >= 0 {
+		return key[i+1:]
+	}
+	return key
+}
+
+func isPhoneSpanField(field string) bool {
+	switch field {
+	case "phone", "phone_number", "telefone", "celular", "national_number", "subscriber":
+		return true
+	}
+	return strings.HasSuffix(field, "_phone") || strings.HasSuffix(field, "_phone_number")
+}
+
+func isNameSpanField(field string) bool {
+	switch field {
+	case "name", "nome", "first_name", "full_name", "matched_name", "nome_exibicao", "exhibition_name", "new_exhibition_name":
+		return true
+	}
+	return false
+}
+
+// isBirthDateSpanKey reports whether the attribute key holds a birth date,
+// which must never be recorded in traces.
+func isBirthDateSpanKey(key string) bool {
+	key = strings.ToLower(key)
+	return strings.Contains(key, "birth") || strings.Contains(key, "nascimento")
 }

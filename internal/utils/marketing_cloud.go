@@ -121,7 +121,7 @@ func getMarketingCloudToken(ctx context.Context) (string, error) {
 // SendMarketingCloudOTP sends a single OTP code via the Salesforce Marketing Cloud OTT API.
 func SendMarketingCloudOTP(ctx context.Context, contactKey, phone, code string) error {
 	logger := logging.GetLogger().With(
-		zap.String("phone", phone),
+		observability.PhoneField(phone),
 		zap.String("provider", config.VerificationProviderSalesforce),
 	)
 
