@@ -743,7 +743,7 @@ func (w *SyncWorker) applySalesforceConsentimentoDelta(ctx context.Context, cpf 
 		if isUnsafeMongoMapKey(key) {
 			w.logger.Warn("skipping salesforce consentimento key with unsafe mongo path characters",
 				observability.CPFField(cpf),
-				zap.String("key", key))
+				observability.KeyField(key))
 			continue
 		}
 		optInVal := salesforceConsentimentoIsOptIn(item)

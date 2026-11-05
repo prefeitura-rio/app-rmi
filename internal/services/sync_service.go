@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
@@ -115,7 +116,7 @@ func (s *SyncService) scanDLQs() {
 		if dlqSize > 0 {
 			s.logger.Warn("DLQ has failed jobs",
 				zap.String("queue", queue),
-				zap.String("dlq_key", dlqKey),
+				zap.String("dlq_key", observability.MaskCacheKey(dlqKey)),
 				zap.Int64("dlq_size", dlqSize))
 
 			s.metrics.RecordQueueDepth("dlq_"+queue, dlqSize)

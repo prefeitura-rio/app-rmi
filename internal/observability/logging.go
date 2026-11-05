@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/pii"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
@@ -99,55 +100,63 @@ func PhoneAttr(phone string) attribute.KeyValue {
 
 // MaskName masks a person's name for privacy, keeping the first name and the
 // initial of every other name (e.g. "João Silva Santos" → "João S**** Santos").
+// It works on runes, so accented initials ("Ângela") stay valid UTF-8.
 // utils.MaskName delegates to this function.
 func MaskName(fullName string) string {
-	if fullName == "" {
+	parts := strings.Fields(fullName)
+	switch len(parts) {
+	case 0:
 		return ""
-	}
-
-	parts := strings.Fields(strings.TrimSpace(fullName))
-	if len(parts) == 0 {
-		return ""
-	}
-
-	if len(parts) == 1 {
+	case 1:
 		// Single name - mask all but first character
-		name := parts[0]
-		if len(name) <= 1 {
-			return name
-		}
-		return name[:1] + strings.Repeat("*", len(name)-1)
-	}
-
-	if len(parts) == 2 {
+		return maskNamePart(parts[0])
+	case 2:
 		// Two names - mask last name
-		firstName := parts[0]
-		lastName := parts[1]
-		if len(lastName) <= 1 {
-			return firstName + " " + lastName
-		}
-		return firstName + " " + lastName[:1] + strings.Repeat("*", len(lastName)-1)
+		return parts[0] + " " + maskNamePart(parts[1])
 	}
 
 	// Three or more names - mask middle names
-	firstName := parts[0]
-	lastName := parts[len(parts)-1]
-
-	middleMask := ""
-	for i := 1; i < len(parts)-1; i++ {
-		if len(parts[i]) > 0 {
-			middleMask += parts[i][:1] + strings.Repeat("*", len(parts[i])-1) + " "
-		}
+	masked := make([]string, 0, len(parts))
+	masked = append(masked, parts[0])
+	for _, part := range parts[1 : len(parts)-1] {
+		masked = append(masked, maskNamePart(part))
 	}
-	middleMask = strings.TrimSpace(middleMask)
+	masked = append(masked, parts[len(parts)-1])
+	return strings.Join(masked, " ")
+}
 
-	return firstName + " " + middleMask + " " + lastName
+// maskNamePart keeps the first rune of a name and replaces every other rune by "*".
+func maskNamePart(part string) string {
+	runes := []rune(part)
+	if len(runes) <= 1 {
+		return part
+	}
+	return string(runes[0]) + strings.Repeat("*", len(runes)-1)
 }
 
 // NameField returns a zap field with a masked person name
 // (use instead of zap.String("name", ...) or zap.String("nome", ...)).
 func NameField(name string) zap.Field {
 	return zap.String("name", MaskName(name))
+}
+
+// MaskCacheKey masks the CPF, phone and e-mail segments of a cache/Redis key,
+// keeping its type and prefix (e.g. "citizen:write:12345678901" → "citizen:write:***").
+// Use it whenever a cache key, a data key or a Redis key goes to a log or a span.
+func MaskCacheKey(key string) string {
+	return pii.MaskCacheKey(key)
+}
+
+// KeyField returns a zap field "key" with a masked cache/data key
+// (use instead of zap.String("key", ...)).
+func KeyField(key string) zap.Field {
+	return zap.String("key", MaskCacheKey(key))
+}
+
+// CacheKeyField returns a zap field "cache_key" with a masked cache key
+// (use instead of zap.String("cache_key", ...)).
+func CacheKeyField(key string) zap.Field {
+	return zap.String("cache_key", MaskCacheKey(key))
 }
 
 // MaskSensitiveData masks sensitive data in a map

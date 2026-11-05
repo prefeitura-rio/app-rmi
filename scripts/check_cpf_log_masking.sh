@@ -4,6 +4,11 @@
 #   - phone: only via observability.PhoneField / PhonesField / PhoneAttr (or observability.MaskPhone)
 #   - person name: only via observability.NameField (or observability.MaskName)
 #   - birth date: never logged nor recorded in spans
+#   - cache/data/Redis keys (may carry CPF or phone): only via observability.KeyField /
+#     CacheKeyField (or observability.MaskCacheKey / pii.MaskCacheKey)
+#   - MongoDB filters: never zap.Any/Reflect("filter", ...) (the value is the CPF or phone)
+#   - one-time codes (OTP): never logged nor recorded in spans
+#   - error messages: no CPF or phone formatted in clear with %s/%q/%v
 # The helpers live in internal/observability/logging.go, the only file exempt from this check.
 set -eu
 
@@ -57,8 +62,26 @@ birth_key='[a-zA-Z0-9_.]*([Bb]irth|[Nn]ascimento)[a-zA-Z0-9_.]*"'
 hits="$(go_lines "(${emitter}|${span_emitter})${birth_key}")"
 [ -z "$hits" ] || fail "birth date in logs/spans. Birth dates must not be logged nor recorded as span attributes." "$hits"
 
+# 5. Cache/data/Redis keys: key, keys, cache_key, write_key, redis.key, redis.pattern...
+cache_key_key='([a-z0-9]+[._])*(key|keys|pattern)"'
+hits="$(go_lines "${emitter}${cache_key_key}" | grep -vE '(observability|pii)\.MaskCacheKeys?\(' || true)"
+[ -z "$hits" ] || fail "unmasked cache/Redis key in logs/spans (keys carry CPF or phone). Use observability.KeyField / CacheKeyField (or observability.MaskCacheKey)." "$hits"
+
+# 6. MongoDB filters: the filter value is the CPF or the phone. Log only the field name.
+hits="$(go_lines 'zap\.(Any|Reflect)\("([a-z0-9]+\.)*filter"')"
+[ -z "$hits" ] || fail "MongoDB filter in logs. Log only the filter field name (e.g. zap.String(\"filter_field\", ...))." "$hits"
+
+# 7. One-time codes (OTP): never logged nor recorded in spans, masked or not.
+otp_key='([a-z0-9]+\.)*(code|otp|otp_code|verification_code|codigo)"'
+hits="$(go_lines "(${emitter}|${span_emitter})${otp_key}")"
+[ -z "$hits" ] || fail "one-time code (OTP) in logs/spans. Verification codes must never be logged nor recorded as span attributes." "$hits"
+
+# 8. Error messages with a CPF or phone formatted in clear.
+hits="$(go_lines '(Errorf|errors\.New)\("[^"]*([Pp]hone|[Tt]elefone|[Cc]elular|cpf|CPF)[^"]*%[sqv]' | grep -vE 'observability\.Mask(CPF|Phone)\(' || true)"
+[ -z "$hits" ] || fail "CPF or phone formatted in clear in an error message (errors end up in logs). Leave the value out or use observability.MaskCPF / MaskPhone." "$hits"
+
 if [ "$status" -ne 0 ]; then
   exit "$status"
 fi
 
-echo "OK: CPF/phone/name/birth date log and span masking check passed."
+echo "OK: CPF/phone/name/birth date/cache key/OTP log and span masking check passed."

@@ -379,7 +379,7 @@ func (w *SyncWorker) processJob(job *SyncJob) {
 	w.logger.Info("processing sync job",
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
-		zap.String("key", job.Key),
+		observability.KeyField(job.Key),
 		zap.String("collection", job.Collection))
 
 	writeBufferJob, err := w.syncToMongoDB(job)
@@ -401,7 +401,7 @@ func (w *SyncWorker) processJob(job *SyncJob) {
 	w.logger.Info("sync job completed",
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
-		zap.String("key", job.Key),
+		observability.KeyField(job.Key),
 		zap.Duration("duration", duration),
 		zap.Error(err))
 }
@@ -416,7 +416,7 @@ func (w *SyncWorker) ackInflightJob(job *SyncJob) {
 		w.logger.Error("failed to ack inflight sync job",
 			zap.String("job_id", job.ID),
 			zap.String("type", job.Type),
-			zap.String("key", job.Key),
+			observability.KeyField(job.Key),
 			zap.Error(err))
 	}
 }
@@ -512,7 +512,7 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) (writeBufferJob bool, err error
 			w.logger.Debug("duplicate key during sync - data already exists",
 				zap.String("job_id", job.ID),
 				zap.String("type", job.Type),
-				zap.String("key", job.Key),
+				observability.KeyField(job.Key),
 				zap.String("collection", job.Collection))
 			// Return nil because this is not an error - the data already exists
 			return true, nil
@@ -534,7 +534,7 @@ func (w *SyncWorker) handleSyncSuccess(job *SyncJob) {
 		w.logger.Error("failed to marshal data for cache update",
 			zap.String("job_id", job.ID),
 			zap.String("type", job.Type),
-			zap.String("key", job.Key),
+			observability.KeyField(job.Key),
 			zap.Error(err))
 	} else {
 		// Use 3 hours TTL to match DataManager read cache
@@ -543,14 +543,14 @@ func (w *SyncWorker) handleSyncSuccess(job *SyncJob) {
 			w.logger.Error("failed to update read cache after sync",
 				zap.String("job_id", job.ID),
 				zap.String("type", job.Type),
-				zap.String("key", job.Key),
+				observability.KeyField(job.Key),
 				zap.Error(err))
 		} else {
 			w.logger.Debug("updated read cache after successful sync",
 				zap.String("job_id", job.ID),
 				zap.String("type", job.Type),
-				zap.String("key", job.Key),
-				zap.String("cache_key", cacheKey))
+				observability.KeyField(job.Key),
+				observability.CacheKeyField(cacheKey))
 		}
 	}
 
@@ -561,21 +561,21 @@ func (w *SyncWorker) handleSyncSuccess(job *SyncJob) {
 		w.logger.Warn("failed to cleanup write buffer after sync",
 			zap.String("job_id", job.ID),
 			zap.String("type", job.Type),
-			zap.String("key", job.Key),
-			zap.String("write_key", writeKey),
+			observability.KeyField(job.Key),
+			zap.String("write_key", observability.MaskCacheKey(writeKey)),
 			zap.Error(err))
 	} else {
 		w.logger.Debug("cleaned up write buffer after successful sync",
 			zap.String("job_id", job.ID),
 			zap.String("type", job.Type),
-			zap.String("key", job.Key),
-			zap.String("write_key", writeKey))
+			observability.KeyField(job.Key),
+			zap.String("write_key", observability.MaskCacheKey(writeKey)))
 	}
 
 	w.logger.Info("sync job succeeded - cache updated and write buffer cleaned",
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
-		zap.String("key", job.Key))
+		observability.KeyField(job.Key))
 
 	w.maybeEnqueueSalesforcePush(job)
 }
@@ -659,7 +659,7 @@ func (w *SyncWorker) moveToDLQ(job *SyncJob, err error) bool {
 		w.logger.Error("failed to marshal DLQ job",
 			zap.String("job_id", job.ID),
 			zap.String("type", job.Type),
-			zap.String("key", job.Key),
+			observability.KeyField(job.Key),
 			zap.Error(marshalErr))
 		w.markMobilidadeInviteQueuePersistFailure(job, fmt.Sprintf("dlq marshal failed: %v", marshalErr))
 		return false
@@ -673,7 +673,7 @@ func (w *SyncWorker) moveToDLQ(job *SyncJob, err error) bool {
 			w.logger.Error("failed to move job to DLQ",
 				zap.String("job_id", job.ID),
 				zap.String("type", job.Type),
-				zap.String("key", job.Key),
+				observability.KeyField(job.Key),
 				zap.Error(moveErr))
 			if w.metrics != nil {
 				w.metrics.IncrementSyncFailures(job.Type)
@@ -685,7 +685,7 @@ func (w *SyncWorker) moveToDLQ(job *SyncJob, err error) bool {
 			w.logger.Error("failed to move job to DLQ: inflight payload missing",
 				zap.String("job_id", job.ID),
 				zap.String("type", job.Type),
-				zap.String("key", job.Key))
+				observability.KeyField(job.Key))
 			w.markMobilidadeInviteQueuePersistFailure(job, "dlq failed: inflight payload missing")
 			return false
 		}
@@ -693,7 +693,7 @@ func (w *SyncWorker) moveToDLQ(job *SyncJob, err error) bool {
 		w.logger.Error("failed to move job to DLQ",
 			zap.String("job_id", job.ID),
 			zap.String("type", job.Type),
-			zap.String("key", job.Key),
+			observability.KeyField(job.Key),
 			zap.Error(pushErr))
 		if w.metrics != nil {
 			w.metrics.IncrementSyncFailures(job.Type)
@@ -705,7 +705,7 @@ func (w *SyncWorker) moveToDLQ(job *SyncJob, err error) bool {
 	w.logger.Error("job moved to DLQ",
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
-		zap.String("key", job.Key),
+		observability.KeyField(job.Key),
 		zap.Error(err))
 	return true
 }
@@ -778,7 +778,7 @@ func (w *SyncWorker) requeueJob(job *SyncJob) bool {
 		w.logger.Error("failed to marshal job for requeue",
 			zap.String("job_id", job.ID),
 			zap.String("type", job.Type),
-			zap.String("key", job.Key),
+			observability.KeyField(job.Key),
 			zap.Error(marshalErr))
 		w.markMobilidadeInviteQueuePersistFailure(job, fmt.Sprintf("requeue marshal failed: %v", marshalErr))
 		return false
@@ -792,7 +792,7 @@ func (w *SyncWorker) requeueJob(job *SyncJob) bool {
 			w.logger.Error("failed to requeue job",
 				zap.String("job_id", job.ID),
 				zap.String("type", job.Type),
-				zap.String("key", job.Key),
+				observability.KeyField(job.Key),
 				zap.Int("retry_count", job.RetryCount),
 				zap.Error(moveErr))
 			if w.metrics != nil {
@@ -805,7 +805,7 @@ func (w *SyncWorker) requeueJob(job *SyncJob) bool {
 			w.logger.Error("failed to requeue job: inflight payload missing",
 				zap.String("job_id", job.ID),
 				zap.String("type", job.Type),
-				zap.String("key", job.Key))
+				observability.KeyField(job.Key))
 			w.markMobilidadeInviteQueuePersistFailure(job, "requeue failed: inflight payload missing")
 			return false
 		}
@@ -813,7 +813,7 @@ func (w *SyncWorker) requeueJob(job *SyncJob) bool {
 		w.logger.Error("failed to requeue job",
 			zap.String("job_id", job.ID),
 			zap.String("type", job.Type),
-			zap.String("key", job.Key),
+			observability.KeyField(job.Key),
 			zap.Int("retry_count", job.RetryCount),
 			zap.Error(pushErr))
 		if w.metrics != nil {
@@ -826,7 +826,7 @@ func (w *SyncWorker) requeueJob(job *SyncJob) bool {
 	w.logger.Info("job re-queued for retry",
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
-		zap.String("key", job.Key),
+		observability.KeyField(job.Key),
 		zap.Int("retry_count", job.RetryCount),
 		zap.Time("available_at", job.AvailableAt),
 		zap.Duration("backoff_delay", backoffDelay))
@@ -1019,7 +1019,7 @@ func (w *SyncWorker) handleCFLookupJob(ctx context.Context, job *SyncJob) error 
 func (w *SyncWorker) handleMobilidadeInviteEmailJob(ctx context.Context, job *SyncJob) error {
 	w.logger.Info("processing mobilidade invite email job",
 		zap.String("job_id", job.ID),
-		zap.String("key", job.Key))
+		observability.KeyField(job.Key))
 
 	payload, err := parseMobilidadeInviteEmailPayload(job.Data)
 	if err != nil {

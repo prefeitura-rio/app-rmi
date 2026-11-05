@@ -709,3 +709,75 @@ func TestTraceEndpointStep_MasksPersonalData(t *testing.T) {
 		t.Errorf("db.filter = %q, want cpf", attrs["db.filter"])
 	}
 }
+
+func TestAddSpanAttribute_MasksCacheKeysAndDropsOTP(t *testing.T) {
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		AddSpanAttribute(span, "cache.key", "memory:5521987654321:preferencias")
+		AddSpanAttribute(span, "cache_key", "citizen:write:12345678901")
+		AddSpanAttribute(span, "key", "12345678901")
+		AddSpanAttribute(span, "input.code", "123456")
+		AddSpanAttribute(span, "verification.otp", "654321")
+		AddSpanAttribute(span, "input.valor", "fulano@example.com")
+		AddSpanAttribute(span, "cache.operation", "get")
+	})
+
+	expected := map[string]string{
+		"cache.key":        "memory:***:preferencias",
+		"cache_key":        "citizen:write:***",
+		"key":              "***",
+		"input.code":       "[REDACTED]",
+		"verification.otp": "[REDACTED]",
+		"input.valor":      "[REDACTED]",
+		"cache.operation":  "get",
+	}
+	for key, want := range expected {
+		if got := attrs[key]; got != want {
+			t.Errorf("attribute %q = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestTraceCacheHelpers_MaskPersonalDataInKey(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	defer func() { _ = provider.Shutdown(context.Background()) }()
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	defer otel.SetTracerProvider(previous)
+
+	ctx := context.Background()
+	_, getSpan := TraceCacheGet(ctx, "memory:5521987654321:preferencias")
+	getSpan.End()
+	_, setSpan := TraceCacheSet(ctx, "citizen:12345678901", time.Minute)
+	setSpan.End()
+	_, delSpan := TraceCacheInvalidation(ctx, "user_config:12345678901")
+	delSpan.End()
+	_, opSpan, cleanup := TraceCacheOperation(ctx, "get", "memory_list:5521987654321")
+	_ = opSpan
+	cleanup()
+
+	want := map[string]bool{
+		"memory:***:preferencias": false,
+		"citizen:***":             false,
+		"user_config:***":         false,
+		"memory_list:***":         false,
+	}
+	for _, span := range recorder.Ended() {
+		for _, kv := range span.Attributes() {
+			if string(kv.Key) != "cache.key" {
+				continue
+			}
+			value := kv.Value.Emit()
+			if _, ok := want[value]; !ok {
+				t.Errorf("span %s cache.key = %q, want a masked key", span.Name(), value)
+				continue
+			}
+			want[value] = true
+		}
+	}
+	for value, seen := range want {
+		if !seen {
+			t.Errorf("cache.key %q not recorded", value)
+		}
+	}
+}

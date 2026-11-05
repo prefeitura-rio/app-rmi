@@ -125,8 +125,11 @@ just stop-deps        # Stop dependency containers
 - Phone: `observability.PhoneField(phone)` / `PhonesField(phones)` / `PhoneAttr(phone)` (`MaskPhone` keeps DDI, DDD and the last 4 digits); never `zap.String("phone_number"|"phone", …)`
 - Person name: `observability.NameField(name)` (`MaskName`; `utils.MaskName` delegates to it); names of other things use a specific key (`avatar_name`, `group_name`, `circuit_breaker`), never `name`/`nome`
 - Birth date is never logged nor recorded in spans
-- `utils.AddSpanAttribute` / `RecordErrorInSpan` / `TraceOperation` / `TraceEndpointStep` mask CPF, phone and name values by key (last dotted segment, e.g. `input.cpf`, `response.name`) and drop birth-date keys
-- CI/`just lint` runs `scripts/check_cpf_log_masking.sh` so new unmasked CPF, phone, name or birth-date logs/spans fail the build
+- Cache/data/Redis keys carry CPF or phone (`citizen:write:<cpf>`, `memory:<phone>:<name>`): log them with `observability.KeyField(key)` / `CacheKeyField(key)` (or `observability.MaskCacheKey`), never `zap.String("key"|"cache_key"|"write_key", …)`. `MaskCacheKey` (implemented in `internal/pii`, importable by `redisclient` without a cycle) keeps the type/prefix and replaces CPF, phone and e-mail segments by `***`; `redisclient` masks `redis.key`, `redis.keys` and `redis.pattern`
+- MongoDB filters are never logged (`zap.Any("filter", …)`): log only the field name (`filter_field`)
+- OTP/verification codes are never logged nor recorded in spans; error messages never format a CPF or phone in clear (use `observability.MaskCPF` or leave the value out)
+- `utils.AddSpanAttribute` / `RecordErrorInSpan` / `TraceOperation` / `TraceEndpointStep` mask CPF, phone and name values by key (last dotted segment, e.g. `input.cpf`, `response.name`), mask cache keys (`cache.key`), redact OTP keys (`code`, `otp`) and raw self-declared values (`input.valor`) as `[REDACTED]`, and drop birth-date keys
+- CI/`just lint` runs `scripts/check_cpf_log_masking.sh` so new unmasked CPF, phone, name, birth-date, cache-key, Mongo-filter or OTP logs/spans (and error messages with CPF/phone) fail the build
 
 ### Monitoring & Observability
 - **OpenTelemetry**: Request tracing with span context

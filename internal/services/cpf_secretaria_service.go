@@ -9,6 +9,7 @@ import (
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -72,7 +73,7 @@ func (s *CPFSecretariaService) AddMapping(ctx context.Context, cpf, cdUA, create
 	var existing models.CPFSecretariaMapping
 	err := coll.FindOne(ctx, bson.M{"cpf": normalizedCPF, "cd_ua": cdUA}).Decode(&existing)
 	if err == nil {
-		return nil, fmt.Errorf("cpf_secretaria: mapping already exists for CPF %s and cd_ua %s", cpf, cdUA)
+		return nil, fmt.Errorf("cpf_secretaria: mapping already exists for CPF %s and cd_ua %s", observability.MaskCPF(cpf), cdUA)
 	}
 	if !errors.Is(err, mongo.ErrNoDocuments) {
 		return nil, fmt.Errorf("cpf_secretaria: check existing: %w", err)
@@ -91,7 +92,7 @@ func (s *CPFSecretariaService) AddMapping(ctx context.Context, cpf, cdUA, create
 	_, err = coll.InsertOne(ctx, mapping)
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
-			return nil, fmt.Errorf("cpf_secretaria: mapping already exists for CPF %s and cd_ua %s", cpf, cdUA)
+			return nil, fmt.Errorf("cpf_secretaria: mapping already exists for CPF %s and cd_ua %s", observability.MaskCPF(cpf), cdUA)
 		}
 		return nil, fmt.Errorf("cpf_secretaria: insert: %w", err)
 	}
@@ -105,7 +106,7 @@ func (s *CPFSecretariaService) RemoveMapping(ctx context.Context, cpf, cdUA stri
 		return fmt.Errorf("cpf_secretaria: delete: %w", err)
 	}
 	if result.DeletedCount == 0 {
-		return fmt.Errorf("cpf_secretaria: mapping not found for CPF %s and cd_ua %s", cpf, cdUA)
+		return fmt.Errorf("cpf_secretaria: mapping not found for CPF %s and cd_ua %s", observability.MaskCPF(cpf), cdUA)
 	}
 	return nil
 }

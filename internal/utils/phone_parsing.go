@@ -49,7 +49,7 @@ func ParsePhoneNumber(phoneString string) (*PhoneComponents, error) {
 	// Use basic validation instead of strict IsValidNumber to support 8-digit Brazilian numbers
 	nationalNumber := phonenumbers.GetNationalSignificantNumber(num)
 	if len(nationalNumber) < 8 || len(nationalNumber) > 15 {
-		return nil, fmt.Errorf("invalid phone number: %s", phoneString)
+		return nil, fmt.Errorf("invalid phone number: national number has %d digits, expected 8 to 15", len(nationalNumber))
 	}
 
 	// Extract components
@@ -108,7 +108,7 @@ func ValidatePhoneFormat(phoneString string) error {
 	// Basic format validation
 	phoneRegex := regexp.MustCompile(`^\+?[0-9]{10,15}$`)
 	if !phoneRegex.MatchString(strings.ReplaceAll(phoneString, " ", "")) {
-		return fmt.Errorf("invalid phone number format: %s", phoneString)
+		return fmt.Errorf("invalid phone number format (length %d): expected 10 to 15 digits", len(phoneString))
 	}
 	return nil
 }

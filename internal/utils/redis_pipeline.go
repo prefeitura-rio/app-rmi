@@ -6,6 +6,7 @@ import (
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
@@ -121,7 +122,7 @@ func (rp *RedisPipeline) BatchGet(keys []string) (map[string]interface{}, error)
 			// Log non-nil errors but don't fail the whole operation
 			logging.GetLogger().Warn("failed to get key in batch",
 				//nolint:gosec // G602: pipeline result index aligned with requested keys length
-				zap.String("key", keys[i]),
+				observability.KeyField(keys[i]),
 				zap.Error(err))
 		}
 		// If err == redis.Nil, key doesn't exist - skip it (don't add to results)
