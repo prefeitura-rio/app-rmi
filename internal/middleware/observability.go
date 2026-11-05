@@ -22,8 +22,8 @@ func RequestLogger() gin.HandlerFunc {
 
 		// Log request details with sensitive data masking
 		observability.Logger().Info("request completed",
-			zap.String("path", path),
-			zap.String("query", query),
+			observability.PathField(path),
+			observability.QueryField(query),
 			zap.String("ip", c.ClientIP()),
 			zap.String("method", c.Request.Method),
 			zap.Int("status", status),
@@ -33,7 +33,7 @@ func RequestLogger() gin.HandlerFunc {
 
 		// Update metrics
 		observability.RequestDuration.WithLabelValues(
-			path,
+			observability.MaskURLPath(path),
 			c.Request.Method,
 			//nolint:gosec // G115: bounded conversion for metrics/status/memory counters
 			string(rune(status)),

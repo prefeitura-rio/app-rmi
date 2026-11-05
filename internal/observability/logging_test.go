@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"net/url"
 	"testing"
 	"unicode/utf8"
 
@@ -332,4 +333,33 @@ func TestKeyFields(t *testing.T) {
 	cacheKey := CacheKeyField("phone_mapping:5521987654321")
 	assert.Equal(t, "cache_key", cacheKey.Key)
 	assert.Equal(t, "phone_mapping:***", cacheKey.String)
+}
+
+func TestMaskURLPathAndQuery(t *testing.T) {
+	assert.Equal(t, "/v1/citizen/***/wallet", MaskURLPath("/v1/citizen/12345678901/wallet"))
+	assert.Equal(t, "/v1/memory/***", MaskURLPath("/v1/memory/5521987654321"))
+	assert.Equal(t, "/v1/health", MaskURLPath("/v1/health"))
+	assert.Equal(t, "cpf=***&page=2", MaskQuery("cpf=12345678901&page=2"))
+}
+
+func TestMaskURL(t *testing.T) {
+	assert.Equal(t, "", MaskURL(nil))
+
+	u, err := url.Parse("/v1/citizen/12345678901/wallet?phone=%2B5521987654321&page=2")
+	require.NoError(t, err)
+	assert.Equal(t, "/v1/citizen/***/wallet?phone=***&page=2", MaskURL(u))
+
+	u, err = url.Parse("/v1/memory/5521987654321")
+	require.NoError(t, err)
+	assert.Equal(t, "/v1/memory/***", MaskURL(u))
+}
+
+func TestPathAndQueryFields(t *testing.T) {
+	path := PathField("/v1/phone/5521987654321/opt-in")
+	assert.Equal(t, "path", path.Key)
+	assert.Equal(t, "/v1/phone/***/opt-in", path.String)
+
+	query := QueryField("email=fulano%40example.com")
+	assert.Equal(t, "query", query.Key)
+	assert.Equal(t, "email=***", query.String)
 }

@@ -105,7 +105,7 @@ func AuditMiddleware() gin.HandlerFunc {
 			if err := utils.LogAuditEvent(c.Request.Context(), auditCtx, action, resource, resourceID, nil, nil, metadata); err != nil {
 				observability.Logger().Warn("failed to log audit event",
 					zap.Error(err),
-					zap.String("endpoint", path),
+					zap.String("endpoint", observability.MaskURLPath(path)),
 					zap.String("method", method),
 				)
 			}

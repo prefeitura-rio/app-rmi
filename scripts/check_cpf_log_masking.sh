@@ -9,6 +9,8 @@
 #   - MongoDB filters: never zap.Any/Reflect("filter", ...) (the value is the CPF or phone)
 #   - one-time codes (OTP): never logged nor recorded in spans
 #   - error messages: no CPF or phone formatted in clear with %s/%q/%v
+#   - request path/query/URL (carry CPF or phone in route params): only via observability.PathField /
+#     QueryField (or observability.MaskURLPath / MaskQuery / MaskURL), or the route (c.FullPath())
 # The helpers live in internal/observability/logging.go, the only file exempt from this check.
 set -eu
 
@@ -80,8 +82,17 @@ hits="$(go_lines "(${emitter}|${span_emitter})${otp_key}")"
 hits="$(go_lines '(Errorf|errors\.New)\("[^"]*([Pp]hone|[Tt]elefone|[Cc]elular|cpf|CPF)[^"]*%[sqv]' | grep -vE 'observability\.Mask(CPF|Phone)\(' || true)"
 [ -z "$hits" ] || fail "CPF or phone formatted in clear in an error message (errors end up in logs). Leave the value out or use observability.MaskCPF / MaskPhone." "$hits"
 
+# 9. Request path, query and URL: /v1/citizen/<cpf>/..., /v1/memory/<phone>... carry personal data.
+url_masked='observability\.(Mask(URLPath|Query|URL)|PathField|QueryField)\(|FullPath\(\)'
+hits="$(go_lines "${emitter}[^\"]*\", *[^)]*(Request\.(URL|RequestURI)|URL\.(Path|RawQuery|RawPath|String\(\)|EscapedPath\(\)))" | grep -vE "$url_masked" || true)"
+[ -z "$hits" ] || fail "unmasked request path/query/URL in logs/spans. Use observability.PathField / QueryField (or observability.MaskURLPath / MaskQuery / MaskURL) or the route c.FullPath()." "$hits"
+
+request_key='([a-z0-9]+[._])*(path|query|endpoint|request_uri|http\.url|http\.target)"'
+hits="$(go_lines "${emitter}${request_key}" | grep -vE "$url_masked" || true)"
+[ -z "$hits" ] || fail "request path/query/URL field without masking. Use observability.PathField / QueryField (or observability.MaskURLPath / MaskQuery / MaskURL) or the route c.FullPath()." "$hits"
+
 if [ "$status" -ne 0 ]; then
   exit "$status"
 fi
 
-echo "OK: CPF/phone/name/birth date/cache key/OTP log and span masking check passed."
+echo "OK: CPF/phone/name/birth date/cache key/OTP/request path log and span masking check passed."
