@@ -2120,8 +2120,11 @@ go build -o api cmd/api/main.go
 
 ### Testes
 ```bash
-go test ./...
+just start-deps   # MongoDB e Redis exigidos pelos testes de integração
+just test
 ```
+
+Como rodar, gate de cobertura, cobertura por pacote e testes de carga (k6): [`TESTING.md`](TESTING.md).
 
 ## Licença
 
