@@ -45,7 +45,7 @@ curl -s https://services.pref.rio/rmi/v1/health | jq
 curl -s https://services.staging.app.dados.rio/rmi/v1/health | jq
 ```
 
-Resposta esperada: `status: true`, `services.mongodb.status/message = true/"Connected"`, `services.redis.status/message = true/"Connected"` e `version` = os 7 primeiros caracteres do commit implantado. Qualquer dependência fora → HTTP 500 com `status: false`.
+Resposta esperada: `status: true`, `services.mongodb.status/message = true/"Connected"`, `services.redis.status/message = true/"Connected"` e `version` = o commit curto implantado (`git rev-parse --short`, normalmente 7 caracteres). Qualquer dependência fora → HTTP 500 com `status: false`.
 
 ### Cluster (leitura)
 
@@ -136,7 +136,7 @@ Não há dashboard do RMI versionado no repositório nem no `prefeitura-rio/infr
   gh run rerun <run-id> -R prefeitura-rio/app-rmi
   ```
 
-  Alternativa equivalente: publicar uma nova release a partir de um commit que reverte a mudança (`git revert` na `main` por PR, depois a release).
+  O GitHub só reexecuta runs de até 30 dias. Para uma release mais antiga, ou como alternativa equivalente, publique uma nova release a partir de um commit que reverte a mudança (`git revert` na `main` por PR, depois a release).
 - **Não use `kubectl argo rollouts undo`** nem edite o Rollout à mão: o Application `rmi` tem `selfHeal` e a imagem fixada no override, então o Argo CD desfaz a mudança.
 
 **Staging (blue-green)**
@@ -176,7 +176,7 @@ Para varrer todas: `SCAN 0 MATCH sync:dlq:* COUNT 1000` (nunca `KEYS *` em produ
 
 **Reprocessar** (só depois de corrigir a causa):
 
-1. Confira se o dado do job ainda é o mais recente. O worker grava `original_job.data` com `$set` e upsert, sem comparar versão: se o cidadão alterou o mesmo campo depois da falha, reprocessar o job antigo **sobrescreve o dado novo**. Compare o `updated_at` do job com o do documento no Mongo antes de devolver.
+1. Confira se o dado do job ainda é o mais recente. O worker grava `original_job.data` com `$set` e upsert, sem comparar versão: se o cidadão alterou o mesmo campo depois da falha, reprocessar o job antigo **sobrescreve o dado novo**. Compare o `original_job.timestamp` (hora em que o job foi enfileirado; o `original_job.data` dos autodeclarados também traz `updated_at`) com o `updated_at` do documento no Mongo antes de devolver.
 2. Devolva um job por vez: pegue o JSON de `original_job`, zere `retry_count`, remova `available_at` e faça `LPUSH` na fila de origem (`sync:queue:<fila>` ou `sync:queue:{<fila>}`), então remova esse item da DLQ (`LREM <dlq> 1 '<json exato do item>'`). Faça a cópia antes de remover.
 3. Acompanhe nos logs `sync job succeeded` ou um novo `job moved to DLQ` para o mesmo `job_id`.
 
