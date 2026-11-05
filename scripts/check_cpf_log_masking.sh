@@ -11,6 +11,8 @@
 #   - error messages: no CPF or phone formatted in clear with %s/%q/%v
 #   - request path/query/URL (carry CPF or phone in route params): only via observability.PathField /
 #     QueryField (or observability.MaskURLPath / MaskQuery / MaskURL), or the route (c.FullPath())
+#   - raw self-declared values (valor, invalid_value, validated_value, new_<field>): never logged,
+#     never set through attribute.*, never formatted into a message (only the length)
 # The helpers live in internal/observability/logging.go, the only file exempt from this check.
 set -eu
 
@@ -91,8 +93,18 @@ request_key='([a-z0-9]+[._])*(path|query|endpoint|request_uri|http\.url|http\.ta
 hits="$(go_lines "${emitter}${request_key}" | grep -vE "$url_masked" || true)"
 [ -z "$hits" ] || fail "request path/query/URL field without masking. Use observability.PathField / QueryField (or observability.MaskURLPath / MaskQuery / MaskURL) or the route c.FullPath()." "$hits"
 
+# 10. Raw self-declared values (ethnicity, disability, free-text gender, phone, e-mail...):
+#     never logged, never set through attribute.* (which skips the span helpers that redact
+#     them), never formatted into an error message. Record only the length (value_length).
+self_declared_key='([a-z0-9]+\.)*(valor|invalid_value|validated_value|new_(ethnicity|gender|family_income|education|disability))"'
+hits="$(go_lines "${emitter}${self_declared_key}")"
+[ -z "$hits" ] || fail "raw self-declared value in logs/spans. Log only its length (zap.Int(\"value_length\", len(v))); span helpers (utils.AddSpanAttribute / RecordErrorInSpan) redact these keys." "$hits"
+
+hits="$(go_lines 'Errorf\("[^"]*%[sqv][^"]*",[^)]*\.Valor\b')"
+[ -z "$hits" ] || fail "raw self-declared value (.Valor) formatted into a message (errors end up in logs and spans). Leave the value out." "$hits"
+
 if [ "$status" -ne 0 ]; then
   exit "$status"
 fi
 
-echo "OK: CPF/phone/name/birth date/cache key/OTP/request path log and span masking check passed."
+echo "OK: CPF/phone/name/birth date/cache key/OTP/request path/self-declared value log and span masking check passed."

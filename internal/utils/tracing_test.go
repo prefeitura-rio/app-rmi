@@ -737,6 +737,38 @@ func TestAddSpanAttribute_MasksCacheKeysAndDropsOTP(t *testing.T) {
 	}
 }
 
+func TestSpanHelpers_RedactSelfDeclaredValues(t *testing.T) {
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		AddSpanAttribute(span, "validated_value", "Parda")
+		AddSpanAttribute(span, "new_ethnicity", "Parda")
+		AddSpanAttribute(span, "new_gender", "texto livre sintetico")
+		AddSpanAttribute(span, "new_family_income", "1 a 2 salários mínimos")
+		AddSpanAttribute(span, "new_education", "Superior completo")
+		AddSpanAttribute(span, "new_disability", "Visual")
+		AddSpanAttribute(span, "invalid_value_length", 21)
+		RecordErrorInSpan(span, errors.New("invalid ethnicity value"), map[string]interface{}{
+			"invalid_value":            "texto livre sintetico",
+			"validation.invalid_value": "texto livre sintetico",
+			"error.type":               "validation",
+		})
+	})
+
+	for _, key := range []string{
+		"validated_value", "new_ethnicity", "new_gender", "new_family_income",
+		"new_education", "new_disability", "invalid_value", "validation.invalid_value",
+	} {
+		if got := attrs[key]; got != "[REDACTED]" {
+			t.Errorf("attribute %q = %q, want [REDACTED]", key, got)
+		}
+	}
+	if attrs["invalid_value_length"] != "21" {
+		t.Errorf("invalid_value_length = %q, want 21", attrs["invalid_value_length"])
+	}
+	if attrs["error.type"] != "validation" {
+		t.Errorf("non-personal attribute changed: %v", attrs)
+	}
+}
+
 func TestTraceCacheHelpers_MaskPersonalDataInKey(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
