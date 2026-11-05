@@ -80,7 +80,6 @@ func ValidatePhoneVerification(c *gin.Context) {
 	utils.AddSpanAttribute(inputSpan, "input.ddi", req.DDI)
 	utils.AddSpanAttribute(inputSpan, "input.ddd", req.DDD)
 	utils.AddSpanAttribute(inputSpan, "input.valor", req.Valor)
-	utils.AddSpanAttribute(inputSpan, "input.code", req.Code)
 	inputSpan.End()
 
 	// Build full phone number for lookup with tracing
@@ -232,7 +231,6 @@ func ValidatePhoneVerification(c *gin.Context) {
 	logger.Debug("ValidatePhoneVerification completed",
 		observability.CPFField(cpf),
 		observability.PhoneField(fullPhone),
-		zap.String("code", req.Code),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }

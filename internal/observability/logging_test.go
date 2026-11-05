@@ -2,6 +2,7 @@ package observability
 
 import (
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -296,4 +297,39 @@ func TestNameField(t *testing.T) {
 	empty := NameField("")
 	assert.Equal(t, "name", empty.Key)
 	assert.Equal(t, "", empty.String)
+}
+
+func TestMaskName_AccentedInitials(t *testing.T) {
+	tests := []struct {
+		fullName string
+		expected string
+	}{
+		{fullName: "Ângela", expected: "Â*****"},
+		{fullName: "Maria Érica", expected: "Maria É****"},
+		{fullName: "João Úrsula Ítalo", expected: "João Ú***** Ítalo"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.fullName, func(t *testing.T) {
+			got := MaskName(tt.fullName)
+			assert.Equal(t, tt.expected, got)
+			assert.True(t, utf8.ValidString(got), "masked name must be valid UTF-8: %q", got)
+		})
+	}
+}
+
+func TestMaskCacheKey(t *testing.T) {
+	assert.Equal(t, "citizen:write:***", MaskCacheKey("citizen:write:12345678901"))
+	assert.Equal(t, "memory:***:preferencias", MaskCacheKey("memory:5521987654321:preferencias"))
+	assert.Equal(t, "***", MaskCacheKey("12345678901"))
+	assert.Equal(t, "bairro:123", MaskCacheKey("bairro:123"))
+}
+
+func TestKeyFields(t *testing.T) {
+	key := KeyField("12345678901")
+	assert.Equal(t, "key", key.Key)
+	assert.Equal(t, "***", key.String)
+
+	cacheKey := CacheKeyField("phone_mapping:5521987654321")
+	assert.Equal(t, "cache_key", cacheKey.Key)
+	assert.Equal(t, "phone_mapping:***", cacheKey.String)
 }

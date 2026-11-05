@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/prefeitura-rio/app-rmi/internal/pii"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -31,7 +32,7 @@ func (c *Client) Get(ctx context.Context, key string) *redis.StringCmd {
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.get",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "get"),
 			attribute.String("redis.client", "app-rmi"),
 			attribute.String("redis.type", "string"),
@@ -62,7 +63,7 @@ func (c *Client) Set(ctx context.Context, key string, value interface{}, expirat
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.set",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "set"),
 			attribute.String("redis.expiration", expiration.String()),
 			attribute.String("redis.client", "app-rmi"),
@@ -94,7 +95,7 @@ func (c *Client) SetNX(ctx context.Context, key string, value interface{}, expir
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.setnx",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "setnx"),
 			attribute.String("redis.expiration", expiration.String()),
 			attribute.String("redis.client", "app-rmi"),
@@ -127,7 +128,7 @@ func (c *Client) Del(ctx context.Context, keys ...string) *redis.IntCmd {
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.del",
 		trace.WithAttributes(
-			attribute.StringSlice("redis.keys", keys),
+			attribute.StringSlice("redis.keys", pii.MaskCacheKeys(keys)),
 			attribute.String("redis.operation", "del"),
 			attribute.Int("redis.key_count", len(keys)),
 			attribute.String("redis.client", "app-rmi"),
@@ -187,7 +188,7 @@ func (c *Client) Exists(ctx context.Context, keys ...string) *redis.IntCmd {
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.exists",
 		trace.WithAttributes(
-			attribute.StringSlice("redis.keys", keys),
+			attribute.StringSlice("redis.keys", pii.MaskCacheKeys(keys)),
 			attribute.String("redis.operation", "exists"),
 			attribute.Int("redis.key_count", len(keys)),
 			attribute.String("redis.client", "app-rmi"),
@@ -218,7 +219,7 @@ func (c *Client) TTL(ctx context.Context, key string) *redis.DurationCmd {
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.ttl",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "ttl"),
 			attribute.String("redis.client", "app-rmi"),
 		),
@@ -248,7 +249,7 @@ func (c *Client) Keys(ctx context.Context, pattern string) *redis.StringSliceCmd
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.keys",
 		trace.WithAttributes(
-			attribute.String("redis.pattern", pattern),
+			attribute.String("redis.pattern", pii.MaskCacheKey(pattern)),
 			attribute.String("redis.operation", "keys"),
 			attribute.String("redis.client", "app-rmi"),
 		),
@@ -388,7 +389,7 @@ func (c *Client) LLen(ctx context.Context, key string) *redis.IntCmd {
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.llen",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "llen"),
 			attribute.String("redis.client", "app-rmi"),
 			attribute.String("redis.type", "list"),
@@ -419,7 +420,7 @@ func (c *Client) LPush(ctx context.Context, key string, values ...interface{}) *
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.lpush",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "lpush"),
 			attribute.String("redis.client", "app-rmi"),
 			attribute.String("redis.type", "list"),
@@ -451,7 +452,7 @@ func (c *Client) BRPop(ctx context.Context, timeout time.Duration, keys ...strin
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.brpop",
 		trace.WithAttributes(
-			attribute.StringSlice("redis.keys", keys),
+			attribute.StringSlice("redis.keys", pii.MaskCacheKeys(keys)),
 			attribute.String("redis.operation", "brpop"),
 			attribute.String("redis.client", "app-rmi"),
 			attribute.String("redis.type", "list"),
@@ -484,7 +485,7 @@ func (c *Client) RPop(ctx context.Context, key string) *redis.StringCmd {
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.rpop",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "rpop"),
 			attribute.String("redis.client", "app-rmi"),
 			attribute.String("redis.type", "list"),
@@ -547,7 +548,7 @@ func (c *Client) LRem(ctx context.Context, key string, count int64, value interf
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.lrem",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "lrem"),
 			attribute.String("redis.client", "app-rmi"),
 			attribute.String("redis.type", "list"),
@@ -579,7 +580,7 @@ func (c *Client) LRange(ctx context.Context, key string, start, stop int64) *red
 	startTime := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.lrange",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "lrange"),
 			attribute.String("redis.client", "app-rmi"),
 			attribute.String("redis.type", "list"),
@@ -612,7 +613,7 @@ func (c *Client) ZAdd(ctx context.Context, key string, members ...redis.Z) *redi
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.zadd",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "zadd"),
 			attribute.String("redis.client", "app-rmi"),
 			attribute.String("redis.type", "zset"),
@@ -644,7 +645,7 @@ func (c *Client) ZRem(ctx context.Context, key string, members ...interface{}) *
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.zrem",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "zrem"),
 			attribute.String("redis.client", "app-rmi"),
 			attribute.String("redis.type", "zset"),
@@ -676,7 +677,7 @@ func (c *Client) ZScore(ctx context.Context, key, member string) *redis.FloatCmd
 	start := time.Now()
 	ctx, span := otel.Tracer("redis").Start(ctx, "redis.zscore",
 		trace.WithAttributes(
-			attribute.String("redis.key", key),
+			attribute.String("redis.key", pii.MaskCacheKey(key)),
 			attribute.String("redis.operation", "zscore"),
 			attribute.String("redis.client", "app-rmi"),
 			attribute.String("redis.type", "zset"),

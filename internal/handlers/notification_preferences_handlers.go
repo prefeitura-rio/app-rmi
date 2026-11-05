@@ -154,7 +154,7 @@ func (h *NotificationPreferencesHandlers) GetCitizenPreferences(c *gin.Context) 
 			// Invalidate cache to ensure fresh read
 			cacheKey := fmt.Sprintf("user_config:%s", cpf)
 			if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
-				logger.Warn("failed to invalidate cache after initialization", zap.String("cache_key", cacheKey), zap.Error(err))
+				logger.Warn("failed to invalidate cache after initialization", observability.CacheKeyField(cacheKey), zap.Error(err))
 			}
 		}
 		initSpan.End()
@@ -491,7 +491,7 @@ func (h *NotificationPreferencesHandlers) UpdateCitizenCategoryPreference(c *gin
 	// Invalidate cache
 	cacheKey := fmt.Sprintf("user_config:%s", cpf)
 	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
-		logger.Warn("failed to invalidate cache", zap.String("cache_key", cacheKey), zap.Error(err))
+		logger.Warn("failed to invalidate cache", observability.CacheKeyField(cacheKey), zap.Error(err))
 	}
 
 	// Log opt-in history for category preference change
@@ -783,7 +783,7 @@ func (h *NotificationPreferencesHandlers) UpdatePhonePreferences(c *gin.Context)
 			// Invalidate CPF cache
 			cacheKey := fmt.Sprintf("user_config:%s", mapping.CPF)
 			if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
-				logger.Warn("failed to invalidate CPF cache", zap.String("cache_key", cacheKey), zap.Error(err))
+				logger.Warn("failed to invalidate CPF cache", observability.CacheKeyField(cacheKey), zap.Error(err))
 			}
 			logger.Debug("synced preferences to CPF successfully", observability.CPFField(mapping.CPF))
 		}

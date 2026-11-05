@@ -252,7 +252,7 @@ func writeSalesforceProxyError(c *gin.Context, op, key string, err error) {
 	if errors.As(err, &apiErr) {
 		logger.Warn("salesforce proxy upstream error",
 			zap.String("op", op),
-			zap.String("key", key),
+			observability.KeyField(key),
 			zap.Int("status", apiErr.StatusCode),
 			zap.Error(err))
 		if len(apiErr.Errors) > 0 {
@@ -268,7 +268,7 @@ func writeSalesforceProxyError(c *gin.Context, op, key string, err error) {
 	}
 	logger.Error("salesforce proxy failed",
 		zap.String("op", op),
-		zap.String("key", key),
+		observability.KeyField(key),
 		zap.Error(err))
 	c.JSON(http.StatusBadGateway, ErrorResponse{Error: "failed to call salesforce"})
 }

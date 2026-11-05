@@ -50,7 +50,7 @@ var phoneRegex = regexp.MustCompile(`^[0-9]{10,15}$`)
 // validatePhoneNumber validates if the phone number is in the correct format
 func validatePhoneNumber(phone string) error {
 	if !phoneRegex.MatchString(phone) {
-		return fmt.Errorf("invalid phone number format: %s", phone)
+		return fmt.Errorf("invalid phone number format (length %d): expected 10 to 15 digits", len(phone))
 	}
 	return nil
 }

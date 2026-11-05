@@ -12,6 +12,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -130,7 +131,7 @@ func (s *DepartmentService) ListDepartments(ctx context.Context, filters Departm
 		if data, err := s.dataManager.redis.Get(ctx, cacheKeyFull).Result(); err == nil {
 			if err := json.Unmarshal([]byte(data), &cachedResponse); err == nil {
 				s.logger.Debug("department list read from cache",
-					zap.String("cache_key", cacheKey))
+					observability.CacheKeyField(cacheKey))
 				return &cachedResponse, nil
 			}
 		}
@@ -253,7 +254,7 @@ func (s *DepartmentService) ListDepartments(ctx context.Context, filters Departm
 			// Cache for 3 hours (same as individual department TTL)
 			s.dataManager.redis.Set(ctx, cacheKeyFull, string(responseBytes), 3*time.Hour)
 			s.logger.Debug("department list cached",
-				zap.String("cache_key", cacheKey))
+				observability.CacheKeyField(cacheKey))
 		}
 	}
 
