@@ -29,7 +29,7 @@ func setupNotificationCategoryHandlersTest(t *testing.T) (*NotificationCategoryH
 	ctx := context.Background()
 	database := config.MongoDB
 
-	handlers := NewNotificationCategoryHandlers(logging.Logger)
+	handlers := NewNotificationCategoryHandlers(logging.GetLogger())
 
 	router := gin.New()
 	router.GET("/notification-categories", handlers.ListCategories)
@@ -47,12 +47,13 @@ func setupNotificationCategoryHandlersTest(t *testing.T) (*NotificationCategoryH
 			}
 		}
 
-		_ = database.Drop(ctx)
+		// Drop only this test's collection — never the whole rmi_test DB (shared across packages).
+		_ = database.Collection(config.AppConfig.NotificationCategoryCollection).Drop(ctx)
 	}
 }
 
 func TestNewNotificationCategoryHandlers(t *testing.T) {
-	handlers := NewNotificationCategoryHandlers(logging.Logger)
+	handlers := NewNotificationCategoryHandlers(logging.GetLogger())
 	if handlers == nil {
 		t.Error("NewNotificationCategoryHandlers() returned nil")
 		return

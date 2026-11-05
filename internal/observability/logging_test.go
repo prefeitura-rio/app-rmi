@@ -22,33 +22,48 @@ func TestMaskCPF(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "valid 11-digit CPF",
+			name:     "valid 11-digit CPF without punctuation",
 			cpf:      "12345678901",
 			expected: "123.***.789-**",
 		},
 		{
-			name:     "another valid CPF",
+			name:     "another valid CPF without punctuation",
 			cpf:      "03561350712",
 			expected: "035.***.507-**",
 		},
 		{
-			name:     "CPF too short",
+			name:     "formatted CPF with dots and dash",
+			cpf:      "123.456.789-01",
+			expected: "123.***.789-**",
+		},
+		{
+			name:     "formatted CPF with dots only",
+			cpf:      "035.613.507-12",
+			expected: "035.***.507-**",
+		},
+		{
+			name:     "invalid CPF too short",
 			cpf:      "123456789",
 			expected: "***.***.***-**",
 		},
 		{
-			name:     "CPF too long",
+			name:     "invalid CPF too long",
 			cpf:      "123456789012",
 			expected: "***.***.***-**",
 		},
 		{
-			name:     "empty CPF",
+			name:     "invalid empty CPF",
 			cpf:      "",
 			expected: "***.***.***-**",
 		},
 		{
-			name:     "single character",
-			cpf:      "1",
+			name:     "invalid non-numeric",
+			cpf:      "abcdefghijk",
+			expected: "***.***.***-**",
+		},
+		{
+			name:     "invalid formatted incomplete",
+			cpf:      "123.456.789",
 			expected: "***.***.***-**",
 		},
 	}
@@ -65,16 +80,21 @@ func TestMaskCPF_PreservesFormat(t *testing.T) {
 	cpf := "12345678901"
 	masked := MaskCPF(cpf)
 
-	// Should preserve first 3 digits
 	assert.Equal(t, "123", masked[:3])
-
-	// Should have dots and dashes
 	assert.Contains(t, masked, ".")
 	assert.Contains(t, masked, "-")
-
-	// Should mask middle and last sections
 	assert.Contains(t, masked, "***")
 	assert.Contains(t, masked, "**")
+}
+
+func TestCPFFieldAndAttr(t *testing.T) {
+	field := CPFField("12345678901")
+	assert.Equal(t, "cpf", field.Key)
+	assert.Equal(t, "123.***.789-**", field.String)
+
+	attr := CPFAttr("123.456.789-01")
+	assert.Equal(t, "cpf", string(attr.Key))
+	assert.Equal(t, "123.***.789-**", attr.Value.AsString())
 }
 
 func TestMaskSensitiveData(t *testing.T) {

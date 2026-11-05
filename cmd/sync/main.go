@@ -22,7 +22,7 @@ func main() {
 		log.Fatal("Failed to initialize logger:", err)
 	}
 
-	logging.Logger.Info("Starting RMI Sync Service")
+	logging.GetLogger().Info("Starting RMI Sync Service")
 
 	// Initialize Redis
 	config.InitRedis()
@@ -37,7 +37,7 @@ func main() {
 	}
 
 	// Initialize CF rate limiter for CF lookup requests
-	services.InitCFRateLimiter(config.AppConfig.CFLookupGlobalRateLimit, logging.Logger)
+	services.InitCFRateLimiter(config.AppConfig.CFLookupGlobalRateLimit, logging.GetLogger())
 
 	// Initialize CF lookup service for automatic Clínica da Família lookup
 	services.InitCFLookupService()
@@ -52,7 +52,7 @@ func main() {
 		config.Redis,
 		config.MongoDB,
 		workerCount,
-		logging.Logger,
+		logging.GetLogger(),
 	)
 
 	// Start sync service
@@ -63,10 +63,10 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	<-sigChan
-	logging.Logger.Info("Shutdown signal received")
+	logging.GetLogger().Info("Shutdown signal received")
 
 	// Stop sync service
 	syncService.Stop()
 
-	logging.Logger.Info("RMI Sync Service stopped")
+	logging.GetLogger().Info("RMI Sync Service stopped")
 }

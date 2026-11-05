@@ -80,7 +80,7 @@ func ValidatePhoneNumber(c *gin.Context) {
 	// Add phone number to span attributes
 	span.SetAttributes(attribute.String("input.phone", req.Phone))
 
-	logger := logging.Logger.With(zap.String("phone", req.Phone))
+	logger := logging.GetLogger().With(zap.String("phone", req.Phone))
 	logger.Debug("ValidatePhoneNumber called", zap.String("phone", req.Phone))
 
 	// Parse phone number with tracing

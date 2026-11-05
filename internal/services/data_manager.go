@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prefeitura-rio/app-rmi/internal/circuitbreaker"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/prefeitura-rio/app-rmi/internal/retry"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -30,17 +32,51 @@ type DataOperation interface {
 
 // DataManager handles Redis/MongoDB operations with multi-level caching
 type DataManager struct {
-	redis  *redisclient.Client
-	mongo  *mongo.Database
-	logger *logging.SafeLogger
+	redis          *redisclient.Client
+	mongo          *mongo.Database
+	logger         *logging.SafeLogger
+	circuitBreaker *circuitbreaker.CircuitBreaker
+	retryConfig    retry.Config
 }
 
 // NewDataManager creates a new data manager instance
 func NewDataManager(redis *redisclient.Client, mongo *mongo.Database, logger *logging.SafeLogger) *DataManager {
+	// Get the underlying zap logger from SafeLogger, fallback to no-op if nil
+	var zapLogger *zap.Logger
+	if logger != nil {
+		zapLogger = logger.Unwrap()
+	}
+	if zapLogger == nil {
+		zapLogger = zap.NewNop()
+	}
+
+	// Initialize circuit breaker for MongoDB operations
+	cb := circuitbreaker.NewCircuitBreaker("mongodb", circuitbreaker.Settings{
+		MaxRequests: 10,
+		Interval:    30 * time.Second,
+		Timeout:     10 * time.Second,
+		ReadyToTrip: func(counts circuitbreaker.Counts) bool {
+			// Guard against division by zero
+			if counts.Requests < 10 {
+				return false
+			}
+			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
+			return failureRatio >= 0.6
+		},
+		OnStateChange: func(name string, from circuitbreaker.State, to circuitbreaker.State) {
+			logger.Warn("circuit breaker state changed",
+				zap.String("name", name),
+				zap.String("from", from.String()),
+				zap.String("to", to.String()))
+		},
+	}, zapLogger)
+
 	return &DataManager{
-		redis:  redis,
-		mongo:  mongo,
-		logger: logger,
+		redis:          redis,
+		mongo:          mongo,
+		logger:         logger,
+		circuitBreaker: cb,
+		retryConfig:    retry.DefaultConfig(zapLogger),
 	}
 }
 
@@ -59,18 +95,26 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 		return fmt.Errorf("failed to write to Redis buffer: %w", err)
 	}
 
+	sealed, reason, err := prepareBearerForQueue(utils.BearerTokenFromContext(ctx), op.GetType(), op.GetKey())
+	if err != nil {
+		return fmt.Errorf("failed to seal bearer token for sync job: %w", err)
+	}
+	dm.logSyncJobBearerCapture(op.GetType(), op.GetKey(), reason)
+
 	// 2. Queue sync job
 	syncJob := SyncJob{
-		ID:         utils.GenerateUUID(),
-		Type:       op.GetType(),
-		Key:        op.GetKey(),
-		Collection: op.GetCollection(),
-		Data:       op.GetData(),
-		Timestamp:  time.Now(),
-		RetryCount: 0,
-		MaxRetries: 3,
+		ID:          utils.GenerateUUID(),
+		Type:        op.GetType(),
+		Key:         op.GetKey(),
+		Collection:  op.GetCollection(),
+		Data:        op.GetData(),
+		Timestamp:   time.Now(),
+		RetryCount:  0,
+		MaxRetries:  3,
+		BearerToken: sealed,
 	}
 
+	//nolint:gosec // G117: internal job payload serialization; token not logged
 	jobBytes, err := json.Marshal(syncJob)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sync job: %w", err)
@@ -89,6 +133,31 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 		zap.String("collection", op.GetCollection()))
 
 	return nil
+}
+
+func (dm *DataManager) logSyncJobBearerCapture(jobType, jobKey, reason string) {
+	if dm == nil || dm.logger == nil {
+		return
+	}
+	fields := []zap.Field{
+		zap.String("event", "sync_job_bearer"),
+		zap.String("stage", "capture"),
+		zap.String("reason", reason),
+		zap.String("type", jobType),
+		zap.String("key", jobKey),
+	}
+	switch reason {
+	case bearerReasonEncryptionKeyMissing:
+		dm.logger.Warn("omitting bearer token from sync job: SYNC_JOB_BEARER_ENCRYPTION_KEY is not configured", fields...)
+	case bearerReasonAbsent:
+		if SalesforceBaseURLConfigured() && shouldEnqueueSalesforcePush(&SyncJob{Type: jobType}) {
+			dm.logger.Debug("sync job queued without bearer token on the request", fields...)
+		}
+	case bearerReasonSealed:
+		if SalesforceBaseURLConfigured() && shouldEnqueueSalesforcePush(&SyncJob{Type: jobType}) {
+			dm.logger.Debug("bearer token sealed onto sync job", fields...)
+		}
+	}
 }
 
 // Read reads data from cache layers, falling back to MongoDB
@@ -166,6 +235,8 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 		filter = bson.M{"phone": key}
 	case config.AppConfig.MaintenanceRequestCollection:
 		filter = bson.M{"cpf": key}
+	case config.AppConfig.DepartmentCollection:
+		filter = bson.M{"cd_ua": key}
 	default:
 		// Default to _id for other collections
 		filter = bson.M{"_id": key}
@@ -177,8 +248,31 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 		zap.String("collection", collection),
 		zap.Any("filter", filter))
 
-	err := dm.mongo.Collection(collection).FindOne(ctx, filter).Decode(result)
+	// Execute MongoDB query with circuit breaker and retry logic
+	_, err := dm.circuitBreaker.Execute(ctx, func() (interface{}, error) {
+		return nil, retry.WithExponentialBackoff(ctx, dm.retryConfig, func() error {
+			return dm.mongo.Collection(collection).FindOne(ctx, filter).Decode(result)
+		})
+	})
+
 	if err != nil {
+		// Check for circuit breaker errors using errors.Is for wrapped error support
+		if errors.Is(err, circuitbreaker.ErrCircuitOpen) {
+			dm.logger.Error("MongoDB circuit breaker is open",
+				zap.String("type", dataType),
+				zap.String("key", key),
+				zap.String("collection", collection))
+			return fmt.Errorf("database temporarily unavailable: %w", err)
+		}
+
+		if errors.Is(err, circuitbreaker.ErrTooManyRequests) {
+			dm.logger.Warn("MongoDB circuit breaker limiting requests in half-open state",
+				zap.String("type", dataType),
+				zap.String("key", key),
+				zap.String("collection", collection))
+			return fmt.Errorf("database temporarily unavailable (too many requests): %w", err)
+		}
+
 		if err == mongo.ErrNoDocuments {
 			dm.logger.Debug("document not found in MongoDB",
 				zap.String("type", dataType),

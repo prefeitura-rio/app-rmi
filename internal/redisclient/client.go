@@ -89,6 +89,39 @@ func (c *Client) Set(ctx context.Context, key string, value interface{}, expirat
 	return cmd
 }
 
+// SetNX wraps Redis SetNX with comprehensive tracing
+func (c *Client) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.BoolCmd {
+	start := time.Now()
+	ctx, span := otel.Tracer("redis").Start(ctx, "redis.setnx",
+		trace.WithAttributes(
+			attribute.String("redis.key", key),
+			attribute.String("redis.operation", "setnx"),
+			attribute.String("redis.expiration", expiration.String()),
+			attribute.String("redis.client", "app-rmi"),
+			attribute.String("redis.type", "string"),
+		),
+	)
+	defer func() {
+		duration := time.Since(start)
+		span.SetAttributes(
+			attribute.Int64("redis.duration_ms", duration.Milliseconds()),
+			attribute.String("redis.duration", duration.String()),
+		)
+		span.End()
+	}()
+
+	cmd := c.cmdable.SetNX(ctx, key, value, expiration)
+	if err := cmd.Err(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("redis.error", err.Error()))
+	} else {
+		span.SetStatus(codes.Ok, "success")
+		span.SetAttributes(attribute.Bool("redis.acquired", cmd.Val()))
+	}
+	return cmd
+}
+
 // Del wraps Redis Del with comprehensive tracing
 func (c *Client) Del(ctx context.Context, keys ...string) *redis.IntCmd {
 	start := time.Now()
@@ -320,6 +353,36 @@ func (c *Client) Pipeline() redis.Pipeliner {
 	return c.cmdable.Pipeline()
 }
 
+// Eval wraps Redis Eval with comprehensive tracing
+func (c *Client) Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd {
+	start := time.Now()
+	ctx, span := otel.Tracer("redis").Start(ctx, "redis.eval",
+		trace.WithAttributes(
+			attribute.Int("redis.key_count", len(keys)),
+			attribute.String("redis.operation", "eval"),
+			attribute.String("redis.client", "app-rmi"),
+		),
+	)
+	defer func() {
+		duration := time.Since(start)
+		span.SetAttributes(
+			attribute.Int64("redis.duration_ms", duration.Milliseconds()),
+			attribute.String("redis.duration", duration.String()),
+		)
+		span.End()
+	}()
+
+	cmd := c.cmdable.Eval(ctx, script, keys, args...)
+	if err := cmd.Err(); err != nil && err != redis.Nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("redis.error", err.Error()))
+	} else {
+		span.SetStatus(codes.Ok, "success")
+	}
+	return cmd
+}
+
 // LLen wraps Redis LLen with comprehensive tracing
 func (c *Client) LLen(ctx context.Context, key string) *redis.IntCmd {
 	start := time.Now()
@@ -437,6 +500,198 @@ func (c *Client) RPop(ctx context.Context, key string) *redis.StringCmd {
 	}()
 
 	cmd := c.cmdable.RPop(ctx, key)
+	if err := cmd.Err(); err != nil && err != redis.Nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("redis.error", err.Error()))
+	} else {
+		span.SetStatus(codes.Ok, "success")
+	}
+	return cmd
+}
+
+// RPopLPush wraps Redis RPopLPush with comprehensive tracing (reliable queue: source → destination).
+func (c *Client) RPopLPush(ctx context.Context, source, destination string) *redis.StringCmd {
+	start := time.Now()
+	ctx, span := otel.Tracer("redis").Start(ctx, "redis.rpoplpush",
+		trace.WithAttributes(
+			attribute.String("redis.source", source),
+			attribute.String("redis.destination", destination),
+			attribute.String("redis.operation", "rpoplpush"),
+			attribute.String("redis.client", "app-rmi"),
+			attribute.String("redis.type", "list"),
+		),
+	)
+	defer func() {
+		duration := time.Since(start)
+		span.SetAttributes(
+			attribute.Int64("redis.duration_ms", duration.Milliseconds()),
+			attribute.String("redis.duration", duration.String()),
+		)
+		span.End()
+	}()
+
+	cmd := c.cmdable.RPopLPush(ctx, source, destination)
+	if err := cmd.Err(); err != nil && err != redis.Nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("redis.error", err.Error()))
+	} else {
+		span.SetStatus(codes.Ok, "success")
+	}
+	return cmd
+}
+
+// LRem wraps Redis LRem with comprehensive tracing.
+func (c *Client) LRem(ctx context.Context, key string, count int64, value interface{}) *redis.IntCmd {
+	start := time.Now()
+	ctx, span := otel.Tracer("redis").Start(ctx, "redis.lrem",
+		trace.WithAttributes(
+			attribute.String("redis.key", key),
+			attribute.String("redis.operation", "lrem"),
+			attribute.String("redis.client", "app-rmi"),
+			attribute.String("redis.type", "list"),
+			attribute.Int64("redis.count", count),
+		),
+	)
+	defer func() {
+		duration := time.Since(start)
+		span.SetAttributes(
+			attribute.Int64("redis.duration_ms", duration.Milliseconds()),
+			attribute.String("redis.duration", duration.String()),
+		)
+		span.End()
+	}()
+
+	cmd := c.cmdable.LRem(ctx, key, count, value)
+	if err := cmd.Err(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("redis.error", err.Error()))
+	} else {
+		span.SetStatus(codes.Ok, "success")
+	}
+	return cmd
+}
+
+// LRange wraps Redis LRange with comprehensive tracing.
+func (c *Client) LRange(ctx context.Context, key string, start, stop int64) *redis.StringSliceCmd {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("redis").Start(ctx, "redis.lrange",
+		trace.WithAttributes(
+			attribute.String("redis.key", key),
+			attribute.String("redis.operation", "lrange"),
+			attribute.String("redis.client", "app-rmi"),
+			attribute.String("redis.type", "list"),
+			attribute.Int64("redis.start", start),
+			attribute.Int64("redis.stop", stop),
+		),
+	)
+	defer func() {
+		duration := time.Since(startTime)
+		span.SetAttributes(
+			attribute.Int64("redis.duration_ms", duration.Milliseconds()),
+			attribute.String("redis.duration", duration.String()),
+		)
+		span.End()
+	}()
+
+	cmd := c.cmdable.LRange(ctx, key, start, stop)
+	if err := cmd.Err(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("redis.error", err.Error()))
+	} else {
+		span.SetStatus(codes.Ok, "success")
+	}
+	return cmd
+}
+
+// ZAdd wraps Redis ZAdd with comprehensive tracing.
+func (c *Client) ZAdd(ctx context.Context, key string, members ...redis.Z) *redis.IntCmd {
+	start := time.Now()
+	ctx, span := otel.Tracer("redis").Start(ctx, "redis.zadd",
+		trace.WithAttributes(
+			attribute.String("redis.key", key),
+			attribute.String("redis.operation", "zadd"),
+			attribute.String("redis.client", "app-rmi"),
+			attribute.String("redis.type", "zset"),
+			attribute.Int("redis.member_count", len(members)),
+		),
+	)
+	defer func() {
+		duration := time.Since(start)
+		span.SetAttributes(
+			attribute.Int64("redis.duration_ms", duration.Milliseconds()),
+			attribute.String("redis.duration", duration.String()),
+		)
+		span.End()
+	}()
+
+	cmd := c.cmdable.ZAdd(ctx, key, members...)
+	if err := cmd.Err(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("redis.error", err.Error()))
+	} else {
+		span.SetStatus(codes.Ok, "success")
+	}
+	return cmd
+}
+
+// ZRem wraps Redis ZRem with comprehensive tracing.
+func (c *Client) ZRem(ctx context.Context, key string, members ...interface{}) *redis.IntCmd {
+	start := time.Now()
+	ctx, span := otel.Tracer("redis").Start(ctx, "redis.zrem",
+		trace.WithAttributes(
+			attribute.String("redis.key", key),
+			attribute.String("redis.operation", "zrem"),
+			attribute.String("redis.client", "app-rmi"),
+			attribute.String("redis.type", "zset"),
+			attribute.Int("redis.member_count", len(members)),
+		),
+	)
+	defer func() {
+		duration := time.Since(start)
+		span.SetAttributes(
+			attribute.Int64("redis.duration_ms", duration.Milliseconds()),
+			attribute.String("redis.duration", duration.String()),
+		)
+		span.End()
+	}()
+
+	cmd := c.cmdable.ZRem(ctx, key, members...)
+	if err := cmd.Err(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.SetAttributes(attribute.String("redis.error", err.Error()))
+	} else {
+		span.SetStatus(codes.Ok, "success")
+	}
+	return cmd
+}
+
+// ZScore wraps Redis ZScore with comprehensive tracing.
+func (c *Client) ZScore(ctx context.Context, key, member string) *redis.FloatCmd {
+	start := time.Now()
+	ctx, span := otel.Tracer("redis").Start(ctx, "redis.zscore",
+		trace.WithAttributes(
+			attribute.String("redis.key", key),
+			attribute.String("redis.operation", "zscore"),
+			attribute.String("redis.client", "app-rmi"),
+			attribute.String("redis.type", "zset"),
+		),
+	)
+	defer func() {
+		duration := time.Since(start)
+		span.SetAttributes(
+			attribute.Int64("redis.duration_ms", duration.Milliseconds()),
+			attribute.String("redis.duration", duration.String()),
+		)
+		span.End()
+	}()
+
+	cmd := c.cmdable.ZScore(ctx, key, member)
 	if err := cmd.Err(); err != nil && err != redis.Nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

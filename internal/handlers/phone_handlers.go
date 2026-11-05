@@ -1,22 +1,24 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
-	"github.com/gin-gonic/gin"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/middleware"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
-	"go.uber.org/zap"
 )
 
 type PhoneHandlers struct {
@@ -182,12 +184,12 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if status, err := h.validateBoundCPFAccess(ctx, c, phoneNumber, true); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
 		accessSpan.End()
-		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Acesso negado"})
+		c.JSON(status, ErrorResponse{Error: phoneAccessErrorMessage(status)})
 		return
 	}
 	accessSpan.End()
@@ -300,7 +302,7 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if err := h.validateCPFAccess(c, req.CPF); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
@@ -408,7 +410,7 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if err := h.validateCPFAccess(c, req.CPF); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
@@ -511,12 +513,12 @@ func (h *PhoneHandlers) OptOut(c *gin.Context) {
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if status, err := h.validateBoundCPFAccess(ctx, c, phoneNumber, false); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
 		accessSpan.End()
-		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Acesso negado"})
+		c.JSON(status, ErrorResponse{Error: phoneAccessErrorMessage(status)})
 		return
 	}
 	accessSpan.End()
@@ -616,12 +618,21 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if err := h.validateCPFAccess(c, req.CPF); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
 		accessSpan.End()
 		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Acesso negado"})
+		return
+	}
+	// Rejecting blocks the existing mapping, so it must also belong to the caller.
+	if status, err := h.validateBoundCPFAccess(ctx, c, phoneNumber, true); err != nil {
+		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
+			"access.type": "cpf_validation",
+		})
+		accessSpan.End()
+		c.JSON(status, ErrorResponse{Error: phoneAccessErrorMessage(status)})
 		return
 	}
 	accessSpan.End()
@@ -651,7 +662,7 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("RejectRegistration completed",
 		zap.String("phone_number", phoneNumber),
-		zap.String("cpf", req.CPF),
+		observability.CPFField(req.CPF),
 		zap.String("channel", req.Channel),
 		zap.String("reason", req.Reason),
 		zap.Duration("total_duration", totalDuration),
@@ -722,7 +733,7 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if err := h.validateCPFAccess(c, req.CPF); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
@@ -1182,16 +1193,75 @@ func (h *PhoneHandlers) GetOptOutReasons(c *gin.Context) {
 		zap.String("status", "success"))
 }
 
-// validateCPFAccess validates if the user has access to the CPF or is admin
-func (h *PhoneHandlers) validateCPFAccess(c *gin.Context) error {
-	// Admin users have access to everything
-	isAdmin, err := middleware.IsAdmin(c)
-	if err == nil && isAdmin {
+// validateCPFAccess allows the request only when the caller has admin privileges
+// (admin role or trusted service client) or when targetCPF is the CPF of the
+// authenticated user (preferred_username of the JWT). Any other case, including
+// missing claims or an empty target, is denied.
+func (h *PhoneHandlers) validateCPFAccess(c *gin.Context, targetCPF string) error {
+	claims, exists := c.Get("claims")
+	if !exists {
+		return fmt.Errorf("%w: claims not found", middleware.ErrAccessDenied)
+	}
+	jwtClaims, ok := claims.(*models.JWTClaims)
+	if !ok || jwtClaims == nil {
+		return fmt.Errorf("%w: invalid claims type", middleware.ErrAccessDenied)
+	}
+
+	if middleware.HasAdminPrivileges(jwtClaims) {
 		return nil
 	}
 
-	// For non-admin users, we would need to validate CPF access
-	// This is a simplified version - in a real implementation, you might want to
-	// check if the user's token contains the specific CPF they're trying to access
+	ownerCPF := utils.NormalizeCPF(jwtClaims.PreferredUsername)
+	if len(ownerCPF) != 11 {
+		return fmt.Errorf("%w: token has no CPF", middleware.ErrAccessDenied)
+	}
+	if utils.NormalizeCPF(targetCPF) != ownerCPF {
+		return fmt.Errorf("%w: CPF does not belong to the authenticated user", middleware.ErrAccessDenied)
+	}
 	return nil
+}
+
+// validateBoundCPFAccess checks, for callers without admin privileges, that the CPF
+// currently bound to phoneNumber belongs to the authenticated user. allowUnbound
+// decides whether a phone without a bound CPF is allowed. On failure it returns the
+// HTTP status to answer with: 400 for an invalid phone number, 500 when the mapping
+// cannot be read, 403 when access is denied.
+func (h *PhoneHandlers) validateBoundCPFAccess(ctx context.Context, c *gin.Context, phoneNumber string, allowUnbound bool) (int, error) {
+	if isAdmin, err := middleware.IsAdmin(c); err == nil && isAdmin {
+		return http.StatusOK, nil
+	}
+
+	boundCPF, err := h.phoneMappingService.GetBoundCPF(ctx, phoneNumber)
+	if err != nil {
+		if isPhoneParsingError(err) {
+			return http.StatusBadRequest, err
+		}
+		h.logger.Error("failed to read phone mapping for access check", zap.Error(err), zap.String("phone_number", phoneNumber))
+		return http.StatusInternalServerError, err
+	}
+
+	if boundCPF == "" {
+		if allowUnbound {
+			return http.StatusOK, nil
+		}
+		return http.StatusForbidden, fmt.Errorf("%w: phone number is not bound to the authenticated user", middleware.ErrAccessDenied)
+	}
+
+	if err := h.validateCPFAccess(c, boundCPF); err != nil {
+		return http.StatusForbidden, err
+	}
+	return http.StatusOK, nil
+}
+
+// phoneAccessErrorMessage maps the status returned by validateBoundCPFAccess to the
+// error message sent to the client.
+func phoneAccessErrorMessage(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "Formato de número de telefone inválido"
+	case http.StatusInternalServerError:
+		return "Erro interno do servidor"
+	default:
+		return "Acesso negado"
+	}
 }

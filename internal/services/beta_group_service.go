@@ -119,8 +119,7 @@ func (s *BetaGroupService) ListGroups(ctx context.Context, page, perPage int) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to list beta groups: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var groups []models.BetaGroupResponse
 	for cursor.Next(ctx) {
 		var group models.BetaGroup
@@ -439,8 +438,7 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 	if err != nil {
 		return nil, fmt.Errorf("failed to list whitelisted phones: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var whitelisted []models.BetaWhitelistResponse
 	for cursor.Next(ctx) {
 		// Use flexible bson.M to handle potentially malformed entries
@@ -763,8 +761,7 @@ func (s *BetaGroupService) invalidateBetaStatusCache(ctx context.Context, groupI
 	if err != nil {
 		return
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	for cursor.Next(ctx) {
 		var mapping models.PhoneCPFMapping
 		if err := cursor.Decode(&mapping); err != nil {

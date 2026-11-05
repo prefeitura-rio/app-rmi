@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 )
 
 // AuditLog represents an audit log entry
@@ -58,6 +60,7 @@ const (
 	AuditResourceNotificationCategory = "notification_category"
 	AuditResourceMemory               = "memory"
 	AuditResourcePet                  = "pet"
+	AuditResourceBirthDate            = "birth_date"
 )
 
 // AuditContext contains context information for audit logging
@@ -111,7 +114,7 @@ func (aw *AuditWorker) start() {
 		}(i)
 	}
 
-	logging.Logger.Info("audit worker started with batched processing",
+	logging.GetLogger().Info("audit worker started with batched processing",
 		zap.Int("workers", aw.workers),
 		zap.Int("buffer_size", cap(aw.auditChan)))
 }
@@ -162,7 +165,7 @@ func (aw *AuditWorker) flushBatch(batch []AuditLog) {
 		return
 	}
 
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.Int("batch_size", len(batch)),
 		zap.String("operation", "audit_batch_insert"),
 	)
@@ -239,8 +242,8 @@ func LogAuditEvent(ctx context.Context, auditCtx AuditContext, action, resource,
 		return nil
 	default:
 		// Channel is full, fall back to synchronous logging
-		logging.Logger.Warn("audit channel full, falling back to synchronous logging",
-			zap.String("cpf", auditCtx.CPF),
+		logging.GetLogger().Warn("audit channel full, falling back to synchronous logging",
+			observability.CPFField(auditCtx.CPF),
 			zap.String("action", action))
 		return logAuditEventSync(ctx, auditCtx, action, resource, resourceID, oldValue, newValue, metadata)
 	}
@@ -248,8 +251,8 @@ func LogAuditEvent(ctx context.Context, auditCtx AuditContext, action, resource,
 
 // logAuditEventSync logs an audit event synchronously (fallback method)
 func logAuditEventSync(ctx context.Context, auditCtx AuditContext, action, resource, resourceID string, oldValue, newValue interface{}, metadata map[string]string) error {
-	logger := logging.Logger.With(
-		zap.String("cpf", auditCtx.CPF),
+	logger := logging.GetLogger().With(
+		observability.CPFField(auditCtx.CPF),
 		zap.String("action", action),
 		zap.String("resource", resource),
 	)
@@ -357,6 +360,14 @@ func LogExhibitionNameUpdate(ctx context.Context, auditCtx AuditContext, oldExhi
 	return LogAuditEvent(ctx, auditCtx, AuditActionUpdate, AuditResourceExhibitionName, auditCtx.CPF, oldExhibitionName, newExhibitionName, metadata)
 }
 
+func LogBirthDateUpdate(ctx context.Context, auditCtx AuditContext, oldBirthDate, newBirthDate interface{}) error {
+	metadata := map[string]string{
+		"operation": "self_declared_update",
+		"field":     "birth_date",
+	}
+	return LogAuditEvent(ctx, auditCtx, AuditActionUpdate, AuditResourceBirthDate, auditCtx.CPF, oldBirthDate, newBirthDate, metadata)
+}
+
 // LogUserConfigUpdate logs a user config update audit event
 func LogUserConfigUpdate(ctx context.Context, auditCtx AuditContext, field string, oldValue, newValue interface{}) error {
 	metadata := map[string]string{
@@ -459,13 +470,13 @@ func (aw *AuditWorker) adjustAuditWorkerBuffer() {
 	// Only log when there are actual issues or significant changes
 	if bufferUsagePercentage > 80 {
 		// High buffer usage - process batches more frequently
-		logging.Logger.Warn("high audit buffer usage detected",
+		logging.GetLogger().Warn("high audit buffer usage detected",
 			zap.Int("current_usage", currentBufferUsage),
 			zap.Int("buffer_capacity", bufferCapacity),
 			zap.Float64("usage_percentage", bufferUsagePercentage))
 	} else if bufferUsagePercentage > 50 {
 		// Medium buffer usage - log at debug level
-		logging.Logger.Debug("audit worker buffer status",
+		logging.GetLogger().Debug("audit worker buffer status",
 			zap.Int("current_usage", currentBufferUsage),
 			zap.Int("buffer_capacity", bufferCapacity),
 			zap.Float64("usage_percentage", bufferUsagePercentage))

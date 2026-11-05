@@ -2,11 +2,14 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/redis/go-redis/v9"
@@ -25,8 +28,37 @@ var (
 	// MongoDB client
 	MongoDB *mongo.Database
 	// Redis client
+	// Use getRedis/setRedis within this file to avoid data races between
+	// InitRedis (writer) and background goroutines that read the variable.
 	Redis *redisclient.Client
+
+	// redisMu protects the Redis package variable from concurrent reads/writes
+	// that occur between InitRedis and the background goroutines started by
+	// InitMongoDB (startIndexMaintenance, monitorRedisConnectionPool).
+	redisMu sync.RWMutex
 )
+
+// getRedis returns the Redis client in a race-safe manner.
+func getRedis() *redisclient.Client {
+	redisMu.RLock()
+	defer redisMu.RUnlock()
+	return Redis
+}
+
+// setRedis stores the Redis client in a race-safe manner.
+func setRedis(c *redisclient.Client) {
+	redisMu.Lock()
+	defer redisMu.Unlock()
+	Redis = c
+}
+
+// SetRedis is the exported, race-safe setter for the Redis client.
+// Use this in tests and any code that needs to update the Redis client after
+// InitRedis has been called, to avoid data races with the background goroutines
+// started by InitMongoDB (startIndexMaintenance, monitorRedisConnectionPool).
+func SetRedis(c *redisclient.Client) {
+	setRedis(c)
+}
 
 // InitMongoDB initializes the MongoDB connection
 func InitMongoDB() {
@@ -91,10 +123,10 @@ func InitMongoDB() {
 		Event: func(evt *event.PoolEvent) {
 			switch evt.Type {
 			case event.GetFailed:
-				logging.Logger.Warn("MongoDB connection acquisition failed",
+				logging.GetLogger().Warn("MongoDB connection acquisition failed",
 					zap.Uint64("connection_id", evt.ConnectionID))
 			case event.PoolCleared:
-				logging.Logger.Warn("MongoDB connection pool cleared")
+				logging.GetLogger().Warn("MongoDB connection pool cleared")
 			}
 		},
 	})
@@ -117,11 +149,11 @@ func InitMongoDB() {
 
 	// Ensure indexes exist and start maintenance routine
 	if err := ensureIndexes(); err != nil {
-		logging.Logger.Error("failed to ensure indexes on startup", zap.Error(err))
+		logging.GetLogger().Error("failed to ensure indexes on startup", zap.Error(err))
 	}
 	startIndexMaintenance()
 
-	logging.Logger.Info("Connected to MongoDB with load distribution",
+	logging.GetLogger().Info("Connected to MongoDB with load distribution",
 		zap.String("uri", maskMongoURI(AppConfig.MongoURI)),
 		zap.String("database", AppConfig.MongoDatabase),
 		zap.String("read_preference", "nearest (forced)"),
@@ -146,26 +178,32 @@ func configureCollectionWriteConcerns() {
 	// Configure collections with write concerns based on their criticality
 	collections := map[string]*writeconcern.WriteConcern{
 		// High-performance collections (W=0 for maximum speed)
-		AppConfig.CitizenCollection:            &writeconcern.WriteConcern{W: 0},
-		AppConfig.UserConfigCollection:         &writeconcern.WriteConcern{W: 0},
-		AppConfig.PhoneMappingCollection:       &writeconcern.WriteConcern{W: 0},
-		AppConfig.OptInHistoryCollection:       &writeconcern.WriteConcern{W: 0},
-		AppConfig.BetaGroupCollection:          &writeconcern.WriteConcern{W: 0},
-		AppConfig.PhoneVerificationCollection:  &writeconcern.WriteConcern{W: 0},
-		AppConfig.MaintenanceRequestCollection: &writeconcern.WriteConcern{W: 0},
+		// DURABILITY WARNING: W=0 is fire-and-forget - writes return immediately without waiting
+		// for acknowledgement. If the MongoDB primary crashes before replication, data can be
+		// silently lost with no error returned to the caller. This tradeoff prioritizes
+		// performance over durability. These collections are either frequently synced from
+		// external sources (CitizenCollection) or have Redis-based write buffers (PhoneMappingCollection)
+		// that provide eventual consistency recovery paths.
+		AppConfig.CitizenCollection:            {W: 0},
+		AppConfig.UserConfigCollection:         {W: 0},
+		AppConfig.PhoneMappingCollection:       {W: 0},
+		AppConfig.OptInHistoryCollection:       {W: 0},
+		AppConfig.BetaGroupCollection:          {W: 0},
+		AppConfig.PhoneVerificationCollection:  {W: 0},
+		AppConfig.MaintenanceRequestCollection: {W: 0},
 
 		// Data integrity collections (W=1 for consistency)
-		AppConfig.SelfDeclaredCollection: &writeconcern.WriteConcern{W: 1},
+		AppConfig.SelfDeclaredCollection: {W: 1},
 
 		// Fire-and-forget collections (W=0 for maximum performance)
-		AppConfig.AuditLogsCollection: &writeconcern.WriteConcern{W: 0},
+		AppConfig.AuditLogsCollection: {W: 0},
 	}
 
 	// Apply write concerns to collections
 	for collectionName, wc := range collections {
 		// Note: Write concerns are typically set at the collection level via options
 		// This is a reference for what should be configured
-		logging.Logger.Debug("Collection write concern configured",
+		logging.GetLogger().Debug("Collection write concern configured",
 			zap.String("collection", collectionName),
 			zap.String("write_concern", fmt.Sprintf("W(%d)", wc.W)),
 			zap.String("note", "Write concerns applied via URI and collection options"))
@@ -176,7 +214,7 @@ func configureCollectionWriteConcerns() {
 func InitRedis() {
 	if AppConfig.RedisClusterEnabled {
 		// Use Redis Cluster for distributed setup (production)
-		logging.Logger.Info("initializing Redis with Cluster for distributed setup",
+		logging.GetLogger().Info("initializing Redis with Cluster for distributed setup",
 			zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs))
 
 		clusterClient := redis.NewClusterClient(&redis.ClusterOptions{
@@ -211,10 +249,10 @@ func InitRedis() {
 		})
 
 		// Wrap with traced client using cluster client
-		Redis = redisclient.NewClusterClient(clusterClient)
+		setRedis(redisclient.NewClusterClient(clusterClient))
 	} else {
 		// Use single Redis instance (development/testing)
-		logging.Logger.Info("initializing Redis with single instance",
+		logging.GetLogger().Info("initializing Redis with single instance",
 			zap.String("addr", AppConfig.RedisURI))
 
 		singleClient := redis.NewClient(&redis.Options{
@@ -241,20 +279,20 @@ func InitRedis() {
 		})
 
 		// Wrap with traced client using single client
-		Redis = redisclient.NewClient(singleClient)
+		setRedis(redisclient.NewClient(singleClient))
 	}
 
 	// Test Redis connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := Redis.Ping(ctx).Err(); err != nil {
+	if err := getRedis().Ping(ctx).Err(); err != nil {
 		if AppConfig.RedisClusterEnabled {
-			logging.Logger.Error("failed to connect to Redis Cluster",
+			logging.GetLogger().Error("failed to connect to Redis Cluster",
 				zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs),
 				zap.Error(err))
 		} else {
-			logging.Logger.Error("failed to connect to Redis",
+			logging.GetLogger().Error("failed to connect to Redis",
 				zap.String("uri", AppConfig.RedisURI),
 				zap.Error(err))
 		}
@@ -262,12 +300,12 @@ func InitRedis() {
 	}
 
 	if AppConfig.RedisClusterEnabled {
-		logging.Logger.Info("connected to Redis Cluster",
+		logging.GetLogger().Info("connected to Redis Cluster",
 			zap.Strings("cluster_addrs", AppConfig.RedisClusterAddrs),
 			zap.Int("pool_size", AppConfig.RedisPoolSize),
 			zap.Int("min_idle_conns", AppConfig.RedisMinIdleConns))
 	} else {
-		logging.Logger.Info("connected to Redis",
+		logging.GetLogger().Info("connected to Redis",
 			zap.String("uri", AppConfig.RedisURI),
 			zap.Int("pool_size", AppConfig.RedisPoolSize),
 			zap.Int("min_idle_conns", AppConfig.RedisMinIdleConns))
@@ -279,8 +317,12 @@ func InitRedis() {
 
 // maskMongoURI masks sensitive information in MongoDB URI
 func maskMongoURI(uri string) string {
-	// Implementation to mask username/password in URI
-	return "mongodb://****:****@" + uri[strings.LastIndex(uri, "@")+1:]
+	atIndex := strings.LastIndex(uri, "@")
+	if atIndex == -1 {
+		// No credentials in URI, return as-is
+		return uri
+	}
+	return "mongodb://****:****@" + uri[atIndex+1:]
 }
 
 // ensureIndexes creates required indexes if they don't exist
@@ -295,6 +337,57 @@ func ensureIndexes() error {
 	if err := checkWriteAccess(ctx, logger); err != nil {
 		logger.Warn("cannot write to database, skipping index creation", zap.Error(err))
 		return nil
+	}
+
+	// Try to acquire distributed lock for index creation (only if Redis is available).
+	// This prevents multiple pods from trying to create indexes simultaneously.
+	//
+	// Correctness: we store a unique token as the lock value and release it with a
+	// Lua compare-and-delete script so that only the holder can release the lock,
+	// even if the TTL has already expired and another instance re-acquired it.
+	// Capture the Redis client once under the read lock so that concurrent calls
+	// to InitRedis (which holds the write lock) do not race with reads here.
+	redisClient := getRedis()
+	if redisClient != nil {
+		lockKey := "rmi:index_creation_lock"
+		lockTTL := 5 * time.Minute // Long enough for index creation, but expires if pod crashes
+		lockToken := uuid.New().String()
+
+		// Try to acquire lock using SETNX (Set if Not eXists)
+		acquired, err := redisClient.SetNX(ctx, lockKey, lockToken, lockTTL).Result()
+		if err != nil {
+			logger.Warn("failed to acquire index creation lock via Redis, proceeding anyway",
+				zap.Error(err))
+			// IMPORTANT: When Redis is unavailable, we fall through without the lock rather than
+			// skipping index creation entirely. This is a fail-open pattern that accepts the risk
+			// of concurrent index builds (which MongoDB will handle via duplicate key errors and
+			// in-progress detection) rather than leaving indexes uncreated. The defer for lock
+			// release is registered only in the else branch below, so we won't attempt to release
+			// a lock we never acquired.
+		} else if !acquired {
+			logger.Info("another instance is already creating indexes, skipping this cycle")
+			return nil
+		} else {
+			// We acquired the lock. Release it with a Lua compare-and-delete so that
+			// we never delete a lock token that belongs to a different holder (which
+			// can happen if our TTL expired mid-way and another pod acquired the lock).
+			const releaseScript = `
+				if redis.call("get", KEYS[1]) == ARGV[1] then
+					return redis.call("del", KEYS[1])
+				else
+					return 0
+				end`
+			defer func() {
+				releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer releaseCancel()
+				if err := redisClient.Eval(releaseCtx, releaseScript, []string{lockKey}, lockToken).Err(); err != nil && !errors.Is(err, redis.Nil) {
+					logger.Warn("failed to release index creation lock", zap.Error(err))
+				} else {
+					logger.Debug("released index creation lock")
+				}
+			}()
+			logger.Info("acquired distributed lock for index creation")
+		}
 	}
 
 	// Ensure citizen collection index
@@ -382,6 +475,11 @@ func ensureIndexes() error {
 		return err
 	}
 
+	// Ensure Mobilidade collections indexes
+	if err := ensureMobilidadeIndexes(ctx, logger); err != nil {
+		return err
+	}
+
 	logger.Info("all required indexes verified")
 	return nil
 }
@@ -416,13 +514,13 @@ func checkWriteAccess(ctx context.Context, logger *zap.Logger) error {
 func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.CitizenCollection)
 
-	// Check if index already exists
+	// Check if index already exists or is being built
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	indexExists := false
 	for cursor.Next(ctx) {
@@ -438,6 +536,13 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 
 	if indexExists {
 		logger.Debug("citizen collection index already exists", zap.String("collection", AppConfig.CitizenCollection))
+		return nil
+	}
+
+	// Check if index build is already in progress
+	if isIndexBuildInProgress(ctx, AppConfig.CitizenCollection, "cpf_1", logger) {
+		logger.Info("citizen index build already in progress, skipping",
+			zap.String("collection", AppConfig.CitizenCollection))
 		return nil
 	}
 
@@ -457,6 +562,12 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 				zap.String("collection", AppConfig.CitizenCollection))
 			return nil
 		}
+		// Check if it's an IndexBuildAlreadyInProgress error
+		if isIndexBuildAlreadyInProgressError(err) {
+			logger.Info("citizen index build already in progress (detected via error)",
+				zap.String("collection", AppConfig.CitizenCollection))
+			return nil
+		}
 		logger.Error("failed to create citizen index",
 			zap.String("collection", AppConfig.CitizenCollection),
 			zap.Error(err))
@@ -469,60 +580,70 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 	return nil
 }
 
-// ensureMaintenanceRequestIndex creates the index on cpf for maintenance request collection
+// maintenanceRequestIndexes are the non-unique indexes of the maintenance request collection:
+// cpf for the citizen listing and protocolo for the public lookup (a protocol may group
+// several chamados, so neither is unique).
+var maintenanceRequestIndexes = []struct {
+	name  string
+	field string
+}{
+	{name: "cpf_1", field: "cpf"},
+	{name: "protocolo_1", field: "protocolo"},
+}
+
+// ensureMaintenanceRequestIndex creates the missing indexes of the maintenance request collection
 func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) error {
 	collection := MongoDB.Collection(AppConfig.MaintenanceRequestCollection)
 
-	// Check if index already exists
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
-	indexExists := false
+	existing := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
 		if err := cursor.Decode(&index); err != nil {
 			continue
 		}
-		if name, ok := index["name"].(string); ok && name == "cpf_1" {
-			indexExists = true
-			break
+		if name, ok := index["name"].(string); ok {
+			existing[name] = true
 		}
 	}
 
-	if indexExists {
-		logger.Debug("maintenance request collection index already exists",
-			zap.String("collection", AppConfig.MaintenanceRequestCollection))
-		return nil
-	}
-
-	// Create non-unique index on cpf
-	indexModel := mongo.IndexModel{
-		Keys: bson.D{{Key: "cpf", Value: 1}},
-		Options: options.Index().
-			SetName("cpf_1"),
-	}
-
-	_, err = collection.Indexes().CreateOne(ctx, indexModel)
-	if err != nil {
-		// Check if it's a duplicate key error (another instance created it)
-		if mongo.IsDuplicateKeyError(err) {
-			logger.Info("maintenance request index already exists (created by another instance)",
-				zap.String("collection", AppConfig.MaintenanceRequestCollection))
-			return nil
+	for _, idx := range maintenanceRequestIndexes {
+		if existing[idx.name] {
+			logger.Debug("maintenance request collection index already exists",
+				zap.String("collection", AppConfig.MaintenanceRequestCollection),
+				zap.String("index", idx.name))
+			continue
 		}
-		logger.Error("failed to create maintenance request index",
+
+		indexModel := mongo.IndexModel{
+			Keys:    bson.D{{Key: idx.field, Value: 1}},
+			Options: options.Index().SetName(idx.name),
+		}
+
+		if _, err := collection.Indexes().CreateOne(ctx, indexModel); err != nil {
+			if mongo.IsDuplicateKeyError(err) {
+				logger.Info("maintenance request index already exists (created by another instance)",
+					zap.String("collection", AppConfig.MaintenanceRequestCollection),
+					zap.String("index", idx.name))
+				continue
+			}
+			logger.Error("failed to create maintenance request index",
+				zap.String("collection", AppConfig.MaintenanceRequestCollection),
+				zap.String("index", idx.name),
+				zap.Error(err))
+			return err
+		}
+
+		logger.Info("created maintenance request collection index",
 			zap.String("collection", AppConfig.MaintenanceRequestCollection),
-			zap.Error(err))
-		return err
+			zap.String("index", idx.name))
 	}
-
-	logger.Info("created maintenance request collection index",
-		zap.String("collection", AppConfig.MaintenanceRequestCollection),
-		zap.String("index", "cpf_1"))
 	return nil
 }
 
@@ -560,7 +681,7 @@ func ensureSelfDeclaredIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	indexExists := false
 	for cursor.Next(ctx) {
@@ -618,7 +739,7 @@ func ensurePhoneVerificationIndex(ctx context.Context, logger *zap.Logger) error
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
@@ -696,7 +817,7 @@ func ensureUserConfigIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	indexExists := false
 	for cursor.Next(ctx) {
@@ -754,7 +875,7 @@ func ensureAuditLogsIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
@@ -831,7 +952,7 @@ func ensurePhoneMappingIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bson.M)
 	for cursor.Next(ctx) {
@@ -956,7 +1077,7 @@ func ensureOptInHistoryIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
@@ -1032,7 +1153,7 @@ func ensureBetaGroupIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
@@ -1106,7 +1227,7 @@ func ensureCFLookupIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
@@ -1201,8 +1322,7 @@ func ensureLegalEntityIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list legal entity indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -1306,8 +1426,7 @@ func ensurePetIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list pet indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -1390,8 +1509,7 @@ func ensureSelfRegisteredPetIndex(ctx context.Context, logger *zap.Logger) error
 		logger.Error("failed to list self-registered pet indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -1474,8 +1592,7 @@ func ensureChatMemoryIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list chat memory indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -1532,7 +1649,7 @@ func monitorConnectionPool() {
 		stats := MongoDB.Client().NumberSessionsInProgress()
 
 		// Log connection pool status
-		logging.Logger.Info("MongoDB connection pool status",
+		logging.GetLogger().Info("MongoDB connection pool status",
 			zap.Int("sessions_in_progress", stats),
 			zap.String("max_pool_size", "1000"),
 			zap.String("min_pool_size", "50"),
@@ -1540,14 +1657,14 @@ func monitorConnectionPool() {
 
 		// Alert if connection pool is under pressure
 		if stats > 800 { // 80% of maxPoolSize=1000
-			logging.Logger.Warn("MongoDB connection pool under pressure",
+			logging.GetLogger().Warn("MongoDB connection pool under pressure",
 				zap.Int("sessions_in_progress", stats),
 				zap.String("recommendation", "Consider increasing maxPoolSize or optimizing queries"))
 		}
 
 		// Dynamic connection pool optimization
 		if stats > 950 { // 95% of maxPoolSize=1000
-			logging.Logger.Error("MongoDB connection pool critical - immediate attention required",
+			logging.GetLogger().Error("MongoDB connection pool critical - immediate attention required",
 				zap.Int("sessions_in_progress", stats),
 				zap.String("action", "triggering connection pool optimization"))
 			optimizeConnectionPool()
@@ -1559,7 +1676,7 @@ func monitorConnectionPool() {
 func optimizeConnectionPool() {
 	// This function can be called during high load to dynamically adjust connection pool
 	// For now, it logs recommendations based on current usage patterns
-	logging.Logger.Info("Connection pool optimization recommendations",
+	logging.GetLogger().Info("Connection pool optimization recommendations",
 		zap.String("current_uri", maskMongoURI(AppConfig.MongoURI)),
 		zap.String("recommendation_1", "Current maxPoolSize=1000, minPoolSize=50 are optimal for high-write scenarios"),
 		zap.String("recommendation_2", "Using W=0 write concern for performance collections, W=1 for data integrity"),
@@ -1573,18 +1690,68 @@ func _() {
 	optimizeConnectionPool()
 }
 
+const (
+	redisPoolMonitorInterval = 10 * time.Second
+	redisStaleAlertPercent   = 20.0
+)
+
+type redisStaleConnsSample struct {
+	RemovedTotal      uint32
+	RemovedInInterval uint32
+	Percent           float64
+	Alert             bool
+}
+
+// redisStaleConnsTracker turns the go-redis StaleConns counter into per-interval values.
+//
+// go-redis exposes PoolStats.StaleConns as a cumulative counter of connections removed
+// from the pool since the client was created (idle/lifetime expiry, bad connections),
+// not as a gauge of connections that are stale right now. It grows forever with normal
+// connection rotation, so it must be diffed between samples before being compared with
+// the pool size.
+type redisStaleConnsTracker struct {
+	client    *redisclient.Client
+	lastTotal uint32
+	primed    bool
+}
+
+func (t *redisStaleConnsTracker) observe(client *redisclient.Client, removedTotal, totalConns uint32) redisStaleConnsSample {
+	sample := redisStaleConnsSample{RemovedTotal: removedTotal}
+
+	// A lower total means the counter was reset or, in cluster mode, a node's pool left the sum.
+	isBaseline := !t.primed || t.client != client || removedTotal < t.lastTotal
+	if !isBaseline {
+		sample.RemovedInInterval = removedTotal - t.lastTotal
+	}
+
+	t.client = client
+	t.lastTotal = removedTotal
+	t.primed = true
+
+	if totalConns > 0 {
+		sample.Percent = float64(sample.RemovedInInterval) / float64(totalConns) * 100
+		sample.Alert = sample.RemovedInInterval > 0 && sample.Percent > redisStaleAlertPercent
+	}
+
+	return sample
+}
+
 // monitorRedisConnectionPool monitors Redis connection pool health with cluster support
 func monitorRedisConnectionPool() {
-	ticker := time.NewTicker(10 * time.Second) // More frequent monitoring for cluster
+	ticker := time.NewTicker(redisPoolMonitorInterval) // More frequent monitoring for cluster
 	defer ticker.Stop()
 
+	var staleTracker redisStaleConnsTracker
+
 	for range ticker.C {
-		if Redis == nil {
+		redisClient := getRedis()
+		if redisClient == nil {
 			continue
 		}
 
 		// Get Redis pool stats
-		poolStats := Redis.PoolStats()
+		poolStats := redisClient.PoolStats()
+		stale := staleTracker.observe(redisClient, poolStats.StaleConns, poolStats.TotalConns)
 
 		// Determine Redis type for logging
 		redisType := "single"
@@ -1598,25 +1765,26 @@ func monitorRedisConnectionPool() {
 		totalUsagePercent := float64(poolStats.TotalConns) / float64(AppConfig.RedisPoolSize) * 100
 
 		// Log Redis connection pool status with enhanced metrics
-		logging.Logger.Info("Redis connection pool status",
+		logging.GetLogger().Info("Redis connection pool status",
 			zap.String("redis_type", redisType),
 			zap.Int("total_connections", int(poolStats.TotalConns)),
 			zap.Int("idle_connections", int(poolStats.IdleConns)),
-			zap.Int("stale_connections", int(poolStats.StaleConns)),
+			zap.Uint32("stale_connections_removed_total", stale.RemovedTotal),
+			zap.Uint32("stale_connections_removed_interval", stale.RemovedInInterval),
 			zap.Int("max_pool_size", AppConfig.RedisPoolSize),
 			zap.Float64("usage_percent", totalUsagePercent),
 			zap.String("addr", redisAddr))
 
 		// Progressive alerting based on connection usage
 		if totalUsagePercent > 90 {
-			logging.Logger.Error("Critical Redis connection usage - immediate action required",
+			logging.GetLogger().Error("Critical Redis connection usage - immediate action required",
 				zap.Float64("usage_percent", totalUsagePercent),
 				zap.Int("total_connections", int(poolStats.TotalConns)),
 				zap.Int("max_pool_size", AppConfig.RedisPoolSize),
 				zap.String("redis_type", redisType),
 				zap.String("action", "Increase REDIS_POOL_SIZE or investigate connection leaks"))
 		} else if totalUsagePercent > 80 {
-			logging.Logger.Warn("High Redis connection usage detected",
+			logging.GetLogger().Warn("High Redis connection usage detected",
 				zap.Float64("usage_percent", totalUsagePercent),
 				zap.Int("total_connections", int(poolStats.TotalConns)),
 				zap.Int("max_pool_size", AppConfig.RedisPoolSize),
@@ -1626,18 +1794,19 @@ func monitorRedisConnectionPool() {
 
 		// Alert if no idle connections available (potential bottleneck)
 		if poolStats.IdleConns == 0 && poolStats.TotalConns > 0 {
-			logging.Logger.Warn("No idle Redis connections available - potential bottleneck",
+			logging.GetLogger().Warn("No idle Redis connections available - potential bottleneck",
 				zap.Int("total_connections", int(poolStats.TotalConns)),
 				zap.String("redis_type", redisType),
 				zap.String("impact", "New requests may be queued or timeout"))
 		}
 
-		// Alert on high stale connections (connection issues)
-		stalePercent := float64(poolStats.StaleConns) / float64(poolStats.TotalConns) * 100
-		if poolStats.StaleConns > 0 && stalePercent > 20 {
-			logging.Logger.Warn("High number of stale Redis connections",
-				zap.Int("stale_connections", int(poolStats.StaleConns)),
-				zap.Float64("stale_percent", stalePercent),
+		// Alert when many connections were removed as stale within this interval
+		if stale.Alert {
+			logging.GetLogger().Warn("High number of stale Redis connections",
+				zap.Uint32("stale_connections_removed_interval", stale.RemovedInInterval),
+				zap.Duration("interval", redisPoolMonitorInterval),
+				zap.Int("total_connections", int(poolStats.TotalConns)),
+				zap.Float64("stale_percent", stale.Percent),
 				zap.String("redis_type", redisType),
 				zap.String("cause", "Network issues or Redis cluster instability"))
 		}
@@ -1659,7 +1828,7 @@ func monitorPrimaryNodeLoad() {
 		if totalConnections > 0 {
 			primaryLoadPercentage := float64(primaryConnections) / float64(totalConnections) * 100
 
-			logging.Logger.Info("MongoDB load distribution status",
+			logging.GetLogger().Info("MongoDB load distribution status",
 				zap.Int("primary_connections", primaryConnections),
 				zap.Int("secondary_connections", secondaryConnections),
 				zap.Float64("primary_load_percentage", primaryLoadPercentage),
@@ -1667,7 +1836,7 @@ func monitorPrimaryNodeLoad() {
 
 			// Alert if primary node is under too much load
 			if primaryLoadPercentage > 70 {
-				logging.Logger.Warn("Primary node under high load - consider load distribution",
+				logging.GetLogger().Warn("Primary node under high load - consider load distribution",
 					zap.Float64("primary_load_percentage", primaryLoadPercentage),
 					zap.String("recommendation", "Verify readPreference=nearest is working, check secondary node health"))
 			}
@@ -1724,7 +1893,7 @@ func monitorReplicaSetHealth() {
 			primaryHealth := checkNodeHealth(ctx, "primary")
 			secondaryHealth := checkNodeHealth(ctx, "secondary")
 
-			logging.Logger.Info("Replica set health status",
+			logging.GetLogger().Info("Replica set health status",
 				zap.Bool("primary_healthy", primaryHealth),
 				zap.Bool("secondary_healthy", secondaryHealth),
 				zap.String("recommendation", getReplicaSetRecommendation(primaryHealth, secondaryHealth)))
@@ -1879,8 +2048,7 @@ func ensureDepartmentIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list department indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -1987,8 +2155,7 @@ func ensureNotificationCategoryIndex(ctx context.Context, logger *zap.Logger) er
 		logger.Error("failed to list notification_category indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -2020,7 +2187,6 @@ func ensureNotificationCategoryIndex(ctx context.Context, logger *zap.Logger) er
 	// Create missing indexes
 	indexesToCreate := []mongo.IndexModel{}
 	requiredNames := []string{
-		"idx_notification_category_id",
 		"idx_notification_category_active_order",
 		"idx_notification_category_order",
 	}
@@ -2072,8 +2238,7 @@ func ensureCNAEIndex(ctx context.Context, logger *zap.Logger) error {
 		logger.Error("failed to list CNAE indexes", zap.Error(err))
 		return err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	existingIndexes := make(map[string]bool)
 	for cursor.Next(ctx) {
 		var index bson.M
@@ -2141,4 +2306,262 @@ func ensureCNAEIndex(ctx context.Context, logger *zap.Logger) error {
 	}
 
 	return nil
+}
+
+// ensureMobilidadeIndexes creates indexes for all Mobilidade collections.
+func ensureMobilidadeIndexes(ctx context.Context, logger *zap.Logger) error {
+	if err := ensureMobilidadeVehicleIndex(ctx, logger); err != nil {
+		return err
+	}
+	if err := ensureMobilidadeConductorIndex(ctx, logger); err != nil {
+		return err
+	}
+	if err := ensureMobilidadeBrandIndex(ctx, logger); err != nil {
+		return err
+	}
+	return ensureMobilidadeModelIndex(ctx, logger)
+}
+
+func listExistingIndexNames(ctx context.Context, collection *mongo.Collection) (map[string]bool, error) {
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	existing := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var index bson.M
+		if err := cursor.Decode(&index); err != nil {
+			continue
+		}
+		if name, ok := index["name"].(string); ok {
+			existing[name] = true
+		}
+	}
+	return existing, nil
+}
+
+func createMissingIndexes(ctx context.Context, logger *zap.Logger, collectionName string, collection *mongo.Collection, requiredIndexes []mongo.IndexModel, requiredNames []string) error {
+	existingIndexes, err := listExistingIndexNames(ctx, collection)
+	if err != nil {
+		logger.Error("failed to list indexes",
+			zap.String("collection", collectionName),
+			zap.Error(err))
+		return err
+	}
+
+	indexesToCreate := []mongo.IndexModel{}
+	for i, indexModel := range requiredIndexes {
+		if !existingIndexes[requiredNames[i]] {
+			indexesToCreate = append(indexesToCreate, indexModel)
+		}
+	}
+
+	if len(indexesToCreate) == 0 {
+		logger.Debug("indexes already exist", zap.String("collection", collectionName))
+		return nil
+	}
+
+	logger.Info("creating missing indexes",
+		zap.String("collection", collectionName),
+		zap.Int("count", len(indexesToCreate)))
+
+	_, err = collection.Indexes().CreateMany(ctx, indexesToCreate)
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			logger.Info("indexes already exist (created by another instance)",
+				zap.String("collection", collectionName))
+			return nil
+		}
+		logger.Error("failed to create indexes",
+			zap.String("collection", collectionName),
+			zap.Error(err))
+		return err
+	}
+
+	logger.Info("created indexes successfully",
+		zap.String("collection", collectionName),
+		zap.Int("created_count", len(indexesToCreate)))
+	return nil
+}
+
+// ensureMobilidadeVehicleIndex creates indexes for mobilidade_vehicles.
+func ensureMobilidadeVehicleIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.MobilidadeVehicleCollection)
+	requiredNames := []string{
+		"idx_mobilidade_vehicles_owner_active",
+		"idx_mobilidade_vehicles_registration_number",
+	}
+	requiredIndexes := []mongo.IndexModel{
+		// Wallet listing: vehicles owned by CPF that are not soft-deleted.
+		{
+			Keys: bson.D{{Key: "owner_cpf", Value: 1}},
+			Options: options.Index().
+				SetName("idx_mobilidade_vehicles_owner_active").
+				SetPartialFilterExpression(bson.M{"deleted_at": nil}),
+		},
+		// Short wallet registration number — unique among active vehicles.
+		{
+			Keys: bson.D{{Key: "registration_number", Value: 1}},
+			Options: options.Index().
+				SetName("idx_mobilidade_vehicles_registration_number").
+				SetUnique(true).
+				SetPartialFilterExpression(bson.M{"deleted_at": nil}),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.MobilidadeVehicleCollection, collection, requiredIndexes, requiredNames)
+}
+
+// ensureMobilidadeConductorIndex creates indexes for mobilidade_vehicle_conductors.
+func ensureMobilidadeConductorIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.MobilidadeConductorCollection)
+	requiredNames := []string{
+		"idx_mobilidade_conductors_vehicle_cpf_active",
+		"idx_mobilidade_conductors_cpf_status",
+		"idx_mobilidade_conductors_vehicle_status",
+	}
+	requiredIndexes := []mongo.IndexModel{
+		// Unique active link per (vehicle, conductor) — enforces 409 on duplicate invite.
+		{
+			Keys: bson.D{
+				{Key: "vehicle_id", Value: 1},
+				{Key: "conductor_cpf", Value: 1},
+			},
+			Options: options.Index().
+				SetName("idx_mobilidade_conductors_vehicle_cpf_active").
+				SetUnique(true).
+				SetPartialFilterExpression(bson.M{
+					"status": bson.M{"$in": bson.A{"pending", "accepted"}},
+				}),
+		},
+		// Pending invitations + accepted shared vehicles for a CPF.
+		{
+			Keys: bson.D{
+				{Key: "conductor_cpf", Value: 1},
+				{Key: "status", Value: 1},
+			},
+			Options: options.Index().SetName("idx_mobilidade_conductors_cpf_status"),
+		},
+		// Owner management of conductors on a vehicle.
+		{
+			Keys: bson.D{
+				{Key: "vehicle_id", Value: 1},
+				{Key: "status", Value: 1},
+			},
+			Options: options.Index().SetName("idx_mobilidade_conductors_vehicle_status"),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.MobilidadeConductorCollection, collection, requiredIndexes, requiredNames)
+}
+
+// ensureMobilidadeBrandIndex creates indexes for mobilidade_vehicle_brands.
+func ensureMobilidadeBrandIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.MobilidadeBrandCollection)
+	requiredNames := []string{"idx_mobilidade_brands_name"}
+	requiredIndexes := []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "name", Value: 1}},
+			Options: options.Index().SetName("idx_mobilidade_brands_name"),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.MobilidadeBrandCollection, collection, requiredIndexes, requiredNames)
+}
+
+// ensureMobilidadeModelIndex creates indexes for mobilidade_vehicle_models.
+func ensureMobilidadeModelIndex(ctx context.Context, logger *zap.Logger) error {
+	collection := MongoDB.Collection(AppConfig.MobilidadeModelCollection)
+	requiredNames := []string{"idx_mobilidade_models_brand_name"}
+	requiredIndexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "brand_id", Value: 1},
+				{Key: "name", Value: 1},
+			},
+			Options: options.Index().SetName("idx_mobilidade_models_brand_name"),
+		},
+	}
+	return createMissingIndexes(ctx, logger, AppConfig.MobilidadeModelCollection, collection, requiredIndexes, requiredNames)
+}
+
+// isIndexBuildInProgress checks if an index build is currently running for a specific collection and index
+func isIndexBuildInProgress(ctx context.Context, collectionName string, indexName string, logger *zap.Logger) bool {
+	// Query MongoDB's currentOp to check for in-progress index builds
+	adminDB := MongoDB.Client().Database("admin")
+
+	// Build the fully-qualified namespace pattern (db.collection) anchored at both
+	// ends to prevent matching collections with similar names in other databases.
+	dbName := MongoDB.Name()
+	nsPattern := "^" + dbName + "\\." + collectionName + "$"
+
+	// Run currentOp command to get all current operations
+	var result bson.M
+	err := adminDB.RunCommand(ctx, bson.D{
+		{Key: "currentOp", Value: 1},
+		{Key: "op", Value: "command"},
+		{Key: "ns", Value: bson.D{{Key: "$regex", Value: nsPattern}}},
+	}).Decode(&result)
+
+	if err != nil {
+		logger.Warn("failed to check for in-progress index builds, assuming none",
+			zap.Error(err))
+		return false
+	}
+
+	// Parse operations
+	inprog, ok := result["inprog"].(bson.A)
+	if !ok {
+		return false
+	}
+
+	// Check if any operation is building the specified index
+	for _, op := range inprog {
+		opDoc, ok := op.(bson.M)
+		if !ok {
+			continue
+		}
+
+		// Check if this is an index build operation
+		if command, ok := opDoc["command"].(bson.M); ok {
+			if createIndexes, ok := command["createIndexes"].(string); ok {
+				ns, _ := opDoc["ns"].(string)
+				expectedNs := MongoDB.Name() + "." + collectionName
+				if createIndexes == collectionName && ns == expectedNs {
+					// Check if it's building our specific index
+					if indexes, ok := command["indexes"].(bson.A); ok {
+						for _, idx := range indexes {
+							if idxDoc, ok := idx.(bson.M); ok {
+								if name, ok := idxDoc["name"].(string); ok && name == indexName {
+									logger.Info("detected in-progress index build",
+										zap.String("collection", collectionName),
+										zap.String("index", indexName))
+									return true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// isIndexBuildAlreadyInProgressError checks if an error is an IndexBuildAlreadyInProgress error
+// (MongoDB error code 117). It uses errors.As so that wrapped errors are handled correctly.
+func isIndexBuildAlreadyInProgressError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// MongoDB error code 117 is IndexBuildAlreadyInProgress.
+	// Use errors.As so that wrapped error types (e.g. from the driver's enrichment) are matched.
+	var cmdErr mongo.CommandError
+	if errors.As(err, &cmdErr) {
+		return cmdErr.Code == 117
+	}
+	// Also check error message as fallback for cases the driver surfaces as plain errors.
+	errMsg := err.Error()
+	return strings.Contains(errMsg, "IndexBuildAlreadyInProgress") ||
+		strings.Contains(errMsg, "Index build already in progress") ||
+		strings.Contains(errMsg, "index build already in progress")
 }

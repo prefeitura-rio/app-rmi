@@ -57,7 +57,7 @@ func validatePhoneNumber(phone string) error {
 
 // getAuthToken gets a WhatsApp API token, using Redis for caching
 func getAuthToken(ctx context.Context) (string, error) {
-	logger := logging.Logger.With(zap.String("operation", "get_auth_token"))
+	logger := logging.GetLogger().With(zap.String("operation", "get_auth_token"))
 
 	// Try to get from Redis first
 	cacheKey := "whatsapp:token"
@@ -98,8 +98,7 @@ func getAuthToken(ctx context.Context) (string, error) {
 		logger.Error("failed to send auth request", zap.Error(err))
 		return "", fmt.Errorf("failed to send auth request: %w", err)
 	}
-	defer resp.Body.Close()
-
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Error("failed to read auth response body", zap.Error(err))
@@ -130,7 +129,7 @@ func getAuthToken(ctx context.Context) (string, error) {
 
 // SendWhatsAppMessage sends a message to multiple phone numbers using the WhatsApp API
 func SendWhatsAppMessage(ctx context.Context, phones []string, hsmID string, varsList []map[string]interface{}) error {
-	logger := logging.Logger.With(
+	logger := logging.GetLogger().With(
 		zap.Strings("phones", phones),
 		zap.String("hsm_id", hsmID),
 	)
@@ -206,8 +205,7 @@ func SendWhatsAppMessage(ctx context.Context, phones []string, hsmID string, var
 		logger.Error("failed to send message request", zap.Error(err))
 		return fmt.Errorf("failed to send message request: %w", err)
 	}
-	defer resp.Body.Close()
-
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Error("failed to read response body", zap.Error(err))

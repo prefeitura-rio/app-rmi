@@ -57,12 +57,30 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | WHATSAPP_HSM_ID | ID do template HSM do WhatsApp | - | Sim |
 | WHATSAPP_COST_CENTER_ID | ID do centro de custo do WhatsApp | - | Sim |
 | WHATSAPP_CAMPAIGN_NAME | Nome da campanha do WhatsApp | - | Sim |
+| VERIFICATION_PROVIDER | Provedor de disparo do código OTP (`wetalkie` ou `salesforce`) | wetalkie | Não |
+| SFMC_ENABLED | Habilita/desabilita o envio via Salesforce Marketing Cloud | true | Não |
+| SFMC_SUBDOMAIN | Subdomínio do tenant do Marketing Cloud (ex: `mcpv1-xxxx`) | - | Sim (se salesforce) |
+| SFMC_CLIENT_ID | Client ID da API do Marketing Cloud | - | Sim (se salesforce) |
+| SFMC_CLIENT_SECRET | Client Secret da API do Marketing Cloud | - | Sim (se salesforce) |
+| SFMC_ACCOUNT_ID | Account ID (MID) do Marketing Cloud | - | Sim (se salesforce) |
+| SFMC_DEFINITION_KEY | Definition Key da OTT definition do Marketing Cloud | - | Sim (se salesforce) |
+| SFMC_OTP_ATTRIBUTE | Nome do atributo do código OTP no payload OTT | codigo_otp | Não |
 | MCP_SERVER_URL | URL do servidor MCP para lookup de CF | https://services.pref.rio/mcp/mcp/ | Não |
 | MCP_AUTH_TOKEN | Token de autenticação do servidor MCP | - | Não* |
+| DATA_RELAY_BASE_URL | URL base da API Data Relay (envio de e-mail via mailman) | - | Não* |
+| DATA_RELAY_API_KEY | API key do Data Relay (`X-Api-Key`) | - | Não* |
+| DATA_RELAY_TIMEOUT | Timeout HTTP do Data Relay | 30s | Não |
+| SALESFORCE_BASE_URL | URL base da API Salesforce CRM (host; o client acrescenta `/api/private/...`) | - | Não* |
+| SALESFORCE_TIMEOUT | Timeout HTTP do Salesforce CRM | 30s | Não |
+| SALESFORCE_WEBHOOK_CLIENTS | Client IDs Keycloak (`azp`) autorizados no webhook SF→RMI (lista separada por vírgula) | - | Não* |
+| JWT_ISSUER_URL | Issuer do realm Keycloak (`https://<host>/realms/<realm>`); o RMI verifica a assinatura do JWT pelo JWKS desse issuer na consulta pública de chamados por protocolo. Sem ele, essa rota só serve a visão pública | - | Não |
+| TRUSTED_SERVICE_CLIENTS | Client IDs Keycloak (`azp`) com privilégio de service account (RequireOwnCPF/RequireAdmin). Só vale para token de service account (client credentials) do próprio client: `preferred_username` = `service-account-<azp>` ou claim `client_id`/`clientId` = `azp`; token de login de cidadão nunca é aceito, mesmo com o `azp` listado. Não liste clients de login público (ex.: `superapp`) | - | Não* |
+| SYNC_JOB_BEARER_ENCRYPTION_KEY | Chave AES-256 em hex (64 caracteres) para cifrar JWTs nas filas de sync. Sem a chave o token não é gravado; `salesforce_push` exige a chave. | - | Não* |
 | CF_LOOKUP_COLLECTION | Nome da coleção de lookups de CF | cf_lookups | Não |
 | CF_LOOKUP_CACHE_TTL | TTL do cache de CF lookups (ex: "24h") | 24h | Não |
 | CF_LOOKUP_RATE_LIMIT | Rate limit por CPF para CF lookups (ex: "1h") | 1h | Não |
 | CF_LOOKUP_GLOBAL_RATE_LIMIT | Rate limit global de CF lookups por minuto | 60 | Não |
+| CF_LOOKUP_JOB_TIMEOUT | Timeout de cada tentativa de um job `cf_lookup` no worker de sync | 90s | Não |
 | LOG_LEVEL | Nível de log (debug, info, warn, error) | info | Não |
 | METRICS_PORT | Porta para métricas Prometheus | 9090 | Não |
 | TRACING_ENABLED | Habilitar rastreamento OpenTelemetry | false | Não |
@@ -80,6 +98,8 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 **Notas:**
 - `*` `CORS_ALLOWED_ORIGINS` deve ser configurado em staging/produção via Infisical/`rmi-secrets` com as origens dos frontends autorizados. Sem a variável (ou com origem fora da lista), requests cross-origin não recebem `Access-Control-*` (gin-contrib responde 403).
 - `*` MCP_AUTH_TOKEN é obrigatório apenas se a funcionalidade de CF lookup estiver habilitada
+- `*` DATA_RELAY_BASE_URL e DATA_RELAY_API_KEY devem ser ambos definidos para envio real de e-mails (convites Mobilidade). Sem eles, o sync worker apenas registra o e-mail em log.
+- `*` SALESFORCE_BASE_URL habilita a integração. Proxies `/v1/salesforce/*` e push usam o JWT do usuário. JWTs só entram na fila Redis cifrados (`SYNC_JOB_BEARER_ENCRYPTION_KEY`); sem a chave o token não é capturado e `salesforce_push` não é enfileirado. O webhook `POST /v1/webhooks/salesforce/cidadao` exige JWT Keycloak cujo `azp` está em `SALESFORCE_WEBHOOK_CLIENTS` (token do client Salesforce). Para `evento=atualizacao` (default): `cpf` + `dados` (**delta**; ausente=não alterar, null=limpar, string vazia=valor vazio) + `updatedAt` opcional. Para `evento=anonimizacao`: só `cpf` + `evento` + `updatedAt` (opcional); `dados` é ignorado — o RMI limpa o espelho SF por inteiro (`self_declared` PII + `salesforce_consentimentos`). Não altera `citizens` nem o opt-in global do RMI. Resposta **202** com CPF mascarado; retry idempotente via `updatedAt`. Sem GET de volta ao SF.
 
 ## 🏥 **CF (Clínica da Família) Lookup - Nova Funcionalidade**
 
@@ -918,6 +938,16 @@ Recupera os chamados do 1746 de um cidadão por CPF com paginação.
 - Parâmetros de paginação:
   - `page`: Número da página (padrão: 1, mínimo: 1)
   - `per_page`: Itens por página (padrão: 10, máximo: 100)
+- Cada chamado traz `protocolo` (SGRC, `RIO-12345678-9`) quando a coleção já o tem
+
+### GET /maintenance-request/{protocolo}
+Consulta pública dos chamados históricos do 1746/SGRC de um protocolo (um protocolo pode agrupar mais de um chamado).
+- Não exige autenticação (precisa de mapeamento `public` da rota no Heimdall/Cerbos)
+- Protocolo no formato `RIO-12345678-9` (400 fora do formato, 404 sem chamado)
+- Visão pública: categoria, tipo, subtipo, status, datas, `bairro`, `andamentos` (só os com `fl_publico = 1`) e `loaded_at`; nunca CPF, descrição nem logradouro
+- Titular: com `Authorization: Bearer <JWT>` cuja assinatura o RMI verifica no JWKS de `JWT_ISSUER_URL` e cujo `preferred_username` é o CPF do chamado, o chamado vem com `titular: true`, `logradouro` e `descricao`. Token inválido, expirado, de outro CPF ou não verificável (sem `JWT_ISSUER_URL`, JWKS fora do ar) recebe a visão pública
+- Campos lidos do documento Mongo (contrato com o pipeline de dados; todos opcionais): `protocolo` (string), `bairro` (string), `logradouro` (string), `andamentos` (lista de `{data, tipo, descricao, fl_publico}`), `loaded_at` (string ISO-8601 ou datetime)
+- Índice `protocolo_1` (não único) criado na inicialização
 
 ### PUT /citizen/{cpf}/address
 Atualiza ou cria o endereço autodeclarado de um cidadão.
@@ -986,7 +1016,7 @@ Valida um número de telefone usando um código de verificação.
 Busca um cidadão por número de telefone e retorna dados mascarados.
 - Retorna CPF e nome mascarados se encontrado
 - Retorna `{"found": false}` se não encontrado
-- Não requer autenticação
+- Requer JWT: admin/service account confiável vê qualquer número; cidadão só o telefone vinculado ao próprio CPF (`preferred_username`), senão 403
 - Suporte a números internacionais
 
 ### POST /phone/{phone_number}/validate-registration
@@ -994,11 +1024,11 @@ Valida dados de registro (nome, CPF, data de nascimento) contra dados base.
 - Validação contra coleção de dados base (read-only)
 - Retorna resultado da validação e dados encontrados
 - Registra tentativas de validação para auditoria
-- Não requer autenticação
+- Requer JWT: cidadão só valida o próprio CPF (`cpf` do corpo = `preferred_username`), senão 403; admin/service account confiável valida qualquer CPF
 
 ### POST /phone/{phone_number}/opt-in
 Processa opt-in para um número de telefone.
-- Requer autenticação JWT com acesso ao CPF
+- Requer JWT: `cpf` do corpo = `preferred_username` do token (ou admin/service account confiável), senão 403
 - Cria mapeamento phone-CPF ativo
 - Registra histórico de opt-in
 - Atualiza dados autodeclarados se validado
@@ -1007,16 +1037,15 @@ Processa opt-in para um número de telefone.
 ### POST /phone/{phone_number}/opt-out
 Processa opt-out para um número de telefone.
 - **Nova funcionalidade**: Números que nunca fizeram opt-in podem agora fazer opt-out
-- Cria mapeamento phone-CPF com status "blocked" para números desconhecidos
-- Não requer autenticação JWT para números desconhecidos
+- Cria mapeamento phone-CPF com status "blocked" para números desconhecidos (só admin/service account confiável)
+- Requer JWT: cidadão só faz opt-out de telefone vinculado ao próprio CPF; número desconhecido ou de outro CPF → 403
 - Registra histórico de opt-out com motivo
-- Para números conhecidos: requer autenticação e atualiza dados autodeclarados
 - **Status na resposta**: `"opted_out"` para todas as operações de opt-out bem-sucedidas
 - **Campo opted_out**: Adicionado ao modelo `PhoneStatusResponse` para indicar status de opt-out
 
 ### POST /phone/{phone_number}/reject-registration
 Rejeita um registro e bloqueia mapeamento phone-CPF.
-- Requer autenticação JWT com acesso ao CPF
+- Requer JWT: `cpf` do corpo e o CPF já vinculado ao telefone devem ser o do token (ou admin/service account confiável), senão 403
 - Bloqueia mapeamento existente
 - Registra rejeição no histórico
 - Permite novo registro para o número
@@ -1276,6 +1305,7 @@ DELETE /v1/phone/{phone_number}/quarantine
 ```http
 POST /v1/phone/{phone_number}/bind
 ```
+Requer JWT: `cpf` do corpo = `preferred_username` do token (ou admin/service account confiável), senão 403.
 **Corpo da Requisição:**
 ```json
 {

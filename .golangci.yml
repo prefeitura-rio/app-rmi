@@ -1,0 +1,58 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - gosec
+    - sqlclosecheck
+    - rowserrcheck
+
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+
+    govet:
+      enable:
+        - atomic
+        - bools
+        - buildtag
+        - errorsas
+        - nilfunc
+        - printf
+
+    gosec:
+      excludes:
+        - G101
+        - G104
+        - G204
+        - G304
+        - G306
+        - G404
+        - G501
+        - G505
+
+  exclusions:
+    rules:
+      - path: _test\.go$
+        linters:
+          - errcheck
+          - govet
+          - gosec
+          - sqlclosecheck
+          - rowserrcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
+    gofmt:
+      simplify: true
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 10

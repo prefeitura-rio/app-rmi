@@ -82,7 +82,7 @@ func ValidateEmailAddress(c *gin.Context) {
 	}
 	span.SetAttributes(attribute.String("input.email_prefix", emailForLogging))
 
-	logger := logging.Logger.With(zap.String("email_prefix", emailForLogging))
+	logger := logging.GetLogger().With(zap.String("email_prefix", emailForLogging))
 	logger.Debug("ValidateEmailAddress called")
 
 	// Basic format validation with tracing

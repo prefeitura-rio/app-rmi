@@ -29,7 +29,7 @@ func setupValidatorTest(t *testing.T) (*BaseDataValidator, func()) {
 	config.AppConfig.CitizenCollection = "test_validator_citizens"
 
 	// Create validator
-	validator := NewBaseDataValidator(logging.Logger)
+	validator := NewBaseDataValidator(logging.GetLogger())
 
 	// Return cleanup function
 	return validator, func() {
@@ -41,7 +41,7 @@ func setupValidatorTest(t *testing.T) (*BaseDataValidator, func()) {
 }
 
 func TestNewBaseDataValidator(t *testing.T) {
-	validator := NewBaseDataValidator(logging.Logger)
+	validator := NewBaseDataValidator(logging.GetLogger())
 	if validator == nil {
 		t.Error("NewBaseDataValidator() returned nil")
 		return
@@ -345,7 +345,7 @@ func TestValidateRegistration_MissingBaseBirthDate(t *testing.T) {
 }
 
 func TestSimpleNameMatch(t *testing.T) {
-	validator := NewBaseDataValidator(logging.Logger)
+	validator := NewBaseDataValidator(logging.GetLogger())
 
 	tests := []struct {
 		name         string
@@ -409,7 +409,7 @@ func TestSimpleNameMatch(t *testing.T) {
 }
 
 func TestSimpleBirthDateMatch(t *testing.T) {
-	validator := NewBaseDataValidator(logging.Logger)
+	validator := NewBaseDataValidator(logging.GetLogger())
 
 	tests := []struct {
 		name         string

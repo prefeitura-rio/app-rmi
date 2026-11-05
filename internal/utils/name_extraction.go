@@ -71,11 +71,3 @@ func MaskName(fullName string) string {
 
 	return firstName + " " + middleMask + " " + lastName
 }
-
-// MaskCPF masks a CPF for privacy (e.g., "45049725810" -> "450***25810")
-func MaskCPF(cpf string) string {
-	if len(cpf) != 11 {
-		return cpf
-	}
-	return cpf[:3] + "***" + cpf[6:]
-}

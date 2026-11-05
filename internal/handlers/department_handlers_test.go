@@ -19,7 +19,11 @@ import (
 )
 
 func setupDepartmentHandlersTest(t *testing.T) (*gin.Engine, func()) {
-	// Use the shared MongoDB from common_test.go TestMain
+	// Use the shared MongoDB and Redis from common_test.go TestMain
+	if config.MongoDB == nil || config.Redis == nil {
+		t.Skip("Skipping department handler tests: MongoDB or Redis not initialized")
+	}
+
 	gin.SetMode(gin.TestMode)
 
 	// Configure test collection
@@ -28,16 +32,29 @@ func setupDepartmentHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	ctx := context.Background()
 	database := config.MongoDB
 
-	// Initialize global department service instance
-	services.DepartmentServiceInstance = services.NewDepartmentService(database, logging.Logger)
+	// Clear Redis cache before test
+	keys, err := config.Redis.Keys(ctx, "department:*").Result()
+	if err == nil && len(keys) > 0 {
+		_ = config.Redis.Del(ctx, keys...).Err()
+	}
+
+	// Initialize global department service instance with DataManager
+	dataManager := services.NewDataManager(config.Redis, config.MongoDB, logging.GetLogger())
+	services.DepartmentServiceInstance = services.NewDepartmentService(database, dataManager, logging.GetLogger())
 
 	router := gin.New()
 	router.GET("/departments", ListDepartments)
 	router.GET("/departments/:cd_ua", GetDepartment)
 
 	return router, func() {
-		_ = database.Drop(ctx)
+		// Drop only this test's collection — never the whole rmi_test DB (shared across packages).
+		_ = database.Collection(config.AppConfig.DepartmentCollection).Drop(ctx)
 		services.DepartmentServiceInstance = nil
+		// Clear Redis cache after test
+		keys, err := config.Redis.Keys(ctx, "department:*").Result()
+		if err == nil && len(keys) > 0 {
+			_ = config.Redis.Del(ctx, keys...).Err()
+		}
 	}
 }
 

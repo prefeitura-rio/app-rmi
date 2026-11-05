@@ -13,6 +13,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"github.com/stretchr/testify/assert"
@@ -34,9 +35,9 @@ func setupPhoneHandlersTest(t *testing.T) (*PhoneHandlers, *gin.Engine, func()) 
 	database := config.MongoDB
 
 	// Initialize services
-	phoneMappingService := services.NewPhoneMappingService(logging.Logger)
+	phoneMappingService := services.NewPhoneMappingService(logging.GetLogger())
 	configService := services.NewConfigService()
-	handlers := NewPhoneHandlers(logging.Logger, phoneMappingService, configService)
+	handlers := NewPhoneHandlers(logging.GetLogger(), phoneMappingService, configService)
 
 	router := gin.New()
 
@@ -159,7 +160,7 @@ func insertTestCitizen(t *testing.T, cpf, name, birthDate string) {
 
 // TestNewPhoneHandlers tests the constructor
 func TestNewPhoneHandlers(t *testing.T) {
-	handlers := NewPhoneHandlers(logging.Logger, nil, nil)
+	handlers := NewPhoneHandlers(logging.GetLogger(), nil, nil)
 	assert.NotNil(t, handlers)
 	assert.NotNil(t, handlers.logger)
 }
@@ -202,7 +203,7 @@ func TestGetPhoneStatus_Found(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.True(t, response.Found)
-	assert.Equal(t, "035***50712", response.CPF)    // Masked CPF
+	assert.Equal(t, observability.MaskCPF("03561350712"), response.CPF)
 	assert.Equal(t, "João d* Silva", response.Name) // Masked name (masks middle names)
 	assert.True(t, response.OptIn)
 	assert.False(t, response.Quarantined)
@@ -239,7 +240,7 @@ func TestGetCitizenByPhone_Success(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.True(t, response.Found)
-	assert.Equal(t, "035***50712", response.CPF)    // Masked CPF
+	assert.Equal(t, observability.MaskCPF("03561350712"), response.CPF)
 	assert.Equal(t, "João d* Silva", response.Name) // Masked name
 	assert.Equal(t, "João", response.FirstName)     // First name is not masked
 }

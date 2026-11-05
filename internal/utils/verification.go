@@ -17,8 +17,12 @@ func GenerateVerificationCode() string {
 	return code
 }
 
-// SendVerificationCode sends a verification code to a single phone number
-func SendVerificationCode(ctx context.Context, phone string, code string) error {
+// SendVerificationCode sends a verification code to a single phone number using the configured provider.
+func SendVerificationCode(ctx context.Context, cpf string, phone string, code string) error {
+	if config.AppConfig.VerificationProvider == config.VerificationProviderSalesforce {
+		return SendMarketingCloudOTP(ctx, cpf, phone, code)
+	}
+
 	vars := map[string]interface{}{
 		"COD": code,
 	}

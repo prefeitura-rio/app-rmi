@@ -117,7 +117,7 @@ func SetupTestContainers(t *testing.T) *TestContainers {
 	config.AppConfig.VerificationQueueSize = 100
 	config.AppConfig.DBWorkerCount = 5
 	config.AppConfig.DBBatchSize = 50
-	config.AppConfig.AdminGroup = "rmi-admin"
+	config.AppConfig.AdminGroup = "heimdall-admin"
 	config.AppConfig.WhatsAppEnabled = false
 	config.AppConfig.CFLookupEnabled = false
 

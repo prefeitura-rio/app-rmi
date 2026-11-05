@@ -22,12 +22,15 @@ import (
 
 func setupAvatarHandlersTest(t *testing.T) (*AvatarHandlers, *gin.Engine, func()) {
 	// Use the shared MongoDB and Redis from common_test.go TestMain
-	// Don't create new connections - use the global ones
+	setupTestEnvironment()
 	gin.SetMode(gin.TestMode)
 
-	// Configure test collections (these are test-specific)
-	config.AppConfig.AvatarsCollection = "test_avatars"
-	config.AppConfig.UserConfigCollection = "test_user_configs"
+	origAvatars := config.AppConfig.AvatarsCollection
+	origUserConfig := config.AppConfig.UserConfigCollection
+	origTTL := config.AppConfig.AvatarCacheTTL
+
+	config.AppConfig.AvatarsCollection = "handlers_test_avatars"
+	config.AppConfig.UserConfigCollection = "handlers_test_user_configs"
 	config.AppConfig.AvatarCacheTTL = 5 * time.Minute
 
 	ctx := context.Background()
@@ -49,9 +52,9 @@ func setupAvatarHandlersTest(t *testing.T) (*AvatarHandlers, *gin.Engine, func()
 	// Initialize services
 	cacheService := services.NewCacheService()
 	// Pass nil for mongoClient in tests since we only use database
-	services.AvatarServiceInstance = services.NewAvatarService(nil, database, logging.Logger.Unwrap())
+	services.AvatarServiceInstance = services.NewAvatarService(nil, database, logging.GetLogger().Unwrap())
 
-	handlers := NewAvatarHandlers(logging.Logger, cacheService)
+	handlers := NewAvatarHandlers(logging.GetLogger(), cacheService)
 
 	router := gin.New()
 	router.GET("/avatars", handlers.ListAvatars)
@@ -70,15 +73,17 @@ func setupAvatarHandlersTest(t *testing.T) (*AvatarHandlers, *gin.Engine, func()
 			}
 		}
 
-		// Drop only test collections, not the entire database
 		_ = database.Collection(config.AppConfig.AvatarsCollection).Drop(ctx)
 		_ = database.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
+		config.AppConfig.AvatarsCollection = origAvatars
+		config.AppConfig.UserConfigCollection = origUserConfig
+		config.AppConfig.AvatarCacheTTL = origTTL
 		services.AvatarServiceInstance = nil
 	}
 }
 
 func TestNewAvatarHandlers(t *testing.T) {
-	handlers := NewAvatarHandlers(logging.Logger, nil)
+	handlers := NewAvatarHandlers(logging.GetLogger(), nil)
 	assert.NotNil(t, handlers, "NewAvatarHandlers() returned nil")
 	assert.NotNil(t, handlers.logger, "NewAvatarHandlers() logger is nil")
 }

@@ -51,8 +51,7 @@ func getMemoryListData(ctx context.Context, phoneNumber string) ([]MemoryModel, 
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var memories []MemoryModel
 	if err := cursor.All(ctx, &memories); err != nil {
 		return nil, err

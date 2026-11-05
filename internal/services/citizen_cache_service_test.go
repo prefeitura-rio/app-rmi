@@ -42,7 +42,7 @@ func setupCitizenCacheTest(t *testing.T) (*CitizenCacheService, func()) {
 		Password: os.Getenv("REDIS_PASSWORD"),
 		DB:       0,
 	})
-	config.Redis = redisclient.NewClient(singleClient)
+	config.SetRedis(redisclient.NewClient(singleClient))
 
 	// Test Redis connection
 	err := config.Redis.Ping(ctx).Err()

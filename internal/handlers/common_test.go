@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"go.uber.org/zap"
 )
 
@@ -52,12 +53,19 @@ func setupTestEnvironment() {
 			"MONGODB_PETS_SELF_REGISTERED_COLLECTION":  "pets_self_registered",
 			"MONGODB_NOTIFICATION_CATEGORY_COLLECTION": "notification_categories",
 			"MONGODB_USER_CONFIG_COLLECTION":           "user_config",
+			"MONGODB_CPF_SECRETARIA_COLLECTION":        "cpf_secretaria_test",
 		}
 		for key, defaultValue := range collections {
 			if os.Getenv(key) == "" {
 				os.Setenv(key, defaultValue)
 			}
 		}
+		// Always isolate from just dotenv-load (.env may set MONGODB_DATABASE=rmi, CF_LOOKUP=true).
+		os.Setenv("MONGODB_DATABASE", "rmi_test")
+		os.Setenv("CF_LOOKUP_ENABLED", "false")
+		os.Setenv("CF_LOOKUP_V2_ENABLED", "false")
+		os.Setenv("WHATSAPP_ENABLED", "false")
+		os.Setenv("SFMC_ENABLED", "false")
 
 		// Set other required environment variables
 		if os.Getenv("JWT_ISSUER_URL") == "" {
@@ -66,11 +74,25 @@ func setupTestEnvironment() {
 		if os.Getenv("PORT") == "" {
 			os.Setenv("PORT", "8080")
 		}
-		if os.Getenv("CF_LOOKUP_ENABLED") == "" {
-			os.Setenv("CF_LOOKUP_ENABLED", "false")
+
+		// Set WhatsApp environment variables (required by config even when disabled)
+		if os.Getenv("WHATSAPP_API_BASE_URL") == "" {
+			os.Setenv("WHATSAPP_API_BASE_URL", "http://localhost:8080")
 		}
-		if os.Getenv("WHATSAPP_ENABLED") == "" {
-			os.Setenv("WHATSAPP_ENABLED", "false")
+		if os.Getenv("WHATSAPP_API_USERNAME") == "" {
+			os.Setenv("WHATSAPP_API_USERNAME", "test_username")
+		}
+		if os.Getenv("WHATSAPP_API_PASSWORD") == "" {
+			os.Setenv("WHATSAPP_API_PASSWORD", "test_password")
+		}
+		if os.Getenv("WHATSAPP_HSM_ID") == "" {
+			os.Setenv("WHATSAPP_HSM_ID", "test_hsm_id")
+		}
+		if os.Getenv("WHATSAPP_COST_CENTER_ID") == "" {
+			os.Setenv("WHATSAPP_COST_CENTER_ID", "test_cost_center")
+		}
+		if os.Getenv("WHATSAPP_CAMPAIGN_NAME") == "" {
+			os.Setenv("WHATSAPP_CAMPAIGN_NAME", "test_campaign")
 		}
 
 		// Initialize configuration and connections only once
@@ -78,8 +100,11 @@ func setupTestEnvironment() {
 			testInitError = err
 			return
 		}
-		config.InitMongoDB()
+		// Initialize Redis before MongoDB so that the distributed index-creation
+		// lock in ensureIndexes (called by InitMongoDB) can be exercised in tests.
 		config.InitRedis()
+		config.InitMongoDB()
+		services.InitCPFSecretariaService()
 
 		zap.L().Info("Test environment initialized for handlers package")
 	})

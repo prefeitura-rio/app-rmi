@@ -41,8 +41,7 @@ func AssertHealthy(t *testing.T, client *APIClient) {
 
 	resp, err := client.Get("/health")
 	require.NoError(t, err, "Failed to call health endpoint")
-	defer resp.Body.Close()
-
+	defer func() { _ = resp.Body.Close() }()
 	AssertStatusCode(t, resp, http.StatusOK)
 
 	body := AssertJSONResponse(t, resp)
@@ -85,13 +84,13 @@ func WaitForHealthy(t *testing.T, client *APIClient, maxAttempts int) error {
 			t.Logf("Health check attempt %d/%d failed: %v", i+1, maxAttempts, err)
 			continue
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
 			var healthResp map[string]interface{}
 			resp, _ := client.Get("/health")
 			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			_ = json.Unmarshal(body, &healthResp)
 
 			if status, ok := healthResp["status"].(string); ok && status == "healthy" {

@@ -5,8 +5,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 )
 
 // RateLimiter implements a token bucket rate limiter
@@ -105,7 +107,7 @@ func (m *CFRateLimiterManager) ShouldAllowCFLookup(ctx context.Context, cpf stri
 	}
 
 	m.logger.Debug("CF lookup allowed",
-		zap.String("cpf", cpf))
+		observability.CPFField(cpf))
 
 	return true, ""
 }
@@ -119,7 +121,7 @@ func (m *CFRateLimiterManager) CleanupOldEntries(olderThan time.Duration) {
 			if lastLookup.Before(cutoff) {
 				m.perCPFCache.Delete(key)
 				m.logger.Debug("cleaned up old rate limit entry",
-					zap.String("cpf", key.(string)),
+					observability.CPFField(key.(string)),
 					zap.Time("last_lookup", *lastLookup))
 			}
 		}

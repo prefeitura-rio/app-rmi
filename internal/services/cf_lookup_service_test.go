@@ -14,9 +14,11 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.uber.org/zap/zapcore"
 )
 
 // setupCFLookupTest initializes MongoDB and Redis for CF lookup service tests
@@ -41,7 +43,7 @@ func setupCFLookupTest(t *testing.T) (*CFLookupService, func()) {
 		Password: os.Getenv("REDIS_PASSWORD"),
 		DB:       0,
 	})
-	config.Redis = redisclient.NewClient(singleClient)
+	config.SetRedis(redisclient.NewClient(singleClient))
 
 	// Test Redis connection
 	err := config.Redis.Ping(ctx).Err()
@@ -276,6 +278,15 @@ func TestBuildFullAddress(t *testing.T) {
 			numero:     strPtr("123"),
 			wantEmpty:  true,
 		},
+		{
+			name:        "strips parenthetical neighborhood annotation",
+			logradouro:  strPtr("Estrada dos Bandeirantes"),
+			numero:      strPtr("100"),
+			bairro:      strPtr("Freguesia (Jacarepaguá)"),
+			cidade:      strPtr("Rio de Janeiro"),
+			estado:      strPtr("RJ"),
+			wantContain: []string{"Estrada dos Bandeirantes", "100", "Freguesia", "Rio de Janeiro", "RJ"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -288,6 +299,8 @@ func TestBuildFullAddress(t *testing.T) {
 				for _, want := range tt.wantContain {
 					assert.Contains(t, address, want)
 				}
+				assert.NotContains(t, address, "(")
+				assert.NotContains(t, address, ")")
 			}
 		})
 	}
@@ -957,11 +970,15 @@ func TestQueueCFLookupJob(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
+	cpf := "12345678901"
+	queueKey := "sync:queue:cf_lookup"
 
-	service.queueCFLookupJob(ctx, "12345678901", "Rua Test, 123")
+	config.Redis.Del(ctx, queueKey)
+	config.Redis.Del(ctx, "cf_lookup:pending:"+cpf)
+
+	service.queueCFLookupJob(ctx, cpf, "Rua Test, 123")
 
 	// Verify job was queued
-	queueKey := "sync:queue:cf_lookup"
 	jobJSON, err := config.Redis.RPop(ctx, queueKey).Result()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, jobJSON)
@@ -976,8 +993,34 @@ func TestQueueCFLookupJob(t *testing.T) {
 	// Convert Data to map for access
 	dataMap, ok := job.Data.(map[string]interface{})
 	assert.True(t, ok)
-	assert.Equal(t, "12345678901", dataMap["cpf"])
+	assert.Equal(t, cpf, dataMap["cpf"])
 	assert.Equal(t, "Rua Test, 123", dataMap["address"])
+}
+
+func TestIsMunicipioCoberto(t *testing.T) {
+	str := func(s string) *string { return &s }
+
+	tests := []struct {
+		name      string
+		municipio *string
+		want      bool
+	}{
+		{name: "nil assumes covered", municipio: nil, want: true},
+		{name: "empty assumes covered", municipio: str(""), want: true},
+		{name: "exact match", municipio: str("Rio de Janeiro"), want: true},
+		{name: "lowercase", municipio: str("rio de janeiro"), want: true},
+		{name: "trimmed", municipio: str("  Rio de Janeiro  "), want: true},
+		{name: "with slash suffix", municipio: str("Rio de Janeiro/RJ"), want: true},
+		{name: "with comma suffix", municipio: str("Rio de Janeiro, RJ"), want: true},
+		{name: "other city", municipio: str("Niterói"), want: false},
+		{name: "sao paulo", municipio: str("São Paulo"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsMunicipioCoberto(tt.municipio))
+		})
+	}
 }
 
 func TestTrySynchronousCFLookup_NilService(t *testing.T) {
@@ -1044,4 +1087,38 @@ func TestTrySynchronousCFLookup_CachedData(t *testing.T) {
 // Helper function to create string pointers
 func strPtr(s string) *string {
 	return &s
+}
+
+func TestTrySynchronousCFLookup_MCPErrorEchoingAddressIsNotLogged(t *testing.T) {
+	service, cleanup := setupCFLookupTest(t)
+	defer cleanup()
+
+	const address = "Rua Sintetica Sincrona, 77, Bairro Ficticio"
+	client, server := setupMCPTest(t, mcpHandlerWithToolResponse(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"error":   map[string]interface{}{"code": -32602, "message": "endereco invalido: " + address},
+	}))
+	defer server.Close()
+	client.retryConfig.MaxRetries = 0
+
+	logger, logs := observedLogger(zapcore.DebugLevel)
+	client.logger = logger
+	service.mcpClient = client
+	service.logger = logger
+
+	cpf := "00000000272"
+	ClearCFLookupPending(context.Background(), cpf)
+	t.Cleanup(func() { ClearCFLookupPending(context.Background(), cpf) })
+
+	result, err := service.TrySynchronousCFLookup(context.Background(), cpf, address)
+
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.True(t, IsPermanentCFLookupError(err))
+	assert.NotContains(t, err.Error(), address, "the wallet handler logs this error")
+	assertNoAddressInLogs(t, logs, address)
+	fields := requireLogEntry(t, logs, "synchronous CF lookup failed").ContextMap()
+	assert.Equal(t, "tool", fields["error_type"])
+	assert.EqualValues(t, -32602, fields["error_code"])
 }

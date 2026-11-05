@@ -11,17 +11,18 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/observability"
-	"github.com/prefeitura-rio/app-rmi/internal/services"
-	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/services"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
 // Version is set via ldflags during build
@@ -29,7 +30,7 @@ var Version = "dev"
 
 // queueCFLookupJob queues a background job to perform CF lookup for a citizen
 func queueCFLookupJob(ctx context.Context, cpf, address string) {
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Create CF lookup job
 	job := services.SyncJob{
@@ -46,6 +47,7 @@ func queueCFLookupJob(ctx context.Context, cpf, address string) {
 		MaxRetries: 3,
 	}
 
+	//nolint:gosec // G117: internal job payload serialization; token not logged
 	jobBytes, err := json.Marshal(job)
 	if err != nil {
 		logger.Error("failed to marshal CF lookup job", zap.Error(err))
@@ -54,7 +56,16 @@ func queueCFLookupJob(ctx context.Context, cpf, address string) {
 
 	// Queue job using Redis
 	queueKey := "sync:queue:cf_lookup"
+	created, err := config.Redis.SetNX(ctx, services.CFLookupPendingKey(cpf), "1", time.Hour).Result()
+
+	if err == nil && !created {
+		logger.Debug("CF lookup job already pending, skipping",
+			observability.CPFField(cpf))
+		return
+	}
+
 	err = config.Redis.LPush(ctx, queueKey, string(jobBytes)).Err()
+
 	if err != nil {
 		logger.Error("failed to queue CF lookup job", zap.Error(err))
 		return
@@ -85,16 +96,16 @@ func GetCitizenData(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_citizen_data"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("GetCitizenData called", zap.String("cpf", cpf))
+	logger.Debug("GetCitizenData called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -127,6 +138,31 @@ func GetCitizenData(c *gin.Context) {
 	}
 	getDataSpan.End()
 
+	if citizen.CPF == "" {
+		var jwtClaims *models.JWTClaims
+		if claims, exists := c.Get("claims"); exists {
+			if parsed, ok := claims.(*models.JWTClaims); ok {
+				jwtClaims = parsed
+			}
+		}
+
+		if jwtClaims != nil && jwtClaims.PreferredUsername == cpf {
+			minimal, err := ensureMinimalCitizen(ctx, cpf, jwtClaims)
+			if err != nil {
+				logger.Error("failed to create minimal citizen", zap.Error(err))
+				c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create citizen record"})
+				return
+			}
+			citizen.CPF = minimal.CPF
+			if citizen.Nome == nil {
+				citizen.Nome = minimal.Nome
+			}
+		} else {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Citizen not found"})
+			return
+		}
+	}
+
 	observability.DatabaseOperations.WithLabelValues("find", "success").Inc()
 
 	// Cache the merged result with tracing
@@ -149,11 +185,11 @@ func GetCitizenData(c *gin.Context) {
 			logger.Warn("failed to check CF lookup status", zap.Error(err))
 		} else if shouldLookup && address != "" {
 			// Queue background CF lookup job
-			logger.Debug("queuing CF lookup job", zap.String("cpf", cpf), zap.String("address", address))
+			logger.Debug("queuing CF lookup job", observability.CPFField(cpf))
 			queueCFLookupJob(ctx, cpf, address)
 		}
 	} else {
-		logger.Debug("CF lookup service disabled - skipping CF lookup check", zap.String("cpf", cpf))
+		logger.Debug("CF lookup service disabled - skipping CF lookup check", observability.CPFField(cpf))
 	}
 	cfSpan.End()
 
@@ -170,9 +206,53 @@ func GetCitizenData(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetCitizenData completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
+}
+
+func ensureMinimalCitizen(ctx context.Context, cpf string, claims *models.JWTClaims) (*models.Citizen, error) {
+	if claims == nil || claims.PreferredUsername != cpf {
+		return nil, fmt.Errorf("claims do not match requested CPF")
+	}
+
+	nome := strings.TrimSpace(claims.Name)
+	if nome == "" && (claims.GivenName != "" || claims.FamilyName != "") {
+		nome = strings.TrimSpace(claims.GivenName + " " + claims.FamilyName)
+	}
+
+	var nomePtr *string
+	if nome != "" {
+		nomePtr = &nome
+	}
+
+	var particao int64
+	if len(cpf) >= 2 {
+		if p, err := strconv.ParseInt(cpf[:2], 10, 64); err == nil {
+			particao = p
+		}
+	}
+
+	collection := config.MongoDB.Collection(config.AppConfig.CitizenCollection)
+	filter := bson.M{"cpf": cpf}
+	update := bson.M{
+		"$setOnInsert": bson.M{
+			"cpf":          cpf,
+			"nome":         nomePtr,
+			"cpf_particao": particao,
+		},
+	}
+	opts := options.Update().SetUpsert(true)
+	_, err := collection.UpdateOne(ctx, filter, update, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.Citizen{
+		CPF:         cpf,
+		Nome:        nomePtr,
+		CPFParticao: particao,
+	}, nil
 }
 
 // Helper: Get merged citizen data (as delivered by /citizen/{cpf})
@@ -221,6 +301,15 @@ func getMergedCitizenData(ctx context.Context, cpf string) (*models.Citizen, err
 	if selfDeclared.Raca != nil {
 		citizen.Raca = selfDeclared.Raca
 	}
+	if selfDeclared.Nascimento != nil && selfDeclared.Nascimento.Data != nil {
+		if citizen.Nascimento == nil {
+			citizen.Nascimento = selfDeclared.Nascimento
+		} else if citizen.Nascimento.Data == nil {
+			citizen.Nascimento.Data = selfDeclared.Nascimento.Data
+			citizen.Nascimento.Origem = selfDeclared.Nascimento.Origem
+			citizen.Nascimento.Sistema = selfDeclared.Nascimento.Sistema
+		}
+	}
 	// Always set exhibition name field (even if nil) to ensure it appears in JSON response
 	citizen.NomeExibicao = selfDeclared.NomeExibicao
 	// Set new demographic fields
@@ -247,13 +336,14 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		fmt.Sprintf("self_declared_renda_familiar:write:%s", cpf),
 		fmt.Sprintf("self_declared_escolaridade:write:%s", cpf),
 		fmt.Sprintf("self_declared_deficiencia:write:%s", cpf),
+		fmt.Sprintf("self_declared_nascimento:write:%s", cpf),
 	}
 
 	// Try write buffer first (most recent data)
 	results, err := services.BatchReadMultiple(ctx, keys, observability.Logger().Unwrap())
 	if err != nil {
 		observability.Logger().Warn("batch read from write buffer failed",
-			zap.String("cpf", cpf), zap.Error(err))
+			observability.CPFField(cpf), zap.Error(err))
 	}
 
 	// Parse results from write buffer
@@ -347,11 +437,20 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		selfDeclared.Deficiencia = deficienciaData.Deficiencia
 	}
 
+	var nascimentoData struct {
+		CPF        string             `json:"cpf"`
+		Nascimento *models.Nascimento `json:"nascimento"`
+		UpdatedAt  string             `json:"updated_at"`
+	}
+	if parseResult(keys[9], "nascimento", &nascimentoData) && nascimentoData.Nascimento != nil {
+		selfDeclared.Nascimento = nascimentoData.Nascimento
+	}
+
 	// If write buffer didn't have everything, try read cache in batch
 	if selfDeclared.Endereco == nil || selfDeclared.Email == nil ||
 		selfDeclared.Telefone == nil || selfDeclared.Raca == nil || selfDeclared.NomeExibicao == nil ||
 		selfDeclared.Genero == nil || selfDeclared.RendaFamiliar == nil ||
-		selfDeclared.Escolaridade == nil || selfDeclared.Deficiencia == nil {
+		selfDeclared.Escolaridade == nil || selfDeclared.Deficiencia == nil || selfDeclared.Nascimento == nil {
 
 		cacheKeys := []string{
 			fmt.Sprintf("self_declared_address:cache:%s", cpf),
@@ -363,16 +462,17 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			fmt.Sprintf("self_declared_renda_familiar:cache:%s", cpf),
 			fmt.Sprintf("self_declared_escolaridade:cache:%s", cpf),
 			fmt.Sprintf("self_declared_deficiencia:cache:%s", cpf),
+			fmt.Sprintf("self_declared_nascimento:cache:%s", cpf),
 		}
 
 		cacheResults, err := services.BatchReadMultiple(ctx, cacheKeys, observability.Logger().Unwrap())
 		if err != nil {
 			observability.Logger().Warn("batch read from cache failed",
-				zap.String("cpf", cpf), zap.Error(err))
+				observability.CPFField(cpf), zap.Error(err))
 		}
 
 		// Parse missing data from cache
-		parseCacheResult := func(key, dataType string, target interface{}) bool {
+		parseCacheResult := func(key, _ string, target interface{}) bool {
 			if data, exists := cacheResults[key]; exists && data != "" {
 				if err := json.Unmarshal([]byte(data), target); err == nil {
 					return true
@@ -408,16 +508,19 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		if selfDeclared.Deficiencia == nil && parseCacheResult(cacheKeys[8], "deficiencia", &deficienciaData) && deficienciaData.Deficiencia != nil {
 			selfDeclared.Deficiencia = deficienciaData.Deficiencia
 		}
+		if selfDeclared.Nascimento == nil && parseCacheResult(cacheKeys[9], "nascimento", &nascimentoData) && nascimentoData.Nascimento != nil {
+			selfDeclared.Nascimento = nascimentoData.Nascimento
+		}
 	}
 
 	// Final fallback to MongoDB for any missing individual fields
 	if selfDeclared.Endereco == nil || selfDeclared.Email == nil ||
 		selfDeclared.Telefone == nil || selfDeclared.Raca == nil || selfDeclared.NomeExibicao == nil ||
 		selfDeclared.Genero == nil || selfDeclared.RendaFamiliar == nil ||
-		selfDeclared.Escolaridade == nil || selfDeclared.Deficiencia == nil {
+		selfDeclared.Escolaridade == nil || selfDeclared.Deficiencia == nil || selfDeclared.Nascimento == nil {
 
 		observability.Logger().Debug("fallback to MongoDB for missing self-declared fields",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Bool("missing_endereco", selfDeclared.Endereco == nil),
 			zap.Bool("missing_email", selfDeclared.Email == nil),
 			zap.Bool("missing_telefone", selfDeclared.Telefone == nil),
@@ -432,7 +535,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 		err := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&mongoSelfDeclared)
 		if err != nil && err != mongo.ErrNoDocuments {
 			observability.Logger().Warn("failed to fetch self-declared data from MongoDB",
-				zap.String("cpf", cpf), zap.Error(err))
+				observability.CPFField(cpf), zap.Error(err))
 		} else if err == nil {
 			// Fill in missing fields from MongoDB
 			if selfDeclared.Endereco == nil && mongoSelfDeclared.Endereco != nil {
@@ -462,9 +565,12 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 			if selfDeclared.Deficiencia == nil && mongoSelfDeclared.Deficiencia != nil {
 				selfDeclared.Deficiencia = mongoSelfDeclared.Deficiencia
 			}
+			if selfDeclared.Nascimento == nil && mongoSelfDeclared.Nascimento != nil {
+				selfDeclared.Nascimento = mongoSelfDeclared.Nascimento
+			}
 
 			observability.Logger().Debug("filled missing self-declared fields from MongoDB",
-				zap.String("cpf", cpf))
+				observability.CPFField(cpf))
 		}
 	}
 
@@ -484,7 +590,7 @@ func getBatchedSelfDeclaredData(ctx context.Context, cpf string) models.SelfDecl
 // @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou dados de endereço incorretos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
-// @Failure 409 {object} ErrorResponse "Conflito - endereço não alterado (dados idênticos aos atuais)"
+// @Failure 409 {object} ErrorResponse "Conflito - endereço idêntico e ainda dentro do prazo (180 dias)"
 // @Failure 422 {object} ErrorResponse "Dados não processáveis - informações de endereço inválidas"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
@@ -495,16 +601,16 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_self_declared_address"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredAddress called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredAddress called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -554,6 +660,13 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 
 	// Compare data with tracing
 	ctx, compareSpan := utils.TraceDataComparison(ctx, "address_comparison")
+	// Only return 409 if address fields match AND endereco.principal.updated_at is still within threshold.
+	// Allow re-declaration (renew updated_at only) when:
+	// 1. The address timestamp is outdated (updated_at > threshold ago)
+	// 2. No updated_at timestamp exists (legacy data)
+	// Use principal.updated_at (not document-level updated_at) because other self-declared
+	// fields bump the document timestamp without changing the address.
+	addressUnchanged := false
 	if current != nil && current.Principal != nil &&
 		*current.Principal.Bairro == input.Bairro &&
 		*current.Principal.CEP == input.CEP &&
@@ -565,9 +678,21 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		*current.Principal.Numero == input.Numero &&
 		(current.Principal.TipoLogradouro == nil && input.TipoLogradouro == nil ||
 			(current.Principal.TipoLogradouro != nil && input.TipoLogradouro != nil && *current.Principal.TipoLogradouro == *input.TipoLogradouro)) {
-		compareSpan.End()
-		c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: address matches current data"})
-		return
+
+		isOutdated := current.Principal.UpdatedAt == nil ||
+			time.Since(*current.Principal.UpdatedAt) > config.AppConfig.SelfDeclaredOutdatedThreshold
+
+		if !isOutdated {
+			compareSpan.End()
+			c.JSON(http.StatusConflict, ErrorResponse{Error: "No change: address matches current data"})
+			return
+		}
+
+		addressUnchanged = true
+		logger.Debug("allowing address re-declaration for outdated data",
+			observability.CPFField(cpf),
+			zap.Bool("has_updated_at", current.Principal.UpdatedAt != nil),
+			zap.Duration("threshold", config.AppConfig.SelfDeclaredOutdatedThreshold))
 	}
 	compareSpan.End()
 
@@ -651,9 +776,11 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	}
 	auditSpan.End()
 
-	// Handle CF data invalidation when address changes (only if enabled)
+	// Handle CF data invalidation when address content changes (skip date-only renewal)
 	ctx, cfInvalidateSpan := utils.TraceBusinessLogic(ctx, "cf_invalidate_on_address_change")
-	if services.CFLookupServiceInstance != nil {
+	if addressUnchanged {
+		logger.Debug("address content unchanged - skipping CF invalidation/lookup", observability.CPFField(cpf))
+	} else if services.CFLookupServiceInstance != nil {
 		newAddress := fmt.Sprintf("%s, %s, %s, %s, %s, %s",
 			input.Logradouro, input.Numero,
 			func() string {
@@ -670,12 +797,14 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 		if err != nil {
 			logger.Warn("failed to invalidate CF data for address change", zap.Error(err))
 		} else {
-			// Queue new CF lookup for the updated address
-			logger.Debug("queuing CF lookup for updated address", zap.String("cpf", cpf))
+			// Address changed (or no prior CF): allow a new lookup even if a pending
+			// lock still exists from a previous enqueue within the TTL window.
+			services.ClearCFLookupPending(ctx, cpf)
+			logger.Debug("queuing CF lookup for updated address", observability.CPFField(cpf))
 			queueCFLookupJob(ctx, cpf, newAddress)
 		}
 	} else {
-		logger.Debug("CF lookup service disabled - skipping CF data invalidation", zap.String("cpf", cpf))
+		logger.Debug("CF lookup service disabled - skipping CF data invalidation", observability.CPFField(cpf))
 	}
 	cfInvalidateSpan.End()
 
@@ -687,7 +816,7 @@ func UpdateSelfDeclaredAddress(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredAddress completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -718,16 +847,16 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_phone"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredPhone called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredPhone called", observability.CPFField(cpf))
 
 	// Parse input with tracing
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "phone")
@@ -800,7 +929,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 
 		// Data is outdated or has no timestamp - allow re-declaration
 		logger.Debug("allowing phone re-declaration for outdated data",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Bool("has_updated_at", current.UpdatedAt != nil),
 			zap.Duration("threshold", config.AppConfig.SelfDeclaredOutdatedThreshold))
 	}
@@ -831,7 +960,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	// This preserves any existing verified phone until the new one is verified
 	ctx, skipUpdateSpan := utils.TraceBusinessLogic(ctx, "skip_phone_update_until_verified")
 	logger.Debug("skipping phone update until verification - preserving existing verified phone",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.String("new_phone", fullPhone))
 	skipUpdateSpan.End()
 
@@ -933,7 +1062,7 @@ func UpdateSelfDeclaredPhone(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredPhone completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -963,16 +1092,16 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_email"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredEmail called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredEmail called", observability.CPFField(cpf))
 
 	// Parse input with tracing
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "email")
@@ -1052,7 +1181,7 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 
 		// Data is outdated or has no timestamp - allow re-declaration
 		logger.Debug("allowing email re-declaration for outdated data",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Bool("has_updated_at", current.UpdatedAt != nil),
 			zap.Duration("threshold", config.AppConfig.SelfDeclaredOutdatedThreshold))
 	}
@@ -1138,7 +1267,7 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredEmail completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -1167,16 +1296,16 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_ethnicity"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredRaca called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredRaca called", observability.CPFField(cpf))
 
 	// Parse input with tracing
 	ctx, inputSpan := utils.TraceInputParsing(ctx, "ethnicity")
@@ -1296,7 +1425,7 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredRaca completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -1326,16 +1455,16 @@ func UpdateSelfDeclaredNomeExibicao(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_exhibition_name"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredNomeExibicao called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredNomeExibicao called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1453,7 +1582,7 @@ func UpdateSelfDeclaredNomeExibicao(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredNomeExibicao completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -1594,16 +1723,16 @@ func GetFirstLogin(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_first_login"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("GetFirstLogin called", zap.String("cpf", cpf))
+	logger.Debug("GetFirstLogin called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1634,7 +1763,7 @@ func GetFirstLogin(c *gin.Context) {
 			dbSpan.End()
 
 			logger.Debug("no user config found - returning first login true",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.String("reason", "document_not_found"))
 
 			// Serialize response with tracing
@@ -1645,7 +1774,7 @@ func GetFirstLogin(c *gin.Context) {
 			// Log total operation time
 			totalDuration := time.Since(startTime)
 			logger.Debug("GetFirstLogin completed (first login - no config)",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.Bool("first_login", true),
 				zap.Duration("total_duration", totalDuration),
 				zap.String("status", "success"))
@@ -1660,7 +1789,7 @@ func GetFirstLogin(c *gin.Context) {
 		})
 		dbSpan.End()
 		logger.Error("failed to get user config via DataManager",
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get user config"})
 		return
@@ -1672,7 +1801,7 @@ func GetFirstLogin(c *gin.Context) {
 	dbSpan.End()
 
 	logger.Debug("user config found and returned",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("first_login", userConfig.FirstLogin),
 		zap.Bool("opt_in", userConfig.OptIn),
 		zap.Time("updated_at", userConfig.UpdatedAt))
@@ -1685,7 +1814,7 @@ func GetFirstLogin(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetFirstLogin completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("first_login", userConfig.FirstLogin),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -1712,16 +1841,16 @@ func UpdateFirstLogin(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_first_login"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateFirstLogin called", zap.String("cpf", cpf))
+	logger.Debug("UpdateFirstLogin called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1802,7 +1931,7 @@ func UpdateFirstLogin(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateFirstLogin completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -1828,16 +1957,16 @@ func GetOptIn(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_opt_in"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("GetOptIn called", zap.String("cpf", cpf))
+	logger.Debug("GetOptIn called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -1867,7 +1996,7 @@ func GetOptIn(c *gin.Context) {
 			dbSpan.End()
 
 			logger.Debug("no user config found - returning default opt_in true",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.String("reason", "document_not_found"))
 
 			// Serialize response with tracing (with nil category_opt_ins for backward compatibility)
@@ -1882,7 +2011,7 @@ func GetOptIn(c *gin.Context) {
 			// Log total operation time
 			totalDuration := time.Since(startTime)
 			logger.Debug("GetOptIn completed (default value - no config)",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.Bool("opt_in", true),
 				zap.Bool("default_value", true),
 				zap.Duration("total_duration", totalDuration),
@@ -1915,7 +2044,7 @@ func GetOptIn(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetOptIn completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("opt_in", userConfig.OptIn),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -1944,16 +2073,16 @@ func UpdateOptIn(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_opt_in"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateOptIn called", zap.String("cpf", cpf))
+	logger.Debug("UpdateOptIn called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -2048,7 +2177,7 @@ func UpdateOptIn(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateOptIn completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Bool("new_opt_in_status", *input.OptIn),
 		zap.String("status", "success"))
@@ -2118,15 +2247,15 @@ func UpdateSelfDeclaredGenero(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_gender"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredGenero called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredGenero called", observability.CPFField(cpf))
 
 	// Validate CPF format
 	if !utils.ValidateCPF(cpf) {
@@ -2225,7 +2354,7 @@ func UpdateSelfDeclaredGenero(c *gin.Context) {
 
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredGenero completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -2292,15 +2421,15 @@ func UpdateSelfDeclaredRendaFamiliar(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_family_income"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredRendaFamiliar called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredRendaFamiliar called", observability.CPFField(cpf))
 
 	// Validate CPF format
 	if !utils.ValidateCPF(cpf) {
@@ -2399,7 +2528,7 @@ func UpdateSelfDeclaredRendaFamiliar(c *gin.Context) {
 
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredRendaFamiliar completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -2466,15 +2595,15 @@ func UpdateSelfDeclaredEscolaridade(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_education"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredEscolaridade called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredEscolaridade called", observability.CPFField(cpf))
 
 	// Validate CPF format
 	if !utils.ValidateCPF(cpf) {
@@ -2573,7 +2702,7 @@ func UpdateSelfDeclaredEscolaridade(c *gin.Context) {
 
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredEscolaridade completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
 		zap.String("status", "success"))
@@ -2640,15 +2769,15 @@ func UpdateSelfDeclaredDeficiencia(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_disability"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("UpdateSelfDeclaredDeficiencia called", zap.String("cpf", cpf))
+	logger.Debug("UpdateSelfDeclaredDeficiencia called", observability.CPFField(cpf))
 
 	// Validate CPF format
 	if !utils.ValidateCPF(cpf) {
@@ -2747,9 +2876,195 @@ func UpdateSelfDeclaredDeficiencia(c *gin.Context) {
 
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateSelfDeclaredDeficiencia completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.Duration("cache_duration", cacheDuration),
+		zap.String("status", "success"))
+}
+
+// UpdateSelfDeclaredBirthDate godoc
+// @Summary Atualizar data de nascimento autodeclarada
+// @Description Atualiza ou define a data de nascimento autodeclarada do cidadão. Bloqueado se já houver data oficial.
+// @Tags citizen
+// @Accept json
+// @Produce json
+// @Param cpf path string true "CPF do cidadão (11 dígitos)" minLength(11) maxLength(11)
+// @Param data body models.SelfDeclaredBirthDateInput true "Data de nascimento autodeclarada (YYYY-MM-DD)"
+// @Security BearerAuth
+// @Success 200 {object} SuccessResponse "Data de nascimento atualizada com sucesso"
+// @Failure 400 {object} ErrorResponse "Formato de CPF ou data inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
+// @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
+// @Failure 422 {object} ErrorResponse "Data de nascimento oficial não pode ser alterada por autodeclaração"
+// @Failure 500 {object} ErrorResponse "Erro interno do servidor"
+// @Router /citizen/{cpf}/birth-date [put]
+func UpdateSelfDeclaredBirthDate(c *gin.Context) {
+	startTime := time.Now()
+	ctx, span := otel.Tracer("").Start(c.Request.Context(), "UpdateSelfDeclaredBirthDate")
+	defer span.End()
+
+	cpf := c.Param("cpf")
+	logger := observability.Logger().With(observability.CPFField(cpf))
+
+	span.SetAttributes(
+		observability.CPFAttr(cpf),
+		attribute.String("operation", "update_birth_date"),
+		attribute.String("service", "citizen"),
+	)
+
+	logger.Debug("UpdateSelfDeclaredBirthDate called", observability.CPFField(cpf))
+
+	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
+	if !utils.ValidateCPF(cpf) {
+		utils.RecordErrorInSpan(cpfSpan, fmt.Errorf("invalid CPF format"), map[string]interface{}{
+			"cpf": cpf,
+		})
+		cpfSpan.End()
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid CPF format"})
+		return
+	}
+	cpfSpan.End()
+
+	ctx, inputSpan := utils.TraceInputParsing(ctx, "birth_date")
+	var input models.SelfDeclaredBirthDateInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.RecordErrorInSpan(inputSpan, err, map[string]interface{}{
+			"error.type": "input_parsing",
+			"input.type": "SelfDeclaredBirthDateInput",
+		})
+		inputSpan.End()
+		logger.Error("failed to parse input", zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid input format"})
+		return
+	}
+	inputSpan.End()
+
+	dateStr := input.GetDateString()
+	ctx, validationSpan := utils.TraceInputValidation(ctx, "birth_date_value", "birth_date")
+	parsedDate, err := models.ParseBirthDate(dateStr)
+	if err != nil {
+		utils.RecordErrorInSpan(validationSpan, err, map[string]interface{}{
+			"invalid_value": dateStr,
+		})
+		validationSpan.End()
+		logger.Error("invalid birth date value", zap.String("value", dateStr), zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	validationSpan.End()
+
+	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.CitizenCollection, "cpf")
+	var baseCitizen models.Citizen
+	err = config.MongoDB.Collection(config.AppConfig.CitizenCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&baseCitizen)
+	if err != nil && err != mongo.ErrNoDocuments {
+		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{
+			"db.collection": config.AppConfig.CitizenCollection,
+			"db.filter":     "cpf",
+		})
+		findSpan.End()
+		observability.DatabaseOperations.WithLabelValues("find", "error").Inc()
+		logger.Error("failed to check base citizen data", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	findSpan.End()
+
+	if err == nil && baseCitizen.Nascimento != nil && baseCitizen.Nascimento.Data != nil {
+		if baseCitizen.Nascimento.Origem == nil || *baseCitizen.Nascimento.Origem != "self-declared" {
+			c.JSON(http.StatusUnprocessableEntity, ErrorResponse{Error: "Data de nascimento oficial não pode ser alterada por autodeclaração"})
+			return
+		}
+	}
+
+	var jwtClaims *models.JWTClaims
+	if claims, exists := c.Get("claims"); exists {
+		if parsed, ok := claims.(*models.JWTClaims); ok {
+			jwtClaims = parsed
+		}
+	}
+
+	if (err == mongo.ErrNoDocuments || baseCitizen.CPF == "") && jwtClaims != nil && jwtClaims.PreferredUsername == cpf {
+		if _, ensureErr := ensureMinimalCitizen(ctx, cpf, jwtClaims); ensureErr != nil {
+			logger.Warn("failed to ensure minimal citizen during birth date update", zap.Error(ensureErr))
+		}
+	}
+
+	origem := "self-declared"
+	sistema := "rmi"
+	nascimento := &models.Nascimento{
+		Data:    parsedDate,
+		Origem:  &origem,
+		Sistema: &sistema,
+	}
+
+	ctx, updateSpan := utils.TraceBusinessLogic(ctx, "update_birth_date_via_cache")
+	cacheService := services.NewCacheService()
+	err = cacheService.UpdateSelfDeclaredBirthDate(ctx, cpf, nascimento)
+	if err != nil {
+		utils.RecordErrorInSpan(updateSpan, err, map[string]interface{}{
+			"cache.operation": "update_self_declared_birth_date",
+			"cache.service":   "unified_cache_service",
+		})
+		updateSpan.End()
+		observability.DatabaseOperations.WithLabelValues("update", "error").Inc()
+		logger.Error("failed to update self-declared birth date via cache service", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
+		return
+	}
+	updateSpan.End()
+
+	observability.DatabaseOperations.WithLabelValues("update", "success").Inc()
+	observability.SelfDeclaredUpdates.WithLabelValues("success").Inc()
+
+	ctx, cacheSpan := utils.TraceCacheInvalidation(ctx, fmt.Sprintf("citizen:%s", cpf))
+	cacheKey := fmt.Sprintf("citizen:%s", cpf)
+	if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_error", err.Error())
+		logger.Warn("failed to invalidate old cache", zap.Error(err))
+	} else {
+		utils.AddSpanAttribute(cacheSpan, "cache.invalidation_success", true)
+	}
+	cacheSpan.End()
+
+	ctx, auditSpan := utils.TraceAuditLogging(ctx, "update", "birth_date")
+	auditCtx := utils.AuditContext{
+		CPF:       cpf,
+		UserID:    c.GetString("user_id"),
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+		RequestID: c.GetString("RequestID"),
+	}
+
+	oldDate := ""
+	if baseCitizen.Nascimento != nil && baseCitizen.Nascimento.Data != nil {
+		oldDate = baseCitizen.Nascimento.Data.Format("2006-01-02")
+	} else {
+		var existingSelfDeclared models.SelfDeclaredData
+		if errFind := config.MongoDB.Collection(config.AppConfig.SelfDeclaredCollection).FindOne(ctx, bson.M{"cpf": cpf}).Decode(&existingSelfDeclared); errFind == nil {
+			if existingSelfDeclared.Nascimento != nil && existingSelfDeclared.Nascimento.Data != nil {
+				oldDate = existingSelfDeclared.Nascimento.Data.Format("2006-01-02")
+			}
+		}
+	}
+
+	err = utils.LogBirthDateUpdate(ctx, auditCtx, oldDate, dateStr)
+	if err != nil {
+		utils.RecordErrorInSpan(auditSpan, err, map[string]interface{}{
+			"audit.action":   "update",
+			"audit.resource": "birth_date",
+		})
+		logger.Warn("failed to log audit event", zap.Error(err))
+	}
+	auditSpan.End()
+
+	_, responseSpan := utils.TraceResponseSerialization(ctx, "success")
+	c.JSON(http.StatusOK, SuccessResponse{Message: "Self-declared birth date updated successfully"})
+	responseSpan.End()
+
+	totalDuration := time.Since(startTime)
+	logger.Debug("UpdateSelfDeclaredBirthDate completed",
+		observability.CPFField(cpf),
+		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
 
@@ -2814,16 +3129,16 @@ func GetCitizenWallet(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_citizen_wallet"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("GetCitizenWallet called", zap.String("cpf", cpf))
+	logger.Debug("GetCitizenWallet called", observability.CPFField(cpf))
 
 	// Validate CPF with tracing
 	ctx, cpfSpan := utils.TraceInputValidation(ctx, "cpf_format", "cpf")
@@ -2852,7 +3167,7 @@ func GetCitizenWallet(c *gin.Context) {
 		dataSpan.End()
 		if err == services.ErrDocumentNotFound {
 			logger.Debug("citizen wallet not found",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.String("collection", config.AppConfig.CitizenCollection))
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "citizen not found"})
 			return
@@ -2882,11 +3197,8 @@ func GetCitizenWallet(c *gin.Context) {
 
 	// Check if we need to populate CF data in saude.clinica_familia
 	ctx, cfDataSpan := utils.TraceBusinessLogic(ctx, "cf_data_integration_wallet")
-	needsCFData := false
-	if wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil ||
-		wallet.Saude.ClinicaFamilia.Indicador == nil || !*wallet.Saude.ClinicaFamilia.Indicador {
-		needsCFData = true
-	}
+	needsCFData := wallet.Saude == nil || wallet.Saude.ClinicaFamilia == nil ||
+		wallet.Saude.ClinicaFamilia.Indicador == nil || !*wallet.Saude.ClinicaFamilia.Indicador
 
 	logger.Info("WALLET CF CHECK", zap.Bool("needs_cf_data", needsCFData))
 
@@ -2900,7 +3212,7 @@ func GetCitizenWallet(c *gin.Context) {
 	}
 
 	logger.Info("CF data integration detailed check",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("needs_cf_data", needsCFData),
 		zap.Bool("saude_is_nil", saudeIsNil),
 		zap.Bool("clinica_familia_is_nil", clinicaFamiliaIsNil),
@@ -2909,47 +3221,59 @@ func GetCitizenWallet(c *gin.Context) {
 		zap.String("operation", "cf_integration_debug"))
 
 	if needsCFData {
-		logger.Debug("attempting to get CF data for citizen", zap.String("cpf", cpf))
+		logger.Debug("attempting to get CF data for citizen", observability.CPFField(cpf))
 
 		// Check if CF lookup service is available
 		if services.CFLookupServiceInstance == nil {
-			logger.Info("CF lookup service disabled - skipping CF data integration", zap.String("cpf", cpf))
+			logger.Info("CF lookup service disabled - skipping CF data integration", observability.CPFField(cpf))
 		} else {
 			// First try to get existing cached CF data
-			logger.Info("CHECKING FOR CACHED CF DATA", zap.String("cpf", cpf))
+			logger.Info("CHECKING FOR CACHED CF DATA", observability.CPFField(cpf))
 			cfData, err := services.CFLookupServiceInstance.GetCFDataForCitizen(ctx, cpf)
 			if err != nil || cfData == nil || !cfData.IsActive {
 				// No cached data, try synchronous CF lookup
-				logger.Info("NO CACHED CF DATA - ATTEMPTING SYNCHRONOUS LOOKUP", zap.String("cpf", cpf))
+				logger.Info("NO CACHED CF DATA - ATTEMPTING SYNCHRONOUS LOOKUP", observability.CPFField(cpf))
 
-				// Get citizen address for CF lookup - prioritize self-declared address directly
-				address := getSelfDeclaredAddressForCFLookup(ctx, cpf)
-				if address == "" {
-					// Fallback to extraction from citizen data
+				// Gate coverage using the same address source as the lookup:
+				// self-declared when present, otherwise base citizen data.
+				var municipio *string
+				var address string
+				if selfDeclaredPrincipal := getSelfDeclaredEnderecoPrincipalForCFLookup(ctx, cpf); selfDeclaredPrincipal != nil {
+					municipio = selfDeclaredPrincipal.Municipio
+					address = buildAddressString(selfDeclaredPrincipal)
+				} else {
+					if citizen.Endereco != nil && citizen.Endereco.Principal != nil {
+						municipio = citizen.Endereco.Principal.Municipio
+					}
 					address = services.CFLookupServiceInstance.ExtractAddress(&citizen)
 				}
-				logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", zap.String("address", address))
+				if services.IsMunicipioCoberto(municipio) {
+					logger.Info("EXTRACTED ADDRESS FOR CF LOOKUP", observability.CPFField(cpf), zap.Bool("address_found", address != ""))
 
-				if address != "" {
-					logger.Info("CALLING TrySynchronousCFLookup", zap.String("cpf", cpf), zap.String("address", address))
-					cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
-					if err != nil {
-						logger.Info("SYNCHRONOUS CF LOOKUP FAILED", zap.Error(err), zap.String("cpf", cpf))
+					if address != "" {
+						logger.Info("CALLING TrySynchronousCFLookup", observability.CPFField(cpf))
+						cfData, err = services.CFLookupServiceInstance.TrySynchronousCFLookup(ctx, cpf, address)
+						if err != nil {
+							logger.Info("SYNCHRONOUS CF LOOKUP FAILED",
+								append(services.CFLookupErrorFields(err),
+									observability.CPFField(cpf))...)
+						} else {
+							logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
+						}
 					} else {
-						logger.Info("SYNCHRONOUS CF LOOKUP RESULT", zap.Bool("cf_data_found", cfData != nil))
+						logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", observability.CPFField(cpf))
 					}
 				} else {
-					logger.Info("NO ADDRESS EXTRACTED - SKIPPING CF LOOKUP", zap.String("cpf", cpf))
+					logger.Debug("município não coberto pelo MCP, ignorando lookup síncrono", observability.CPFField(cpf))
 				}
 			} else {
-				logger.Info("FOUND CACHED CF DATA", zap.String("cpf", cpf), zap.Bool("is_active", cfData.IsActive))
+				logger.Info("FOUND CACHED CF DATA", observability.CPFField(cpf), zap.Bool("is_active", cfData.IsActive))
 			}
 
 			if cfData != nil && cfData.IsActive {
 				logger.Info("integrating CF data into wallet saude.clinica_familia",
-					zap.String("cpf", cpf),
+					observability.CPFField(cpf),
 					zap.String("cf_name", cfData.CFData.NomePopular),
-					zap.String("cf_address", cfData.AddressUsed),
 					zap.String("cf_source", cfData.LookupSource),
 					zap.String("operation", "cf_integration_success"))
 
@@ -2964,7 +3288,7 @@ func GetCitizenWallet(c *gin.Context) {
 				// Replace/populate equipe_saude_familia with Family Health Team data if available
 				if cfData.EquipeSaudeData != nil {
 					logger.Info("integrating Family Health Team data into wallet saude.equipe_saude_familia",
-						zap.String("cpf", cpf),
+						observability.CPFField(cpf),
 						zap.String("team_name", cfData.EquipeSaudeData.NomeOficial),
 						zap.Int("doctors_count", len(cfData.EquipeSaudeData.Medicos)),
 						zap.Int("nurses_count", len(cfData.EquipeSaudeData.Enfermeiros)),
@@ -2974,7 +3298,7 @@ func GetCitizenWallet(c *gin.Context) {
 				}
 			} else {
 				logger.Debug("no CF data available for citizen",
-					zap.String("cpf", cpf),
+					observability.CPFField(cpf),
 					zap.Bool("cf_data_is_nil", cfData == nil),
 					zap.Bool("cf_data_is_active", cfData != nil && cfData.IsActive))
 			}
@@ -2995,7 +3319,7 @@ func GetCitizenWallet(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetCitizenWallet completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -3023,16 +3347,16 @@ func GetMaintenanceRequests(c *gin.Context) {
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := observability.Logger().With(zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_maintenance_requests"),
 		attribute.String("service", "citizen"),
 	)
 
-	logger.Debug("GetMaintenanceRequests called", zap.String("cpf", cpf))
+	logger.Debug("GetMaintenanceRequests called", observability.CPFField(cpf))
 
 	// Parse pagination parameters with tracing
 	ctx, paginationSpan := utils.TraceInputParsing(ctx, "pagination_parameters")
@@ -3090,7 +3414,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 			// Log total operation time
 			totalDuration := time.Since(startTime)
 			logger.Debug("GetMaintenanceRequests completed (cache hit)",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.Int("page", page),
 				zap.Int("per_page", perPage),
 				zap.Int("total_count", response.Pagination.Total),
@@ -3142,8 +3466,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "internal server error"})
 		return
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var docs []models.MaintenanceRequestDocument
 	if err = cursor.All(ctx, &docs); err != nil {
 		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{
@@ -3212,7 +3535,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetMaintenanceRequests completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.Int("total_count", int(total)),
@@ -3412,9 +3735,8 @@ func getCurrentEmailData(ctx context.Context, cpf string) (*EmailDataWithTimesta
 	}, nil
 }
 
-// getSelfDeclaredAddressForCFLookup gets the current self-declared address for CF lookup
-func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
-	// Try to get from cache first using DataManager
+// getSelfDeclaredEnderecoPrincipalForCFLookup returns the self-declared address principal if present.
+func getSelfDeclaredEnderecoPrincipalForCFLookup(ctx context.Context, cpf string) *models.EnderecoPrincipal {
 	dataManager := services.NewDataManager(config.Redis, config.MongoDB, observability.Logger())
 
 	var addressData struct {
@@ -3425,10 +3747,9 @@ func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
 
 	err := dataManager.Read(ctx, cpf, config.AppConfig.SelfDeclaredCollection, "self_declared_address", &addressData)
 	if err == nil && addressData.Endereco != nil && addressData.Endereco.Principal != nil {
-		return buildAddressString(addressData.Endereco.Principal)
+		return addressData.Endereco.Principal
 	}
 
-	// Fallback to MongoDB with field projection (only get endereco field)
 	var selfDeclared struct {
 		Endereco *models.Endereco `bson:"endereco"`
 	}
@@ -3439,10 +3760,10 @@ func getSelfDeclaredAddressForCFLookup(ctx context.Context, cpf string) string {
 	).Decode(&selfDeclared)
 
 	if err == nil && selfDeclared.Endereco != nil && selfDeclared.Endereco.Principal != nil {
-		return buildAddressString(selfDeclared.Endereco.Principal)
+		return selfDeclared.Endereco.Principal
 	}
 
-	return ""
+	return nil
 }
 
 // buildAddressString builds a complete address string from address components
@@ -3451,18 +3772,18 @@ func buildAddressString(endereco *models.EnderecoPrincipal) string {
 		return ""
 	}
 
-	parts := []string{*endereco.Logradouro}
+	parts := []string{services.SanitizeAddressField(*endereco.Logradouro)}
 
 	if endereco.Numero != nil && *endereco.Numero != "" {
-		parts = append(parts, *endereco.Numero)
+		parts = append(parts, services.SanitizeAddressField(*endereco.Numero))
 	}
 
 	if endereco.Complemento != nil && *endereco.Complemento != "" {
-		parts = append(parts, *endereco.Complemento)
+		parts = append(parts, services.SanitizeAddressField(*endereco.Complemento))
 	}
 
 	if endereco.Bairro != nil && *endereco.Bairro != "" {
-		parts = append(parts, *endereco.Bairro)
+		parts = append(parts, services.SanitizeAddressField(*endereco.Bairro))
 	}
 
 	if endereco.Municipio != nil && *endereco.Municipio != "" {

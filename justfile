@@ -72,8 +72,14 @@ debug-cache:
 test-cpf cpf:
     go test -v ./... -cpf={{cpf}}
 
-# Run tests with default CPF
+# Run tests with default CPF (isolate from .env MONGODB_DATABASE=rmi / CF_LOOKUP=true)
 test:
+    #!/usr/bin/env sh
+    MONGODB_DATABASE=rmi_test \
+    CF_LOOKUP_ENABLED=false \
+    CF_LOOKUP_V2_ENABLED=false \
+    WHATSAPP_ENABLED=false \
+    SFMC_ENABLED=false \
     go test -v ./...
 
 # Run tests with coverage
@@ -124,6 +130,8 @@ test-ci:
     WHATSAPP_CAMPAIGN_NAME=${WHATSAPP_CAMPAIGN_NAME:-test} \
     WHATSAPP_COST_CENTER_ID=${WHATSAPP_COST_CENTER_ID:-1} \
     WHATSAPP_HSM_ID=${WHATSAPP_HSM_ID:-1} \
+    VERIFICATION_PROVIDER=${VERIFICATION_PROVIDER:-wetalkie} \
+    SFMC_ENABLED=${SFMC_ENABLED:-false} \
     go test -v -race -coverprofile=coverage.out ./...
 
 # Run E2E tests
@@ -160,6 +168,14 @@ lint:
         go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
     fi
     golangci-lint run
+    # LGPD: fail if CPF is logged/traced without masking (see observability.CPFField)
+    ./scripts/check_cpf_log_masking.sh
+
+# Fail on Go vulnerabilities reachable from this module's code (same as PR gate).
+# Needs a Go toolchain matching go.mod (nix/direnv, or unset GOROOT if using GVM).
+govulncheck:
+    go install golang.org/x/vuln/cmd/govulncheck@latest
+    govulncheck ./...
 
 # Check for outdated dependencies
 deps-check:
@@ -276,7 +292,7 @@ mongodb-start: docker-network
             --network rmi-network \
             -p 27017:27017 \
             -e MONGODB_DATABASE=rmi \
-            mongo:latest
+            mongo:6.0
     else
         echo "MongoDB is already running"
     fi

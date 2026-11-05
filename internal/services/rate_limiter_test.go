@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewRateLimiter(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	rl := NewRateLimiter(10, 100*time.Millisecond, logger)
 
 	if rl == nil {
@@ -27,7 +27,7 @@ func TestNewRateLimiter(t *testing.T) {
 }
 
 func TestRateLimiter_Allow_InitialTokens(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	rl := NewRateLimiter(3, 1*time.Second, logger)
 	ctx := context.Background()
 
@@ -51,7 +51,7 @@ func TestRateLimiter_Allow_InitialTokens(t *testing.T) {
 }
 
 func TestRateLimiter_Allow_TokenRefill(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	rl := NewRateLimiter(2, 50*time.Millisecond, logger)
 	ctx := context.Background()
 
@@ -74,7 +74,7 @@ func TestRateLimiter_Allow_TokenRefill(t *testing.T) {
 }
 
 func TestRateLimiter_Allow_MultipleRefills(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	rl := NewRateLimiter(5, 20*time.Millisecond, logger)
 	ctx := context.Background()
 
@@ -100,7 +100,7 @@ func TestRateLimiter_Allow_MultipleRefills(t *testing.T) {
 }
 
 func TestRateLimiter_GetStatus(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	rl := NewRateLimiter(10, 100*time.Millisecond, logger)
 	ctx := context.Background()
 
@@ -129,7 +129,7 @@ func TestRateLimiter_GetStatus(t *testing.T) {
 }
 
 func TestRateLimiter_MaxTokensCap(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	rl := NewRateLimiter(5, 10*time.Millisecond, logger)
 	ctx := context.Background()
 
@@ -160,7 +160,7 @@ func TestRateLimiter_MaxTokensCap(t *testing.T) {
 }
 
 func TestNewCFRateLimiterManager(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	manager := NewCFRateLimiterManager(60, logger)
 
 	if manager == nil {
@@ -177,7 +177,7 @@ func TestNewCFRateLimiterManager(t *testing.T) {
 }
 
 func TestCFRateLimiterManager_ShouldAllowCFLookup(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	manager := NewCFRateLimiterManager(10, logger)
 	ctx := context.Background()
 
@@ -193,7 +193,7 @@ func TestCFRateLimiterManager_ShouldAllowCFLookup(t *testing.T) {
 }
 
 func TestCFRateLimiterManager_ShouldAllowCFLookup_GlobalLimit(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	manager := NewCFRateLimiterManager(3, logger)
 	ctx := context.Background()
 
@@ -214,7 +214,7 @@ func TestCFRateLimiterManager_ShouldAllowCFLookup_GlobalLimit(t *testing.T) {
 }
 
 func TestCFRateLimiterManager_GetGlobalLimiterStatus(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	manager := NewCFRateLimiterManager(20, logger)
 
 	tokens, maxTokens := manager.GetGlobalLimiterStatus()
@@ -228,7 +228,7 @@ func TestCFRateLimiterManager_GetGlobalLimiterStatus(t *testing.T) {
 }
 
 func TestCFRateLimiterManager_GetCacheSize_Empty(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	manager := NewCFRateLimiterManager(10, logger)
 
 	size := manager.GetCacheSize()
@@ -238,7 +238,7 @@ func TestCFRateLimiterManager_GetCacheSize_Empty(t *testing.T) {
 }
 
 func TestCFRateLimiterManager_CleanupOldEntries_Empty(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	manager := NewCFRateLimiterManager(10, logger)
 
 	// Should not panic on empty cache
@@ -251,7 +251,7 @@ func TestCFRateLimiterManager_CleanupOldEntries_Empty(t *testing.T) {
 }
 
 func TestCFRateLimiterManager_CleanupOldEntries_WithData(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	manager := NewCFRateLimiterManager(10, logger)
 
 	// Add some old entries
@@ -284,7 +284,7 @@ func TestCFRateLimiterManager_CleanupOldEntries_WithData(t *testing.T) {
 }
 
 func TestCFRateLimiterManager_CleanupOldEntries_AllOld(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	manager := NewCFRateLimiterManager(10, logger)
 
 	// Add only old entries
@@ -303,7 +303,7 @@ func TestCFRateLimiterManager_CleanupOldEntries_AllOld(t *testing.T) {
 }
 
 func TestRateLimiter_Concurrent_Allow(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	rl := NewRateLimiter(100, 10*time.Millisecond, logger)
 	ctx := context.Background()
 
@@ -354,7 +354,7 @@ func TestRateLimiter_Concurrent_Allow(t *testing.T) {
 }
 
 func TestRateLimiter_Concurrent_GetStatus(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	rl := NewRateLimiter(50, 10*time.Millisecond, logger)
 
 	// Run concurrent GetStatus calls
@@ -376,7 +376,7 @@ func TestRateLimiter_Concurrent_GetStatus(t *testing.T) {
 }
 
 func TestCFRateLimiterManager_Concurrent_ShouldAllow(t *testing.T) {
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	manager := NewCFRateLimiterManager(50, logger)
 	ctx := context.Background()
 

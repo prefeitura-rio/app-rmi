@@ -7,6 +7,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 )
 
 // TraceOperation traces an operation with timing and attributes
@@ -18,7 +20,7 @@ func TraceOperation(ctx context.Context, operationName string, attributes map[st
 	for k, v := range attributes {
 		switch val := v.(type) {
 		case string:
-			otelAttrs = append(otelAttrs, attribute.String(k, val))
+			otelAttrs = append(otelAttrs, attribute.String(k, maskSpanStringAttr(k, val)))
 		case int:
 			otelAttrs = append(otelAttrs, attribute.Int(k, val))
 		case int64:
@@ -271,7 +273,8 @@ func AddTimingToSpan(span trace.Span, startTime time.Time) {
 	)
 }
 
-// RecordErrorInSpan records an error in a span with additional context
+// RecordErrorInSpan records an error in a span with additional context.
+// String values under key "cpf" are masked (LGPD).
 func RecordErrorInSpan(span trace.Span, err error, context map[string]interface{}) {
 	span.RecordError(err)
 
@@ -279,7 +282,7 @@ func RecordErrorInSpan(span trace.Span, err error, context map[string]interface{
 	for k, v := range context {
 		switch val := v.(type) {
 		case string:
-			span.SetAttributes(attribute.String(k, val))
+			span.SetAttributes(attribute.String(k, maskSpanStringAttr(k, val)))
 		case int:
 			span.SetAttributes(attribute.Int(k, val))
 		case bool:
@@ -290,11 +293,12 @@ func RecordErrorInSpan(span trace.Span, err error, context map[string]interface{
 	}
 }
 
-// AddSpanAttribute adds a single attribute to a span
+// AddSpanAttribute adds a single attribute to a span.
+// String values under key "cpf" are masked (LGPD).
 func AddSpanAttribute(span trace.Span, key string, value interface{}) {
 	switch val := value.(type) {
 	case string:
-		span.SetAttributes(attribute.String(key, val))
+		span.SetAttributes(attribute.String(key, maskSpanStringAttr(key, val)))
 	case int:
 		span.SetAttributes(attribute.Int(key, val))
 	case int64:
@@ -306,4 +310,11 @@ func AddSpanAttribute(span trace.Span, key string, value interface{}) {
 	default:
 		span.SetAttributes(attribute.String(key, "unknown_type"))
 	}
+}
+
+func maskSpanStringAttr(key, value string) string {
+	if key == "cpf" {
+		return observability.MaskCPF(value)
+	}
+	return value
 }

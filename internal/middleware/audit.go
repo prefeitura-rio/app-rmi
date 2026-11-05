@@ -6,13 +6,30 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
-	"go.uber.org/zap"
 )
 
-// AuditMiddleware logs all PUT/POST/DELETE requests automatically
-// This ensures comprehensive audit trail for all write operations
+// AuditMiddleware logs all PUT/POST/DELETE/PATCH requests automatically.
+// This ensures a comprehensive audit trail for all write operations.
+//
+// # What is stored (MongoDB audit_logs) — LGPD note
+//
+// The audit record keeps CPF in clear text on purpose for rastreabilidade
+// (compliance/forensics). That is intentional and out of scope for log/trace masking.
+//
+// Metadata persisted on successful (2xx) writes may also include sensitive fields
+// when they appear in the HTTP request:
+//   - request_body: raw body truncated to 1000 chars (may contain telefone, e-mail,
+//     endereço, and other self-declared PII from citizen update endpoints)
+//   - query_params: raw query string (rarely contains PII)
+//   - endpoint, method, ip_address, user_agent, response_status
+//   - resource / resource_id (resource_id may be the CPF path param or a phone number)
+//
+// Bodies are not redacted before storage. Logs/traces elsewhere must use
+// observability.CPFField / CPFAttr; audit_logs remain the system of record for CPF.
 func AuditMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		method := c.Request.Method
@@ -185,6 +202,8 @@ func extractResourceFromPath(path string) string {
 			return utils.AuditResourceBetaWhitelist
 		case strings.HasPrefix(path, "admin/notification-categories") || strings.HasPrefix(path, "notification-categories"):
 			return utils.AuditResourceNotificationCategory
+		case strings.HasPrefix(path, "admin/mobilidade/"):
+			return "mobilidade_catalog"
 		default:
 			return resource
 		}
@@ -209,6 +228,12 @@ func extractResourceID(c *gin.Context, path string) string {
 		return id
 	}
 	if id := c.Param("category_id"); id != "" {
+		return id
+	}
+	if id := c.Param("brand_id"); id != "" {
+		return id
+	}
+	if id := c.Param("model_id"); id != "" {
 		return id
 	}
 	if id := c.Param("pet_id"); id != "" {

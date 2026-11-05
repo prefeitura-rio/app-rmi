@@ -7,16 +7,17 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
+
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 )
 
 type NotificationPreferencesHandlers struct {
@@ -51,10 +52,10 @@ func (h *NotificationPreferencesHandlers) GetCitizenPreferences(c *gin.Context) 
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := h.logger.With(zap.String("cpf", cpf))
+	logger := h.logger.With(observability.CPFField(cpf))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_citizen_notification_preferences"),
 		attribute.String("service", "notification_preferences"),
 	)
@@ -107,7 +108,7 @@ func (h *NotificationPreferencesHandlers) GetCitizenPreferences(c *gin.Context) 
 			}
 
 			logger.Debug("GetCitizenNotificationPreferences completed (defaults)",
-				zap.String("cpf", cpf),
+				observability.CPFField(cpf),
 				zap.Bool("opt_in", true),
 				zap.Duration("total_duration", time.Since(startTime)),
 				zap.String("status", "success"))
@@ -148,7 +149,7 @@ func (h *NotificationPreferencesHandlers) GetCitizenPreferences(c *gin.Context) 
 		// Persist the initialization to avoid re-initialization on every read
 		cacheService := services.NewCacheService()
 		if err := cacheService.UpdateUserConfig(ctx, cpf, &userConfig); err != nil {
-			logger.Warn("failed to persist initialized category opt-ins", zap.String("cpf", cpf), zap.Error(err))
+			logger.Warn("failed to persist initialized category opt-ins", observability.CPFField(cpf), zap.Error(err))
 		} else {
 			// Invalidate cache to ensure fresh read
 			cacheKey := fmt.Sprintf("user_config:%s", cpf)
@@ -171,7 +172,7 @@ func (h *NotificationPreferencesHandlers) GetCitizenPreferences(c *gin.Context) 
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetCitizenNotificationPreferences completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("opt_in", userConfig.OptIn),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -199,10 +200,10 @@ func (h *NotificationPreferencesHandlers) UpdateCitizenPreferences(c *gin.Contex
 	defer span.End()
 
 	cpf := c.Param("cpf")
-	logger := h.logger.With(zap.String("cpf", cpf))
+	logger := h.logger.With(observability.CPFField(cpf))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "update_citizen_notification_preferences"),
 		attribute.String("service", "notification_preferences"),
 	)
@@ -378,7 +379,7 @@ func (h *NotificationPreferencesHandlers) UpdateCitizenPreferences(c *gin.Contex
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateCitizenNotificationPreferences completed",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Bool("old_global_opt_in", oldGlobalOptIn),
 		zap.Bool("new_global_opt_in", userConfig.OptIn),
 		zap.Duration("total_duration", totalDuration),
@@ -409,10 +410,10 @@ func (h *NotificationPreferencesHandlers) UpdateCitizenCategoryPreference(c *gin
 
 	cpf := c.Param("cpf")
 	categoryID := c.Param("category_id")
-	logger := h.logger.With(zap.String("cpf", cpf), zap.String("category_id", categoryID))
+	logger := h.logger.With(observability.CPFField(cpf), zap.String("category_id", categoryID))
 
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("category_id", categoryID),
 		attribute.String("operation", "update_citizen_category_preference"),
 		attribute.String("service", "notification_preferences"),
@@ -741,7 +742,7 @@ func (h *NotificationPreferencesHandlers) UpdatePhonePreferences(c *gin.Context)
 
 	// SYNC: Update CPF preferences if CPF is mapped
 	if mapping.CPF != "" {
-		logger.Debug("syncing preferences to CPF", zap.String("cpf", mapping.CPF))
+		logger.Debug("syncing preferences to CPF", observability.CPFField(mapping.CPF))
 		dataManager := services.NewDataManager(config.Redis, config.MongoDB, h.logger)
 		var userConfig models.UserConfig
 		err = dataManager.Read(ctx, mapping.CPF, config.AppConfig.UserConfigCollection, "user_config", &userConfig)
@@ -779,14 +780,14 @@ func (h *NotificationPreferencesHandlers) UpdatePhonePreferences(c *gin.Context)
 		// Update CPF config
 		cacheService := services.NewCacheService()
 		if err := cacheService.UpdateUserConfig(ctx, mapping.CPF, &userConfig); err != nil {
-			logger.Warn("failed to sync preferences to CPF", zap.String("cpf", mapping.CPF), zap.Error(err))
+			logger.Warn("failed to sync preferences to CPF", observability.CPFField(mapping.CPF), zap.Error(err))
 		} else {
 			// Invalidate CPF cache
 			cacheKey := fmt.Sprintf("user_config:%s", mapping.CPF)
 			if err := config.Redis.Del(ctx, cacheKey).Err(); err != nil {
 				logger.Warn("failed to invalidate CPF cache", zap.String("cache_key", cacheKey), zap.Error(err))
 			}
-			logger.Debug("synced preferences to CPF successfully", zap.String("cpf", mapping.CPF))
+			logger.Debug("synced preferences to CPF successfully", observability.CPFField(mapping.CPF))
 		}
 	}
 
@@ -915,7 +916,7 @@ func (h *NotificationPreferencesHandlers) UpdatePhoneCategoryPreference(c *gin.C
 	// Sync to CPF if mapped
 	if mapping.CPF != "" {
 		c.Set("update_request", fullUpdate)
-		logger.Debug("syncing category preference to CPF", zap.String("cpf", mapping.CPF))
+		logger.Debug("syncing category preference to CPF", observability.CPFField(mapping.CPF))
 
 		dataManager := services.NewDataManager(config.Redis, config.MongoDB, h.logger)
 		var userConfig models.UserConfig
@@ -926,7 +927,7 @@ func (h *NotificationPreferencesHandlers) UpdatePhoneCategoryPreference(c *gin.C
 		if !configExists {
 			defaultCategoryOptIns, err := h.categoryService.InitializeCategoryOptIns(ctx, mapping.OptIn)
 			if err != nil {
-				logger.Warn("failed to initialize category opt-ins for CPF sync", zap.String("cpf", mapping.CPF), zap.Error(err))
+				logger.Warn("failed to initialize category opt-ins for CPF sync", observability.CPFField(mapping.CPF), zap.Error(err))
 			} else {
 				userConfig = models.UserConfig{
 					CPF:            mapping.CPF,
@@ -948,10 +949,10 @@ func (h *NotificationPreferencesHandlers) UpdatePhoneCategoryPreference(c *gin.C
 		// Persist the sync
 		cacheService := services.NewCacheService()
 		if err := cacheService.UpdateUserConfig(ctx, mapping.CPF, &userConfig); err != nil {
-			logger.Warn("failed to sync category to CPF", zap.String("cpf", mapping.CPF), zap.Error(err))
+			logger.Warn("failed to sync category to CPF", observability.CPFField(mapping.CPF), zap.Error(err))
 		} else {
 			if err := config.Redis.Del(ctx, fmt.Sprintf("user_config:%s", mapping.CPF)).Err(); err != nil {
-				logger.Warn("failed to invalidate CPF cache", zap.String("cpf", mapping.CPF), zap.Error(err))
+				logger.Warn("failed to invalidate CPF cache", observability.CPFField(mapping.CPF), zap.Error(err))
 			}
 		}
 
@@ -1018,7 +1019,7 @@ func (h *NotificationPreferencesHandlers) recordOptInHistoryWithPhone(ctx contex
 	if err != nil {
 		h.logger.Error("failed to record opt-in history",
 			zap.Error(err),
-			zap.String("cpf", cpf),
+			observability.CPFField(cpf),
 			zap.String("scope", scope),
 			zap.String("action", action))
 		// Don't fail the main operation for this error

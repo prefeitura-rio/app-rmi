@@ -2,6 +2,7 @@ package logging
 
 import (
 	"os"
+	"sync"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -15,8 +16,28 @@ type SafeLogger struct {
 	logger *zap.Logger
 }
 
-// global instance
-var Logger = &SafeLogger{logger: zap.NewNop()}
+// global instance and its mutex
+var (
+	Logger   = &SafeLogger{logger: zap.NewNop()}
+	loggerMu sync.RWMutex
+)
+
+// NewSafeLogger wraps an existing zap.Logger; a nil logger behaves as a no-op.
+func NewSafeLogger(logger *zap.Logger) *SafeLogger {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	return &SafeLogger{logger: logger}
+}
+
+// GetLogger returns the global logger instance in a thread-safe manner.
+// Use this instead of accessing Logger directly to avoid data races when
+// InitLogger() is called concurrently with goroutines that read the logger.
+func GetLogger() *SafeLogger {
+	loggerMu.RLock()
+	defer loggerMu.RUnlock()
+	return Logger
+}
 
 // InitLogger initializes the global logger safely
 func InitLogger() error {
@@ -45,7 +66,9 @@ func InitLogger() error {
 		return err
 	}
 
+	loggerMu.Lock()
 	Logger = &SafeLogger{logger: zlogger}
+	loggerMu.Unlock()
 	return nil
 }
 

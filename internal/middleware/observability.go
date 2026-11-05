@@ -35,6 +35,7 @@ func RequestLogger() gin.HandlerFunc {
 		observability.RequestDuration.WithLabelValues(
 			path,
 			c.Request.Method,
+			//nolint:gosec // G115: bounded conversion for metrics/status/memory counters
 			string(rune(status)),
 		).Observe(latency.Seconds())
 	}

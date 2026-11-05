@@ -42,8 +42,7 @@ func TestPhoneOptInOptOut(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Request failed: %v", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		// Accept 200 (success) or 409 (already opted in)
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusConflict {
 			body, _ := io.ReadAll(resp.Body)
@@ -61,8 +60,7 @@ func TestPhoneOptInOptOut(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Request failed: %v", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
 			t.Fatalf("Expected status 200, got %d. Body: %s", resp.StatusCode, string(body))
@@ -100,8 +98,7 @@ func TestPhoneOptInOptOut(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Request failed: %v", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusConflict {
 			body, _ := io.ReadAll(resp.Body)
 			t.Fatalf("Expected status 200 or 409, got %d. Body: %s", resp.StatusCode, string(body))
@@ -128,8 +125,7 @@ func TestPhoneOptInOptOut(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Request failed: %v", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
 			t.Fatalf("Expected status 200, got %d. Body: %s", resp.StatusCode, string(body))
@@ -146,8 +142,7 @@ func TestPhoneOptInOptOut(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Request failed: %v", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		// After opt-out, should return 404
 		if resp.StatusCode != http.StatusNotFound {
 			body, _ := io.ReadAll(resp.Body)

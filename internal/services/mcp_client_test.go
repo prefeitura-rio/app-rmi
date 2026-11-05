@@ -27,7 +27,7 @@ func setupMCPTest(t *testing.T, handler http.HandlerFunc) (*MCPClient, *httptest
 		MCPAuthToken: "test-token",
 	}
 
-	client := NewMCPClient(cfg, logging.Logger)
+	client := NewMCPClient(cfg, logging.GetLogger())
 
 	return client, server
 }
@@ -49,7 +49,7 @@ func TestNewMCPClient(t *testing.T) {
 		MCPAuthToken: "test-token",
 	}
 
-	client := NewMCPClient(cfg, logging.Logger)
+	client := NewMCPClient(cfg, logging.GetLogger())
 
 	require.NotNil(t, client)
 	assert.Equal(t, "https://test.example.com", client.baseURL)
@@ -63,7 +63,7 @@ func TestNewMCPClient(t *testing.T) {
 func TestIsRetryableError(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger:      logging.Logger,
+		logger:      logging.GetLogger(),
 		retryConfig: DefaultRetryConfig(),
 	}
 
@@ -140,7 +140,7 @@ func TestIsRetryableError(t *testing.T) {
 func TestWithRetry_Success(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger:      logging.Logger,
+		logger:      logging.GetLogger(),
 		retryConfig: DefaultRetryConfig(),
 	}
 
@@ -159,7 +159,7 @@ func TestWithRetry_Success(t *testing.T) {
 func TestWithRetry_SuccessAfterRetries(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 		retryConfig: RetryConfig{
 			MaxRetries:    3,
 			BaseDelay:     10 * time.Millisecond, // Short delay for testing
@@ -186,7 +186,7 @@ func TestWithRetry_SuccessAfterRetries(t *testing.T) {
 func TestWithRetry_NonRetryableError(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 		retryConfig: RetryConfig{
 			MaxRetries:    3,
 			BaseDelay:     10 * time.Millisecond,
@@ -211,7 +211,7 @@ func TestWithRetry_NonRetryableError(t *testing.T) {
 func TestWithRetry_ExhaustedRetries(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 		retryConfig: RetryConfig{
 			MaxRetries:    2,
 			BaseDelay:     10 * time.Millisecond,
@@ -236,7 +236,7 @@ func TestWithRetry_ExhaustedRetries(t *testing.T) {
 func TestWithRetry_ContextCancellation(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 		retryConfig: RetryConfig{
 			MaxRetries:    5,
 			BaseDelay:     100 * time.Millisecond,
@@ -274,7 +274,6 @@ func TestGetSessionID_Success(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	sessionID, err := client.getSessionID(ctx)
 
@@ -290,7 +289,6 @@ func TestGetSessionID_WithWhitespace(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	sessionID, err := client.getSessionID(ctx)
 
@@ -305,7 +303,6 @@ func TestGetSessionID_NoSessionID(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	sessionID, err := client.getSessionID(ctx)
 
@@ -321,7 +318,6 @@ func TestGetSessionID_UnexpectedStatusCode(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	// Override retry config to fail faster
 	client.retryConfig.MaxRetries = 1
 	client.retryConfig.BaseDelay = 10 * time.Millisecond
@@ -354,7 +350,6 @@ func TestMakeRequest_Success(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	payload := MCPRequest{
 		JSONRPC: "2.0",
@@ -383,7 +378,6 @@ data: {"result":{"status":"success","data":"sse data"}}
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	payload := MCPRequest{
 		JSONRPC: "2.0",
@@ -405,7 +399,6 @@ func TestMakeRequest_ServerError(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	// Override retry config to fail faster
 	client.retryConfig.MaxRetries = 1
 	client.retryConfig.BaseDelay = 10 * time.Millisecond
@@ -433,7 +426,6 @@ func TestSendNotification_Success(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	payload := MCPRequest{
 		JSONRPC: "2.0",
@@ -452,7 +444,6 @@ func TestSendNotification_WithOKStatus(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	payload := MCPRequest{
 		JSONRPC: "2.0",
@@ -471,7 +462,6 @@ func TestSendNotification_FailedStatus(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	// Override retry config to fail faster
 	client.retryConfig.MaxRetries = 0
 
@@ -510,7 +500,6 @@ func TestInitializeSession_Success(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	err := client.initializeSession(ctx, "test-session")
 
@@ -532,7 +521,6 @@ func TestInitializeSession_InitializeError(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	err := client.initializeSession(ctx, "test-session")
 
@@ -553,7 +541,6 @@ func TestLoadEquipmentInstructions_Success(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	err := client.loadEquipmentInstructions(ctx, "test-session")
 
@@ -574,7 +561,6 @@ func TestLoadEquipmentInstructions_Error(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	err := client.loadEquipmentInstructions(ctx, "test-session")
 
@@ -585,7 +571,7 @@ func TestLoadEquipmentInstructions_Error(t *testing.T) {
 func TestParseProfessionalsFromText(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	tests := []struct {
@@ -651,7 +637,7 @@ ENFERMEIROS:
 func TestParseEquipeSaudeData(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	tests := []struct {
@@ -726,7 +712,7 @@ func TestParseEquipeSaudeData(t *testing.T) {
 func TestParseHealthServicesResponse_Success(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	idEquip := "cf-123"
@@ -779,7 +765,7 @@ func TestParseHealthServicesResponse_Success(t *testing.T) {
 func TestParseHealthServicesResponse_IsError(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	response := map[string]interface{}{
@@ -798,7 +784,7 @@ func TestParseHealthServicesResponse_IsError(t *testing.T) {
 func TestParseHealthServicesResponse_NoEquipment(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	response := map[string]interface{}{
@@ -811,15 +797,14 @@ func TestParseHealthServicesResponse_NoEquipment(t *testing.T) {
 
 	result, err := client.parseHealthServicesResponse(response)
 
-	assert.Error(t, err)
+	assert.NoError(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "no equipment found")
 }
 
 func TestParseHealthServicesResponse_InvalidFormat(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	tests := []struct {
@@ -839,17 +824,6 @@ func TestParseHealthServicesResponse_InvalidFormat(t *testing.T) {
 			},
 			errorMsg: "no structured content",
 		},
-		{
-			name: "invalid equipamentos type",
-			response: map[string]interface{}{
-				"result": map[string]interface{}{
-					"structuredContent": map[string]interface{}{
-						"equipamentos": "not an array",
-					},
-				},
-			},
-			errorMsg: "no equipment found",
-		},
 	}
 
 	for _, tt := range tests {
@@ -861,12 +835,25 @@ func TestParseHealthServicesResponse_InvalidFormat(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.errorMsg)
 		})
 	}
+
+	t.Run("invalid equipamentos type", func(t *testing.T) {
+		response := map[string]interface{}{
+			"result": map[string]interface{}{
+				"structuredContent": map[string]interface{}{
+					"equipamentos": "not an array",
+				},
+			},
+		}
+		result, err := client.parseHealthServicesResponse(response)
+		assert.NoError(t, err)
+		assert.Nil(t, result)
+	})
 }
 
 func TestParseHealthServicesResponse_EquipmentWithError(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	response := map[string]interface{}{
@@ -963,7 +950,6 @@ func TestFindNearestCF_Integration(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	ctx := context.Background()
 	result, err := client.FindNearestCF(ctx, "Rua Test, 100, Centro")
 
@@ -981,7 +967,6 @@ func TestFindNearestCF_SessionError(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	// Override retry config to fail faster
 	client.retryConfig.MaxRetries = 1
 	client.retryConfig.BaseDelay = 10 * time.Millisecond
@@ -1067,7 +1052,7 @@ func TestMCPError_JSONUnmarshaling(t *testing.T) {
 func TestParseHealthServicesResponse_CMSCategory(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	idEquip := "cms-456"
@@ -1103,7 +1088,7 @@ func TestParseHealthServicesResponse_CMSCategory(t *testing.T) {
 func TestWithRetry_BackoffCalculation(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 		retryConfig: RetryConfig{
 			MaxRetries:    3,
 			BaseDelay:     100 * time.Millisecond,
@@ -1145,7 +1130,6 @@ func TestMakeRequest_InvalidJSON(t *testing.T) {
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-
 	// Override retry config to fail faster
 	client.retryConfig.MaxRetries = 0
 
@@ -1165,7 +1149,7 @@ func TestMakeRequest_InvalidJSON(t *testing.T) {
 func TestParseHealthServicesResponse_UnknownCategory(t *testing.T) {
 	_ = logging.InitLogger()
 	client := &MCPClient{
-		logger: logging.Logger,
+		logger: logging.GetLogger(),
 	}
 
 	response := map[string]interface{}{

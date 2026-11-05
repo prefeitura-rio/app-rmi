@@ -11,7 +11,7 @@ import (
 func TestNewPetService(t *testing.T) {
 	_ = logging.InitLogger()
 
-	service := NewPetService(nil, logging.Logger)
+	service := NewPetService(nil, logging.GetLogger())
 
 	require.NotNil(t, service)
 	assert.NotNil(t, service.logger)
@@ -29,7 +29,7 @@ func TestPetService_Structure(t *testing.T) {
 
 	service := &PetService{
 		database: nil,
-		logger:   logging.Logger,
+		logger:   logging.GetLogger(),
 	}
 
 	assert.Nil(t, service.database)
