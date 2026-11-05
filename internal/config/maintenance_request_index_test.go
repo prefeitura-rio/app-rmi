@@ -2,7 +2,6 @@ package config
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 )
 
 func TestEnsureMaintenanceRequestIndex_CreatesCPFAndProtocoloIndexes(t *testing.T) {
-	mongoURI := os.Getenv("MONGODB_URI")
+	mongoURI := testMongoURI
 	if mongoURI == "" {
 		t.Skip("Skipping maintenance request index test: MONGODB_URI not set")
 	}
