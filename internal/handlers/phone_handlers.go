@@ -67,12 +67,12 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "get_phone_status"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("GetPhoneStatus called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("GetPhoneStatus called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -98,12 +98,12 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 
 		// Check if it's a phone parsing error and return 400 instead of 500
 		if isPhoneParsingError(err) {
-			h.logger.Warn("invalid phone number format", zap.Error(err), zap.String("phone_number", phoneNumber))
+			h.logger.Warn("invalid phone number format", zap.Error(err), observability.PhoneField(phoneNumber))
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Formato de número de telefone inválido"})
 			return
 		}
 
-		h.logger.Error("failed to get phone status", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to get phone status", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -131,7 +131,7 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("GetPhoneStatus completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Bool("found", response.Found),
 		zap.Bool("quarantined", response.Quarantined),
 		zap.Bool("beta_whitelisted", response.BetaWhitelisted),
@@ -163,12 +163,12 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "get_citizen_by_phone"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("GetCitizenByPhone called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("GetCitizenByPhone called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -206,12 +206,12 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 
 		// Check if it's a phone parsing error and return 400 instead of 500
 		if isPhoneParsingError(err) {
-			h.logger.Warn("invalid phone number format", zap.Error(err), zap.String("phone_number", phoneNumber))
+			h.logger.Warn("invalid phone number format", zap.Error(err), observability.PhoneField(phoneNumber))
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Formato de número de telefone inválido"})
 			return
 		}
 
-		h.logger.Error("failed to get citizen by phone", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to get citizen by phone", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -231,7 +231,7 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("GetCitizenByPhone completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Bool("found", response.Found),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -263,12 +263,12 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "validate_registration"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("ValidateRegistration called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("ValidateRegistration called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -296,7 +296,6 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 	}
 	utils.AddSpanAttribute(inputSpan, "input.name", req.Name)
 	utils.AddSpanAttribute(inputSpan, "input.cpf", req.CPF)
-	utils.AddSpanAttribute(inputSpan, "input.birth_date", req.BirthDate)
 	utils.AddSpanAttribute(inputSpan, "input.channel", req.Channel)
 	inputSpan.End()
 
@@ -321,7 +320,7 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 			"service.operation": "validate_registration",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to validate registration", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to validate registration", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -340,7 +339,7 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("ValidateRegistration completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.Bool("validation_result", response.Valid),
 		zap.String("status", "success"))
@@ -373,12 +372,12 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "phone_opt_in"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("PhoneOptIn called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("PhoneOptIn called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -429,7 +428,7 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 			"service.operation": "opt_in",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to process opt-in", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to process opt-in", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -444,7 +443,7 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("PhoneOptIn completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -476,12 +475,12 @@ func (h *PhoneHandlers) OptOut(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "phone_opt_out"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("PhoneOptOut called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("PhoneOptOut called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -532,7 +531,7 @@ func (h *PhoneHandlers) OptOut(c *gin.Context) {
 			"service.operation": "opt_out",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to process opt-out", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to process opt-out", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -547,7 +546,7 @@ func (h *PhoneHandlers) OptOut(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("PhoneOptOut completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("reason", req.Reason),
 		zap.String("channel", req.Channel),
 		zap.Duration("total_duration", totalDuration),
@@ -580,12 +579,12 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "reject_registration"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("RejectRegistration called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("RejectRegistration called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -646,7 +645,7 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 			"service.operation": "reject_registration",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to reject registration", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to reject registration", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -661,7 +660,7 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("RejectRegistration completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		observability.CPFField(req.CPF),
 		zap.String("channel", req.Channel),
 		zap.String("reason", req.Reason),
@@ -696,12 +695,12 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "bind_phone_to_cpf"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("BindPhoneToCPF called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("BindPhoneToCPF called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -752,7 +751,7 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 			"service.operation": "bind_phone_to_cpf",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to bind phone to CPF", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to bind phone to CPF", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -769,7 +768,7 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("BindPhoneToCPF completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -799,12 +798,12 @@ func (h *PhoneHandlers) QuarantinePhone(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "quarantine_phone"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("QuarantinePhone called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("QuarantinePhone called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -841,7 +840,7 @@ func (h *PhoneHandlers) QuarantinePhone(c *gin.Context) {
 			"service.operation": "quarantine_phone",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to quarantine phone", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to quarantine phone", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -857,7 +856,7 @@ func (h *PhoneHandlers) QuarantinePhone(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("QuarantinePhone completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("status", response.Status),
 		zap.Time("quarantine_until", response.QuarantineUntil),
 		zap.Duration("total_duration", totalDuration),
@@ -889,12 +888,12 @@ func (h *PhoneHandlers) ReleaseQuarantine(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "release_quarantine"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("ReleaseQuarantine called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("ReleaseQuarantine called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -931,7 +930,7 @@ func (h *PhoneHandlers) ReleaseQuarantine(c *gin.Context) {
 			"service.operation": "release_quarantine",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to release quarantine", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to release quarantine", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -947,7 +946,7 @@ func (h *PhoneHandlers) ReleaseQuarantine(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("ReleaseQuarantine completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("status", response.Status),
 		zap.Time("quarantine_until", response.QuarantineUntil),
 		zap.Duration("total_duration", totalDuration),
@@ -1236,7 +1235,7 @@ func (h *PhoneHandlers) validateBoundCPFAccess(ctx context.Context, c *gin.Conte
 		if isPhoneParsingError(err) {
 			return http.StatusBadRequest, err
 		}
-		h.logger.Error("failed to read phone mapping for access check", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to read phone mapping for access check", zap.Error(err), observability.PhoneField(phoneNumber))
 		return http.StatusInternalServerError, err
 	}
 

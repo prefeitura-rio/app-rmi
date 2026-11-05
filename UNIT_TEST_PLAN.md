@@ -108,11 +108,6 @@ Use mocks for external dependencies (MongoDB, Redis).
 - [ ] Member management
 - [ ] Beta status checking
 
-#### `internal/services/registration_validator.go`
-- [ ] Registration validation rules
-- [ ] Required fields checking
-- [ ] Format validation
-
 #### `internal/services/rate_limiter.go`
 - [ ] Rate limit enforcement
 - [ ] Token bucket algorithm

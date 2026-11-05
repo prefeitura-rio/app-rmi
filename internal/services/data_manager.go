@@ -65,7 +65,7 @@ func NewDataManager(redis *redisclient.Client, mongo *mongo.Database, logger *lo
 		},
 		OnStateChange: func(name string, from circuitbreaker.State, to circuitbreaker.State) {
 			logger.Warn("circuit breaker state changed",
-				zap.String("name", name),
+				zap.String("circuit_breaker", name),
 				zap.String("from", from.String()),
 				zap.String("to", to.String()))
 		},

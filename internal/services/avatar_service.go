@@ -183,7 +183,7 @@ func (s *AvatarService) GetAvatarByID(ctx context.Context, avatarID string) (*mo
 		}
 	}
 
-	s.logger.Debug("avatar found and cached", zap.String("id", avatarID), zap.String("name", avatar.Name))
+	s.logger.Debug("avatar found and cached", zap.String("id", avatarID), zap.String("avatar_name", avatar.Name))
 
 	return &avatar, nil
 }
@@ -210,7 +210,7 @@ func (s *AvatarService) CreateAvatar(ctx context.Context, request *models.Avatar
 	collection := s.database.Collection(config.AppConfig.AvatarsCollection)
 	_, err := collection.InsertOne(ctx, avatar)
 	if err != nil {
-		s.logger.Error("failed to create avatar", zap.Error(err), zap.String("name", request.Name))
+		s.logger.Error("failed to create avatar", zap.Error(err), zap.String("avatar_name", request.Name))
 		return nil, fmt.Errorf("failed to create avatar: %w", err)
 	}
 
@@ -219,7 +219,7 @@ func (s *AvatarService) CreateAvatar(ctx context.Context, request *models.Avatar
 
 	s.logger.Info("avatar created successfully",
 		zap.String("id", avatar.ID.Hex()),
-		zap.String("name", avatar.Name),
+		zap.String("avatar_name", avatar.Name),
 		zap.String("url", avatar.URL))
 
 	return avatar, nil

@@ -194,7 +194,7 @@ func (cb *CircuitBreaker) onSuccess(state State, now time.Time) {
 	if state == StateHalfOpen && cb.counts.ConsecutiveSuccesses >= cb.maxRequests {
 		// Only close after maxRequests consecutive successes in half-open state
 		cb.logger.Info("circuit breaker transitioning to closed",
-			zap.String("name", cb.name),
+			zap.String("circuit_breaker", cb.name),
 			zap.Uint32("consecutive_successes", cb.counts.ConsecutiveSuccesses),
 			zap.Uint32("max_requests", cb.maxRequests))
 		cb.setState(StateClosed, now)
@@ -209,11 +209,11 @@ func (cb *CircuitBreaker) onFailure(state State, now time.Time) {
 	if state == StateHalfOpen {
 		// In half-open state, any failure immediately reopens the circuit
 		cb.logger.Warn("circuit breaker reopening due to failure in half-open state",
-			zap.String("name", cb.name))
+			zap.String("circuit_breaker", cb.name))
 		cb.setState(StateOpen, now)
 	} else if cb.readyToTrip(cb.counts) {
 		cb.logger.Warn("circuit breaker opening due to failures",
-			zap.String("name", cb.name),
+			zap.String("circuit_breaker", cb.name),
 			zap.Uint32("consecutive_failures", cb.counts.ConsecutiveFailures),
 			zap.Uint32("total_failures", cb.counts.TotalFailures))
 		cb.setState(StateOpen, now)
@@ -229,7 +229,7 @@ func (cb *CircuitBreaker) currentState(now time.Time) (State, uint64) {
 	case StateOpen:
 		if cb.expiry.Before(now) {
 			cb.logger.Info("circuit breaker transitioning to half-open",
-				zap.String("name", cb.name))
+				zap.String("circuit_breaker", cb.name))
 			cb.setState(StateHalfOpen, now)
 		}
 	}

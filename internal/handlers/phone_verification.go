@@ -231,7 +231,7 @@ func ValidatePhoneVerification(c *gin.Context) {
 	totalDuration := time.Since(startTime)
 	logger.Debug("ValidatePhoneVerification completed",
 		observability.CPFField(cpf),
-		zap.String("phone_number", fullPhone),
+		observability.PhoneField(fullPhone),
 		zap.String("code", req.Code),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))

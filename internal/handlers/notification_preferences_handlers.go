@@ -535,10 +535,10 @@ func (h *NotificationPreferencesHandlers) GetPhonePreferences(c *gin.Context) {
 	defer span.End()
 
 	phoneNumber := c.Param("phone_number")
-	logger := h.logger.With(zap.String("phone_number", phoneNumber))
+	logger := h.logger.With(observability.PhoneField(phoneNumber))
 
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "get_phone_notification_preferences"),
 		attribute.String("service", "notification_preferences"),
 	)
@@ -554,17 +554,15 @@ func (h *NotificationPreferencesHandlers) GetPhonePreferences(c *gin.Context) {
 	// Parse phone number for storage format
 	components, err := utils.ParsePhoneNumber(phoneNumber)
 	if err != nil {
-		logger.Error("failed to parse phone number", zap.String("phone_number", phoneNumber), zap.Error(err))
+		logger.Error("failed to parse phone number", observability.PhoneField(phoneNumber), zap.Error(err))
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid phone number format"})
 		return
 	}
 	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
 	logger.Debug("parsed phone components",
-		zap.String("input_phone", phoneNumber),
 		zap.String("ddi", components.DDI),
 		zap.String("ddd", components.DDD),
-		zap.String("valor", components.Valor),
-		zap.String("storage_phone", storagePhone))
+		zap.String("storage_phone", observability.MaskPhone(storagePhone)))
 
 	// Get phone mapping from database
 	collection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
@@ -572,10 +570,10 @@ func (h *NotificationPreferencesHandlers) GetPhonePreferences(c *gin.Context) {
 	err = collection.FindOne(ctx, map[string]interface{}{"phone_number": storagePhone}).Decode(&mapping)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			logger.Warn("phone mapping not found", zap.String("phone_number", phoneNumber))
+			logger.Warn("phone mapping not found", observability.PhoneField(phoneNumber))
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Phone number not found"})
 		} else {
-			logger.Error("failed to get phone mapping", zap.String("phone_number", phoneNumber), zap.Error(err))
+			logger.Error("failed to get phone mapping", observability.PhoneField(phoneNumber), zap.Error(err))
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get preferences"})
 		}
 		return
@@ -599,7 +597,7 @@ func (h *NotificationPreferencesHandlers) GetPhonePreferences(c *gin.Context) {
 			"updated_at":       mapping.UpdatedAt,
 		}
 		if _, err := collection.UpdateOne(ctx, map[string]interface{}{"phone_number": storagePhone}, map[string]interface{}{"$set": update}); err != nil {
-			logger.Warn("failed to persist initialized category opt-ins for phone", zap.String("phone_number", phoneNumber), zap.Error(err))
+			logger.Warn("failed to persist initialized category opt-ins for phone", observability.PhoneField(phoneNumber), zap.Error(err))
 		}
 	}
 
@@ -643,10 +641,10 @@ func (h *NotificationPreferencesHandlers) UpdatePhonePreferences(c *gin.Context)
 	defer span.End()
 
 	phoneNumber := c.Param("phone_number")
-	logger := h.logger.With(zap.String("phone_number", phoneNumber))
+	logger := h.logger.With(observability.PhoneField(phoneNumber))
 
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "update_phone_notification_preferences"),
 		attribute.String("service", "notification_preferences"),
 	)
@@ -691,10 +689,10 @@ func (h *NotificationPreferencesHandlers) UpdatePhonePreferences(c *gin.Context)
 	err = collection.FindOne(ctx, map[string]interface{}{"phone_number": storagePhone}).Decode(&mapping)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			logger.Warn("phone mapping not found", zap.String("phone_number", phoneNumber))
+			logger.Warn("phone mapping not found", observability.PhoneField(phoneNumber))
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Phone number not found"})
 		} else {
-			logger.Error("failed to get phone mapping", zap.String("phone_number", phoneNumber), zap.Error(err))
+			logger.Error("failed to get phone mapping", observability.PhoneField(phoneNumber), zap.Error(err))
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get preferences"})
 		}
 		return
@@ -848,7 +846,7 @@ func (h *NotificationPreferencesHandlers) UpdatePhoneCategoryPreference(c *gin.C
 
 	phoneNumber := c.Param("phone_number")
 	categoryID := c.Param("category_id")
-	logger := h.logger.With(zap.String("phone_number", phoneNumber), zap.String("category_id", categoryID))
+	logger := h.logger.With(observability.PhoneField(phoneNumber), zap.String("category_id", categoryID))
 
 	logger.Debug("UpdatePhoneCategoryPreference called")
 
@@ -884,10 +882,10 @@ func (h *NotificationPreferencesHandlers) UpdatePhoneCategoryPreference(c *gin.C
 	err = collection.FindOne(ctx, map[string]interface{}{"phone_number": storagePhone}).Decode(&mapping)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			logger.Warn("phone mapping not found", zap.String("phone_number", phoneNumber))
+			logger.Warn("phone mapping not found", observability.PhoneField(phoneNumber))
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: "Phone number not found"})
 		} else {
-			logger.Error("failed to get phone mapping", zap.String("phone_number", phoneNumber), zap.Error(err))
+			logger.Error("failed to get phone mapping", observability.PhoneField(phoneNumber), zap.Error(err))
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to get preferences"})
 		}
 		return

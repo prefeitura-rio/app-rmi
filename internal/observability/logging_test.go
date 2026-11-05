@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zapcore"
 )
 
 func TestLogger(t *testing.T) {
@@ -203,4 +204,96 @@ func TestContains_EmptyString(t *testing.T) {
 	assert.True(t, contains(slice, ""))
 	assert.True(t, contains(slice, "a"))
 	assert.True(t, contains(slice, "b"))
+}
+
+func TestMaskPhone(t *testing.T) {
+	tests := []struct {
+		name     string
+		phone    string
+		expected string
+	}{
+		{name: "mobile with DDI", phone: "5521987654321", expected: "+55 21 *****4321"},
+		{name: "mobile with DDI and plus", phone: "+5521987654321", expected: "+55 21 *****4321"},
+		{name: "formatted mobile with DDI", phone: "+55 (21) 98765-4321", expected: "+55 21 *****4321"},
+		{name: "landline with DDI", phone: "552133334444", expected: "+55 21 ****4444"},
+		{name: "mobile without DDI", phone: "21987654321", expected: "21 *****4321"},
+		{name: "landline without DDI", phone: "2133334444", expected: "21 ****4444"},
+		{name: "international number keeps only last 4", phone: "+14155552671", expected: "*******2671"},
+		{name: "subscriber number without DDD", phone: "987654321", expected: "*****4321"},
+		{name: "too short", phone: "1234567", expected: "****"},
+		{name: "no digits", phone: "abc", expected: "****"},
+		{name: "empty", phone: "", expected: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, MaskPhone(tt.phone))
+		})
+	}
+}
+
+func TestMaskPhoneNeverLeaksMiddleDigits(t *testing.T) {
+	for _, phone := range []string{"5521987654321", "21987654321", "+14155552671"} {
+		masked := MaskPhone(phone)
+		assert.NotContains(t, masked, "98765", "MaskPhone(%q) = %q leaks the subscriber prefix", phone, masked)
+		assert.NotContains(t, masked, "41555", "MaskPhone(%q) = %q leaks the subscriber prefix", phone, masked)
+	}
+}
+
+func TestPhoneFieldAndAttr(t *testing.T) {
+	field := PhoneField("5521987654321")
+	assert.Equal(t, "phone_number", field.Key)
+	assert.Equal(t, "+55 21 *****4321", field.String)
+
+	attr := PhoneAttr("21987654321")
+	assert.Equal(t, "phone_number", string(attr.Key))
+	assert.Equal(t, "21 *****4321", attr.Value.AsString())
+
+	empty := PhoneField("")
+	assert.Equal(t, "", empty.String)
+}
+
+func TestPhonesField(t *testing.T) {
+	field := PhonesField([]string{"5521987654321", "21987654321"})
+	assert.Equal(t, "phones", field.Key)
+
+	enc := zapcore.NewMapObjectEncoder()
+	field.AddTo(enc)
+	assert.Equal(t, []interface{}{"+55 21 *****4321", "21 *****4321"}, enc.Fields["phones"])
+
+	emptyEnc := zapcore.NewMapObjectEncoder()
+	PhonesField(nil).AddTo(emptyEnc)
+	assert.Equal(t, []interface{}{}, emptyEnc.Fields["phones"])
+}
+
+func TestMaskName(t *testing.T) {
+	tests := []struct {
+		name     string
+		fullName string
+		expected string
+	}{
+		{name: "single name", fullName: "Maria", expected: "M****"},
+		{name: "single letter", fullName: "J", expected: "J"},
+		{name: "two names", fullName: "Maria Souza", expected: "Maria S****"},
+		{name: "composite name", fullName: "Maria Clara Souza Lima", expected: "Maria C**** S**** Lima"},
+		{name: "extra spaces", fullName: "  Pedro   Henrique  Alves ", expected: "Pedro H******* Alves"},
+		{name: "empty", fullName: "", expected: ""},
+		{name: "only spaces", fullName: "   ", expected: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, MaskName(tt.fullName))
+		})
+	}
+}
+
+func TestNameField(t *testing.T) {
+	field := NameField("Maria Clara Souza Lima")
+	assert.Equal(t, "name", field.Key)
+	assert.Equal(t, "Maria C**** S**** Lima", field.String)
+
+	empty := NameField("")
+	assert.Equal(t, "name", empty.Key)
+	assert.Equal(t, "", empty.String)
 }
