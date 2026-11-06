@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -58,6 +59,20 @@ func TestNewMCPClient(t *testing.T) {
 	assert.NotNil(t, client.logger)
 	assert.Equal(t, 30*time.Second, client.client.Timeout)
 	assert.Equal(t, 3, client.retryConfig.MaxRetries)
+}
+
+func TestNewMCPClient_NormalizesServerURL(t *testing.T) {
+	_ = logging.InitLogger()
+
+	for _, raw := range []string{
+		"https://test.example.com/mcp/mcp",
+		"https://test.example.com/mcp/mcp/",
+		"https://test.example.com/mcp/mcp//",
+		" https://test.example.com/mcp/mcp/\n",
+	} {
+		client := NewMCPClient(&config.Config{MCPServerURL: raw, MCPAuthToken: "test-token"}, logging.GetLogger())
+		assert.Equal(t, "https://test.example.com/mcp/mcp", client.baseURL, "raw URL %q", raw)
+	}
 }
 
 func TestIsRetryableError(t *testing.T) {
@@ -1075,6 +1090,98 @@ func TestFindNearestCF_StatelessServerRejectingHEAD(t *testing.T) {
 			assert.Equal(t, 4, postRequests)
 		})
 	}
+}
+
+// statelessMCPHandler answers the CF lookup flow as the stateless app-mcp-server does.
+func statelessMCPHandler(t *testing.T, w http.ResponseWriter, r *http.Request) {
+	var req MCPRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	switch req.Method {
+	case "initialize":
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2024-11-05\"}}\n\n"))
+	case "notifications/initialized":
+		w.WriteHeader(http.StatusAccepted)
+	case "tools/call":
+		params := req.Params.(map[string]interface{})
+		if params["name"] == "equipments_by_address" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"result": map[string]interface{}{
+					"structuredContent": map[string]interface{}{
+						"equipamentos": []interface{}{
+							map[string]interface{}{"categoria": "CF", "nome_oficial": "CF Sem Barra"},
+						},
+					},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{}})
+	default:
+		t.Errorf("unexpected MCP method %q", req.Method)
+	}
+}
+
+// The staging gateway answers POST /mcp/mcp/ with a 307 to /mcp, which is a 404: a MCP_SERVER_URL
+// with a trailing slash must still reach /mcp/mcp.
+func TestFindNearestCF_ServerURLWithTrailingSlash(t *testing.T) {
+	var endpointRequests, redirectedRequests int
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mcp/mcp":
+			endpointRequests++
+			statelessMCPHandler(t, w, r)
+		case "/mcp/mcp/":
+			http.Redirect(w, r, "/mcp", http.StatusTemporaryRedirect)
+		default:
+			redirectedRequests++
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}
+
+	_ = logging.InitLogger()
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	client := NewMCPClient(&config.Config{MCPServerURL: server.URL + "/mcp/mcp/", MCPAuthToken: "test-token"}, logging.GetLogger())
+	client.retryConfig.MaxRetries = 0
+
+	result, err := client.FindNearestCF(context.Background(), "Rua Sintetica, 1, Centro")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.HealthFacility)
+	assert.Equal(t, "CF Sem Barra", result.HealthFacility.NomeOficial)
+	assert.Equal(t, 4, endpointRequests)
+	assert.Zero(t, redirectedRequests)
+}
+
+// Following a redirect would resend the bearer token, even to plain HTTP: the client stops at the 3xx.
+func TestMCPClient_DoesNotFollowRedirects(t *testing.T) {
+	var targetRequests int
+	var targetAuthorization string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetRequests++
+		targetAuthorization = r.Header.Get("Authorization")
+		statelessMCPHandler(t, w, r)
+	}))
+	defer target.Close()
+
+	client, server := setupMCPTest(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/mcp", http.StatusTemporaryRedirect)
+	})
+	defer server.Close()
+	client.retryConfig.MaxRetries = 0
+
+	result, err := client.FindNearestCF(context.Background(), "Rua Sintetica, 1, Centro")
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	var statusErr *MCPHTTPStatusError
+	require.True(t, errors.As(err, &statusErr), "a redirect must surface as MCPHTTPStatusError, got %v", err)
+	assert.Equal(t, http.StatusTemporaryRedirect, statusErr.StatusCode)
+	assert.Contains(t, statusErr.Error(), "MCP_SERVER_URL")
+	assert.Zero(t, targetRequests, "the redirect target must not be called")
+	assert.Empty(t, targetAuthorization, "the bearer token must not reach the redirect target")
 }
 
 func TestFindNearestCF_SessionError(t *testing.T) {
