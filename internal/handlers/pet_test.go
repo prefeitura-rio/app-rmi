@@ -29,7 +29,7 @@ func setupPetHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	database := config.MongoDB
 
 	// Initialize global pet service instance
-	services.PetServiceInstance = services.NewPetService(database, logging.Logger)
+	services.PetServiceInstance = services.NewPetService(database, logging.GetLogger())
 
 	router := gin.New()
 	router.GET("/citizen/:cpf/pets", GetPets)

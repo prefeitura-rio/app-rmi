@@ -6,13 +6,15 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 )
 
 // LegalEntityService handles legal entity business logic
@@ -34,9 +36,9 @@ var LegalEntityServiceInstance *LegalEntityService
 
 // InitLegalEntityService initializes the global legal entity service instance
 func InitLegalEntityService() {
-	logger := zap.L().Named("legal_entity_service")
+	logger := logging.NewSafeLogger(logging.GetLogger().Unwrap().Named("legal_entity_service"))
 
-	LegalEntityServiceInstance = NewLegalEntityService(config.MongoDB, &logging.SafeLogger{})
+	LegalEntityServiceInstance = NewLegalEntityService(config.MongoDB, logger)
 
 	logger.Info("legal entity service initialized successfully")
 	logger.Info("indexes will be managed by global database maintenance system")
@@ -77,8 +79,7 @@ func (s *LegalEntityService) GetLegalEntitiesByCPF(ctx context.Context, cpf stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to find legal entities: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	// Decode results
 	var entities []models.LegalEntity
 	if err = cursor.All(ctx, &entities); err != nil {
@@ -95,7 +96,7 @@ func (s *LegalEntityService) GetLegalEntitiesByCPF(ctx context.Context, cpf stri
 	response.Pagination.TotalPages = totalPages
 
 	s.logger.Debug("retrieved legal entities for CPF",
-		zap.String("cpf", cpf),
+		observability.CPFField(cpf),
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.Int("total", int(total)),

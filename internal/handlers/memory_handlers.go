@@ -51,8 +51,7 @@ func getMemoryListData(ctx context.Context, phoneNumber string) ([]MemoryModel, 
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var memories []MemoryModel
 	if err := cursor.All(ctx, &memories); err != nil {
 		return nil, err
@@ -87,16 +86,16 @@ func GetMemoryList(c *gin.Context) {
 	defer span.End()
 
 	phoneNumber := c.Param("phone_number")
-	logger := observability.Logger().With(zap.String("phone_number", phoneNumber))
+	logger := observability.Logger().With(observability.PhoneField(phoneNumber))
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "get_memory_list"),
 		attribute.String("service", "memory"),
 	)
 
-	logger.Debug("GetMemoryList called", zap.String("phone_number", phoneNumber))
+	logger.Debug("GetMemoryList called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing using utils.ValidatePhoneFormat directly
 	// ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
@@ -141,7 +140,7 @@ func GetMemoryList(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetMemoryList completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Int("memory_count", len(memories)),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -172,20 +171,20 @@ func GetMemoryByName(c *gin.Context) {
 	phoneNumber := c.Param("phone_number")
 	memoryName := c.Param("memory_name")
 	logger := observability.Logger().With(
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("memory_name", memoryName),
 	)
 
 	// Add parameters to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("memory_name", memoryName),
 		attribute.String("operation", "get_memory_by_name"),
 		attribute.String("service", "memory"),
 	)
 
 	logger.Debug("GetMemoryByName called",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("memory_name", memoryName),
 	)
 
@@ -233,7 +232,7 @@ func GetMemoryByName(c *gin.Context) {
 			// Log total operation time
 			totalDuration := time.Since(startTime)
 			logger.Debug("GetMemoryByName completed (cache hit)",
-				zap.String("phone_number", phoneNumber),
+				observability.PhoneField(phoneNumber),
 				zap.String("memory_name", memoryName),
 				zap.Duration("total_duration", totalDuration),
 				zap.String("status", "success"))
@@ -296,7 +295,7 @@ func GetMemoryByName(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetMemoryByName completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("memory_name", memoryName),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -329,16 +328,16 @@ func CreateMemory(c *gin.Context) {
 	defer monitor.End()
 
 	phoneNumber := c.Param("phone_number")
-	logger := observability.Logger().With(zap.String("phone_number", phoneNumber))
+	logger := observability.Logger().With(observability.PhoneField(phoneNumber))
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "create_memory"),
 		attribute.String("service", "memory"),
 	)
 
-	logger.Debug("CreateMemory called", zap.String("phone_number", phoneNumber))
+	logger.Debug("CreateMemory called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing using utils.ValidatePhoneFormat directly
 	// ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number_format", "phone_number")
@@ -429,7 +428,7 @@ func CreateMemory(c *gin.Context) {
 		// Check for duplicate key error (E11000)
 		if mongo.IsDuplicateKeyError(err) {
 			logger.Warn("duplicate memory name for phone number",
-				zap.String("phone_number", phoneNumber),
+				observability.PhoneField(phoneNumber),
 				zap.String("memory_name", memory.MemoryName),
 				zap.Error(err))
 			c.JSON(http.StatusConflict, ErrorResponse{Error: "Memory name already exists for this phone number"})
@@ -470,7 +469,7 @@ func CreateMemory(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("CreateMemory completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("memory_id", memory.MemoryID),
 		zap.String("memory_name", memory.MemoryName),
 		zap.Duration("total_duration", totalDuration),
@@ -505,18 +504,18 @@ func UpdateMemory(c *gin.Context) {
 
 	phoneNumber := c.Param("phone_number")
 	logger := observability.Logger().With(
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 	)
 
 	// Add parameters to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "update_memory"),
 		attribute.String("service", "memory"),
 	)
 
 	logger.Debug("UpdateMemory called",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 	)
 
 	// Validate phone number with tracing using utils.ValidatePhoneFormat directly
@@ -686,7 +685,7 @@ func UpdateMemory(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("UpdateMemory completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("memory_name", memory.MemoryName),
 		zap.Int64("matched_count", result.MatchedCount),
 		zap.Int64("modified_count", result.ModifiedCount),
@@ -723,20 +722,20 @@ func DeleteMemory(c *gin.Context) {
 	phoneNumber := c.Param("phone_number")
 	memoryName := c.Param("memory_name")
 	logger := observability.Logger().With(
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("memory_name", memoryName),
 	)
 
 	// Add parameters to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("memory_name", memoryName),
 		attribute.String("operation", "delete_memory"),
 		attribute.String("service", "memory"),
 	)
 
 	logger.Debug("DeleteMemory called",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("memory_name", memoryName),
 	)
 
@@ -850,7 +849,7 @@ func DeleteMemory(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("DeleteMemory completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("memory_name", memoryName),
 		zap.Int64("deleted_count", result.DeletedCount),
 		zap.Duration("total_duration", totalDuration),

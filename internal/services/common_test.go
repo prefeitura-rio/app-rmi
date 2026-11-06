@@ -1,9 +1,11 @@
 package services
 
 import (
+	"context"
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"go.uber.org/zap"
@@ -22,11 +24,75 @@ func setupTestEnvironment() {
 		if os.Getenv("REDIS_ADDR") == "" {
 			os.Setenv("REDIS_ADDR", "localhost:6379")
 		}
-		if os.Getenv("CF_LOOKUP_ENABLED") == "" {
-			os.Setenv("CF_LOOKUP_ENABLED", "false")
+
+		// Ensure test MongoDB URI is set (override any production values)
+		mongoURI := os.Getenv("MONGODB_URI")
+		if mongoURI == "" {
+			mongoURI = "mongodb://localhost:27017"
+			os.Setenv("MONGODB_URI", mongoURI)
 		}
-		if os.Getenv("WHATSAPP_ENABLED") == "" {
-			os.Setenv("WHATSAPP_ENABLED", "false")
+
+		// Set required MongoDB collection environment variables for tests
+		collections := map[string]string{
+			"MONGODB_DATABASE":                         "rmi_test",
+			"MONGODB_CITIZEN_COLLECTION":               "citizens",
+			"MONGODB_SELF_DECLARED_COLLECTION":         "self_declared",
+			"MONGODB_PHONE_MAPPING_COLLECTION":         "phone_mapping",
+			"MONGODB_PHONE_VERIFICATION_COLLECTION":    "phone_verifications",
+			"MONGODB_OPT_IN_HISTORY_COLLECTION":        "opt_in_history",
+			"MONGODB_AUDIT_LOG_COLLECTION":             "audit_logs",
+			"MONGODB_BETA_GROUPS_COLLECTION":           "beta_groups",
+			"MONGODB_WHATSAPP_MEMORY_COLLECTION":       "whatsapp_memory",
+			"MONGODB_AVATARS_COLLECTION":               "avatars",
+			"MONGODB_MAINTENANCE_REQUEST_COLLECTION":   "maintenance_requests",
+			"MONGODB_LEGAL_ENTITY_COLLECTION":          "legal_entities",
+			"MONGODB_CHAT_MEMORY_COLLECTION":           "chat_memory",
+			"MONGODB_CNAE_COLLECTION":                  "cnae",
+			"MONGODB_DEPARTMENT_COLLECTION":            "departments",
+			"MONGODB_PET_COLLECTION":                   "pets",
+			"MONGODB_PETS_SELF_REGISTERED_COLLECTION":  "pets_self_registered",
+			"MONGODB_NOTIFICATION_CATEGORY_COLLECTION": "notification_categories",
+			"MONGODB_USER_CONFIG_COLLECTION":           "user_config",
+			"MONGODB_CPF_SECRETARIA_COLLECTION":        "cpf_secretaria_svc_test",
+		}
+		for key, defaultValue := range collections {
+			if os.Getenv(key) == "" {
+				os.Setenv(key, defaultValue)
+			}
+		}
+		// Always isolate from just dotenv-load (.env may set MONGODB_DATABASE=rmi, CF_LOOKUP=true).
+		os.Setenv("MONGODB_DATABASE", "rmi_test")
+		os.Setenv("CF_LOOKUP_ENABLED", "false")
+		os.Setenv("CF_LOOKUP_V2_ENABLED", "false")
+		os.Setenv("WHATSAPP_ENABLED", "false")
+		os.Setenv("SFMC_ENABLED", "false")
+
+		// Set other required environment variables
+		if os.Getenv("JWT_ISSUER_URL") == "" {
+			os.Setenv("JWT_ISSUER_URL", "http://localhost:8080")
+		}
+		if os.Getenv("PORT") == "" {
+			os.Setenv("PORT", "8080")
+		}
+
+		// Set WhatsApp environment variables (required by config even when disabled)
+		if os.Getenv("WHATSAPP_API_BASE_URL") == "" {
+			os.Setenv("WHATSAPP_API_BASE_URL", "http://localhost:8080")
+		}
+		if os.Getenv("WHATSAPP_API_USERNAME") == "" {
+			os.Setenv("WHATSAPP_API_USERNAME", "test_username")
+		}
+		if os.Getenv("WHATSAPP_API_PASSWORD") == "" {
+			os.Setenv("WHATSAPP_API_PASSWORD", "test_password")
+		}
+		if os.Getenv("WHATSAPP_HSM_ID") == "" {
+			os.Setenv("WHATSAPP_HSM_ID", "test_hsm_id")
+		}
+		if os.Getenv("WHATSAPP_COST_CENTER_ID") == "" {
+			os.Setenv("WHATSAPP_COST_CENTER_ID", "test_cost_center")
+		}
+		if os.Getenv("WHATSAPP_CAMPAIGN_NAME") == "" {
+			os.Setenv("WHATSAPP_CAMPAIGN_NAME", "test_campaign")
 		}
 
 		// Initialize configuration and connections only once
@@ -35,16 +101,38 @@ func setupTestEnvironment() {
 			return
 		}
 
-		// Initialize MongoDB/Redis if not already initialized
-		if config.MongoDB == nil {
-			config.InitMongoDB()
-		}
+		// Initialize Redis before MongoDB so that the distributed index-creation
+		// lock in ensureIndexes (called by InitMongoDB) can be exercised in tests.
 		if config.Redis == nil {
 			config.InitRedis()
+		}
+		if config.MongoDB == nil {
+			config.InitMongoDB()
 		}
 
 		zap.L().Info("Test environment initialized for services package")
 	})
+}
+
+// guardInitialIndexMaintenance waits for the index check that InitMongoDB starts in a
+// background goroutine and keeps it from starting late. That goroutine reads
+// config.AppConfig while it runs, and many tests replace or edit config.AppConfig, so a
+// test running at the same time is a data race under -race. ensureIndexes holds
+// indexCreationLockKey for its whole run and skips when someone else holds it: taking
+// the lock here means the initial run already finished or will skip. The short TTL
+// releases it on its own, long before the next periodic run.
+func guardInitialIndexMaintenance() {
+	if config.Redis == nil {
+		return
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		ok, err := config.Redis.SetNX(context.Background(), "rmi:index_creation_lock", "test-main-guard", 5*time.Second).Result()
+		if err != nil || ok {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // TestMain is the entry point for all tests in the services package
@@ -55,6 +143,7 @@ func TestMain(m *testing.M) {
 	if testInitError != nil {
 		panic(testInitError)
 	}
+	guardInitialIndexMaintenance()
 
 	// Run all tests
 	exitCode := m.Run()

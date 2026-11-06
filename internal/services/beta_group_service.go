@@ -10,6 +10,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -119,8 +120,7 @@ func (s *BetaGroupService) ListGroups(ctx context.Context, page, perPage int) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to list beta groups: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var groups []models.BetaGroupResponse
 	for cursor.Next(ctx) {
 		var group models.BetaGroup
@@ -439,8 +439,7 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 	if err != nil {
 		return nil, fmt.Errorf("failed to list whitelisted phones: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var whitelisted []models.BetaWhitelistResponse
 	for cursor.Next(ctx) {
 		// Use flexible bson.M to handle potentially malformed entries
@@ -457,7 +456,6 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 		if !ok {
 			s.logger.Warn("phone mapping has non-string phone_number field",
 				zap.String("collection", config.AppConfig.PhoneMappingCollection),
-				zap.Any("phone_number_value", rawDoc["phone_number"]),
 				zap.String("phone_number_type", fmt.Sprintf("%T", rawDoc["phone_number"])),
 				zap.Any("beta_group_id", rawDoc["beta_group_id"]))
 			continue
@@ -478,7 +476,7 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 			betaGroupID = v.Hex()
 		default:
 			s.logger.Warn("phone mapping has invalid beta_group_id type",
-				zap.String("phone_number", phoneNumber),
+				observability.PhoneField(phoneNumber),
 				zap.String("collection", config.AppConfig.PhoneMappingCollection),
 				zap.Any("beta_group_id", rawDoc["beta_group_id"]))
 			continue
@@ -486,7 +484,7 @@ func (s *BetaGroupService) ListWhitelistedPhones(ctx context.Context, page, perP
 
 		if betaGroupID == "" {
 			s.logger.Warn("phone mapping has empty beta_group_id",
-				zap.String("phone_number", phoneNumber),
+				observability.PhoneField(phoneNumber),
 				zap.String("collection", config.AppConfig.PhoneMappingCollection))
 			continue
 		}
@@ -763,8 +761,7 @@ func (s *BetaGroupService) invalidateBetaStatusCache(ctx context.Context, groupI
 	if err != nil {
 		return
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	for cursor.Next(ctx) {
 		var mapping models.PhoneCPFMapping
 		if err := cursor.Decode(&mapping); err != nil {

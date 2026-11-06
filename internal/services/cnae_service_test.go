@@ -24,14 +24,17 @@ func setupCNAEServiceTest(t *testing.T) (*CNAEService, func()) {
 
 	ctx := context.Background()
 
-	// Create text index for search
+	// Create text index for search — fail loudly if index cannot be created
 	collection := config.MongoDB.Collection(config.AppConfig.CNAECollection)
+	_ = collection.Drop(ctx)
 	indexModel := mongo.IndexModel{
 		Keys: bson.D{{Key: "Denominacao", Value: "text"}},
 	}
-	_, _ = collection.Indexes().CreateOne(ctx, indexModel)
+	if _, err := collection.Indexes().CreateOne(ctx, indexModel); err != nil {
+		t.Fatalf("Failed to create CNAE text index: %v", err)
+	}
 
-	service := NewCNAEService(config.MongoDB, logging.Logger)
+	service := NewCNAEService(config.MongoDB, logging.GetLogger())
 
 	return service, func() {
 		_ = collection.Drop(ctx)
@@ -43,7 +46,7 @@ func TestNewCNAEService(t *testing.T) {
 
 	_ = logging.InitLogger()
 
-	service := NewCNAEService(config.MongoDB, logging.Logger)
+	service := NewCNAEService(config.MongoDB, logging.GetLogger())
 
 	if service == nil {
 		t.Error("NewCNAEService() returned nil")
@@ -351,6 +354,11 @@ func TestListCNAEs_TextSearch(t *testing.T) {
 	result, err := service.ListCNAEs(ctx, filters)
 	if err != nil {
 		t.Errorf("ListCNAEs() with search error = %v", err)
+		return
+	}
+	if result == nil {
+		t.Error("ListCNAEs() with search returned nil result")
+		return
 	}
 
 	if result.Pagination.Total != 2 {

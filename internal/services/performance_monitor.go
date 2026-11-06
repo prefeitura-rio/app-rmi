@@ -34,7 +34,7 @@ type PerformanceMonitor struct {
 func NewPerformanceMonitor() *PerformanceMonitor {
 	return &PerformanceMonitor{
 		metrics: make(map[string]*PerformanceMetric),
-		logger:  logging.Logger,
+		logger:  logging.GetLogger(),
 	}
 }
 

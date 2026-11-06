@@ -558,3 +558,59 @@ func TestValidDisabilityOptions(t *testing.T) {
 		t.Errorf("ValidDisabilityOptions() returned %d options, want %d", len(options), expectedCount)
 	}
 }
+
+func TestParseBirthDate(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{
+			name:    "valid YYYY-MM-DD",
+			input:   "1990-05-20",
+			wantErr: false,
+		},
+		{
+			name:    "valid RFC3339",
+			input:   "1990-05-20T00:00:00Z",
+			wantErr: false,
+		},
+		{
+			name:    "valid DD/MM/YYYY",
+			input:   "20/05/1990",
+			wantErr: false,
+		},
+		{
+			name:    "empty string",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "future date",
+			input:   time.Now().AddDate(1, 0, 0).Format("2006-01-02"),
+			wantErr: true,
+		},
+		{
+			name:    "impossibly old date",
+			input:   "1800-01-01",
+			wantErr: true,
+		},
+		{
+			name:    "invalid format",
+			input:   "not-a-date",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseBirthDate(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ParseBirthDate(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+			if !tt.wantErr && got == nil {
+				t.Fatalf("ParseBirthDate(%q) returned nil time", tt.input)
+			}
+		})
+	}
+}

@@ -93,7 +93,7 @@ func (s *AddressService) GetBairroByID(ctx context.Context, bairroID string) (st
 
 	s.logger.Debug("bairro found and cached",
 		zap.String("id", bairroID),
-		zap.String("nome", bairroData.Nome))
+		zap.String("bairro_nome", bairroData.Nome))
 
 	return bairroData.Nome, nil
 }
@@ -256,7 +256,6 @@ func (s *AddressService) BuildAddress(ctx context.Context, bairroID, logradouroI
 	}
 
 	s.logger.Debug("address built successfully",
-		zap.String("address", address),
 		zap.String("bairro_id", bairroID),
 		zap.String("logradouro_id", logradouroID))
 

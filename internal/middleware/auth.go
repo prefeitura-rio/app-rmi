@@ -11,6 +11,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.uber.org/zap"
 )
 
@@ -49,8 +50,10 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		observability.Logger().Debug("successfully extracted claims from JWT token", zap.String("user_sub", claims.SUB))
 
-		// Store claims in context for later use
+		// Store claims and raw bearer for handlers / DataManager → Salesforce push
 		c.Set("claims", claims)
+		c.Set("bearer_token", token)
+		c.Request = c.Request.WithContext(utils.ContextWithBearerToken(c.Request.Context(), token))
 		c.Next()
 	}
 }
@@ -71,26 +74,31 @@ func extractClaims(token string) (*models.JWTClaims, error) {
 	claimsPart := parts[1]
 	logger.Debug("extracting JWT claims", zap.String("claims_part_length", fmt.Sprintf("%d", len(claimsPart))))
 
-	// Add padding if needed
-	switch len(claimsPart) % 4 {
-	case 2:
-		claimsPart += "=="
-	case 3:
-		claimsPart += "="
-	}
-
-	// Try RawURLEncoding first, then fallback to standard encoding
 	var claimsBytes []byte
 	var err error
 
+	// Standard JWT encoding is base64.RawURLEncoding (unpadded URL-safe base64 per RFC 7519).
 	claimsBytes, err = base64.RawURLEncoding.DecodeString(claimsPart)
 	if err != nil {
-		logger.Debug("RawURLEncoding failed, trying StdEncoding", zap.Error(err))
-		// Fallback to standard base64 decoding
-		claimsBytes, err = base64.StdEncoding.DecodeString(claimsPart)
+		logger.Debug("RawURLEncoding failed, trying URLEncoding with padding", zap.Error(err))
+		padded := claimsPart
+		switch len(padded) % 4 {
+		case 2:
+			padded += "=="
+		case 3:
+			padded += "="
+		}
+		claimsBytes, err = base64.URLEncoding.DecodeString(padded)
 		if err != nil {
-			logger.Error("failed to decode JWT claims with both encodings", zap.Error(err), zap.String("claims_part", claimsPart[:min(50, len(claimsPart))]))
-			return nil, fmt.Errorf("failed to decode claims: %w", err)
+			logger.Debug("URLEncoding failed, trying StdEncoding", zap.Error(err))
+			claimsBytes, err = base64.StdEncoding.DecodeString(padded)
+			if err != nil {
+				claimsBytes, err = base64.RawStdEncoding.DecodeString(claimsPart)
+				if err != nil {
+					logger.Error("failed to decode JWT claims with any encoding", zap.Error(err), zap.String("claims_part", claimsPart[:min(50, len(claimsPart))]))
+					return nil, fmt.Errorf("failed to decode claims: %w", err)
+				}
+			}
 		}
 	}
 
@@ -115,6 +123,57 @@ func min(a, b int) int {
 	return b
 }
 
+// serviceAccountUsernamePrefix is the prefix Keycloak gives the user behind a
+// client's service account ("service-account-<client id>", lowercased).
+const serviceAccountUsernamePrefix = "service-account-"
+
+// IsTrustedServiceClient reports whether the token was issued to a service account
+// of a client listed in TrustedServiceClients. The azp alone is not enough: a public
+// login client (e.g. the Superapp) puts its own azp on every citizen token, so the
+// token must also be a client-credentials token of that same client, identified by
+// preferred_username "service-account-<azp>" or the client_id/clientId claim.
+func IsTrustedServiceClient(jwtClaims *models.JWTClaims) bool {
+	if jwtClaims == nil || config.AppConfig == nil {
+		return false
+	}
+	azp := strings.TrimSpace(jwtClaims.AZP)
+	if azp == "" {
+		return false
+	}
+
+	listed := false
+	for _, clientID := range config.AppConfig.TrustedServiceClients {
+		if azp == strings.TrimSpace(clientID) {
+			listed = true
+			break
+		}
+	}
+	if !listed {
+		return false
+	}
+
+	if strings.EqualFold(strings.TrimSpace(jwtClaims.PreferredUsername), serviceAccountUsernamePrefix+azp) {
+		return true
+	}
+	return strings.TrimSpace(jwtClaims.ServiceAccountClientID()) == azp
+}
+
+// HasAdminPrivileges checks if the JWT claims grant administrative access to RMI.
+// A caller is considered admin if they carry the configured AdminGroup (e.g. "heimdall-admin"),
+// the standard "rmi-admin" role, or a service account token of a TrustedServiceClients client.
+func HasAdminPrivileges(jwtClaims *models.JWTClaims) bool {
+	if jwtClaims == nil {
+		return false
+	}
+	if jwtClaims.HasRole("rmi-admin") {
+		return true
+	}
+	if config.AppConfig != nil && config.AppConfig.AdminGroup != "" && jwtClaims.HasRole(config.AppConfig.AdminGroup) {
+		return true
+	}
+	return IsTrustedServiceClient(jwtClaims)
+}
+
 // RequireAdmin checks if the user has admin privileges
 func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -132,30 +191,54 @@ func RequireAdmin() gin.HandlerFunc {
 			return
 		}
 
-		// Check if user has admin role in RealmAccess or ResourceAccess.Superapp
-		isAdmin := false
-		for _, role := range jwtClaims.RealmAccess.Roles {
-			if role == config.AppConfig.AdminGroup {
-				isAdmin = true
-				break
-			}
-		}
-		if !isAdmin {
-			for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
-				if role == config.AppConfig.AdminGroup {
-					isAdmin = true
-					break
-				}
-			}
-		}
-
-		if !isAdmin {
+		if !HasAdminPrivileges(jwtClaims) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin privileges required"})
 			c.Abort()
 			return
 		}
 
 		c.Next()
+	}
+}
+
+// RequireSalesforceWebhookClient allows only JWTs whose azp is in SalesforceWebhookClients.
+// The Salesforce integration obtains that JWT via Keycloak (OAuth); RMI rejects other clients.
+func RequireSalesforceWebhookClient() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if config.AppConfig == nil || len(config.AppConfig.SalesforceWebhookClients) == 0 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "salesforce webhook clients not configured"})
+			c.Abort()
+			return
+		}
+
+		claims, exists := c.Get("claims")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Claims not found"})
+			c.Abort()
+			return
+		}
+
+		jwtClaims, ok := claims.(*models.JWTClaims)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid claims type"})
+			c.Abort()
+			return
+		}
+
+		azp := strings.TrimSpace(jwtClaims.AZP)
+		for _, allowed := range config.AppConfig.SalesforceWebhookClients {
+			if azp != "" && azp == strings.TrimSpace(allowed) {
+				c.Next()
+				return
+			}
+		}
+
+		observability.Logger().Warn("salesforce webhook client rejected",
+			zap.String("azp", azp),
+			zap.String("remote_addr", c.ClientIP()),
+			observability.PathField(c.Request.URL.Path))
+		c.JSON(http.StatusForbidden, gin.H{"error": "salesforce webhook client not allowed"})
+		c.Abort()
 	}
 }
 
@@ -180,22 +263,7 @@ func RequireOwnCPF() gin.HandlerFunc {
 		requestedCPF := c.Param("cpf")
 		userCPF := jwtClaims.PreferredUsername
 
-		// Check if user is admin in RealmAccess or ResourceAccess.Superapp
-		isAdmin := false
-		for _, role := range jwtClaims.RealmAccess.Roles {
-			if role == config.AppConfig.AdminGroup {
-				isAdmin = true
-				break
-			}
-		}
-		if !isAdmin {
-			for _, role := range jwtClaims.ResourceAccess.Superapp.Roles {
-				if role == config.AppConfig.AdminGroup {
-					isAdmin = true
-					break
-				}
-			}
-		}
+		isAdmin := HasAdminPrivileges(jwtClaims)
 
 		// Allow if user is admin or accessing their own data
 		if !isAdmin && requestedCPF != userCPF {
@@ -235,14 +303,7 @@ func IsAdmin(c *gin.Context) (bool, error) {
 		return false, fmt.Errorf("invalid claims type")
 	}
 
-	// Check if user has admin role
-	for _, role := range jwtClaims.RealmAccess.Roles {
-		if role == config.AppConfig.AdminGroup {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return HasAdminPrivileges(jwtClaims), nil
 }
 
 // ErrAccessDenied is returned when access is denied

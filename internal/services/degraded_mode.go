@@ -34,7 +34,7 @@ func NewDegradedMode(redis *redisclient.Client, mongo *mongo.Database, metrics *
 		mongo:    mongo,
 		metrics:  metrics,
 		stopChan: make(chan struct{}),
-		logger:   logging.Logger,
+		logger:   logging.GetLogger(),
 	}
 }
 

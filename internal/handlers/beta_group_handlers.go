@@ -10,6 +10,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/middleware"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.opentelemetry.io/otel"
@@ -86,7 +87,7 @@ func (h *BetaGroupHandlers) CreateGroup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Dados inválidos: " + err.Error()})
 		return
 	}
-	utils.AddSpanAttribute(inputSpan, "input.name", req.Name)
+	utils.AddSpanAttribute(inputSpan, "input.group_name", req.Name)
 	inputSpan.End()
 
 	// Create group with tracing
@@ -384,7 +385,7 @@ func (h *BetaGroupHandlers) UpdateGroup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Dados inválidos: " + err.Error()})
 		return
 	}
-	utils.AddSpanAttribute(inputSpan, "input.name", req.Name)
+	utils.AddSpanAttribute(inputSpan, "input.group_name", req.Name)
 	inputSpan.End()
 
 	// Update group with tracing
@@ -541,12 +542,12 @@ func (h *BetaGroupHandlers) GetBetaStatus(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "get_beta_status"),
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Debug("GetBetaStatus called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("GetBetaStatus called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -588,7 +589,7 @@ func (h *BetaGroupHandlers) GetBetaStatus(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("GetBetaStatus completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.Bool("beta_whitelisted", status.BetaWhitelisted),
 		zap.String("status", "success"))
@@ -621,12 +622,12 @@ func (h *BetaGroupHandlers) AddToWhitelist(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "add_to_whitelist"),
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Debug("AddToWhitelist called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("AddToWhitelist called", observability.PhoneField(phoneNumber))
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -705,7 +706,7 @@ func (h *BetaGroupHandlers) AddToWhitelist(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("AddToWhitelist completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("group_id", req.GroupID),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -735,12 +736,12 @@ func (h *BetaGroupHandlers) RemoveFromWhitelist(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "remove_from_whitelist"),
 		attribute.String("service", "beta_group"),
 	)
 
-	h.logger.Debug("RemoveFromWhitelist called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("RemoveFromWhitelist called", observability.PhoneField(phoneNumber))
 
 	// Check admin access with tracing
 	ctx, adminSpan := utils.TraceBusinessLogic(ctx, "admin_access_check")
@@ -798,7 +799,7 @@ func (h *BetaGroupHandlers) RemoveFromWhitelist(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("RemoveFromWhitelist completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }

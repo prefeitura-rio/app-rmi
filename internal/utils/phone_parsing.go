@@ -49,7 +49,7 @@ func ParsePhoneNumber(phoneString string) (*PhoneComponents, error) {
 	// Use basic validation instead of strict IsValidNumber to support 8-digit Brazilian numbers
 	nationalNumber := phonenumbers.GetNationalSignificantNumber(num)
 	if len(nationalNumber) < 8 || len(nationalNumber) > 15 {
-		return nil, fmt.Errorf("invalid phone number: %s", phoneString)
+		return nil, fmt.Errorf("invalid phone number: national number has %d digits, expected 8 to 15", len(nationalNumber))
 	}
 
 	// Extract components
@@ -108,7 +108,7 @@ func ValidatePhoneFormat(phoneString string) error {
 	// Basic format validation
 	phoneRegex := regexp.MustCompile(`^\+?[0-9]{10,15}$`)
 	if !phoneRegex.MatchString(strings.ReplaceAll(phoneString, " ", "")) {
-		return fmt.Errorf("invalid phone number format: %s", phoneString)
+		return fmt.Errorf("invalid phone number format (length %d): expected 10 to 15 digits", len(phoneString))
 	}
 	return nil
 }
@@ -121,4 +121,16 @@ func FormatPhoneForStorage(ddi, ddd, valor string) string {
 // ExtractPhoneFromComponents extracts the full phone number from components
 func ExtractPhoneFromComponents(ddi, ddd, valor string) string {
 	return fmt.Sprintf("+%s%s%s", ddi, ddd, valor)
+}
+
+// StoragePhoneToE164 converts a phone stored as DDI+DDD+number (the
+// FormatPhoneForStorage format, e.g. "5521987654321") to E.164
+// ("+5521987654321"). A value that already carries the leading "+" is kept
+// as is, and an empty value stays empty.
+func StoragePhoneToE164(stored string) string {
+	digits := strings.TrimPrefix(strings.TrimSpace(stored), "+")
+	if digits == "" {
+		return ""
+	}
+	return "+" + digits
 }

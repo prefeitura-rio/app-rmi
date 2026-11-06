@@ -31,14 +31,15 @@ func setupLegalEntityHandlersTest(t *testing.T) (*gin.Engine, func()) {
 	database := config.MongoDB
 
 	// Initialize global legal entity service instance
-	services.LegalEntityServiceInstance = services.NewLegalEntityService(database, logging.Logger)
+	services.LegalEntityServiceInstance = services.NewLegalEntityService(database, logging.GetLogger())
 
 	router := gin.New()
 	router.GET("/citizen/:cpf/legal-entities", GetLegalEntities)
 	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
 
 	return router, func() {
-		_ = database.Drop(ctx)
+		// Drop only this test's collection — never the whole rmi_test DB (shared across packages).
+		_ = database.Collection(config.AppConfig.LegalEntityCollection).Drop(ctx)
 		services.LegalEntityServiceInstance = nil
 	}
 }
@@ -49,7 +50,9 @@ func adminMiddleware() gin.HandlerFunc {
 		claims := &models.JWTClaims{
 			PreferredUsername: "03561350712",
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"go:admin"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"go:admin"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	}
@@ -61,7 +64,20 @@ func userMiddleware(cpf string) gin.HandlerFunc {
 		claims := &models.JWTClaims{
 			PreferredUsername: cpf,
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"user"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"user"}},
+		}
+		c.Set("claims", claims)
+		c.Next()
+	}
+}
+
+func serviceAccountMiddleware(clientID string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims := &models.JWTClaims{
+			AZP:               clientID,
+			PreferredUsername: "service-account-" + clientID,
+		}
 		c.Set("claims", claims)
 		c.Next()
 	}
@@ -495,6 +511,10 @@ func TestGetLegalEntityByCNPJ_InvalidCNPJ(t *testing.T) {
 		{"invalid check digits", "00000000000000"},
 		{"all same digits", "11111111111111"},
 		{"too long", "123456789012345"},
+		{"alphanumeric wrong check digit", "12ABC34501DE36"},
+		{"alphanumeric letter in check digit", "12ABC34501DEA5"},
+		{"alphanumeric too short", "12ABC34501DE3"},
+		{"alphanumeric symbol in base", "12AB*34501DE35"},
 	}
 
 	for _, tt := range tests {
@@ -529,6 +549,65 @@ func TestGetLegalEntityByCNPJ_NotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, response.Error, "Legal entity not found")
+}
+
+func TestGetLegalEntityByCNPJ_AlphanumericNotFound(t *testing.T) {
+	_, cleanup := setupLegalEntityHandlersTest(t)
+	defer cleanup()
+
+	router := gin.New()
+	router.Use(userMiddleware("03561350712"))
+	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
+
+	// Valid alphanumeric CNPJ (Receita Federal format) that doesn't exist in DB
+	req, _ := http.NewRequest("GET", "/legal-entity/12ABC34501DE35", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	var response ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Contains(t, response.Error, "Legal entity not found")
+}
+
+func TestGetLegalEntityByCNPJ_Alphanumeric_AdminAccess(t *testing.T) {
+	_, cleanup := setupLegalEntityHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	collection := config.MongoDB.Collection(config.AppConfig.LegalEntityCollection)
+
+	entity := bson.M{
+		"cnpj":         "12ABC34501DE35",
+		"razao_social": "Test Company Alphanumeric",
+		"responsavel": bson.M{
+			"cpf": "99999999999",
+		},
+	}
+
+	_, err := collection.InsertOne(ctx, entity)
+	require.NoError(t, err)
+
+	router := gin.New()
+	router.Use(adminMiddleware())
+	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
+
+	// Lowercase input is normalized to the stored uppercase form
+	for _, cnpj := range []string{"12ABC34501DE35", "12abc34501de35"} {
+		req, _ := http.NewRequest("GET", "/legal-entity/"+cnpj, nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code, "GET /legal-entity/%s", cnpj)
+
+		var response models.LegalEntity
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		assert.Equal(t, "12ABC34501DE35", response.CNPJ)
+		assert.Equal(t, "Test Company Alphanumeric", response.CompanyName)
+	}
 }
 
 func TestGetLegalEntityByCNPJ_NoAuthClaims(t *testing.T) {
@@ -660,7 +739,9 @@ func TestGetLegalEntityByCNPJ_MissingCPFInToken(t *testing.T) {
 		claims := &models.JWTClaims{
 			PreferredUsername: "", // Empty CPF
 		}
-		claims.ResourceAccess.Superapp.Roles = []string{"user"}
+		claims.ResourceAccess = map[string]models.ClientAccess{
+			"superapp.apps.rio.gov.br": {Roles: []string{"user"}},
+		}
 		c.Set("claims", claims)
 		c.Next()
 	})
@@ -894,6 +975,139 @@ func TestGetLegalEntityByCNPJ_MultiplePartners_OnlyOneMatch(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "11222333000181", response.CNPJ)
+}
+
+func TestGetLegalEntityByCNPJ_TrustedServiceAccess(t *testing.T) {
+	_, cleanup := setupLegalEntityHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	collection := config.MongoDB.Collection(config.AppConfig.LegalEntityCollection)
+
+	entity := bson.M{
+		"cnpj":         "11222333000181",
+		"razao_social": "Test Company Service",
+		"responsavel": bson.M{
+			"cpf": "99999999999",
+		},
+	}
+	_, err := collection.InsertOne(ctx, entity)
+	require.NoError(t, err)
+
+	config.AppConfig.TrustedServiceClients = []string{"app-go-api"}
+	defer func() { config.AppConfig.TrustedServiceClients = nil }()
+
+	router := gin.New()
+	router.Use(serviceAccountMiddleware("app-go-api"))
+	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
+
+	req, _ := http.NewRequest("GET", "/legal-entity/11222333000181", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.LegalEntity
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "11222333000181", response.CNPJ)
+}
+
+func TestGetLegalEntityByCNPJ_UntrustedServiceDenied(t *testing.T) {
+	_, cleanup := setupLegalEntityHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	collection := config.MongoDB.Collection(config.AppConfig.LegalEntityCollection)
+
+	entity := bson.M{
+		"cnpj":         "11222333000181",
+		"razao_social": "Test Company Service",
+		"responsavel": bson.M{
+			"cpf": "99999999999",
+		},
+	}
+	_, err := collection.InsertOne(ctx, entity)
+	require.NoError(t, err)
+
+	config.AppConfig.TrustedServiceClients = []string{"app-go-api"}
+	defer func() { config.AppConfig.TrustedServiceClients = nil }()
+
+	router := gin.New()
+	router.Use(serviceAccountMiddleware("unknown-service"))
+	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
+
+	req, _ := http.NewRequest("GET", "/legal-entity/11222333000181", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestGetLegalEntityByCNPJ_CitizenTokenWithTrustedAZPDenied(t *testing.T) {
+	_, cleanup := setupLegalEntityHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	collection := config.MongoDB.Collection(config.AppConfig.LegalEntityCollection)
+
+	entity := bson.M{
+		"cnpj":         "11222333000181",
+		"razao_social": "Test Company Service",
+		"responsavel": bson.M{
+			"cpf": "99999999999",
+		},
+	}
+	_, err := collection.InsertOne(ctx, entity)
+	require.NoError(t, err)
+
+	// The public login client is (wrongly) listed as trusted; a citizen token from it
+	// carries that azp but is not a service account token.
+	config.AppConfig.TrustedServiceClients = []string{"superapp"}
+	defer func() { config.AppConfig.TrustedServiceClients = nil }()
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("claims", &models.JWTClaims{AZP: "superapp", PreferredUsername: "52998224725"})
+		c.Next()
+	})
+	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
+
+	req, _ := http.NewRequest("GET", "/legal-entity/11222333000181", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestGetLegalEntityByCNPJ_EmptyTrustedServiceList(t *testing.T) {
+	_, cleanup := setupLegalEntityHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	collection := config.MongoDB.Collection(config.AppConfig.LegalEntityCollection)
+
+	entity := bson.M{
+		"cnpj":         "11222333000181",
+		"razao_social": "Test Company Service",
+		"responsavel": bson.M{
+			"cpf": "99999999999",
+		},
+	}
+	_, err := collection.InsertOne(ctx, entity)
+	require.NoError(t, err)
+
+	config.AppConfig.TrustedServiceClients = nil
+
+	router := gin.New()
+	router.Use(serviceAccountMiddleware("app-go-api"))
+	router.GET("/legal-entity/:cnpj", GetLegalEntityByCNPJ)
+
+	req, _ := http.NewRequest("GET", "/legal-entity/11222333000181", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
 // Helper functions

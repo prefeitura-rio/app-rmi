@@ -48,8 +48,8 @@ func (s *AvatarService) ListAvatars(ctx context.Context, page, perPage int) (*mo
 		perPage = 20 // Default page size
 	}
 
-	// Try cache first
-	cacheKey := fmt.Sprintf("avatars:list:page:%d:per_page:%d", page, perPage)
+	// Try cache first (include collection so parallel test packages don't collide)
+	cacheKey := fmt.Sprintf("avatars:list:%s:page:%d:per_page:%d", config.AppConfig.AvatarsCollection, page, perPage)
 	cached, err := config.Redis.Get(ctx, cacheKey).Result()
 	if err == nil {
 		observability.CacheHits.WithLabelValues("list_avatars").Inc()
@@ -94,8 +94,7 @@ func (s *AvatarService) ListAvatars(ctx context.Context, page, perPage int) (*mo
 		s.logger.Error("failed to query avatars", zap.Error(err))
 		return nil, fmt.Errorf("failed to query avatars: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var avatars []models.Avatar
 	if err := cursor.All(ctx, &avatars); err != nil {
 		s.logger.Error("failed to decode avatars", zap.Error(err))
@@ -145,7 +144,7 @@ func (s *AvatarService) GetAvatarByID(ctx context.Context, avatarID string) (*mo
 	}
 
 	// Try cache first
-	cacheKey := fmt.Sprintf("avatar:id:%s", avatarID)
+	cacheKey := fmt.Sprintf("avatar:id:%s:%s", config.AppConfig.AvatarsCollection, avatarID)
 	cached, err := config.Redis.Get(ctx, cacheKey).Result()
 	if err == nil {
 		observability.CacheHits.WithLabelValues("get_avatar").Inc()
@@ -184,7 +183,7 @@ func (s *AvatarService) GetAvatarByID(ctx context.Context, avatarID string) (*mo
 		}
 	}
 
-	s.logger.Debug("avatar found and cached", zap.String("id", avatarID), zap.String("name", avatar.Name))
+	s.logger.Debug("avatar found and cached", zap.String("id", avatarID), zap.String("avatar_name", avatar.Name))
 
 	return &avatar, nil
 }
@@ -211,7 +210,7 @@ func (s *AvatarService) CreateAvatar(ctx context.Context, request *models.Avatar
 	collection := s.database.Collection(config.AppConfig.AvatarsCollection)
 	_, err := collection.InsertOne(ctx, avatar)
 	if err != nil {
-		s.logger.Error("failed to create avatar", zap.Error(err), zap.String("name", request.Name))
+		s.logger.Error("failed to create avatar", zap.Error(err), zap.String("avatar_name", request.Name))
 		return nil, fmt.Errorf("failed to create avatar: %w", err)
 	}
 
@@ -220,7 +219,7 @@ func (s *AvatarService) CreateAvatar(ctx context.Context, request *models.Avatar
 
 	s.logger.Info("avatar created successfully",
 		zap.String("id", avatar.ID.Hex()),
-		zap.String("name", avatar.Name),
+		zap.String("avatar_name", avatar.Name),
 		zap.String("url", avatar.URL))
 
 	return avatar, nil
@@ -289,7 +288,7 @@ func (s *AvatarService) ValidateAvatarExists(ctx context.Context, avatarID strin
 
 // invalidateAvatarCache removes avatar from cache
 func (s *AvatarService) invalidateAvatarCache(ctx context.Context, avatarID string) {
-	cacheKey := fmt.Sprintf("avatar:id:%s", avatarID)
+	cacheKey := fmt.Sprintf("avatar:id:%s:%s", config.AppConfig.AvatarsCollection, avatarID)
 	err := config.Redis.Del(ctx, cacheKey).Err()
 	if err != nil {
 		s.logger.Warn("failed to invalidate avatar cache", zap.Error(err), zap.String("avatar_id", avatarID))
@@ -314,28 +313,16 @@ func (s *AvatarService) invalidateListCache(ctx context.Context) {
 	}
 }
 
-// queueAvatarCleanupJob adds a cleanup job for orphaned avatar references
+// queueAvatarCleanupJob queues a sync job that resets user configs referencing the deleted avatar.
 func (s *AvatarService) queueAvatarCleanupJob(ctx context.Context, avatarID string) error {
-	// Create cleanup job data
-	jobData := map[string]interface{}{
-		"type":      "avatar_cleanup",
-		"avatar_id": avatarID,
-		"timestamp": time.Now().Unix(),
-	}
-
-	jobJSON, err := json.Marshal(jobData)
+	jobID, err := enqueueAvatarCleanupJob(ctx, config.Redis, avatarID)
 	if err != nil {
-		return fmt.Errorf("failed to marshal cleanup job: %w", err)
+		return err
 	}
 
-	// Queue job in user config queue for sync worker
-	queueName := "user_config:write"
-	err = config.Redis.LPush(ctx, queueName, jobJSON).Err()
-	if err != nil {
-		return fmt.Errorf("failed to queue cleanup job: %w", err)
-	}
-
-	s.logger.Info("avatar cleanup job queued", zap.String("avatar_id", avatarID))
+	s.logger.Info("avatar cleanup job queued",
+		zap.String("avatar_id", avatarID),
+		zap.String("job_id", jobID))
 	return nil
 }
 

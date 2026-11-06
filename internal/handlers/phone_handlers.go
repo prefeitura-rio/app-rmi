@@ -1,22 +1,24 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
-	"github.com/gin-gonic/gin"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/middleware"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
-	"go.uber.org/zap"
 )
 
 type PhoneHandlers struct {
@@ -65,12 +67,12 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "get_phone_status"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("GetPhoneStatus called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("GetPhoneStatus called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -96,12 +98,12 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 
 		// Check if it's a phone parsing error and return 400 instead of 500
 		if isPhoneParsingError(err) {
-			h.logger.Warn("invalid phone number format", zap.Error(err), zap.String("phone_number", phoneNumber))
+			h.logger.Warn("invalid phone number format", zap.Error(err), observability.PhoneField(phoneNumber))
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Formato de número de telefone inválido"})
 			return
 		}
 
-		h.logger.Error("failed to get phone status", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to get phone status", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -129,7 +131,7 @@ func (h *PhoneHandlers) GetPhoneStatus(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("GetPhoneStatus completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Bool("found", response.Found),
 		zap.Bool("quarantined", response.Quarantined),
 		zap.Bool("beta_whitelisted", response.BetaWhitelisted),
@@ -161,12 +163,12 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "get_citizen_by_phone"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("GetCitizenByPhone called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("GetCitizenByPhone called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -182,12 +184,12 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if status, err := h.validateBoundCPFAccess(ctx, c, phoneNumber, true); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
 		accessSpan.End()
-		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Acesso negado"})
+		c.JSON(status, ErrorResponse{Error: phoneAccessErrorMessage(status)})
 		return
 	}
 	accessSpan.End()
@@ -204,12 +206,12 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 
 		// Check if it's a phone parsing error and return 400 instead of 500
 		if isPhoneParsingError(err) {
-			h.logger.Warn("invalid phone number format", zap.Error(err), zap.String("phone_number", phoneNumber))
+			h.logger.Warn("invalid phone number format", zap.Error(err), observability.PhoneField(phoneNumber))
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Formato de número de telefone inválido"})
 			return
 		}
 
-		h.logger.Error("failed to get citizen by phone", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to get citizen by phone", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -229,7 +231,7 @@ func (h *PhoneHandlers) GetCitizenByPhone(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("GetCitizenByPhone completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Bool("found", response.Found),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
@@ -261,12 +263,12 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "validate_registration"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("ValidateRegistration called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("ValidateRegistration called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -294,13 +296,12 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 	}
 	utils.AddSpanAttribute(inputSpan, "input.name", req.Name)
 	utils.AddSpanAttribute(inputSpan, "input.cpf", req.CPF)
-	utils.AddSpanAttribute(inputSpan, "input.birth_date", req.BirthDate)
 	utils.AddSpanAttribute(inputSpan, "input.channel", req.Channel)
 	inputSpan.End()
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if err := h.validateCPFAccess(c, req.CPF); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
@@ -319,7 +320,7 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 			"service.operation": "validate_registration",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to validate registration", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to validate registration", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -338,7 +339,7 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("ValidateRegistration completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.Bool("validation_result", response.Valid),
 		zap.String("status", "success"))
@@ -371,12 +372,12 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "phone_opt_in"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("PhoneOptIn called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("PhoneOptIn called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -408,7 +409,7 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if err := h.validateCPFAccess(c, req.CPF); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
@@ -427,7 +428,7 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 			"service.operation": "opt_in",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to process opt-in", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to process opt-in", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -442,7 +443,7 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("PhoneOptIn completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -474,12 +475,12 @@ func (h *PhoneHandlers) OptOut(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "phone_opt_out"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("PhoneOptOut called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("PhoneOptOut called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -511,12 +512,12 @@ func (h *PhoneHandlers) OptOut(c *gin.Context) {
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if status, err := h.validateBoundCPFAccess(ctx, c, phoneNumber, false); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
 		accessSpan.End()
-		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Acesso negado"})
+		c.JSON(status, ErrorResponse{Error: phoneAccessErrorMessage(status)})
 		return
 	}
 	accessSpan.End()
@@ -530,7 +531,7 @@ func (h *PhoneHandlers) OptOut(c *gin.Context) {
 			"service.operation": "opt_out",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to process opt-out", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to process opt-out", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -545,7 +546,7 @@ func (h *PhoneHandlers) OptOut(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("PhoneOptOut completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("reason", req.Reason),
 		zap.String("channel", req.Channel),
 		zap.Duration("total_duration", totalDuration),
@@ -578,12 +579,12 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "reject_registration"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("RejectRegistration called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("RejectRegistration called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -616,12 +617,21 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if err := h.validateCPFAccess(c, req.CPF); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
 		accessSpan.End()
 		c.JSON(http.StatusForbidden, ErrorResponse{Error: "Acesso negado"})
+		return
+	}
+	// Rejecting blocks the existing mapping, so it must also belong to the caller.
+	if status, err := h.validateBoundCPFAccess(ctx, c, phoneNumber, true); err != nil {
+		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
+			"access.type": "cpf_validation",
+		})
+		accessSpan.End()
+		c.JSON(status, ErrorResponse{Error: phoneAccessErrorMessage(status)})
 		return
 	}
 	accessSpan.End()
@@ -635,7 +645,7 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 			"service.operation": "reject_registration",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to reject registration", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to reject registration", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -650,8 +660,8 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("RejectRegistration completed",
-		zap.String("phone_number", phoneNumber),
-		zap.String("cpf", req.CPF),
+		observability.PhoneField(phoneNumber),
+		observability.CPFField(req.CPF),
 		zap.String("channel", req.Channel),
 		zap.String("reason", req.Reason),
 		zap.Duration("total_duration", totalDuration),
@@ -685,12 +695,12 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "bind_phone_to_cpf"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("BindPhoneToCPF called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("BindPhoneToCPF called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -722,7 +732,7 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 
 	// Validate access with tracing
 	ctx, accessSpan := utils.TraceBusinessLogic(ctx, "validate_cpf_access")
-	if err := h.validateCPFAccess(c); err != nil {
+	if err := h.validateCPFAccess(c, req.CPF); err != nil {
 		utils.RecordErrorInSpan(accessSpan, err, map[string]interface{}{
 			"access.type": "cpf_validation",
 		})
@@ -741,7 +751,7 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 			"service.operation": "bind_phone_to_cpf",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to bind phone to CPF", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to bind phone to CPF", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -758,7 +768,7 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("BindPhoneToCPF completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }
@@ -788,12 +798,12 @@ func (h *PhoneHandlers) QuarantinePhone(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "quarantine_phone"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("QuarantinePhone called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("QuarantinePhone called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -830,7 +840,7 @@ func (h *PhoneHandlers) QuarantinePhone(c *gin.Context) {
 			"service.operation": "quarantine_phone",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to quarantine phone", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to quarantine phone", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -846,7 +856,7 @@ func (h *PhoneHandlers) QuarantinePhone(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("QuarantinePhone completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("status", response.Status),
 		zap.Time("quarantine_until", response.QuarantineUntil),
 		zap.Duration("total_duration", totalDuration),
@@ -878,12 +888,12 @@ func (h *PhoneHandlers) ReleaseQuarantine(c *gin.Context) {
 
 	// Add phone number to span attributes
 	span.SetAttributes(
-		attribute.String("phone_number", phoneNumber),
+		observability.PhoneAttr(phoneNumber),
 		attribute.String("operation", "release_quarantine"),
 		attribute.String("service", "phone"),
 	)
 
-	h.logger.Debug("ReleaseQuarantine called", zap.String("phone_number", phoneNumber))
+	h.logger.Debug("ReleaseQuarantine called", observability.PhoneField(phoneNumber))
 
 	// Validate phone number with tracing
 	ctx, phoneSpan := utils.TraceInputValidation(ctx, "phone_number", "phone_number")
@@ -920,7 +930,7 @@ func (h *PhoneHandlers) ReleaseQuarantine(c *gin.Context) {
 			"service.operation": "release_quarantine",
 		})
 		serviceSpan.End()
-		h.logger.Error("failed to release quarantine", zap.Error(err), zap.String("phone_number", phoneNumber))
+		h.logger.Error("failed to release quarantine", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
 	}
@@ -936,7 +946,7 @@ func (h *PhoneHandlers) ReleaseQuarantine(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	h.logger.Debug("ReleaseQuarantine completed",
-		zap.String("phone_number", phoneNumber),
+		observability.PhoneField(phoneNumber),
 		zap.String("status", response.Status),
 		zap.Time("quarantine_until", response.QuarantineUntil),
 		zap.Duration("total_duration", totalDuration),
@@ -1182,16 +1192,75 @@ func (h *PhoneHandlers) GetOptOutReasons(c *gin.Context) {
 		zap.String("status", "success"))
 }
 
-// validateCPFAccess validates if the user has access to the CPF or is admin
-func (h *PhoneHandlers) validateCPFAccess(c *gin.Context) error {
-	// Admin users have access to everything
-	isAdmin, err := middleware.IsAdmin(c)
-	if err == nil && isAdmin {
+// validateCPFAccess allows the request only when the caller has admin privileges
+// (admin role or trusted service client) or when targetCPF is the CPF of the
+// authenticated user (preferred_username of the JWT). Any other case, including
+// missing claims or an empty target, is denied.
+func (h *PhoneHandlers) validateCPFAccess(c *gin.Context, targetCPF string) error {
+	claims, exists := c.Get("claims")
+	if !exists {
+		return fmt.Errorf("%w: claims not found", middleware.ErrAccessDenied)
+	}
+	jwtClaims, ok := claims.(*models.JWTClaims)
+	if !ok || jwtClaims == nil {
+		return fmt.Errorf("%w: invalid claims type", middleware.ErrAccessDenied)
+	}
+
+	if middleware.HasAdminPrivileges(jwtClaims) {
 		return nil
 	}
 
-	// For non-admin users, we would need to validate CPF access
-	// This is a simplified version - in a real implementation, you might want to
-	// check if the user's token contains the specific CPF they're trying to access
+	ownerCPF := utils.NormalizeCPF(jwtClaims.PreferredUsername)
+	if len(ownerCPF) != 11 {
+		return fmt.Errorf("%w: token has no CPF", middleware.ErrAccessDenied)
+	}
+	if utils.NormalizeCPF(targetCPF) != ownerCPF {
+		return fmt.Errorf("%w: CPF does not belong to the authenticated user", middleware.ErrAccessDenied)
+	}
 	return nil
+}
+
+// validateBoundCPFAccess checks, for callers without admin privileges, that the CPF
+// currently bound to phoneNumber belongs to the authenticated user. allowUnbound
+// decides whether a phone without a bound CPF is allowed. On failure it returns the
+// HTTP status to answer with: 400 for an invalid phone number, 500 when the mapping
+// cannot be read, 403 when access is denied.
+func (h *PhoneHandlers) validateBoundCPFAccess(ctx context.Context, c *gin.Context, phoneNumber string, allowUnbound bool) (int, error) {
+	if isAdmin, err := middleware.IsAdmin(c); err == nil && isAdmin {
+		return http.StatusOK, nil
+	}
+
+	boundCPF, err := h.phoneMappingService.GetBoundCPF(ctx, phoneNumber)
+	if err != nil {
+		if isPhoneParsingError(err) {
+			return http.StatusBadRequest, err
+		}
+		h.logger.Error("failed to read phone mapping for access check", zap.Error(err), observability.PhoneField(phoneNumber))
+		return http.StatusInternalServerError, err
+	}
+
+	if boundCPF == "" {
+		if allowUnbound {
+			return http.StatusOK, nil
+		}
+		return http.StatusForbidden, fmt.Errorf("%w: phone number is not bound to the authenticated user", middleware.ErrAccessDenied)
+	}
+
+	if err := h.validateCPFAccess(c, boundCPF); err != nil {
+		return http.StatusForbidden, err
+	}
+	return http.StatusOK, nil
+}
+
+// phoneAccessErrorMessage maps the status returned by validateBoundCPFAccess to the
+// error message sent to the client.
+func phoneAccessErrorMessage(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "Formato de número de telefone inválido"
+	case http.StatusInternalServerError:
+		return "Erro interno do servidor"
+	default:
+		return "Acesso negado"
+	}
 }

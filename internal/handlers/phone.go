@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nyaruka/phonenumbers"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -78,10 +79,10 @@ func ValidatePhoneNumber(c *gin.Context) {
 	}
 
 	// Add phone number to span attributes
-	span.SetAttributes(attribute.String("input.phone", req.Phone))
+	span.SetAttributes(observability.PhoneAttr(req.Phone))
 
-	logger := logging.Logger.With(zap.String("phone", req.Phone))
-	logger.Debug("ValidatePhoneNumber called", zap.String("phone", req.Phone))
+	logger := logging.GetLogger().With(observability.PhoneField(req.Phone))
+	logger.Debug("ValidatePhoneNumber called", observability.PhoneField(req.Phone))
 
 	// Parse phone number with tracing
 	ctx, parseSpan := utils.TraceBusinessLogic(ctx, "parse_phone_number")
@@ -163,7 +164,7 @@ func ValidatePhoneNumber(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("ValidatePhoneNumber completed",
-		zap.String("phone", req.Phone),
+		observability.PhoneField(req.Phone),
 		zap.Bool("valid", true),
 		zap.String("country_code", fmt.Sprintf("%d", countryCode)),
 		zap.String("region", region),

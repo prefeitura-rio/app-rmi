@@ -3,9 +3,13 @@ package utils
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -566,4 +570,275 @@ func TestAddSpanAttribute_AllTypes(t *testing.T) {
 	AddSpanAttribute(span, "bool_key", true)
 	AddSpanAttribute(span, "float64_key", 3.14)
 	AddSpanAttribute(span, "unknown_key", []int{1, 2, 3})
+}
+
+func recordSpanAttributes(t *testing.T, fn func(span trace.Span)) map[string]string {
+	t.Helper()
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	defer func() { _ = provider.Shutdown(context.Background()) }()
+
+	_, span := provider.Tracer("pii-test").Start(context.Background(), "pii")
+	fn(span)
+	span.End()
+
+	ended := recorder.Ended()
+	if len(ended) != 1 {
+		t.Fatalf("expected 1 ended span, got %d", len(ended))
+	}
+	attrs := make(map[string]string)
+	for _, kv := range ended[0].Attributes() {
+		attrs[string(kv.Key)] = kv.Value.Emit()
+	}
+	return attrs
+}
+
+func TestAddSpanAttribute_MasksPersonalData(t *testing.T) {
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		AddSpanAttribute(span, "cpf", "12345678901")
+		AddSpanAttribute(span, "input.cpf", "12345678901")
+		AddSpanAttribute(span, "response.matched_cpf", "12345678901")
+		AddSpanAttribute(span, "phone", "5521987654321")
+		AddSpanAttribute(span, "full_phone_number", "5521987654321")
+		AddSpanAttribute(span, "verification.phone_number", "21987654321")
+		AddSpanAttribute(span, "national_number", "21987654321")
+		AddSpanAttribute(span, "subscriber", "987654321")
+		AddSpanAttribute(span, "input.name", "Maria Clara Souza Lima")
+		AddSpanAttribute(span, "response.first_name", "Maria")
+		AddSpanAttribute(span, "response.matched_name", "Maria Souza")
+		AddSpanAttribute(span, "input.channel", "whatsapp")
+		AddSpanAttribute(span, "input.group_name", "Beta Testers")
+	})
+
+	expected := map[string]string{
+		"cpf":                       "123.***.789-**",
+		"input.cpf":                 "123.***.789-**",
+		"response.matched_cpf":      "123.***.789-**",
+		"phone":                     "+55 21 *****4321",
+		"full_phone_number":         "+55 21 *****4321",
+		"verification.phone_number": "21 *****4321",
+		"national_number":           "21 *****4321",
+		"subscriber":                "*****4321",
+		"input.name":                "Maria C**** S**** Lima",
+		"response.first_name":       "M****",
+		"response.matched_name":     "Maria S****",
+		"input.channel":             "whatsapp",
+		"input.group_name":          "Beta Testers",
+	}
+	for key, want := range expected {
+		if got := attrs[key]; got != want {
+			t.Errorf("attribute %q = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestAddSpanAttribute_DropsBirthDate(t *testing.T) {
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		AddSpanAttribute(span, "input.birth_date", "1990-01-31")
+		AddSpanAttribute(span, "birthDate", "1990-01-31")
+		AddSpanAttribute(span, "data_nascimento", "1990-01-31")
+		AddSpanAttribute(span, "input.channel", "whatsapp")
+	})
+
+	for _, key := range []string{"input.birth_date", "birthDate", "data_nascimento"} {
+		if v, ok := attrs[key]; ok {
+			t.Errorf("birth date attribute %q must not be recorded, got %q", key, v)
+		}
+	}
+	if attrs["input.channel"] != "whatsapp" {
+		t.Errorf("non-personal attribute dropped: %v", attrs)
+	}
+}
+
+func TestRecordErrorInSpan_MasksPersonalDataAndDropsBirthDate(t *testing.T) {
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		RecordErrorInSpan(span, errors.New("boom"), map[string]interface{}{
+			"phone":          "21987654321",
+			"phone_number":   "5521987654321",
+			"parse.phone":    "+5521987654321",
+			"invalid_birth":  "1990-01-31",
+			"nascimento":     "1990-01-31",
+			"error.type":     "input_parsing",
+			"operation.name": "x",
+		})
+	})
+
+	if attrs["phone"] != "21 *****4321" || attrs["phone_number"] != "+55 21 *****4321" || attrs["parse.phone"] != "+55 21 *****4321" {
+		t.Errorf("phone attributes not masked: %v", attrs)
+	}
+	if _, ok := attrs["invalid_birth"]; ok {
+		t.Errorf("birth date attribute recorded: %v", attrs)
+	}
+	if _, ok := attrs["nascimento"]; ok {
+		t.Errorf("birth date attribute recorded: %v", attrs)
+	}
+	if attrs["error.type"] != "input_parsing" {
+		t.Errorf("non-personal attribute changed: %v", attrs)
+	}
+}
+
+func TestTraceEndpointStep_MasksPersonalData(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	defer func() { _ = provider.Shutdown(context.Background()) }()
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	defer otel.SetTracerProvider(previous)
+
+	_, span := TraceEndpointStep(context.Background(), "step", map[string]interface{}{
+		"phone_number": "5521987654321",
+		"birth_date":   "1990-01-31",
+		"db.filter":    "cpf",
+	})
+	span.End()
+
+	ended := recorder.Ended()
+	if len(ended) != 1 {
+		t.Fatalf("expected 1 ended span, got %d", len(ended))
+	}
+	attrs := make(map[string]string)
+	for _, kv := range ended[0].Attributes() {
+		attrs[string(kv.Key)] = kv.Value.Emit()
+	}
+	if attrs["phone_number"] != "+55 21 *****4321" {
+		t.Errorf("phone_number = %q, want masked", attrs["phone_number"])
+	}
+	if _, ok := attrs["birth_date"]; ok {
+		t.Errorf("birth_date must not be recorded: %v", attrs)
+	}
+	if attrs["db.filter"] != "cpf" {
+		t.Errorf("db.filter = %q, want cpf", attrs["db.filter"])
+	}
+}
+
+func TestAddSpanAttribute_MasksCacheKeysAndDropsOTP(t *testing.T) {
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		AddSpanAttribute(span, "cache.key", "memory:5521987654321:preferencias")
+		AddSpanAttribute(span, "cache_key", "citizen:write:12345678901")
+		AddSpanAttribute(span, "key", "12345678901")
+		AddSpanAttribute(span, "input.code", "123456")
+		AddSpanAttribute(span, "verification.otp", "654321")
+		AddSpanAttribute(span, "input.valor", "fulano@example.com")
+		AddSpanAttribute(span, "cache.operation", "get")
+	})
+
+	expected := map[string]string{
+		"cache.key":        "memory:***:preferencias",
+		"cache_key":        "citizen:write:***",
+		"key":              "***",
+		"input.code":       "[REDACTED]",
+		"verification.otp": "[REDACTED]",
+		"input.valor":      "[REDACTED]",
+		"cache.operation":  "get",
+	}
+	for key, want := range expected {
+		if got := attrs[key]; got != want {
+			t.Errorf("attribute %q = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestSpanHelpers_RedactSelfDeclaredValues(t *testing.T) {
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		AddSpanAttribute(span, "validated_value", "Parda")
+		AddSpanAttribute(span, "new_ethnicity", "Parda")
+		AddSpanAttribute(span, "new_gender", "texto livre sintetico")
+		AddSpanAttribute(span, "new_family_income", "1 a 2 salários mínimos")
+		AddSpanAttribute(span, "new_education", "Superior completo")
+		AddSpanAttribute(span, "new_disability", "Visual")
+		AddSpanAttribute(span, "invalid_value_length", 21)
+		RecordErrorInSpan(span, errors.New("invalid ethnicity value"), map[string]interface{}{
+			"invalid_value":            "texto livre sintetico",
+			"validation.invalid_value": "texto livre sintetico",
+			"error.type":               "validation",
+		})
+	})
+
+	for _, key := range []string{
+		"validated_value", "new_ethnicity", "new_gender", "new_family_income",
+		"new_education", "new_disability", "invalid_value", "validation.invalid_value",
+	} {
+		if got := attrs[key]; got != "[REDACTED]" {
+			t.Errorf("attribute %q = %q, want [REDACTED]", key, got)
+		}
+	}
+	if attrs["invalid_value_length"] != "21" {
+		t.Errorf("invalid_value_length = %q, want 21", attrs["invalid_value_length"])
+	}
+	if attrs["error.type"] != "validation" {
+		t.Errorf("non-personal attribute changed: %v", attrs)
+	}
+}
+
+func TestSpanHelpers_RedactEmailAddresses(t *testing.T) {
+	const email = "pessoa.sintetica@exemplo.com"
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		AddSpanAttribute(span, "email", email)
+		AddSpanAttribute(span, "input.email_prefix", email)
+		AddSpanAttribute(span, "notify_email", email)
+		AddSpanAttribute(span, "email_status", "sent")
+		AddSpanAttribute(span, "email.length", len(email))
+		RecordErrorInSpan(span, errors.New("invalid email format"), map[string]interface{}{
+			"parse.email":   email,
+			"email_address": email,
+			"error.type":    "validation",
+		})
+	})
+
+	for _, key := range []string{"email", "input.email_prefix", "notify_email", "parse.email", "email_address"} {
+		if got := attrs[key]; got != "[REDACTED]" {
+			t.Errorf("attribute %q = %q, want [REDACTED]", key, got)
+		}
+	}
+	if attrs["email_status"] != "sent" || attrs["error.type"] != "validation" {
+		t.Errorf("non-personal attribute changed: %v", attrs)
+	}
+	if attrs["email.length"] != strconv.Itoa(len(email)) {
+		t.Errorf("email.length = %q, want %d", attrs["email.length"], len(email))
+	}
+}
+
+func TestTraceCacheHelpers_MaskPersonalDataInKey(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	defer func() { _ = provider.Shutdown(context.Background()) }()
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	defer otel.SetTracerProvider(previous)
+
+	ctx := context.Background()
+	_, getSpan := TraceCacheGet(ctx, "memory:5521987654321:preferencias")
+	getSpan.End()
+	_, setSpan := TraceCacheSet(ctx, "citizen:12345678901", time.Minute)
+	setSpan.End()
+	_, delSpan := TraceCacheInvalidation(ctx, "user_config:12345678901")
+	delSpan.End()
+	_, opSpan, cleanup := TraceCacheOperation(ctx, "get", "memory_list:5521987654321")
+	_ = opSpan
+	cleanup()
+
+	want := map[string]bool{
+		"memory:***:preferencias": false,
+		"citizen:***":             false,
+		"user_config:***":         false,
+		"memory_list:***":         false,
+	}
+	for _, span := range recorder.Ended() {
+		for _, kv := range span.Attributes() {
+			if string(kv.Key) != "cache.key" {
+				continue
+			}
+			value := kv.Value.Emit()
+			if _, ok := want[value]; !ok {
+				t.Errorf("span %s cache.key = %q, want a masked key", span.Name(), value)
+				continue
+			}
+			want[value] = true
+		}
+	}
+	for value, seen := range want {
+		if !seen {
+			t.Errorf("cache.key %q not recorded", value)
+		}
+	}
 }

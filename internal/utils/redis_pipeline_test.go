@@ -29,7 +29,7 @@ func setupRedisForTest(t *testing.T) func() {
 	})
 
 	// Wrap with traced client
-	config.Redis = redisclient.NewClient(singleClient)
+	config.SetRedis(redisclient.NewClient(singleClient))
 
 	// Test connection
 	ctx := context.Background()

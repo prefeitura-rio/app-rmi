@@ -49,8 +49,8 @@ func setupCNAEHandlersTest(t *testing.T) (*CNAEHandlers, *gin.Engine, func()) {
 		t.Logf("Warning: Failed to create CNAE text index: %v (continuing anyway)", err)
 	}
 
-	service := services.NewCNAEService(database, logging.Logger)
-	handlers := NewCNAEHandlers(service, logging.Logger)
+	service := services.NewCNAEService(database, logging.GetLogger())
+	handlers := NewCNAEHandlers(service, logging.GetLogger())
 
 	router := gin.New()
 	router.GET("/cnaes", handlers.ListCNAEs)
@@ -59,8 +59,8 @@ func setupCNAEHandlersTest(t *testing.T) (*CNAEHandlers, *gin.Engine, func()) {
 }
 
 func TestNewCNAEHandlers(t *testing.T) {
-	service := services.NewCNAEService(nil, logging.Logger)
-	handlers := NewCNAEHandlers(service, logging.Logger)
+	service := services.NewCNAEService(nil, logging.GetLogger())
+	handlers := NewCNAEHandlers(service, logging.GetLogger())
 
 	assert.NotNil(t, handlers, "NewCNAEHandlers() returned nil")
 	assert.NotNil(t, handlers.service, "NewCNAEHandlers() service is nil")

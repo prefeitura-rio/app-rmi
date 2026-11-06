@@ -8,6 +8,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -36,7 +37,7 @@ func (s *NotificationCategoryService) ListActive(ctx context.Context) ([]models.
 		// Parse cached data
 		var cached []models.NotificationCategory
 		if err := bson.UnmarshalExtJSON([]byte(cachedData), false, &cached); err == nil {
-			s.logger.Debug("notification categories cache hit", zap.String("cache_key", cacheKey))
+			s.logger.Debug("notification categories cache hit", observability.CacheKeyField(cacheKey))
 			return cached, nil
 		}
 		s.logger.Warn("failed to unmarshal cached categories", zap.Error(err))
@@ -52,8 +53,7 @@ func (s *NotificationCategoryService) ListActive(ctx context.Context) ([]models.
 		s.logger.Error("failed to list active categories", zap.Error(err))
 		return nil, fmt.Errorf("failed to list categories: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	if err := cursor.All(ctx, &categories); err != nil {
 		s.logger.Error("failed to decode categories", zap.Error(err))
 		return nil, fmt.Errorf("failed to decode categories: %w", err)

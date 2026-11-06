@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -48,6 +49,69 @@ type MCPError struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
+}
+
+// MCPToolError is a JSON-RPC error returned by an MCP tool call.
+type MCPToolError struct {
+	Tool    string
+	Code    int
+	Message string
+}
+
+func (e *MCPToolError) Error() string {
+	return fmt.Sprintf("MCP tool %s error (code %d): %s", e.Tool, e.Code, e.Message)
+}
+
+func newMCPToolError(tool string, errorObj interface{}) *MCPToolError {
+	toolErr := &MCPToolError{Tool: tool}
+	fields, ok := errorObj.(map[string]interface{})
+	if !ok {
+		toolErr.Message = fmt.Sprintf("%v", errorObj)
+		return toolErr
+	}
+	if code, ok := fields["code"].(float64); ok {
+		toolErr.Code = int(code)
+	}
+	if message, ok := fields["message"].(string); ok {
+		toolErr.Message = message
+	}
+	return toolErr
+}
+
+// MCPHTTPStatusError is an HTTP status from the MCP server that the client handles by code:
+// 5xx, 401, 403, 404 (unknown session), 408 and 429.
+type MCPHTTPStatusError struct {
+	StatusCode int
+}
+
+func (e *MCPHTTPStatusError) Error() string {
+	if e.StatusCode >= 500 {
+		return fmt.Sprintf("server error: %d", e.StatusCode)
+	}
+	return fmt.Sprintf("MCP server returned status %d", e.StatusCode)
+}
+
+func isHandledMCPStatus(code int) bool {
+	switch code {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound,
+		http.StatusRequestTimeout, http.StatusTooManyRequests:
+		return true
+	default:
+		return code >= 500
+	}
+}
+
+// MCPProtocolError is a response body that is not the expected JSON-RPC message.
+type MCPProtocolError struct {
+	Err error
+}
+
+func (e *MCPProtocolError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *MCPProtocolError) Unwrap() error {
+	return e.Err
 }
 
 // RetryConfig defines retry behavior for MCP requests
@@ -141,6 +205,12 @@ func (c *MCPClient) withRetry(ctx context.Context, operation string, fn func() e
 
 // isRetryableError determines if an error should trigger a retry
 func (c *MCPClient) isRetryableError(err error) bool {
+	var statusErr *MCPHTTPStatusError
+	if errors.As(err, &statusErr) {
+		code := statusErr.StatusCode
+		return code >= 500 || code == http.StatusRequestTimeout || code == http.StatusTooManyRequests
+	}
+
 	// Network errors are generally retryable
 	if strings.Contains(err.Error(), "timeout") ||
 		strings.Contains(err.Error(), "connection") ||
@@ -187,8 +257,7 @@ func (c *MCPClient) getSessionID(ctx context.Context) (string, error) {
 		if err != nil {
 			return fmt.Errorf("failed to get session ID: %w", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		// MCP server returns 405 for HEAD but includes session ID in response headers
 		// This is expected behavior - extract session ID even from 405 response
 		if resp.StatusCode == http.StatusMethodNotAllowed {
@@ -216,6 +285,20 @@ func (c *MCPClient) getSessionID(ctx context.Context) (string, error) {
 	return sessionID, nil
 }
 
+// mcpPayloadMethod returns the JSON-RPC method of a payload, so debug logs can name the
+// request without its params (tools/call carries the citizen's address).
+func mcpPayloadMethod(payload interface{}) string {
+	switch p := payload.(type) {
+	case MCPRequest:
+		return p.Method
+	case *MCPRequest:
+		if p != nil {
+			return p.Method
+		}
+	}
+	return "unknown"
+}
+
 // makeRequest sends a JSON-RPC request to the MCP server
 func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload interface{}) (map[string]interface{}, error) {
 	jsonData, err := json.Marshal(payload)
@@ -238,16 +321,16 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 
 		c.logger.Debug("sending MCP request",
 			zap.String("session_id", sessionID),
-			zap.String("payload", string(jsonData)))
+			zap.String("method", mcpPayloadMethod(payload)),
+			zap.Int("payload_bytes", len(jsonData)))
 
 		resp, err := c.client.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to send request: %w", err)
 		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode >= 500 {
-			return fmt.Errorf("server error: %d", resp.StatusCode)
+		defer func() { _ = resp.Body.Close() }()
+		if isHandledMCPStatus(resp.StatusCode) {
+			return &MCPHTTPStatusError{StatusCode: resp.StatusCode}
 		}
 
 		body, err := io.ReadAll(resp.Body)
@@ -257,8 +340,9 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 
 		// Handle Server-Sent Events format
 		bodyStr := string(body)
-		c.logger.Info("RAW MCP RESPONSE", zap.String("body", bodyStr))
-		c.logger.Debug("raw MCP response", zap.String("body", bodyStr))
+		c.logger.Debug("raw MCP response",
+			zap.Int("status", resp.StatusCode),
+			zap.Int("body_bytes", len(body)))
 
 		if strings.Contains(bodyStr, "event: message") {
 			// Parse SSE format more robustly
@@ -274,10 +358,11 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 
 		err = json.Unmarshal([]byte(bodyStr), &result)
 		if err != nil {
-			return fmt.Errorf("failed to unmarshal response: %w", err)
+			return &MCPProtocolError{Err: fmt.Errorf("failed to unmarshal response: %w", err)}
 		}
 
-		c.logger.Debug("received MCP response", zap.Any("response", result))
+		_, hasError := result["error"]
+		c.logger.Debug("received MCP response", zap.Bool("has_error", hasError))
 
 		return nil
 	})
@@ -309,14 +394,14 @@ func (c *MCPClient) sendNotification(ctx context.Context, sessionID string, payl
 
 		c.logger.Debug("sending MCP notification",
 			zap.String("session_id", sessionID),
-			zap.String("payload", string(jsonData)))
+			zap.String("method", mcpPayloadMethod(payload)),
+			zap.Int("payload_bytes", len(jsonData)))
 
 		resp, err := c.client.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to send notification: %w", err)
 		}
-		defer resp.Body.Close()
-
+		defer func() { _ = resp.Body.Close() }()
 		// Notifications should return 202 (Accepted) with empty body
 		if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("notification failed with status: %d", resp.StatusCode)
@@ -404,12 +489,10 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 	defer span.End()
 
 	c.logger.Info("starting CF lookup via MCP",
-		zap.String("address", address),
 		zap.String("operation", "mcp_cf_lookup_start"))
 
 	defer func() {
 		c.logger.Info("CF lookup via MCP completed",
-			zap.String("address", address),
 			zap.Duration("total_duration", time.Since(startTime)),
 			zap.String("operation", "mcp_cf_lookup_complete"))
 	}()
@@ -450,7 +533,7 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 	}
 
 	// Step 4: Find nearest CF
-	c.logger.Info("MCP CF LOOKUP REQUEST", zap.String("address", address))
+	c.logger.Info("MCP CF LOOKUP REQUEST", zap.String("tool", "equipments_by_address"))
 	cfPayload := MCPRequest{
 		JSONRPC: "2.0",
 		ID:      intPtr(3),
@@ -469,6 +552,11 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 		return nil, fmt.Errorf("failed to find CF: %w", err)
 	}
 
+	// A JSON-RPC error has no "result"; report it as a tool error instead of a malformed response.
+	if errorObj, exists := result["error"]; exists && errorObj != nil {
+		return nil, newMCPToolError("equipments_by_address", errorObj)
+	}
+
 	// Parse response
 	return c.parseHealthServicesResponse(result)
 }
@@ -477,7 +565,7 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 func (c *MCPClient) parseHealthServicesResponse(result map[string]interface{}) (*models.HealthServicesResult, error) {
 	resultData, ok := result["result"].(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("invalid response format: missing result")
+		return nil, &MCPProtocolError{Err: fmt.Errorf("invalid response format: missing result")}
 	}
 
 	// Check for error flag
@@ -491,7 +579,7 @@ func (c *MCPClient) parseHealthServicesResponse(result map[string]interface{}) (
 		}
 
 		c.logger.Debug("MCP server reported no health services available",
-			zap.String("reason", errorMsg),
+			zap.Int("reason_bytes", len(errorMsg)),
 			zap.String("operation", "health_services_lookup_no_results"))
 
 		// Return nil (no services found) instead of error - this is expected behavior
@@ -500,12 +588,13 @@ func (c *MCPClient) parseHealthServicesResponse(result map[string]interface{}) (
 
 	structuredContent, ok := resultData["structuredContent"].(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("no structured content in response")
+		return nil, &MCPProtocolError{Err: fmt.Errorf("no structured content in response")}
 	}
 
 	equipamentos, ok := structuredContent["equipamentos"].([]interface{})
 	if !ok || len(equipamentos) == 0 {
-		return nil, fmt.Errorf("no equipment found in response")
+		c.logger.Debug("no equipment found in response")
+		return nil, nil
 	}
 
 	var healthResult models.HealthServicesResult
@@ -520,7 +609,7 @@ func (c *MCPClient) parseHealthServicesResponse(result map[string]interface{}) (
 		// Check for error in equipment data
 		if errorMsg, exists := equipamento["error"]; exists {
 			c.logger.Debug("MCP server reported no equipment found",
-				zap.String("reason", fmt.Sprintf("%v", errorMsg)),
+				zap.Int("reason_bytes", len(fmt.Sprintf("%v", errorMsg))),
 				zap.String("operation", "equipment_lookup_no_equipment"))
 			continue
 		}

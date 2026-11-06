@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prefeitura-rio/app-rmi/internal/circuitbreaker"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/prefeitura-rio/app-rmi/internal/retry"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -30,17 +33,51 @@ type DataOperation interface {
 
 // DataManager handles Redis/MongoDB operations with multi-level caching
 type DataManager struct {
-	redis  *redisclient.Client
-	mongo  *mongo.Database
-	logger *logging.SafeLogger
+	redis          *redisclient.Client
+	mongo          *mongo.Database
+	logger         *logging.SafeLogger
+	circuitBreaker *circuitbreaker.CircuitBreaker
+	retryConfig    retry.Config
 }
 
 // NewDataManager creates a new data manager instance
 func NewDataManager(redis *redisclient.Client, mongo *mongo.Database, logger *logging.SafeLogger) *DataManager {
+	// Get the underlying zap logger from SafeLogger, fallback to no-op if nil
+	var zapLogger *zap.Logger
+	if logger != nil {
+		zapLogger = logger.Unwrap()
+	}
+	if zapLogger == nil {
+		zapLogger = zap.NewNop()
+	}
+
+	// Initialize circuit breaker for MongoDB operations
+	cb := circuitbreaker.NewCircuitBreaker("mongodb", circuitbreaker.Settings{
+		MaxRequests: 10,
+		Interval:    30 * time.Second,
+		Timeout:     10 * time.Second,
+		ReadyToTrip: func(counts circuitbreaker.Counts) bool {
+			// Guard against division by zero
+			if counts.Requests < 10 {
+				return false
+			}
+			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
+			return failureRatio >= 0.6
+		},
+		OnStateChange: func(name string, from circuitbreaker.State, to circuitbreaker.State) {
+			logger.Warn("circuit breaker state changed",
+				zap.String("circuit_breaker", name),
+				zap.String("from", from.String()),
+				zap.String("to", to.String()))
+		},
+	}, zapLogger)
+
 	return &DataManager{
-		redis:  redis,
-		mongo:  mongo,
-		logger: logger,
+		redis:          redis,
+		mongo:          mongo,
+		logger:         logger,
+		circuitBreaker: cb,
+		retryConfig:    retry.DefaultConfig(zapLogger),
 	}
 }
 
@@ -59,18 +96,26 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 		return fmt.Errorf("failed to write to Redis buffer: %w", err)
 	}
 
+	sealed, reason, err := prepareBearerForQueue(utils.BearerTokenFromContext(ctx), op.GetType(), op.GetKey())
+	if err != nil {
+		return fmt.Errorf("failed to seal bearer token for sync job: %w", err)
+	}
+	dm.logSyncJobBearerCapture(op.GetType(), op.GetKey(), reason)
+
 	// 2. Queue sync job
 	syncJob := SyncJob{
-		ID:         utils.GenerateUUID(),
-		Type:       op.GetType(),
-		Key:        op.GetKey(),
-		Collection: op.GetCollection(),
-		Data:       op.GetData(),
-		Timestamp:  time.Now(),
-		RetryCount: 0,
-		MaxRetries: 3,
+		ID:          utils.GenerateUUID(),
+		Type:        op.GetType(),
+		Key:         op.GetKey(),
+		Collection:  op.GetCollection(),
+		Data:        op.GetData(),
+		Timestamp:   time.Now(),
+		RetryCount:  0,
+		MaxRetries:  3,
+		BearerToken: sealed,
 	}
 
+	//nolint:gosec // G117: internal job payload serialization; token not logged
 	jobBytes, err := json.Marshal(syncJob)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sync job: %w", err)
@@ -85,10 +130,35 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 
 	dm.logger.Debug("data written to cache and queued for sync",
 		zap.String("type", op.GetType()),
-		zap.String("key", op.GetKey()),
+		observability.KeyField(op.GetKey()),
 		zap.String("collection", op.GetCollection()))
 
 	return nil
+}
+
+func (dm *DataManager) logSyncJobBearerCapture(jobType, jobKey, reason string) {
+	if dm == nil || dm.logger == nil {
+		return
+	}
+	fields := []zap.Field{
+		zap.String("event", "sync_job_bearer"),
+		zap.String("stage", "capture"),
+		zap.String("reason", reason),
+		zap.String("type", jobType),
+		observability.KeyField(jobKey),
+	}
+	switch reason {
+	case bearerReasonEncryptionKeyMissing:
+		dm.logger.Warn("omitting bearer token from sync job: SYNC_JOB_BEARER_ENCRYPTION_KEY is not configured", fields...)
+	case bearerReasonAbsent:
+		if SalesforceBaseURLConfigured() && shouldEnqueueSalesforcePush(&SyncJob{Type: jobType}) {
+			dm.logger.Debug("sync job queued without bearer token on the request", fields...)
+		}
+	case bearerReasonSealed:
+		if SalesforceBaseURLConfigured() && shouldEnqueueSalesforcePush(&SyncJob{Type: jobType}) {
+			dm.logger.Debug("bearer token sealed onto sync job", fields...)
+		}
+	}
 }
 
 // Read reads data from cache layers, falling back to MongoDB
@@ -97,33 +167,30 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 	writeKey := fmt.Sprintf("%s:write:%s", dataType, key)
 	dm.logger.Debug("attempting to read from write buffer",
 		zap.String("type", dataType),
-		zap.String("key", key))
+		observability.KeyField(key))
 
 	if data, err := dm.redis.Get(ctx, writeKey).Result(); err == nil {
-		dataStr := string(data)
-		if len(dataStr) > 100 {
-			dataStr = dataStr[:100] + "..."
-		}
+		// The buffered JSON holds personal data (CPF, name...): log only its size.
 		dm.logger.Debug("found data in write buffer",
 			zap.String("type", dataType),
-			zap.String("key", key),
-			zap.String("data_preview", dataStr))
+			observability.KeyField(key),
+			zap.Int("data_size", len(data)))
 
 		if err := json.Unmarshal([]byte(data), result); err == nil {
 			dm.logger.Debug("successfully read from write buffer",
 				zap.String("type", dataType),
-				zap.String("key", key))
+				observability.KeyField(key))
 			return nil
 		} else {
 			dm.logger.Warn("failed to unmarshal data from write buffer",
 				zap.String("type", dataType),
-				zap.String("key", key),
+				observability.KeyField(key),
 				zap.Error(err))
 		}
 	} else {
 		dm.logger.Debug("write buffer miss, checking read cache",
 			zap.String("type", dataType),
-			zap.String("key", key))
+			observability.KeyField(key))
 	}
 
 	// 2. Check Redis read cache
@@ -132,63 +199,91 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 		if err := json.Unmarshal([]byte(data), result); err == nil {
 			dm.logger.Debug("data read from cache",
 				zap.String("type", dataType),
-				zap.String("key", key))
+				observability.KeyField(key))
 			return nil
 		} else {
 			dm.logger.Warn("failed to unmarshal data from read cache",
 				zap.String("type", dataType),
-				zap.String("key", key),
+				observability.KeyField(key),
 				zap.Error(err))
 		}
 	} else {
 		dm.logger.Debug("read cache miss, falling back to MongoDB",
 			zap.String("type", dataType),
-			zap.String("key", key))
+			observability.KeyField(key))
 	}
 
 	// 3. Fall back to MongoDB
 	// Use appropriate filter based on collection type using config values
-	var filter bson.M
+	var filterField string
 	switch collection {
 	case config.AppConfig.CitizenCollection:
-		filter = bson.M{"cpf": key}
+		filterField = "cpf"
 	case config.AppConfig.SelfDeclaredCollection:
-		filter = bson.M{"cpf": key}
+		filterField = "cpf"
 	case config.AppConfig.UserConfigCollection:
-		filter = bson.M{"cpf": key}
+		filterField = "cpf"
 	case config.AppConfig.PhoneMappingCollection:
-		filter = bson.M{"phone": key}
+		filterField = "phone"
 	case config.AppConfig.OptInHistoryCollection:
-		filter = bson.M{"cpf": key}
+		filterField = "cpf"
 	case config.AppConfig.BetaGroupCollection:
-		filter = bson.M{"cpf": key}
+		filterField = "cpf"
 	case config.AppConfig.PhoneVerificationCollection:
-		filter = bson.M{"phone": key}
+		filterField = "phone"
 	case config.AppConfig.MaintenanceRequestCollection:
-		filter = bson.M{"cpf": key}
+		filterField = "cpf"
+	case config.AppConfig.DepartmentCollection:
+		filterField = "cd_ua"
 	default:
 		// Default to _id for other collections
-		filter = bson.M{"_id": key}
+		filterField = "_id"
 	}
 
+	filter := bson.M{filterField: key}
+
+	// The filter value is the CPF or the phone (LGPD): log only the field name.
 	dm.logger.Debug("querying MongoDB",
 		zap.String("type", dataType),
-		zap.String("key", key),
+		observability.KeyField(key),
 		zap.String("collection", collection),
-		zap.Any("filter", filter))
+		zap.String("filter_field", filterField))
 
-	err := dm.mongo.Collection(collection).FindOne(ctx, filter).Decode(result)
+	// Execute MongoDB query with circuit breaker and retry logic
+	_, err := dm.circuitBreaker.Execute(ctx, func() (interface{}, error) {
+		return nil, retry.WithExponentialBackoff(ctx, dm.retryConfig, func() error {
+			return dm.mongo.Collection(collection).FindOne(ctx, filter).Decode(result)
+		})
+	})
+
 	if err != nil {
+		// Check for circuit breaker errors using errors.Is for wrapped error support
+		if errors.Is(err, circuitbreaker.ErrCircuitOpen) {
+			dm.logger.Error("MongoDB circuit breaker is open",
+				zap.String("type", dataType),
+				observability.KeyField(key),
+				zap.String("collection", collection))
+			return fmt.Errorf("database temporarily unavailable: %w", err)
+		}
+
+		if errors.Is(err, circuitbreaker.ErrTooManyRequests) {
+			dm.logger.Warn("MongoDB circuit breaker limiting requests in half-open state",
+				zap.String("type", dataType),
+				observability.KeyField(key),
+				zap.String("collection", collection))
+			return fmt.Errorf("database temporarily unavailable (too many requests): %w", err)
+		}
+
 		if err == mongo.ErrNoDocuments {
 			dm.logger.Debug("document not found in MongoDB",
 				zap.String("type", dataType),
-				zap.String("key", key),
+				observability.KeyField(key),
 				zap.String("collection", collection))
 			return ErrDocumentNotFound
 		}
 		dm.logger.Error("failed to read from MongoDB",
 			zap.String("type", dataType),
-			zap.String("key", key),
+			observability.KeyField(key),
 			zap.String("collection", collection),
 			zap.Error(err))
 		return fmt.Errorf("failed to read from MongoDB: %w", err)
@@ -202,18 +297,18 @@ func (dm *DataManager) Read(ctx context.Context, key string, collection string, 
 		dm.redis.Set(ctx, cacheKey, string(dataBytes), 3*time.Hour)
 		dm.logger.Debug("cached data from MongoDB",
 			zap.String("type", dataType),
-			zap.String("key", key),
-			zap.String("cache_key", cacheKey))
+			observability.KeyField(key),
+			observability.CacheKeyField(cacheKey))
 	} else {
 		dm.logger.Warn("failed to marshal data for caching",
 			zap.String("type", dataType),
-			zap.String("key", key),
+			observability.KeyField(key),
 			zap.Error(err))
 	}
 
 	dm.logger.Debug("data read from MongoDB and cached",
 		zap.String("type", dataType),
-		zap.String("key", key),
+		observability.KeyField(key),
 		zap.String("collection", collection))
 
 	return nil
@@ -237,7 +332,7 @@ func (dm *DataManager) Delete(ctx context.Context, key string, collection string
 
 	dm.logger.Debug("data deleted from all layers",
 		zap.String("type", dataType),
-		zap.String("key", key),
+		observability.KeyField(key),
 		zap.String("collection", collection))
 
 	return nil
@@ -250,14 +345,14 @@ func (dm *DataManager) CleanupWriteBuffer(ctx context.Context, dataType string, 
 	if err != nil {
 		dm.logger.Warn("failed to cleanup write buffer",
 			zap.String("type", dataType),
-			zap.String("key", key),
+			observability.KeyField(key),
 			zap.Error(err))
 		return err
 	}
 
 	dm.logger.Debug("write buffer cleaned up",
 		zap.String("type", dataType),
-		zap.String("key", key))
+		observability.KeyField(key))
 
 	return nil
 }
@@ -278,7 +373,7 @@ func (dm *DataManager) UpdateReadCache(ctx context.Context, dataType string, key
 
 	dm.logger.Debug("read cache updated",
 		zap.String("type", dataType),
-		zap.String("key", key))
+		observability.KeyField(key))
 
 	return nil
 }

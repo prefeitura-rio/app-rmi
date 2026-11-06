@@ -47,9 +47,9 @@ func setupSyncServiceTest(t *testing.T) (*SyncService, *redisclient.Client, *mon
 		DB:       0,
 	})
 	redisClient := redisclient.NewClient(singleClient)
-	config.Redis = redisClient
+	config.SetRedis(redisClient)
 
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	syncService := NewSyncService(redisClient, db, 3, logger)
 
 	return syncService, redisClient, db, func() {
@@ -132,7 +132,7 @@ func TestNewSyncService_DifferentWorkerCounts(t *testing.T) {
 			})
 			redisClient := redisclient.NewClient(singleClient)
 
-			logger := logging.Logger
+			logger := logging.GetLogger()
 			service := NewSyncService(redisClient, db, tc.workerCount, logger)
 
 			assert.NotNil(t, service)
@@ -299,24 +299,10 @@ func TestSyncService_MonitorDLQ_AllQueues(t *testing.T) {
 	ctx := context.Background()
 
 	// Add jobs to all DLQ types mentioned in the code
-	allQueues := []string{
-		"citizen",
-		"phone_mapping",
-		"user_config",
-		"opt_in_history",
-		"beta_group",
-		"phone_verification",
-		"maintenance_request",
-		"self_declared_address",
-		"self_declared_email",
-		"self_declared_phone",
-		"self_declared_raca",
-		"self_declared_nome_exibicao",
-		"cf_lookup",
-	}
+	allQueues := monitoredDLQQueues()
 
 	for _, queue := range allQueues {
-		dlqKey := fmt.Sprintf("sync:dlq:%s", queue)
+		dlqKey := syncDLQKey(queue)
 		testJob := DLQJob{
 			OriginalJob: SyncJob{
 				ID:         uuid.New().String(),
@@ -341,12 +327,12 @@ func TestSyncService_MonitorDLQ_AllQueues(t *testing.T) {
 	// Let it run briefly
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify all DLQs still have jobs
+	// Verify all DLQs still have jobs (including hash-tagged Mobilidade DLQ)
 	for _, queue := range allQueues {
-		dlqKey := fmt.Sprintf("sync:dlq:%s", queue)
+		dlqKey := syncDLQKey(queue)
 		dlqLen, err := redisClient.LLen(ctx, dlqKey).Result()
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), dlqLen, "DLQ %s should have 1 job", queue)
+		assert.Equal(t, int64(1), dlqLen, "DLQ %s (%s) should have 1 job", queue, dlqKey)
 	}
 }
 
@@ -362,6 +348,32 @@ func TestSyncService_MonitorDLQ_EmptyQueues(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// No assertions needed - just verify it doesn't panic
+}
+
+func TestSyncService_ScanDLQ_IncludesSalesforceQueues(t *testing.T) {
+	service, redisClient, _, cleanup := setupSyncServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	for _, queue := range []string{SalesforceSyncQueue, SalesforcePushQueue} {
+		dlqKey := syncDLQKey(queue)
+		_ = redisClient.Del(ctx, dlqKey)
+		jobBytes, err := json.Marshal(DLQJob{
+			OriginalJob: SyncJob{ID: "dlq-" + queue, Type: queue, Key: "14202478754"},
+			Error:       "jwt expired",
+			FailedAt:    time.Now(),
+		})
+		require.NoError(t, err)
+		require.NoError(t, redisClient.LPush(ctx, dlqKey, string(jobBytes)).Err())
+	}
+
+	require.Contains(t, monitoredDLQQueues(), SalesforceSyncQueue)
+	require.Contains(t, monitoredDLQQueues(), SalesforcePushQueue)
+
+	service.scanDLQs()
+
+	assert.Equal(t, int64(1), service.metrics.GetQueueDepth("dlq_"+SalesforceSyncQueue))
+	assert.Equal(t, int64(1), service.metrics.GetQueueDepth("dlq_"+SalesforcePushQueue))
 }
 
 // TestSyncService_WorkersProcessJobs tests that workers process jobs
@@ -437,7 +449,7 @@ func TestSyncService_MultipleWorkersProcessJobs(t *testing.T) {
 	})
 	redisClient := redisclient.NewClient(singleClient)
 
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	service := NewSyncService(redisClient, db, 5, logger)
 
 	// Add many jobs
@@ -655,7 +667,7 @@ func TestSyncService_WorkerCountZero(t *testing.T) {
 	})
 	redisClient := redisclient.NewClient(singleClient)
 
-	logger := logging.Logger
+	logger := logging.GetLogger()
 	service := NewSyncService(redisClient, db, 0, logger)
 
 	// Start the service with zero workers
@@ -734,4 +746,141 @@ func TestSyncService_Lifecycle(t *testing.T) {
 
 	// 8. Verify degraded mode stopped
 	assert.False(t, service.degradedMode.IsActive())
+}
+
+// TestSyncService_ScanDLQ_IncludesSelfDeclaredQueues covers the self_declared queues the scan used
+// to skip, and the gauge dropping back to zero once a DLQ is drained.
+func TestSyncService_ScanDLQ_IncludesSelfDeclaredQueues(t *testing.T) {
+	service, redisClient, _, cleanup := setupSyncServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queues := []string{
+		"self_declared_genero",
+		"self_declared_renda_familiar",
+		"self_declared_escolaridade",
+		"self_declared_deficiencia",
+		"self_declared_nascimento",
+	}
+	for _, queue := range queues {
+		dlqKey := syncDLQKey(queue)
+		_ = redisClient.Del(ctx, dlqKey)
+		jobBytes, err := json.Marshal(DLQJob{
+			OriginalJob: SyncJob{ID: "dlq-" + queue, Type: queue, Key: "self_declared:write:test"},
+			Error:       "test error",
+			FailedAt:    time.Now(),
+		})
+		require.NoError(t, err)
+		require.NoError(t, redisClient.LPush(ctx, dlqKey, string(jobBytes), string(jobBytes)).Err())
+	}
+
+	service.scanDLQs()
+
+	for _, queue := range queues {
+		assert.Equal(t, int64(2), service.metrics.GetQueueDepth("dlq_"+queue), "DLQ %s", queue)
+	}
+
+	for _, queue := range queues {
+		require.NoError(t, redisClient.Del(ctx, syncDLQKey(queue)).Err())
+	}
+
+	service.scanDLQs()
+
+	for _, queue := range queues {
+		assert.Equal(t, int64(0), service.metrics.GetQueueDepth("dlq_"+queue), "drained DLQ %s", queue)
+	}
+}
+
+// TestSyncService_MonitorDLQ_ScansAtStart checks the first scan happens right away, not only
+// after the first 5-minute tick.
+func TestSyncService_MonitorDLQ_ScansAtStart(t *testing.T) {
+	service, redisClient, _, cleanup := setupSyncServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queue := "self_declared_deficiencia"
+	dlqKey := syncDLQKey(queue)
+	_ = redisClient.Del(ctx, dlqKey)
+	defer redisClient.Del(ctx, dlqKey)
+	require.NoError(t, redisClient.LPush(ctx, dlqKey, `{"error":"test error"}`).Err())
+
+	go service.monitorDLQ()
+
+	require.Eventually(t, func() bool {
+		return service.metrics.GetQueueDepth("dlq_"+queue) == 1
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// TestSyncService_ScanQueueDepths_RecordsMainQueues checks the backlog of every queue the worker
+// consumes is recorded under the bare queue name (hash-tagged reliable queues included), apart from
+// the dlq_<fila> series, and drops back to zero once a queue is drained.
+func TestSyncService_ScanQueueDepths_RecordsMainQueues(t *testing.T) {
+	service, redisClient, _, cleanup := setupSyncServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	for _, queue := range syncQueueNames() {
+		require.NoError(t, redisClient.Del(ctx, syncQueueKey(queue), syncDLQKey(queue)).Err())
+	}
+
+	backlog := map[string]int{
+		"citizen":                  3,
+		"self_declared_nascimento": 2,
+		SalesforcePushQueue:        4,
+		MobilidadeInviteEmailQueue: 1,
+	}
+	for queue, n := range backlog {
+		for i := 0; i < n; i++ {
+			require.NoError(t, redisClient.LPush(ctx, syncQueueKey(queue), fmt.Sprintf(`{"id":"q-%s-%d"}`, queue, i)).Err())
+		}
+	}
+	require.NoError(t, redisClient.LPush(ctx, syncDLQKey("citizen"), `{"error":"test error"}`).Err())
+
+	service.scanQueueDepths()
+
+	all := service.metrics.GetAllMetrics()
+	for _, queue := range syncQueueNames() {
+		assert.Contains(t, all, "rmi_sync_queue_depth_"+queue, "queue %s must have a depth series", queue)
+		assert.Equal(t, int64(backlog[queue]), service.metrics.GetQueueDepth(queue), "queue %s", queue)
+	}
+	assert.NotContains(t, all, "rmi_sync_queue_depth_dlq_citizen", "the main queue scan must not record DLQs")
+
+	for queue := range backlog {
+		require.NoError(t, redisClient.Del(ctx, syncQueueKey(queue)).Err())
+	}
+
+	service.scanQueueDepths()
+
+	for queue := range backlog {
+		assert.Equal(t, int64(0), service.metrics.GetQueueDepth(queue), "drained queue %s", queue)
+	}
+}
+
+// TestSyncService_MonitorQueueDepth_ScansAtStartAndOnTick checks the first scan happens right away
+// and later scans follow the backlog, separately from the DLQ series.
+func TestSyncService_MonitorQueueDepth_ScansAtStartAndOnTick(t *testing.T) {
+	service, redisClient, _, cleanup := setupSyncServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queue := "self_declared_email"
+	queueKey := syncQueueKey(queue)
+	dlqKey := syncDLQKey(queue)
+	require.NoError(t, redisClient.Del(ctx, queueKey, dlqKey).Err())
+	defer redisClient.Del(ctx, queueKey, dlqKey)
+	require.NoError(t, redisClient.LPush(ctx, queueKey, `{"id":"a"}`, `{"id":"b"}`).Err())
+	require.NoError(t, redisClient.LPush(ctx, dlqKey, `{"error":"test error"}`).Err())
+
+	go service.monitorQueueDepth(20 * time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return service.metrics.GetQueueDepth(queue) == 2
+	}, 2*time.Second, 10*time.Millisecond)
+
+	require.NoError(t, redisClient.LPush(ctx, queueKey, `{"id":"c"}`).Err())
+
+	require.Eventually(t, func() bool {
+		return service.metrics.GetQueueDepth(queue) == 3
+	}, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, int64(0), service.metrics.GetQueueDepth("dlq_"+queue), "the main queue monitor must not record the DLQ")
 }

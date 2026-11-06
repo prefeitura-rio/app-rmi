@@ -94,7 +94,7 @@ func ReadCacheKey(c *gin.Context) {
 
 		observability.CacheHits.WithLabelValues("admin_cache_read").Inc()
 		logger.Debug("cache key found",
-			zap.String("key", request.Key),
+			observability.KeyField(request.Key),
 			zap.Int("value_length", len(value)),
 			zap.Int64("ttl_seconds", response.TTL))
 	} else {
@@ -104,13 +104,13 @@ func ReadCacheKey(c *gin.Context) {
 
 		if err.Error() == "redis: nil" {
 			// Key doesn't exist - this is normal
-			logger.Debug("cache key not found", zap.String("key", request.Key))
+			logger.Debug("cache key not found", observability.KeyField(request.Key))
 		} else {
 			// Actual Redis error
 			utils.RecordErrorInSpan(cacheSpan, err, map[string]interface{}{
 				"cache.key": request.Key,
 			})
-			logger.Error("failed to read from cache", zap.Error(err), zap.String("key", request.Key))
+			logger.Error("failed to read from cache", zap.Error(err), observability.KeyField(request.Key))
 			cacheSpan.End()
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to read from cache: " + err.Error()})
 			return
@@ -126,7 +126,7 @@ func ReadCacheKey(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("ReadCacheKey completed",
-		zap.String("key", request.Key),
+		observability.KeyField(request.Key),
 		zap.Bool("exists", response.Exists),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))

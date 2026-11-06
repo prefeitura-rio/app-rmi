@@ -25,7 +25,7 @@ func setupNotificationCategoryServiceTest(t *testing.T) (*NotificationCategorySe
 	ctx := context.Background()
 	database := config.MongoDB
 
-	service := NewNotificationCategoryService(logging.Logger)
+	service := NewNotificationCategoryService(logging.GetLogger())
 
 	return service, func() {
 		// Clean up Redis
@@ -44,7 +44,7 @@ func setupNotificationCategoryServiceTest(t *testing.T) (*NotificationCategorySe
 }
 
 func TestNewNotificationCategoryService(t *testing.T) {
-	service := NewNotificationCategoryService(logging.Logger)
+	service := NewNotificationCategoryService(logging.GetLogger())
 	if service == nil {
 		t.Error("NewNotificationCategoryService() returned nil")
 	}

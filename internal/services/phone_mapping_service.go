@@ -6,15 +6,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prefeitura-rio/app-rmi/internal/config"
-	"github.com/prefeitura-rio/app-rmi/internal/logging"
-	"github.com/prefeitura-rio/app-rmi/internal/models"
-	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
+
+	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/logging"
+	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
 type PhoneMappingService struct {
@@ -54,7 +56,7 @@ func (s *PhoneMappingService) GetPhoneStatus(ctx context.Context, phoneNumber st
 				BetaWhitelisted: false,
 			}, nil
 		}
-		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to get phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
 	}
 
@@ -83,7 +85,7 @@ func (s *PhoneMappingService) GetPhoneStatus(ctx context.Context, phoneNumber st
 		).Decode(&citizen)
 
 		if err == nil {
-			response.CPF = utils.MaskCPF(citizen.CPF)
+			response.CPF = observability.MaskCPF(citizen.CPF)
 			if citizen.Nome != nil {
 				response.Name = utils.MaskName(*citizen.Nome)
 			}
@@ -147,7 +149,7 @@ func (s *PhoneMappingService) QuarantinePhone(ctx context.Context, phoneNumber s
 
 		_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
 		if err != nil {
-			s.logger.Error("failed to create quarantine record", zap.Error(err), zap.String("phone_number", storagePhone))
+			s.logger.Error("failed to create quarantine record", zap.Error(err), observability.PhoneField(storagePhone))
 			return nil, fmt.Errorf("failed to create quarantine record: %w", err)
 		}
 
@@ -160,7 +162,7 @@ func (s *PhoneMappingService) QuarantinePhone(ctx context.Context, phoneNumber s
 	}
 
 	if err != nil {
-		s.logger.Error("failed to check existing phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to check existing phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to check existing phone mapping: %w", err)
 	}
 
@@ -187,7 +189,7 @@ func (s *PhoneMappingService) QuarantinePhone(ctx context.Context, phoneNumber s
 		update,
 	)
 	if err != nil {
-		s.logger.Error("failed to extend quarantine", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to extend quarantine", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to extend quarantine: %w", err)
 	}
 
@@ -220,7 +222,7 @@ func (s *PhoneMappingService) ReleaseQuarantine(ctx context.Context, phoneNumber
 		if err == mongo.ErrNoDocuments {
 			return nil, fmt.Errorf("phone number not found")
 		}
-		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to get phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
 	}
 
@@ -240,7 +242,7 @@ func (s *PhoneMappingService) ReleaseQuarantine(ctx context.Context, phoneNumber
 			bson.M{"phone_number": storagePhone},
 		)
 		if err != nil {
-			s.logger.Error("failed to delete quarantine record", zap.Error(err), zap.String("phone_number", storagePhone))
+			s.logger.Error("failed to delete quarantine record", zap.Error(err), observability.PhoneField(storagePhone))
 			return nil, fmt.Errorf("failed to delete quarantine record: %w", err)
 		}
 
@@ -268,7 +270,7 @@ func (s *PhoneMappingService) ReleaseQuarantine(ctx context.Context, phoneNumber
 		update,
 	)
 	if err != nil {
-		s.logger.Error("failed to release quarantine", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to release quarantine", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to release quarantine: %w", err)
 	}
 
@@ -315,7 +317,7 @@ func (s *PhoneMappingService) BindPhoneToCPF(ctx context.Context, phoneNumber, c
 
 		_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
 		if err != nil {
-			s.logger.Error("failed to create phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+			s.logger.Error("failed to create phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 			return nil, fmt.Errorf("failed to create phone mapping: %w", err)
 		}
 
@@ -329,7 +331,7 @@ func (s *PhoneMappingService) BindPhoneToCPF(ctx context.Context, phoneNumber, c
 	}
 
 	if err != nil {
-		s.logger.Error("failed to check existing phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to check existing phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to check existing phone mapping: %w", err)
 	}
 
@@ -362,7 +364,7 @@ func (s *PhoneMappingService) BindPhoneToCPF(ctx context.Context, phoneNumber, c
 		update,
 	)
 	if err != nil {
-		s.logger.Error("failed to update phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to update phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to update phone mapping: %w", err)
 	}
 
@@ -417,8 +419,7 @@ func (s *PhoneMappingService) GetQuarantinedPhones(ctx context.Context, page, pe
 		s.logger.Error("failed to find quarantined phones", zap.Error(err))
 		return nil, fmt.Errorf("failed to find quarantined phones: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var quarantinedPhones []models.QuarantinedPhone
 	for cursor.Next(ctx) {
 		var mapping models.PhoneCPFMapping
@@ -428,13 +429,13 @@ func (s *PhoneMappingService) GetQuarantinedPhones(ctx context.Context, page, pe
 		}
 
 		quarantinedPhone := models.QuarantinedPhone{
-			PhoneNumber:     utils.ExtractPhoneFromComponents("55", mapping.PhoneNumber[:2], mapping.PhoneNumber[2:]),
+			PhoneNumber:     utils.StoragePhoneToE164(mapping.PhoneNumber),
 			QuarantineUntil: *mapping.QuarantineUntil,
 			Expired:         mapping.QuarantineUntil.Before(now),
 		}
 
 		if mapping.CPF != "" {
-			quarantinedPhone.CPF = utils.MaskCPF(mapping.CPF)
+			quarantinedPhone.CPF = observability.MaskCPF(mapping.CPF)
 		}
 
 		quarantinedPhones = append(quarantinedPhones, quarantinedPhone)
@@ -528,8 +529,7 @@ func (s *PhoneMappingService) GetQuarantineStats(ctx context.Context) (*models.Q
 		s.logger.Error("failed to count quarantine history", zap.Error(err))
 		return nil, fmt.Errorf("failed to count quarantine history: %w", err)
 	}
-	defer cursor.Close(ctx)
-
+	defer func() { _ = cursor.Close(ctx) }()
 	var historyResult []bson.M
 	if err := cursor.All(ctx, &historyResult); err != nil {
 		s.logger.Error("failed to decode quarantine history count", zap.Error(err))
@@ -553,6 +553,32 @@ func (s *PhoneMappingService) GetQuarantineStats(ctx context.Context) (*models.Q
 	}, nil
 }
 
+// GetBoundCPF returns the CPF currently stored on the mapping of phoneNumber, whatever
+// its status, or "" when the phone has no mapping or the mapping has no CPF. It is
+// used to authorize operations on the phone, so the CPF is never masked here and must
+// not be returned to the client.
+func (s *PhoneMappingService) GetBoundCPF(ctx context.Context, phoneNumber string) (string, error) {
+	components, err := utils.ParsePhoneNumber(phoneNumber)
+	if err != nil {
+		return "", fmt.Errorf("invalid phone number: %w", err)
+	}
+	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+
+	var mapping models.PhoneCPFMapping
+	err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).FindOne(
+		ctx,
+		bson.M{"phone_number": storagePhone},
+		options.FindOne().SetProjection(bson.M{"cpf": 1}),
+	).Decode(&mapping)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to get phone mapping: %w", err)
+	}
+	return mapping.CPF, nil
+}
+
 // FindCPFByPhone finds a CPF by phone number (existing method, updated for new model)
 func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber string) (*models.PhoneCitizenResponse, error) {
 	// Parse phone number for storage format
@@ -572,7 +598,7 @@ func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber st
 		if err == mongo.ErrNoDocuments {
 			return &models.PhoneCitizenResponse{Found: false}, nil
 		}
-		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to get phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
 	}
 
@@ -598,17 +624,17 @@ func (s *PhoneMappingService) FindCPFByPhone(ctx context.Context, phoneNumber st
 			// Phone mapping exists but citizen doesn't - this is an invalid state
 			// Return not found instead of error
 			s.logger.Warn("phone mapping exists but citizen not found",
-				zap.String("phone_number", storagePhone),
-				zap.String("cpf", mapping.CPF))
+				observability.PhoneField(storagePhone),
+				observability.CPFField(mapping.CPF))
 			return &models.PhoneCitizenResponse{Found: false}, nil
 		}
-		s.logger.Error("failed to get citizen data", zap.Error(err), zap.String("cpf", mapping.CPF))
+		s.logger.Error("failed to get citizen data", zap.Error(err), observability.CPFField(mapping.CPF))
 		return nil, fmt.Errorf("failed to get citizen data: %w", err)
 	}
 
 	return &models.PhoneCitizenResponse{
 		Found: true,
-		CPF:   utils.MaskCPF(citizen.CPF),
+		CPF:   observability.MaskCPF(citizen.CPF),
 		Name: func() string {
 			if citizen.Nome != nil {
 				return utils.MaskName(*citizen.Nome)
@@ -654,7 +680,7 @@ func (s *PhoneMappingService) ValidateRegistration(ctx context.Context, phoneNum
 				Valid: false,
 			}, nil
 		}
-		s.logger.Error("failed to get citizen data", zap.Error(err), zap.String("cpf", cpf))
+		s.logger.Error("failed to get citizen data", zap.Error(err), observability.CPFField(cpf))
 		return nil, fmt.Errorf("failed to get citizen data: %w", err)
 	}
 
@@ -693,7 +719,7 @@ func (s *PhoneMappingService) ValidateRegistration(ctx context.Context, phoneNum
 		&options.UpdateOptions{Upsert: &[]bool{true}[0]},
 	)
 	if err != nil {
-		s.logger.Error("failed to update validation attempt", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to update validation attempt", zap.Error(err), observability.PhoneField(storagePhone))
 		// Don't fail the validation for this error
 	}
 
@@ -750,7 +776,7 @@ func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, chann
 
 		result, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
 		if err != nil {
-			s.logger.Error("failed to create phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+			s.logger.Error("failed to create phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 			return nil, fmt.Errorf("failed to create phone mapping: %w", err)
 		}
 
@@ -770,7 +796,7 @@ func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, chann
 	}
 
 	if err != nil {
-		s.logger.Error("failed to check existing phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to check existing phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to check existing phone mapping: %w", err)
 	}
 
@@ -810,7 +836,7 @@ func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, chann
 		update,
 	)
 	if err != nil {
-		s.logger.Error("failed to update phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to update phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to update phone mapping: %w", err)
 	}
 
@@ -842,7 +868,7 @@ func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber, reason, c
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			// Phone number not found - create a new mapping record to track the opt-out preference
-			s.logger.Info("creating opt-out record for unknown phone number", zap.String("phone_number", storagePhone))
+			s.logger.Info("creating opt-out record for unknown phone number", observability.PhoneField(storagePhone))
 
 			// Create new mapping with blocked status to record the opt-out preference
 			newMapping := models.PhoneCPFMapping{
@@ -856,7 +882,7 @@ func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber, reason, c
 
 			_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, newMapping)
 			if err != nil {
-				s.logger.Error("failed to create opt-out record", zap.Error(err), zap.String("phone_number", storagePhone))
+				s.logger.Error("failed to create opt-out record", zap.Error(err), observability.PhoneField(storagePhone))
 				return nil, fmt.Errorf("failed to create opt-out record: %w", err)
 			}
 
@@ -867,7 +893,7 @@ func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber, reason, c
 				Status: "opted_out",
 			}, nil
 		}
-		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to get phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
 	}
 
@@ -893,7 +919,7 @@ func (s *PhoneMappingService) OptOut(ctx context.Context, phoneNumber, reason, c
 		update,
 	)
 	if err != nil {
-		s.logger.Error("failed to update phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to update phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to update phone mapping: %w", err)
 	}
 
@@ -930,7 +956,7 @@ func (s *PhoneMappingService) RejectRegistration(ctx context.Context, phoneNumbe
 				Status: "not_found",
 			}, nil
 		}
-		s.logger.Error("failed to get phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to get phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to get phone mapping: %w", err)
 	}
 
@@ -951,7 +977,7 @@ func (s *PhoneMappingService) RejectRegistration(ctx context.Context, phoneNumbe
 		update,
 	)
 	if err != nil {
-		s.logger.Error("failed to block phone mapping", zap.Error(err), zap.String("phone_number", storagePhone))
+		s.logger.Error("failed to block phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
 		return nil, fmt.Errorf("failed to block phone mapping: %w", err)
 	}
 
@@ -967,7 +993,7 @@ func (s *PhoneMappingService) recordOptInHistory(ctx context.Context, phoneNumbe
 	// Parse phone number for storage format
 	components, err := utils.ParsePhoneNumber(phoneNumber)
 	if err != nil {
-		s.logger.Error("failed to parse phone number for history", zap.Error(err), zap.String("phone_number", phoneNumber))
+		s.logger.Error("failed to parse phone number for history", zap.Error(err), observability.PhoneField(phoneNumber))
 		return
 	}
 	storagePhone := utils.FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
@@ -983,7 +1009,7 @@ func (s *PhoneMappingService) recordOptInHistory(ctx context.Context, phoneNumbe
 
 	_, err = config.MongoDB.Collection(config.AppConfig.OptInHistoryCollection).InsertOne(ctx, history)
 	if err != nil {
-		s.logger.Error("failed to record opt-in history", zap.Error(err), zap.String("phone_number", phoneNumber))
+		s.logger.Error("failed to record opt-in history", zap.Error(err), observability.PhoneField(phoneNumber))
 		// Don't fail the main operation for this error
 	}
 }

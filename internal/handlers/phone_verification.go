@@ -6,17 +6,17 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
+
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 )
 
 // ValidatePhoneVerification godoc
@@ -46,17 +46,17 @@ func ValidatePhoneVerification(c *gin.Context) {
 
 	// Add CPF to span attributes
 	span.SetAttributes(
-		attribute.String("cpf", cpf),
+		observability.CPFAttr(cpf),
 		attribute.String("operation", "validate_phone_verification"),
 		attribute.String("service", "phone_verification"),
 	)
 
-	logger := observability.Logger().With(zap.String("cpf", cpf))
-	logger.Debug("ValidatePhoneVerification called", zap.String("cpf", cpf))
+	logger := observability.Logger().With(observability.CPFField(cpf))
+	logger.Debug("ValidatePhoneVerification called", observability.CPFField(cpf))
 
 	// Validate CPF format
 	if !utils.ValidateCPF(cpf) {
-		logger.Warn("invalid CPF format", zap.String("cpf", cpf))
+		logger.Warn("invalid CPF format", observability.CPFField(cpf))
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Error: "Invalid CPF format",
 		})
@@ -80,7 +80,6 @@ func ValidatePhoneVerification(c *gin.Context) {
 	utils.AddSpanAttribute(inputSpan, "input.ddi", req.DDI)
 	utils.AddSpanAttribute(inputSpan, "input.ddd", req.DDD)
 	utils.AddSpanAttribute(inputSpan, "input.valor", req.Valor)
-	utils.AddSpanAttribute(inputSpan, "input.code", req.Code)
 	inputSpan.End()
 
 	// Build full phone number for lookup with tracing
@@ -230,9 +229,8 @@ func ValidatePhoneVerification(c *gin.Context) {
 	// Log total operation time
 	totalDuration := time.Since(startTime)
 	logger.Debug("ValidatePhoneVerification completed",
-		zap.String("cpf", cpf),
-		zap.String("phone_number", fullPhone),
-		zap.String("code", req.Code),
+		observability.CPFField(cpf),
+		observability.PhoneField(fullPhone),
 		zap.Duration("total_duration", totalDuration),
 		zap.String("status", "success"))
 }

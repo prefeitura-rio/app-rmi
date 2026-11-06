@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -24,7 +25,7 @@ func RequestTiming() gin.HandlerFunc {
 		// Set attributes after span creation
 		span.SetAttributes(
 			attribute.String("http.method", c.Request.Method),
-			attribute.String("http.url", c.Request.URL.String()),
+			attribute.String("http.url", observability.MaskURL(c.Request.URL)),
 			attribute.String("http.route", c.FullPath()),
 			attribute.String("http.user_agent", c.Request.UserAgent()),
 			attribute.String("http.client_ip", c.ClientIP()),
@@ -51,7 +52,7 @@ func RequestTiming() gin.HandlerFunc {
 		// Log request completion with timing
 		observability.Logger().Info("request completed",
 			zap.String("method", c.Request.Method),
-			zap.String("path", c.Request.URL.Path),
+			observability.PathField(c.Request.URL.Path),
 			zap.String("route", c.FullPath()),
 			zap.Int("status", status),
 			zap.Duration("latency", latency),
@@ -63,7 +64,7 @@ func RequestTiming() gin.HandlerFunc {
 		observability.RequestDuration.WithLabelValues(
 			c.FullPath(),
 			c.Request.Method,
-			string(rune(status)),
+			strconv.Itoa(status),
 		).Observe(latency.Seconds())
 
 		// Record errors in span if status indicates error

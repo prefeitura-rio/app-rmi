@@ -97,9 +97,12 @@ just stop-deps        # Stop dependency containers
 - **Query Timeouts**: 10s default with projection support
 
 #### Sync Worker Performance
-- **Parallel Processing**: Round-robin across 11 queues
+- **Parallel Processing**: Round-robin across queues (rotating start index each cycle so later queues are not starved)
 - **Non-blocking**: RPop instead of blocking BRPop
 - **Job Limiting**: Max 3 jobs per 50ms cycle to prevent overwhelming
+- **Avatar cleanup**: `DeleteAvatar` queues a `SyncJob` (type `user_config`, `data.type = avatar_cleanup`) on `sync:queue:user_config`, dispatched to `handleAvatarCleanup` (`internal/services/avatar_cleanup_job.go`). The legacy list `user_config:write` is never consumed; on start the worker migrates `avatar_cleanup` payloads left there to the sync queue (LREM before LPUSH, up to 1000 per start). The cleanup first sets `avatar_cleanup:deleted:<id>` (24h), then reads the matching user configs with one cursor (`avatar_id` has no index) and unsets `avatar_id` in batches of 500 (by `_id`) and, after each batch, deletes `user_config:cache:<cpf>` and strips the avatar from a pending `user_config:write:<cpf>` (compare-and-set keeping the TTL), detached from the job deadline (the job has `avatarCleanupJobTimeout`, 5 min); a `user_config` sync job whose `avatar_id` has that marker drops it (and `$unset`s it) instead of writing it back
+- **Queue list**: `syncQueueNames()` is the single list of queues; the worker consumes it, the DLQ scan (`monitoredDLQQueues`, at start and every 5 min, gauge `rmi_sync_queue_depth{queue="dlq_<fila>"}` also at 0) and the backlog scan (`scanQueueDepths`, one Redis pipeline of `LLEN syncQueueKey(<fila>)` at start and every 15 s, gauge `rmi_sync_queue_depth{queue="<fila>"}` also at 0) derive from it. Backlog queries (e.g. the commented KEDA ScaledObject) filter `queue!~"dlq_.*"`. A new queue goes there only
+- **Metrics**: the worker serves `GET /metrics` on `METRICS_PORT` (default 9090, `0` disables; `observability.NewMetricsServer`) with `rmi_sync_*` and `rmi_degraded_mode_active`; the API serves `/metrics` on `PORT`. The `status` label of `app_rmi_request_duration_seconds` is the HTTP code (`strconv.Itoa`)
 
 ### Authentication & Security
 - **Keycloak Integration**: JWT token validation via middleware
@@ -107,17 +110,34 @@ just stop-deps        # Stop dependency containers
 - **Route Protection**: Public phone endpoints, protected citizen data
 - **Audit Trail**: Comprehensive logging with async workers
 - **Input Validation**: CPF, phone number, data format validation
+- **Phone routes with the CPF in the body** (`/v1/phone/{phone}/opt-in|opt-out|bind|reject-registration|validate-registration|citizen`): `RequireOwnCPF()` does not apply (no `:cpf` in the URL), so `PhoneHandlers.validateCPFAccess(c, cpf)` enforces it: admin/trusted service client (`HasAdminPrivileges`) or `cpf` == JWT `preferred_username`, else 403. `opt-out`, `citizen` and `reject-registration` also check the CPF already bound to the phone (`PhoneMappingService.GetBoundCPF`); a citizen cannot opt out a phone without a bound CPF.
 
 ### Audit Logging System
-- **Automatic Audit Middleware**: All PUT/POST/DELETE requests are automatically logged via `middleware.AuditMiddleware()`
+- **Automatic Audit Middleware**: All PUT/POST/DELETE/PATCH requests are automatically logged via `middleware.AuditMiddleware()`
 - **Audit Coverage**: Captures endpoint, HTTP method, requester info, request body, timestamp, IP address, user agent
 - **Async Processing**: Audit logs processed asynchronously with batched MongoDB inserts (W=0 write concern)
 - **Resource Mapping**: Automatic extraction of resource type from request path
 - **CPF Extraction**: Attempts to extract CPF from URL params, authenticated claims, or request body
 - **Status Filtering**: Only logs successful requests (2xx status codes)
-- **Body Sanitization**: Request bodies truncated to 1000 characters to prevent excessive storage
+- **Response status**: `metadata.response_status` is the HTTP code as decimal text (`strconv.Itoa`, e.g. `"201"`); documents written before DEV-384 hold a Unicode character (`"È"` for 200) and were not backfilled
+- **Body storage**: Request bodies truncated to 1000 characters; **not redacted** — may contain telefone, e-mail, endereço and other PII from write payloads. CPF on the audit document stays in clear text for rastreabilidade (by design; not masked like SigNoz logs/traces)
 - **MANDATORY REQUIREMENT**: All new write endpoints (POST/PUT/DELETE/PATCH) are automatically audited - no manual audit logging needed in handlers
 - **Location**: Audit middleware at `internal/middleware/audit.go`, integrated in main router before all routes
+
+### CPF masking in logs and traces (LGPD)
+- Never use `zap.String("cpf", …)` or `attribute.String("cpf", …)` outside `observability` helpers
+- Use `observability.CPFField(cpf)` / `observability.CPFAttr(cpf)` (sole mask: `observability.MaskCPF`)
+- Phone: `observability.PhoneField(phone)` / `PhonesField(phones)` / `PhoneAttr(phone)` (`MaskPhone` keeps DDI, DDD and the last 4 digits); never `zap.String("phone_number"|"phone", …)`
+- Person name: `observability.NameField(name)` (`MaskName`; `utils.MaskName` delegates to it); names of other things use a specific key (`avatar_name`, `group_name`, `circuit_breaker`), never `name`/`nome`
+- Birth date is never logged nor recorded in spans
+- Cache/data/Redis keys carry CPF or phone (`citizen:write:<cpf>`, `memory:<phone>:<name>`): log them with `observability.KeyField(key)` / `CacheKeyField(key)` (or `observability.MaskCacheKey`), never `zap.String("key"|"cache_key"|"write_key", …)`. `MaskCacheKey` (implemented in `internal/pii`, importable by `redisclient` without a cycle) keeps the type/prefix and replaces CPF, phone and e-mail segments by `***`; `redisclient` masks `redis.key`, `redis.keys` and `redis.pattern`
+- Request paths and queries carry CPF/phone in route params (`/v1/citizen/<cpf>/…`, `/v1/memory/<phone>`): log them with `observability.PathField(path)` / `QueryField(rawQuery)` (or `MaskURLPath` / `MaskQuery` / `MaskURL` for spans and metric labels), or use the route `c.FullPath()`; never `zap.String("path"|"query"|"endpoint", c.Request.URL…)` nor `attribute.String("http.url", c.Request.URL.String())`. `pii.MaskURLPath` replaces by `***` every segment that `MaskCacheKey` treats as personal data (only digits and separators with 8+ digits, or an `@`; so a numeric protocol number is masked too) or that embeds 10+ consecutive digits; `MaskQuery` does the same on each unescaped value and replaces a whole parameter whose name looks like personal data. `RequestLogger` and `RequestTiming` (`request completed`) and the `app_rmi_request_duration_seconds` `path` label use them
+- Panics: the router uses `middleware.Recovery()`, never `gin.Recovery()` nor `gin.Default()` (which dump the raw request line, with CPF/phone in the path, and headers to stderr). It logs `panic recovered` with the route, the masked path and the panic value masked token by token, and answers 500
+- MongoDB filters are never logged (`zap.Any("filter", …)`): log only the field name (`filter_field`)
+- OTP/verification codes are never logged nor recorded in spans; error messages never format a CPF or phone in clear (use `observability.MaskCPF` or leave the value out)
+- `utils.AddSpanAttribute` / `RecordErrorInSpan` / `TraceOperation` / `TraceEndpointStep` mask CPF, phone and name values by key (last dotted segment, e.g. `input.cpf`, `response.name`), mask cache keys (`cache.key`), redact OTP keys (`code`, `otp`), raw self-declared values (`input.valor`, `invalid_value`, `validated_value`, `new_ethnicity|gender|family_income|education|disability`) and e-mail keys (`email`, `*_email`, `email_address`, `email_prefix`, e.g. `parse.email`) as `[REDACTED]`, and drop birth-date keys. A rejected self-declared value (e-mail included) goes to the span only as its length (`invalid_value_length`) and never into the error message
+- E-mail address: never in clear in logs or raw `attribute.*`; log `utils.MaskEmail(email)` or only the length (`email_length`). `POST /v1/validate/email` records only `input.email_length` and never the `net/mail` parse error (it echoes the submitted text)
+- CI/`just lint` runs `scripts/check_cpf_log_masking.sh` so new unmasked CPF, phone, name, birth-date, cache-key, request path/query, Mongo-filter or OTP logs/spans (and error messages with CPF/phone or a raw self-declared `.Valor`, self-declared value keys in logs or raw `attribute.*`, e-mail keys in logs or raw `attribute.*` without `utils.MaskEmail`, or a gin recovery middleware) fail the build
 
 ### Monitoring & Observability
 - **OpenTelemetry**: Request tracing with span context
@@ -139,6 +159,33 @@ When asked to do the "commit thing":
 - **Local Development**: Single Redis instance (default)
 - **Production**: Redis cluster via `REDIS_CLUSTER_ENABLED=true`
 - **Environment Variables**: `REDIS_CLUSTER_ADDRS`, `REDIS_CLUSTER_PASSWORD`
+
+### Transactional Email (Data Relay)
+- **Client**: `internal/clients/data_relay_client.go` — `POST {DATA_RELAY_BASE_URL}/data/mailman` with `X-Api-Key`
+- **Sender**: Sync worker uses `DataRelayEmailSender` when `DATA_RELAY_BASE_URL` and `DATA_RELAY_API_KEY` are set; otherwise `LoggingEmailSender`
+- **Queue**: Mobilidade conductor invites enqueue `mobilidade_invite_email` jobs processed by the sync worker
+- **Status on link**: `email_status` (`pending|queued|sent|failed`) + `email_attempted_at` / `email_last_error` on `VehicleConductor`
+
+### Salesforce Person Account Sync (bidirectional)
+- **Client**: `internal/clients/salesforce_client.go` — `POST/GET/PATCH {SALESFORCE_BASE_URL}/api/private/cidadao` with `Authorization: Bearer` only (same JWT as RMI; no OAuth). `/api/private` is a fixed client base path.
+- **Auth**: login/proxies forward the user JWT; outbound push reuses the JWT stored on the sync job from `AuthMiddleware` → `DataManager.Write`. Webhook accepts only Keycloak JWTs whose `azp` is in `SALESFORCE_WEBHOOK_CLIENTS` (Salesforce service client).
+- **Login sync**: `GET /v1/auth/validate` — GET SF → match / silent email PATCH / POST create on 404 (`contaOrigem: Portal Pref.Rio`); uses CPF/name/email from JWT (not `phone_number`). Phone DDI `55` prefix still applies on outbound push from self_declared data.
+- **Outbound (RMI → SF)**: after successful citizen/self_declared sync (`handleSyncSuccess`), enqueue `salesforce_push` unless `origin=salesforce`. JWT is captured on sync jobs only when `SYNC_JOB_BEARER_ENCRYPTION_KEY` is set (AES-256-GCM `enc:v1:…` on `SyncJob.BearerToken`; never plaintext; stripped from DLQ). `salesforce_push` enqueue fails without the key. Expired JWT / Salesforce 401 are non-retryable (straight to DLQ).
+- **Inbound (SF → RMI)**: webhook `{cpf, evento, updatedAt?, dados?}`. `evento=atualizacao` (default): `dados` = **delta** (required; max 64KB; ausente=não alterar, null=limpar, \"\"=vazio); merge `consentimento[]` into `salesforce_consentimentos`. `evento=anonimizacao` (RTBF complete): `dados` omitted/ignored — full wipe of SF mirror (`self_declared` PII + clear `salesforce_consentimentos`, set `salesforce_anonymized`). Neither path writes `citizens`, RMI `opt_in`, or `category_opt_ins`. `salesforce_updated_at` stamped **after** mutations (per-CPF Redis lock + CAS; `updatedAt` max 64 chars). Queues `salesforce_sync` / `salesforce_push` use reliable inflight (RPOPLPUSH) like Mobilidade. No GET back, no push back.
+- **Proxies (user JWT, additive under `/v1/salesforce`)**: consentimento, exportar, anonimizar (+ polling), chamados list/detail — do not alter `/v1/citizen` behavior. Anonimização polling fails closed: persist `numeroSolicitacao→CPF` in Redis at POST; GET without CPF in the upstream payload requires that mapping.
+- **Consentimento PATCH**: `categoria` must be a Salesforce picklist value (e.g. `PREF_Lembrete_Pagamento`, not free text). Upstream JWT policy returns 400 (missing token) / 401 (invalid) before Mule — not RMI `errors[]`.
+
+### Public SGRC lookup by protocol (chamados históricos do 1746)
+- **Route**: `GET /v1/maintenance-request/{protocolo}` (`internal/handlers/maintenance_request_public.go`), no `AuthMiddleware`; the gateway action must be `public` in Heimdall/Cerbos. `GET /v1/citizen/{cpf}/maintenance-request` also returns `protocolo`.
+- **Never trust an unverified JWT on a public route**: for `public` actions Cerbos skips token validation and Istio has no `RequestAuthentication` for RMI, so `extractClaims` (decode only) is unsafe there. The owner view (`titular`, `logradouro`, `descricao`) requires `middleware.JWTVerifier` (RS256 signature against the JWKS of `JWT_ISSUER_URL`, issuer, `exp`); no issuer, JWKS down, or any verification error → public view.
+- **Public view**: never CPF, `descricao`, `logradouro`, `endereco`, `_id` or per-CPF totals; `andamentos` only with `fl_publico = 1` (`models.BSONFlag`, anything else is not public).
+- **Data contract** (pipeline do time de dados, all optional on the chamado document): `protocolo`, `bairro`, `logradouro`, `andamentos[] {data, tipo, descricao, fl_publico}`, `loaded_at`. Index `protocolo_1` (non-unique: a protocol may group several chamados).
+
+### CF Lookup jobs (Clínica da Família via MCP)
+- **Flow**: wallet tries a synchronous MCP lookup (`CF_LOOKUP_SYNC_TIMEOUT`, 15s); on failure it enqueues a `cf_lookup` job (deduped per CPF by `cf_lookup:pending:<cpf>`, 1h) processed by the sync worker (`handleCFLookupJob` → `PerformCFLookup` → `MCPClient.FindNearestCF`).
+- **Timeout**: each job attempt gets `CF_LOOKUP_JOB_TIMEOUT` (default 90s) instead of the worker's generic 30s, since one lookup makes several sequential MCP calls.
+- **Retry policy**: MCP failures become `CFLookupError` with a category, taken from the typed client errors first (`MCPHTTPStatusError`, `MCPToolError`, `MCPProtocolError`) and only then from the message. Transient (`timeout`, `network`, `session`, `server`, `protocol`, `unknown`) are requeued with backoff 15s, 30s, 60s, 60s, up to 5 attempts (`cfLookupMaxAttempts`, overrides a smaller `max_retries` in the payload). HTTP 408/429/5xx, 404 (unknown session), JSON-RPC errors other than -32601/-32602 and unreadable bodies are transient. Permanent (`authorization` = 401/403, `validation`, `tool` = JSON-RPC -32601/-32602 from `equipments_by_address`) go straight to the DLQ as non-retryable. "No health services found" is a success, not an error.
+- **Logs**: `CF lookup failed` is a WARN per attempt (with `attempt`, `max_attempts`, `permanent`); only `job moved to DLQ` is an ERROR. Errors and logs carry neither the address nor `address_hash` (an unkeyed SHA-256, recoverable by dictionary; it only lives in `cf_lookups.address_hash` to detect address changes): correlate by masked CPF and `job_id`. `CFLookupError.Error()` carries only the category and the code (JSON-RPC code or HTTP status), never the text returned by the MCP server (which may echo the address); log failures with `services.CFLookupErrorFields(err)` (`error`, `error_type`, `error_code`).
 
 ### Performance-Critical Paths
 - **GetCitizenData**: Uses batched Redis operations via `getBatchedSelfDeclaredData()`

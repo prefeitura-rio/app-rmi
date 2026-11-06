@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -42,6 +43,10 @@ type EmailValidationResponse struct {
 	ValidationType string `json:"validation_type,omitempty"`
 }
 
+// errInvalidEmailAddress is recorded instead of the net/mail parse error, which may
+// echo the submitted address.
+var errInvalidEmailAddress = errors.New("invalid email address")
+
 // ValidateEmailAddress godoc
 // @Summary Valida endereço de email
 // @Description Valida formato e estrutura de endereços de email, retornando informações detalhadas sobre o endereço quando válido.
@@ -75,15 +80,11 @@ func ValidateEmailAddress(c *gin.Context) {
 		return
 	}
 
-	// Add email to span attributes (sanitized for logging)
-	emailForLogging := req.Email
-	if len(emailForLogging) > 50 {
-		emailForLogging = emailForLogging[:47] + "..."
-	}
-	span.SetAttributes(attribute.String("input.email_prefix", emailForLogging))
+	// The address is personal data (LGPD): spans and logs carry only its length.
+	span.SetAttributes(attribute.Int("input.email_length", len(req.Email)))
 
-	logger := logging.Logger.With(zap.String("email_prefix", emailForLogging))
-	logger.Debug("ValidateEmailAddress called")
+	logger := logging.GetLogger()
+	logger.Debug("ValidateEmailAddress called", zap.Int("email_length", len(req.Email)))
 
 	// Basic format validation with tracing
 	ctx, formatSpan := utils.TraceBusinessLogic(ctx, "validate_email_format")
@@ -163,11 +164,13 @@ func ValidateEmailAddress(c *gin.Context) {
 	ctx, parseSpan := utils.TraceBusinessLogic(ctx, "parse_email_address")
 	addr, err := mail.ParseAddress(email)
 	if err != nil {
-		utils.RecordErrorInSpan(parseSpan, err, map[string]interface{}{
-			"parse.email": emailForLogging,
+		// net/mail errors may echo the submitted text ("expected single address, got %q"),
+		// so neither the span nor the log carries err.
+		utils.RecordErrorInSpan(parseSpan, errInvalidEmailAddress, map[string]interface{}{
+			"error.type": "email_parse",
 		})
 		parseSpan.End()
-		logger.Warn("falha ao parsear email", zap.Error(err))
+		logger.Warn("falha ao parsear email", zap.Int("email_length", len(email)))
 		c.JSON(http.StatusOK, EmailValidationResponse{
 			Valid:   false,
 			Message: "formato de email inválido",

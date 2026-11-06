@@ -28,6 +28,7 @@ type Pet struct {
 	DewormingDate        *time.Time        `bson:"vermifugacao_data,omitempty" json:"vermifugacao_data,omitempty"`
 	DewormingExpiryDate  *time.Time        `bson:"vermifugacao_validade_data,omitempty" json:"vermifugacao_validade_data,omitempty"`
 	AccreditedClinic     *AccreditedClinic `bson:"clinica_credenciada,omitempty" json:"clinica_credenciada,omitempty"`
+	OtherTutors          []OtherTutor      `bson:"outros_tutores,omitempty" json:"outros_tutores,omitempty"`
 	Source               string            `bson:"source,omitempty" json:"source,omitempty"` // "curated" or "self_registered"
 }
 
@@ -54,6 +55,14 @@ type AccreditedClinic struct {
 	Mobile  string        `bson:"celular" json:"celular"`
 	Email   string        `bson:"email" json:"email"`
 	Address ClinicAddress `bson:"endereco" json:"endereco"`
+}
+
+// OtherTutor represents an additional tutor for a pet
+type OtherTutor struct {
+	CPF   string `bson:"cpf" json:"cpf"`
+	Name  string `bson:"nome" json:"nome"`
+	Phone string `bson:"telefone,omitempty" json:"telefone,omitempty"`
+	Email string `bson:"email,omitempty" json:"email,omitempty"`
 }
 
 // CitizenPets represents the complete pets document for a citizen

@@ -13,9 +13,11 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/models"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/services"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -34,9 +36,9 @@ func setupPhoneHandlersTest(t *testing.T) (*PhoneHandlers, *gin.Engine, func()) 
 	database := config.MongoDB
 
 	// Initialize services
-	phoneMappingService := services.NewPhoneMappingService(logging.Logger)
+	phoneMappingService := services.NewPhoneMappingService(logging.GetLogger())
 	configService := services.NewConfigService()
-	handlers := NewPhoneHandlers(logging.Logger, phoneMappingService, configService)
+	handlers := NewPhoneHandlers(logging.GetLogger(), phoneMappingService, configService)
 
 	router := gin.New()
 
@@ -159,7 +161,7 @@ func insertTestCitizen(t *testing.T, cpf, name, birthDate string) {
 
 // TestNewPhoneHandlers tests the constructor
 func TestNewPhoneHandlers(t *testing.T) {
-	handlers := NewPhoneHandlers(logging.Logger, nil, nil)
+	handlers := NewPhoneHandlers(logging.GetLogger(), nil, nil)
 	assert.NotNil(t, handlers)
 	assert.NotNil(t, handlers.logger)
 }
@@ -202,7 +204,7 @@ func TestGetPhoneStatus_Found(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.True(t, response.Found)
-	assert.Equal(t, "035***50712", response.CPF)    // Masked CPF
+	assert.Equal(t, observability.MaskCPF("03561350712"), response.CPF)
 	assert.Equal(t, "João d* Silva", response.Name) // Masked name (masks middle names)
 	assert.True(t, response.OptIn)
 	assert.False(t, response.Quarantined)
@@ -239,7 +241,7 @@ func TestGetCitizenByPhone_Success(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.True(t, response.Found)
-	assert.Equal(t, "035***50712", response.CPF)    // Masked CPF
+	assert.Equal(t, observability.MaskCPF("03561350712"), response.CPF)
 	assert.Equal(t, "João d* Silva", response.Name) // Masked name
 	assert.Equal(t, "João", response.FirstName)     // First name is not masked
 }
@@ -636,7 +638,42 @@ func TestGetQuarantinedPhones_WithData(t *testing.T) {
 	err = json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, response.Pagination.Total)
-	assert.Len(t, response.Data, 2)
+	require.Len(t, response.Data, 2)
+	assert.ElementsMatch(t,
+		[]string{"+5521999887766", "+5521988776655"},
+		[]string{response.Data[0].PhoneNumber, response.Data[1].PhoneNumber},
+		"phone_number must be E.164 without a duplicated DDI")
+}
+
+// TestGetQuarantinedPhones_StorageFormat checks that phones stored as
+// DDI+DDD+number (the format QuarantinePhone writes) come back in E.164.
+func TestGetQuarantinedPhones_StorageFormat(t *testing.T) {
+	_, router, cleanup := setupPhoneHandlersTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	collection := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection)
+	quarantineUntil := time.Now().Add(24 * time.Hour)
+	now := time.Now()
+
+	_, err := collection.InsertOne(ctx, models.PhoneCPFMapping{
+		PhoneNumber:     "5521987654321",
+		Status:          models.MappingStatusQuarantined,
+		QuarantineUntil: &quarantineUntil,
+		CreatedAt:       &now,
+	})
+	require.NoError(t, err)
+
+	req, _ := http.NewRequest("GET", "/admin/phone/quarantined", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var response models.QuarantinedListResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Len(t, response.Data, 1)
+	assert.Equal(t, "+5521987654321", response.Data[0].PhoneNumber)
 }
 
 // TestGetQuarantinedPhones_Pagination tests pagination parameters

@@ -48,7 +48,9 @@ func createAdminClaims(cpf string) models.JWTClaims {
 		ISS:               "test-issuer",
 		PreferredUsername: cpf,
 	}
-	claims.ResourceAccess.Superapp.Roles = []string{"go:admin"}
+	claims.ResourceAccess = map[string]models.ClientAccess{
+		"superapp.apps.rio.gov.br": {Roles: []string{"go:admin"}},
+	}
 	return claims
 }
 
