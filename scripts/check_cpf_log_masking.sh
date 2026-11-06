@@ -13,6 +13,8 @@
 #     QueryField (or observability.MaskURLPath / MaskQuery / MaskURL), or the route (c.FullPath())
 #   - raw self-declared values (valor, invalid_value, validated_value, new_<field>): never logged,
 #     never set through attribute.*, never formatted into a message (only the length)
+#   - e-mail address (email, parse.email, notify_email, email_prefix...): only via utils.MaskEmail
+#     in logs; spans go through utils.AddSpanAttribute / RecordErrorInSpan, which redact it
 #   - panic recovery: only middleware.Recovery() (gin.Default() and gin's recovery middlewares dump the raw request to stderr)
 # The helpers live in internal/observability/logging.go, the only file exempt from this check.
 set -eu
@@ -104,7 +106,13 @@ hits="$(go_lines "${emitter}${self_declared_key}")"
 hits="$(go_lines 'Errorf\("[^"]*%[sqv][^"]*",[^)]*\.Valor\b')"
 [ -z "$hits" ] || fail "raw self-declared value (.Valor) formatted into a message (errors end up in logs and spans). Leave the value out." "$hits"
 
-# 11. Panic recovery: gin.Default() and gin's recovery middlewares dump the raw request line (path with CPF/phone)
+# 11. E-mail address: never logged nor set through attribute.* in clear (attribute.* skips the
+#     span helpers that redact e-mail keys). Logs use utils.MaskEmail; spans record only the length.
+email_key='([a-z0-9]+[._])*(email|e_mail|email_address|email_prefix)"'
+hits="$(go_lines "${emitter}${email_key}" | grep -v 'utils\.MaskEmail(' || true)"
+[ -z "$hits" ] || fail "unmasked e-mail address in logs/spans. Log utils.MaskEmail(email) or only its length (zap.Int(\"email_length\", len(v))); span helpers (utils.AddSpanAttribute / RecordErrorInSpan) redact e-mail keys." "$hits"
+
+# 12. Panic recovery: gin.Default() and gin's recovery middlewares dump the raw request line (path with CPF/phone)
 #     and headers to stderr. The router uses middleware.Recovery().
 gin_recovery='gin\.(Default|Recovery|RecoveryWithWriter|CustomRecovery|CustomRecoveryWithWriter)\('
 hits="$(go_lines "$gin_recovery" | sed 's#//.*$##' | grep -E "$gin_recovery" || true)"
@@ -114,4 +122,4 @@ if [ "$status" -ne 0 ]; then
   exit "$status"
 fi
 
-echo "OK: CPF/phone/name/birth date/cache key/OTP/request path/self-declared value log and span masking check passed."
+echo "OK: CPF/phone/name/birth date/cache key/OTP/request path/self-declared value/e-mail log and span masking check passed."

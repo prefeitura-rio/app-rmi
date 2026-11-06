@@ -36,6 +36,7 @@ func TestSelfDeclaredValidation_DoesNotRecordSubmittedValueInSpans(t *testing.T)
 		{"invalid disability", "disability", UpdateSelfDeclaredDeficiencia, sentinel, http.StatusBadRequest},
 		{"exhibition name too long", "exhibition-name", UpdateSelfDeclaredNomeExibicao, strings.Repeat(sentinel, 15), http.StatusBadRequest},
 		{"free-text gender accepted", "gender", UpdateSelfDeclaredGenero, sentinel, http.StatusOK},
+		{"invalid email format", "email", UpdateSelfDeclaredEmail, sentinel + "@dominio-sem-tld", http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {
@@ -96,8 +97,10 @@ func TestSelfDeclaredValidation_DoesNotRecordSubmittedValueInSpans(t *testing.T)
 			for _, kv := range validation.Attributes() {
 				attrs[string(kv.Key)] = kv.Value.Emit()
 			}
-			if v, ok := attrs["invalid_value"]; ok {
-				t.Errorf("validation span records invalid_value = %q", v)
+			for _, key := range []string{"invalid_value", "email"} {
+				if v, ok := attrs[key]; ok {
+					t.Errorf("validation span records %s = %q", key, v)
+				}
 			}
 			if got, want := attrs["invalid_value_length"], strconv.Itoa(len(tt.valor)); got != want {
 				t.Errorf("invalid_value_length = %q, want %q", got, want)
