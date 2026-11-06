@@ -331,12 +331,13 @@ const spanRedacted = "[REDACTED]"
 // maskSpanStringAttr masks personal data by the last dot-separated segment of
 // the attribute key, so "cpf", "input.cpf" and "response.matched_cpf" are all masked.
 // Cache keys ("cache.key") keep only their type/prefix segments; one-time codes
-// ("code", "otp") and raw self-declared values ("input.valor": phone, e-mail,
-// ethnicity, disability...) are never recorded.
+// ("code", "otp") and raw self-declared values ("input.valor", "invalid_value",
+// "validated_value", "new_gender"...: phone, e-mail, ethnicity, disability,
+// free-text gender) are never recorded.
 func maskSpanStringAttr(key, value string) string {
 	field := spanKeyField(key)
 	switch {
-	case isOTPSpanField(field) || field == "valor":
+	case isOTPSpanField(field) || isSelfDeclaredValueSpanField(field):
 		return spanRedacted
 	case field == "key" || field == "cache_key" || field == "keys":
 		return observability.MaskCacheKey(value)
@@ -369,6 +370,17 @@ func isPhoneSpanField(field string) bool {
 func isOTPSpanField(field string) bool {
 	switch field {
 	case "code", "otp", "otp_code", "verification_code", "codigo":
+		return true
+	}
+	return false
+}
+
+// isSelfDeclaredValueSpanField reports whether the field holds a raw value the
+// citizen submitted for a self-declared attribute (accepted or rejected).
+func isSelfDeclaredValueSpanField(field string) bool {
+	switch field {
+	case "valor", "invalid_value", "validated_value",
+		"new_ethnicity", "new_gender", "new_family_income", "new_education", "new_disability":
 		return true
 	}
 	return false

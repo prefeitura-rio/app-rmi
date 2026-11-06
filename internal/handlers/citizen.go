@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -1332,8 +1333,8 @@ func UpdateSelfDeclaredRaca(c *gin.Context) {
 	// Validate ethnicity with tracing
 	ctx, validationSpan := utils.TraceInputValidation(ctx, "ethnicity_value", "ethnicity")
 	if !models.IsValidEthnicity(input.Valor) {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("invalid ethnicity value: %s", input.Valor), map[string]interface{}{
-			"invalid_value": input.Valor,
+		utils.RecordErrorInSpan(validationSpan, errors.New("invalid ethnicity value"), map[string]interface{}{
+			"invalid_value_length": len(input.Valor),
 		})
 		validationSpan.End()
 		logger.Error("invalid ethnicity value", zap.Int("value_length", len(input.Valor)))
@@ -1504,7 +1505,7 @@ func UpdateSelfDeclaredNomeExibicao(c *gin.Context) {
 	ctx, validationSpan := utils.TraceInputValidation(ctx, "exhibition_name_value", "exhibition_name")
 	if len(strings.TrimSpace(input.Valor)) == 0 {
 		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("exhibition name cannot be empty"), map[string]interface{}{
-			"invalid_value": input.Valor,
+			"invalid_value_length": len(input.Valor),
 		})
 		validationSpan.End()
 		logger.Error("exhibition name cannot be empty", zap.Int("value_length", len(input.Valor)))
@@ -1513,8 +1514,7 @@ func UpdateSelfDeclaredNomeExibicao(c *gin.Context) {
 	}
 	if len(input.Valor) > 255 {
 		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("exhibition name too long: %d characters", len(input.Valor)), map[string]interface{}{
-			"invalid_value": input.Valor,
-			"length":        len(input.Valor),
+			"invalid_value_length": len(input.Valor),
 		})
 		validationSpan.End()
 		logger.Error("exhibition name too long", zap.Int("length", len(input.Valor)))
@@ -2287,8 +2287,8 @@ func UpdateSelfDeclaredGenero(c *gin.Context) {
 
 	ctx, validationSpan := utils.TraceInputValidation(ctx, "gender_value", "gender")
 	if !models.IsValidGender(input.Valor) {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("invalid gender value: %s", input.Valor), map[string]interface{}{
-			"invalid_value": input.Valor,
+		utils.RecordErrorInSpan(validationSpan, errors.New("invalid gender value"), map[string]interface{}{
+			"invalid_value_length": len(input.Valor),
 		})
 		validationSpan.End()
 		logger.Error("invalid gender value", zap.Int("value_length", len(input.Valor)))
@@ -2461,8 +2461,8 @@ func UpdateSelfDeclaredRendaFamiliar(c *gin.Context) {
 
 	ctx, validationSpan := utils.TraceInputValidation(ctx, "family_income_value", "family_income")
 	if !models.IsValidFamilyIncome(input.Valor) {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("invalid family income value: %s", input.Valor), map[string]interface{}{
-			"invalid_value": input.Valor,
+		utils.RecordErrorInSpan(validationSpan, errors.New("invalid family income value"), map[string]interface{}{
+			"invalid_value_length": len(input.Valor),
 		})
 		validationSpan.End()
 		logger.Error("invalid family income value", zap.Int("value_length", len(input.Valor)))
@@ -2635,8 +2635,8 @@ func UpdateSelfDeclaredEscolaridade(c *gin.Context) {
 
 	ctx, validationSpan := utils.TraceInputValidation(ctx, "education_value", "education")
 	if !models.IsValidEducation(input.Valor) {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("invalid education value: %s", input.Valor), map[string]interface{}{
-			"invalid_value": input.Valor,
+		utils.RecordErrorInSpan(validationSpan, errors.New("invalid education value"), map[string]interface{}{
+			"invalid_value_length": len(input.Valor),
 		})
 		validationSpan.End()
 		logger.Error("invalid education value", zap.Int("value_length", len(input.Valor)))
@@ -2809,8 +2809,8 @@ func UpdateSelfDeclaredDeficiencia(c *gin.Context) {
 
 	ctx, validationSpan := utils.TraceInputValidation(ctx, "disability_value", "disability")
 	if !models.IsValidDisability(input.Valor) {
-		utils.RecordErrorInSpan(validationSpan, fmt.Errorf("invalid disability value: %s", input.Valor), map[string]interface{}{
-			"invalid_value": input.Valor,
+		utils.RecordErrorInSpan(validationSpan, errors.New("invalid disability value"), map[string]interface{}{
+			"invalid_value_length": len(input.Valor),
 		})
 		validationSpan.End()
 		logger.Error("invalid disability value", zap.Int("value_length", len(input.Valor)))
