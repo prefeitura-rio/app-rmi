@@ -82,29 +82,13 @@ func (s *SyncService) monitorDLQ() {
 	}
 }
 
-// monitoredDLQQueues is the set of sync queues whose DLQs are scanned for alerts/metrics.
+// monitoredDLQQueues is the set of sync queues whose DLQs are scanned for alerts/metrics:
+// every queue the worker consumes.
 func monitoredDLQQueues() []string {
-	return []string{
-		"citizen",
-		"phone_mapping",
-		"user_config",
-		"opt_in_history",
-		"beta_group",
-		"phone_verification",
-		"maintenance_request",
-		"self_declared_address",
-		"self_declared_email",
-		"self_declared_phone",
-		"self_declared_raca",
-		"self_declared_nome_exibicao",
-		"cf_lookup",
-		MobilidadeInviteEmailQueue,
-		SalesforceSyncQueue,
-		SalesforcePushQueue,
-	}
+	return syncQueueNames()
 }
 
-// scanDLQs records depth and warns for every non-empty dead-letter queue.
+// scanDLQs records the depth of every dead-letter queue and warns for the non-empty ones.
 func (s *SyncService) scanDLQs() {
 	for _, queue := range monitoredDLQQueues() {
 		dlqKey := syncDLQKey(queue)
@@ -113,13 +97,14 @@ func (s *SyncService) scanDLQs() {
 			continue
 		}
 
+		// Record the depth even when it is zero, so the gauge drops back after a DLQ is drained.
+		s.metrics.RecordQueueDepth("dlq_"+queue, dlqSize)
+
 		if dlqSize > 0 {
 			s.logger.Warn("DLQ has failed jobs",
 				zap.String("queue", queue),
 				zap.String("dlq_key", observability.MaskCacheKey(dlqKey)),
 				zap.Int64("dlq_size", dlqSize))
-
-			s.metrics.RecordQueueDepth("dlq_"+queue, dlqSize)
 		}
 	}
 }

@@ -89,7 +89,7 @@ Os logs mascaram CPF, telefone, nome, chaves de cache e caminhos (`observability
 ### Métricas
 
 - **API**: `GET /metrics` (formato Prometheus, porta 8080; `/v1/metrics` é só um texto fixo). Os pods não têm anotação de scrape: para consultar, use `kubectl -n rmi port-forward svc/rmi 8080:80` e `curl -s localhost:8080/metrics`. Principais séries: `app_rmi_request_duration_seconds{path,method,status}`, `app_rmi_database_operations_total`, `app_rmi_cache_hits_total`, `app_rmi_phone_verification_*`.
-- **Worker**: o binário `./sync` não expõe HTTP, então `rmi_sync_queue_depth`, `rmi_sync_failures_total` e `rmi_degraded_mode_active` **não são coletadas hoje**. Para o worker, use os logs acima e o tamanho das filas no Redis ([seção 4.2](#42-filas-e-dlq-do-sync-worker)).
+- **Worker**: o `./sync` expõe `GET /metrics` na porta `METRICS_PORT` (padrão 9090; `0` desliga; log `metrics server listening` na subida). Os pods também não têm anotação de scrape: `kubectl -n rmi port-forward deploy/rmi-sync 9090:9090` e `curl -s localhost:9090/metrics`. Séries: `rmi_sync_queue_depth{queue="dlq_<fila>"}` (todas as DLQs do worker, a cada 5 min), `rmi_sync_operations_total{queue,status}`, `rmi_sync_failures_total{queue}`, `rmi_degraded_mode_active`. Junto dos logs acima e do tamanho das filas no Redis ([seção 4.2](#42-filas-e-dlq-do-sync-worker)).
 - **Istio / Prometheus** (`prometheus-server.istio-system:9090`, o mesmo que o KEDA e a análise do canário usam). Taxa de 5xx do RMI:
 
 ```promql
@@ -155,7 +155,7 @@ A API enfileira jobs com `LPUSH` e o worker consome com `RPOP` (ou `RPOPLPUSH` n
 | `sync:queue:<fila>` / `sync:dlq:<fila>` | `citizen`, `phone_mapping`, `user_config`, `opt_in_history`, `beta_group`, `phone_verification`, `maintenance_request`, `self_declared_address`, `self_declared_email`, `self_declared_phone`, `self_declared_raca`, `self_declared_nome_exibicao`, `self_declared_genero`, `self_declared_renda_familiar`, `self_declared_escolaridade`, `self_declared_deficiencia`, `self_declared_nascimento`, `cf_lookup` |
 | `sync:queue:{<fila>}` / `sync:dlq:{<fila>}` + `sync:processing:{<fila>}` e `sync:processing:claimed:{<fila>}` (filas confiáveis, com hash tag) | `mobilidade_invite_email`, `salesforce_sync`, `salesforce_push` |
 
-O alerta `DLQ has failed jobs` não cobre as DLQs de `self_declared_genero`, `self_declared_renda_familiar`, `self_declared_escolaridade`, `self_declared_deficiencia` e `self_declared_nascimento`: confira essas com `LLEN`.
+O alerta `DLQ has failed jobs` e a série `rmi_sync_queue_depth{queue="dlq_<fila>"}` cobrem todas essas filas: o scan usa a mesma lista que o worker consome.
 
 O buffer de escrita (`<tipo>:write:<chave>`) e o cache de leitura (`<tipo>:cache:<chave>`) ficam ao lado; o worker apaga o buffer e atualiza o cache quando o job grava no Mongo.
 

@@ -747,3 +747,46 @@ func TestSyncService_Lifecycle(t *testing.T) {
 	// 8. Verify degraded mode stopped
 	assert.False(t, service.degradedMode.IsActive())
 }
+
+// TestSyncService_ScanDLQ_IncludesSelfDeclaredQueues covers the self_declared queues the scan used
+// to skip, and the gauge dropping back to zero once a DLQ is drained.
+func TestSyncService_ScanDLQ_IncludesSelfDeclaredQueues(t *testing.T) {
+	service, redisClient, _, cleanup := setupSyncServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queues := []string{
+		"self_declared_genero",
+		"self_declared_renda_familiar",
+		"self_declared_escolaridade",
+		"self_declared_deficiencia",
+		"self_declared_nascimento",
+	}
+	for _, queue := range queues {
+		dlqKey := syncDLQKey(queue)
+		_ = redisClient.Del(ctx, dlqKey)
+		jobBytes, err := json.Marshal(DLQJob{
+			OriginalJob: SyncJob{ID: "dlq-" + queue, Type: queue, Key: "self_declared:write:test"},
+			Error:       "test error",
+			FailedAt:    time.Now(),
+		})
+		require.NoError(t, err)
+		require.NoError(t, redisClient.LPush(ctx, dlqKey, string(jobBytes), string(jobBytes)).Err())
+	}
+
+	service.scanDLQs()
+
+	for _, queue := range queues {
+		assert.Equal(t, int64(2), service.metrics.GetQueueDepth("dlq_"+queue), "DLQ %s", queue)
+	}
+
+	for _, queue := range queues {
+		require.NoError(t, redisClient.Del(ctx, syncDLQKey(queue)).Err())
+	}
+
+	service.scanDLQs()
+
+	for _, queue := range queues {
+		assert.Equal(t, int64(0), service.metrics.GetQueueDepth("dlq_"+queue), "drained DLQ %s", queue)
+	}
+}
