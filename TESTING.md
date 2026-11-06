@@ -209,6 +209,64 @@ go test -race -v -run TestSpecificFunction ./internal/utils/
 go clean -testcache
 ```
 
+## Testes de carga (k6)
+
+### Arquivos
+
+- `k6/load_test.js`: script usado pelo workflow `Load tests` (`.github/workflows/run-load-tests.yaml`).
+- `k6/generate_token.js`: obtém um token do Keycloak (client credentials) para rodar o script localmente.
+- `scripts/load_test/load-test.js`: script antigo (tokens de arquivo, CSV de CPFs, p95 < 2 s); não é usado pelo workflow.
+
+### Cenários (`TEST_SCENARIO`)
+
+| Cenário | Função (`exec`) | Fluxo | Rotas |
+|---|---|---|---|
+| `first_login_onboarding` | `firstLoginOnboarding` | primeiro acesso com atualização de dados | `GET/PUT /v1/citizen/{cpf}/firstlogin`, `GET /v1/citizen/{cpf}`, `PUT .../ethnicity`, `PUT .../phone` (só com `ENABLE_PHONE_WRITES=true`), `PUT .../email`, `GET .../wallet`, `GET .../maintenance-request` |
+| `home_dashboard` | `homeDashboard` | home em paralelo | `GET .../maintenance-request`, `GET .../wallet`, `GET /v1/citizen/{cpf}` |
+| `personal_info_update` | `personalInfoUpdate` | edição de dados pessoais | `GET /v1/citizen/{cpf}`, `PUT .../phone` (só com `ENABLE_PHONE_WRITES=true`), `POST /v1/validate/phone`, `PUT .../email`, `PUT .../address`, `PUT .../optin` |
+| `wallet_cards` | `walletCards` | carteira e cartões | `GET .../wallet` (3x), `GET .../maintenance-request` |
+| `category_browsing`, `search_experience`, `popular_services` | `categoryBrowsing`, `searchExperience`, `popularServices` | navegação deslogada no app-busca-search | `/api/v1/categorias-relevancia`, `/api/v1/categoria/...`, `/api/v1/busca-hibrida-multi`, `/api/v1/documento/...` |
+| `legacy` | `legacy` | `GET` simples na URL base do RMI | — |
+| `mixed` (padrão) | uma por cenário | os 7 primeiros juntos, cada um no seu cenário do k6 com a sua função | VUs divididos em 10/25/20/20/10/10/5% (no mínimo 1 por cenário) |
+
+Um `TEST_SCENARIO` fora da lista faz o script falhar no início. Os cenários de escrita alteram os dados autodeclarados do CPF de teste (`USER`): use só a conta de teste de staging. `PUT /v1/citizen/{cpf}/phone` envia um código de verificação real por WhatsApp, então só roda com `ENABLE_PHONE_WRITES=true`; o workflow não passa essa variável, e em staging nenhum fluxo cadastra telefone.
+
+### Como disparar
+
+1. GitHub → Actions → **Load tests** → **Run workflow** (branch `main`), ou `gh workflow run run-load-tests.yaml --ref main`. Não há inputs: tudo vem do environment `k6` do repositório (Settings → Environments → `k6`).
+2. Variáveis do environment: `GCP_WIF_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, `K6_NAMESPACE`, `K8S_SVC`, `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`, `BASE_URL_RMI`, `BASE_URL_BUSCA`, `USER`, `TEST_SCENARIO`, `DURATION`, `VIRTUAL_USERS` e, opcionais, `RAMP_UP_DURATION`, `STEADY_DURATION`, `RAMP_DOWN_DURATION`; segredo `KEYCLOAK_CLIENT_SECRET`.
+3. Execução local: `KEYCLOAK_ISSUER=... KEYCLOAK_CLIENT_ID=... KEYCLOAK_CLIENT_SECRET=... BASE_URL_RMI=https://services.staging.app.dados.rio/rmi BASE_URL_BUSCA=... USER=<CPF de teste> TEST_SCENARIO=home_dashboard VIRTUAL_USERS=10 DURATION=2m k6 run k6/load_test.js`.
+
+### Variáveis do script
+
+| Variável | Uso | Padrão |
+|---|---|---|
+| `BASE_URL_RMI` | URL base do RMI, sem `/v1` (o script acrescenta); `BASE_URL` vale quando ela não vem | `http://rmi.rmi.svc.cluster.local:80` |
+| `BASE_URL_BUSCA` | URL base do app-busca-search | `http://app-busca-search.busca.svc.cluster.local:8080` |
+| `VIRTUAL_USERS` | VUs do cenário (no `mixed`, o total dividido pelas proporções) | `10` |
+| `DURATION` | duração do patamar estável quando `STEADY_DURATION` não vem | `10m` |
+| `RAMP_UP_DURATION`, `STEADY_DURATION`, `RAMP_DOWN_DURATION` | estágios de subida, patamar e descida de cada cenário | `5m`, `DURATION`, `2m` |
+| `ENABLE_PHONE_WRITES` | `true` liga o `PUT .../phone` (envio real de código) | desligado |
+
+A duração de cada execução é subida + patamar + descida (17 min com os padrões). O `monitor-test.sh` espera até 30 min: acima disso o workflow para de acompanhar o `TestRun`.
+
+### Ambiente alvo
+
+O workflow autentica no GCP por Workload Identity, pega a credencial do cluster GKE `application` do projeto `GCP_PROJECT_ID` do environment `k6`, espera os pods de `K8S_SVC`, cria o ConfigMap `k6-test-script` com `k6/load_test.js` e um `TestRun` do k6-operator no namespace `K6_NAMESPACE` (`parallelism: 10`, imagem `grafana/k6:2.3.0`, 0,5–1 CPU e 1–2 GiB por runner). O `TestRun` passa aos runners `BASE_URL_RMI`, `BASE_URL_BUSCA`, `DURATION` e os estágios do environment; variável vazia usa o padrão do script. O token é obtido no `setup()` por client credentials no Keycloak; o `cleanup.sh` remove os recursos no fim.
+
+O k6-operator (namespace `k6-operator-system`) é instalado pelo Terraform do `superapp` nos clusters `application` de staging (`rj-superapp-staging`) e de produção (`rj-superapp`): o ambiente testado é o do `GCP_PROJECT_ID`. Antes de disparar, confira que o environment aponta para `rj-superapp-staging`; carga em produção só com combinação prévia.
+
+### Thresholds
+
+| Métrica | Limite |
+|---|---|
+| `http_req_duration` | p95 < 5.000 ms |
+| `http_req_failed` | < 5% |
+| `failed_requests`, `http_failures` (falha de rede ou 5xx) | < 5% |
+| `check_failures` (status inesperado ou resposta > 5 s) | < 15% |
+
+O resultado sai no resumo do run (configuração e status do `TestRun`) e nos logs dos runners (o sumário de fim de teste de cada um dos 10 runners, sem agregação). As métricas levam a tag `scenario` com o nome do cenário.
+
 ## Next Steps
 
 To reach 70%+ coverage, we need to:

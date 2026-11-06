@@ -64,7 +64,10 @@ jobs:
             "${{ vars.USER }}" \
             "${{ vars.TEST_SCENARIO }}" \
             "${{ vars.DURATION }}" \
-            "${{ vars.VIRTUAL_USERS }}"
+            "${{ vars.VIRTUAL_USERS }}" \
+            "${{ vars.RAMP_UP_DURATION }}" \
+            "${{ vars.STEADY_DURATION }}" \
+            "${{ vars.RAMP_DOWN_DURATION }}"
 
       - name: Wait for test completion and get results
         run: ./.github/scripts/monitor-test.sh "${{ vars.K6_NAMESPACE }}"
