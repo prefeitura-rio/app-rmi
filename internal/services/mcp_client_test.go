@@ -263,55 +263,68 @@ func TestWithRetry_ContextCancellation(t *testing.T) {
 	assert.Equal(t, context.Canceled, err)
 }
 
-func TestGetSessionID_Success(t *testing.T) {
+func TestInitializeSession_SessionIDFromInitializeResponse(t *testing.T) {
+	var methods []string
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "HEAD", r.Method)
+		assert.Equal(t, http.MethodPost, r.Method, "the session is opened by POST initialize, never by HEAD")
 		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
 
-		w.Header().Set("mcp-session-id", "test-session-123")
-		w.WriteHeader(http.StatusMethodNotAllowed) // Expected for HEAD request
+		var req MCPRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		methods = append(methods, req.Method)
+
+		switch req.Method {
+		case "initialize":
+			_, hasSession := r.Header[mcpSessionHeader]
+			assert.False(t, hasSession, "initialize opens a new session and carries no session header")
+			w.Header().Set(mcpSessionHeader, "  test-session-123  ")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"result": map[string]interface{}{"protocolVersion": "2024-11-05"},
+			})
+		case "notifications/initialized":
+			assert.Equal(t, "test-session-123", r.Header.Get(mcpSessionHeader))
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			t.Errorf("unexpected MCP method %q", req.Method)
+		}
 	}
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-	ctx := context.Background()
-	sessionID, err := client.getSessionID(ctx)
+	sessionID, err := client.initializeSession(context.Background())
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "test-session-123", sessionID)
+	assert.Equal(t, []string{"initialize", "notifications/initialized"}, methods)
 }
 
-func TestGetSessionID_WithWhitespace(t *testing.T) {
+func TestInitializeSession_StatelessServer(t *testing.T) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("mcp-session-id", "  test-session-456  ")
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		_, hasSession := r.Header[mcpSessionHeader]
+		assert.False(t, hasSession, "a stateless server assigns no session, so no request carries the header")
+
+		var req MCPRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		switch req.Method {
+		case "initialize":
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2024-11-05\"}}\n\n"))
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			t.Errorf("unexpected MCP method %q", req.Method)
+		}
 	}
 
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
-	ctx := context.Background()
-	sessionID, err := client.getSessionID(ctx)
+	sessionID, err := client.initializeSession(context.Background())
 
-	assert.NoError(t, err)
-	assert.Equal(t, "test-session-456", sessionID)
-}
-
-func TestGetSessionID_NoSessionID(t *testing.T) {
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}
-
-	client, server := setupMCPTest(t, handler)
-	defer server.Close()
-	ctx := context.Background()
-	sessionID, err := client.getSessionID(ctx)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "no session ID received")
+	require.NoError(t, err)
 	assert.Empty(t, sessionID)
 }
 
-func TestGetSessionID_UnexpectedStatusCode(t *testing.T) {
+func TestInitializeSession_UnexpectedStatusCode(t *testing.T) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
@@ -322,11 +335,52 @@ func TestGetSessionID_UnexpectedStatusCode(t *testing.T) {
 	client.retryConfig.MaxRetries = 1
 	client.retryConfig.BaseDelay = 10 * time.Millisecond
 
-	ctx := context.Background()
-	sessionID, err := client.getSessionID(ctx)
+	sessionID, err := client.initializeSession(context.Background())
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Empty(t, sessionID)
+	var statusErr *MCPHTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusInternalServerError, statusErr.StatusCode)
+}
+
+func TestInitializeSession_NotificationFailure(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		var req MCPRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.Method == "initialize" {
+			w.Header().Set(mcpSessionHeader, "test-session")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{}})
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+	}
+
+	client, server := setupMCPTest(t, handler)
+	defer server.Close()
+	client.retryConfig.MaxRetries = 0
+
+	sessionID, err := client.initializeSession(context.Background())
+
+	require.Error(t, err)
+	assert.Empty(t, sessionID)
+	assert.Contains(t, err.Error(), "initialized notification")
+}
+
+func TestMakeRequest_WithoutSessionOmitsHeader(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		_, hasSession := r.Header[mcpSessionHeader]
+		assert.False(t, hasSession, "an empty session must not be sent as an empty Mcp-Session-Id header")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{"status": "success"}})
+	}
+
+	client, server := setupMCPTest(t, handler)
+	defer server.Close()
+
+	result, err := client.makeRequest(context.Background(), "", MCPRequest{JSONRPC: "2.0", ID: intPtr(2), Method: "tools/call"})
+
+	require.NoError(t, err)
+	assert.Equal(t, "success", result["result"].(map[string]interface{})["status"])
 }
 
 func TestMakeRequest_Success(t *testing.T) {
@@ -501,7 +555,7 @@ func TestInitializeSession_Success(t *testing.T) {
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
 	ctx := context.Background()
-	err := client.initializeSession(ctx, "test-session")
+	_, err := client.initializeSession(ctx)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 2, callCount)
@@ -522,7 +576,7 @@ func TestInitializeSession_InitializeError(t *testing.T) {
 	client, server := setupMCPTest(t, handler)
 	defer server.Close()
 	ctx := context.Background()
-	err := client.initializeSession(ctx, "test-session")
+	_, err := client.initializeSession(ctx)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "initialization error")
@@ -884,8 +938,7 @@ func TestFindNearestCF_Integration(t *testing.T) {
 
 		switch {
 		case r.Method == "HEAD":
-			// Session ID request
-			w.Header().Set("mcp-session-id", "test-session-123")
+			t.Errorf("the session must not be requested by HEAD")
 			w.WriteHeader(http.StatusMethodNotAllowed)
 
 		case r.Method == "POST":
@@ -894,7 +947,9 @@ func TestFindNearestCF_Integration(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&req)
 
 			if req.Method == "initialize" {
-				// Initialize session
+				assert.Empty(t, r.Header.Get(mcpSessionHeader))
+				// Initialize session: the server assigns the session in the response header
+				w.Header().Set(mcpSessionHeader, "test-session-123")
 				response := map[string]interface{}{
 					"result": map[string]interface{}{
 						"protocolVersion": "2024-11-05",
@@ -904,9 +959,11 @@ func TestFindNearestCF_Integration(t *testing.T) {
 
 			} else if req.Method == "notifications/initialized" {
 				// Notification
+				assert.Equal(t, "test-session-123", r.Header.Get(mcpSessionHeader))
 				w.WriteHeader(http.StatusAccepted)
 
 			} else if req.Method == "tools/call" {
+				assert.Equal(t, "test-session-123", r.Header.Get(mcpSessionHeader))
 				params := req.Params.(map[string]interface{})
 				toolName := params["name"].(string)
 
@@ -957,7 +1014,67 @@ func TestFindNearestCF_Integration(t *testing.T) {
 	require.NotNil(t, result)
 	require.NotNil(t, result.HealthFacility)
 	assert.Equal(t, "CF Test", result.HealthFacility.NomeOficial)
-	assert.True(t, requestCount >= 4, "Should make at least 4 requests: HEAD, initialize, notification, instructions, CF lookup")
+	assert.Equal(t, 4, requestCount, "initialize, notification, instructions and CF lookup")
+}
+
+// The app-mcp-server runs Streamable HTTP stateless: HEAD answers 405 (or 404) without a session
+// header and initialize returns no Mcp-Session-Id. The lookup must still go through (DEV-421).
+func TestFindNearestCF_StatelessServerRejectingHEAD(t *testing.T) {
+	for _, headStatus := range []int{http.StatusMethodNotAllowed, http.StatusNotFound} {
+		t.Run(fmt.Sprintf("HEAD %d", headStatus), func(t *testing.T) {
+			var headRequests, postRequests int
+			handler := func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodHead {
+					headRequests++
+					w.WriteHeader(headStatus)
+					return
+				}
+				postRequests++
+				_, hasSession := r.Header[mcpSessionHeader]
+				assert.False(t, hasSession, "a stateless server assigns no session")
+
+				var req MCPRequest
+				_ = json.NewDecoder(r.Body).Decode(&req)
+				switch req.Method {
+				case "initialize":
+					w.Header().Set("Content-Type", "text/event-stream")
+					_, _ = w.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2024-11-05\"}}\n\n"))
+				case "notifications/initialized":
+					w.WriteHeader(http.StatusAccepted)
+				case "tools/call":
+					params := req.Params.(map[string]interface{})
+					if params["name"] == "equipments_by_address" {
+						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"result": map[string]interface{}{
+								"structuredContent": map[string]interface{}{
+									"equipamentos": []interface{}{
+										map[string]interface{}{"categoria": "CF", "nome_oficial": "CF Stateless"},
+									},
+								},
+							},
+						})
+						return
+					}
+					_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{}})
+				default:
+					t.Errorf("unexpected MCP method %q", req.Method)
+				}
+			}
+
+			client, server := setupMCPTest(t, handler)
+			defer server.Close()
+			client.retryConfig.MaxRetries = 0
+
+			result, err := client.FindNearestCF(context.Background(), "Rua Sintetica, 1, Centro")
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.NotNil(t, result.HealthFacility)
+			assert.Equal(t, "CF Stateless", result.HealthFacility.NomeOficial)
+			assert.Zero(t, headRequests, "the client must not depend on HEAD")
+			assert.Equal(t, 4, postRequests)
+		})
+	}
 }
 
 func TestFindNearestCF_SessionError(t *testing.T) {
@@ -976,7 +1093,7 @@ func TestFindNearestCF_SessionError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "failed to get session ID")
+	assert.Contains(t, err.Error(), "failed to initialize session")
 }
 
 func TestIntPtr(t *testing.T) {
