@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -510,6 +511,16 @@ func (w *SyncWorker) syncToMongoDB(job *SyncJob) (writeBufferJob bool, err error
 		update = bson.M{"$set": bsonData}
 	}
 
+	if job.Collection == config.AppConfig.UserConfigCollection {
+		dropped, err := w.dropDeletedAvatarFromUserConfigJob(ctx, job, bsonData)
+		if err != nil {
+			return true, err
+		}
+		if dropped {
+			update["$unset"] = bson.M{"avatar_id": ""}
+		}
+	}
+
 	opts := options.Update().SetUpsert(true)
 
 	_, err = w.mongo.Collection(job.Collection).UpdateOne(ctx, filter, update, opts)
@@ -733,8 +744,12 @@ func isCFLookupJob(job *SyncJob) bool {
 }
 
 // syncJobTimeout is the budget of one attempt. A cf_lookup makes several sequential MCP calls
-// and is only queued after the synchronous lookup timed out, so it needs more than the default.
+// and is only queued after the synchronous lookup timed out, so it needs more than the default;
+// an avatar cleanup may reset and invalidate many user configs (avatarCleanupJobTimeout).
 func syncJobTimeout(job *SyncJob) time.Duration {
+	if isAvatarCleanupJob(job) {
+		return avatarCleanupJobTimeout
+	}
 	if !isCFLookupJob(job) {
 		return defaultSyncJobTimeout
 	}
@@ -922,36 +937,30 @@ func (w *SyncWorker) handleSpecialJobTypes(ctx context.Context, job *SyncJob) er
 // handleAvatarCleanup handles orphaned avatar cleanup jobs
 func (w *SyncWorker) handleAvatarCleanup(ctx context.Context, data map[string]interface{}) error {
 	avatarID, ok := data["avatar_id"].(string)
-	if !ok {
+	if !ok || strings.TrimSpace(avatarID) == "" {
 		return fmt.Errorf("invalid avatar_id in cleanup job")
 	}
 
 	w.logger.Info("processing avatar cleanup job", zap.String("avatar_id", avatarID))
 
-	// Reset all user configs that reference this deleted avatar
-	userConfigCollection := w.mongo.Collection(config.AppConfig.UserConfigCollection)
-
-	filter := bson.M{"avatar_id": avatarID}
-	update := bson.M{
-		"$unset": bson.M{"avatar_id": ""},
-		"$set":   bson.M{"updated_at": time.Now()},
+	// Mark the avatar as deleted before reading MongoDB: a user_config job synced from now on
+	// drops it, and one synced earlier left it in MongoDB, where the reset below finds it.
+	if err := w.redis.Set(ctx, avatarDeletedMarkerKey(avatarID), "1", avatarDeletedMarkerTTL).Err(); err != nil {
+		return fmt.Errorf("failed to mark avatar as deleted: %w", err)
 	}
 
-	result, err := userConfigCollection.UpdateMany(ctx, filter, update)
+	modified, err := w.resetUserConfigsForDeletedAvatar(ctx, avatarID)
 	if err != nil {
 		w.logger.Error("failed to cleanup avatar references",
 			zap.Error(err),
-			zap.String("avatar_id", avatarID))
-		return fmt.Errorf("failed to cleanup avatar references: %w", err)
+			zap.String("avatar_id", avatarID),
+			zap.Int64("affected_users", modified))
+		return err
 	}
 
 	w.logger.Info("avatar cleanup completed",
 		zap.String("avatar_id", avatarID),
-		zap.Int64("affected_users", result.ModifiedCount))
-
-	// Clear any cached user configs that might reference this avatar
-	// Since we don't know which users were affected, we'll let cache entries expire naturally
-	// or clear them individually when accessed
+		zap.Int64("affected_users", modified))
 
 	return nil
 }
