@@ -2,13 +2,16 @@ import http from "k6/http";
 import { check, sleep } from "k6";
 import { Rate } from "k6/metrics";
 
-const BASE_URL_RMI = __ENV.BASE_URL || "http://rmi.rmi.svc.cluster.local:80";
+const BASE_URL_RMI = trimTrailingSlash(__ENV.BASE_URL_RMI || __ENV.BASE_URL || "http://rmi.rmi.svc.cluster.local:80");
 const RMI_API_VERSION = "/v1";
-const BASE_URL_BUSCA = __ENV.BASE_URL_BUSCA || "http://app-busca-search.busca.svc.cluster.local:8080";
-const DURATION = __ENV.DURATION || "30s";
+const BASE_URL_BUSCA = trimTrailingSlash(__ENV.BASE_URL_BUSCA || "http://app-busca-search.busca.svc.cluster.local:8080");
+// DURATION is the steady stage duration unless STEADY_DURATION is set.
+const DURATION = __ENV.DURATION || "10m";
 const RAMP_UP_DURATION = __ENV.RAMP_UP_DURATION || "5m";
-const STEADY_DURATION = __ENV.STEADY_DURATION || "10m";
+const STEADY_DURATION = __ENV.STEADY_DURATION || DURATION;
 const RAMP_DOWN_DURATION = __ENV.RAMP_DOWN_DURATION || "2m";
+// PUT /citizen/{cpf}/phone sends a real WhatsApp verification code, so it only runs when explicitly enabled.
+const ENABLE_PHONE_WRITES = __ENV.ENABLE_PHONE_WRITES === "true";
 const KEYCLOAK_CLIENT_ID = __ENV.KEYCLOAK_CLIENT_ID;
 const KEYCLOAK_CLIENT_SECRET = __ENV.KEYCLOAK_CLIENT_SECRET;
 const KEYCLOAK_ISSUER = __ENV.KEYCLOAK_ISSUER;
@@ -24,8 +27,58 @@ const failureRate = new Rate("failed_requests");
 const httpFailureRate = new Rate("http_failures");
 const checkFailureRate = new Rate("check_failures");
 
+const MIXED_VU_SHARES = {
+    first_login_onboarding: 0.1,
+    home_dashboard: 0.25,
+    personal_info_update: 0.2,
+    wallet_cards: 0.2,
+    category_browsing: 0.1,
+    search_experience: 0.1,
+    popular_services: 0.05,
+};
+
+const SCENARIO_EXEC = {
+    first_login_onboarding: "firstLoginOnboarding",
+    home_dashboard: "homeDashboard",
+    personal_info_update: "personalInfoUpdate",
+    wallet_cards: "walletCards",
+    category_browsing: "categoryBrowsing",
+    search_experience: "searchExperience",
+    popular_services: "popularServices",
+    legacy: "legacy",
+};
+
+function rampingScenario(name, targetVUs) {
+    return {
+        executor: "ramping-vus",
+        exec: SCENARIO_EXEC[name],
+        stages: [
+            { duration: RAMP_UP_DURATION, target: targetVUs },
+            { duration: STEADY_DURATION, target: targetVUs },
+            { duration: RAMP_DOWN_DURATION, target: 0 },
+        ],
+        tags: { scenario: name },
+    };
+}
+
+function buildScenarios() {
+    if (TEST_SCENARIO === "mixed") {
+        const scenarios = {};
+        for (const [name, share] of Object.entries(MIXED_VU_SHARES)) {
+            scenarios[name] = rampingScenario(name, Math.max(1, Math.floor(VIRTUAL_USERS * share)));
+        }
+        return scenarios;
+    }
+
+    if (!SCENARIO_EXEC[TEST_SCENARIO]) {
+        throw new Error(`Unknown TEST_SCENARIO "${TEST_SCENARIO}". Use mixed or one of: ${Object.keys(SCENARIO_EXEC).join(", ")}`);
+    }
+
+    return { [TEST_SCENARIO]: rampingScenario(TEST_SCENARIO, VIRTUAL_USERS) };
+}
+
 export const options = {
-    scenarios: {},
+    scenarios: buildScenarios(),
     thresholds: {
         http_req_duration: ["p(95)<5000"],
         http_req_failed: ["rate<0.05"],
@@ -35,88 +88,8 @@ export const options = {
     },
 };
 
-if (TEST_SCENARIO === "mixed") {
-    options.scenarios = {
-        first_login_onboarding: {
-            executor: "ramping-vus",
-            stages: [
-                { duration: RAMP_UP_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.1)) },
-                { duration: STEADY_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.1)) },
-                { duration: RAMP_DOWN_DURATION, target: 0 },
-            ],
-            tags: { scenario: "first_login_onboarding" },
-        },
-        home_dashboard_access: {
-            executor: "ramping-vus",
-            stages: [
-                { duration: RAMP_UP_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.25)) },
-                { duration: STEADY_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.25)) },
-                { duration: RAMP_DOWN_DURATION, target: 0 },
-            ],
-            tags: { scenario: "home_dashboard" },
-        },
-        personal_info_update: {
-            executor: "ramping-vus",
-            stages: [
-                { duration: RAMP_UP_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.2)) },
-                { duration: STEADY_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.2)) },
-                { duration: RAMP_DOWN_DURATION, target: 0 },
-            ],
-            tags: { scenario: "personal_info_update" },
-        },
-        wallet_card_interactions: {
-            executor: "ramping-vus",
-            stages: [
-                { duration: RAMP_UP_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.2)) },
-                { duration: STEADY_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.2)) },
-                { duration: RAMP_DOWN_DURATION, target: 0 },
-            ],
-            tags: { scenario: "wallet_cards" },
-        },
-        logged_out_category_browsing: {
-            executor: "ramping-vus",
-            stages: [
-                { duration: RAMP_UP_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.1)) },
-                { duration: STEADY_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.1)) },
-                { duration: RAMP_DOWN_DURATION, target: 0 },
-            ],
-            tags: { scenario: "category_browsing" },
-        },
-        logged_out_search: {
-            executor: "ramping-vus",
-            stages: [
-                { duration: RAMP_UP_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.1)) },
-                { duration: STEADY_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.1)) },
-                { duration: RAMP_DOWN_DURATION, target: 0 },
-            ],
-            tags: { scenario: "search_experience" },
-        },
-        logged_out_popular_services: {
-            executor: "ramping-vus",
-            stages: [
-                { duration: RAMP_UP_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.05)) },
-                { duration: STEADY_DURATION, target: Math.max(1, Math.floor(VIRTUAL_USERS * 0.05)) },
-                { duration: RAMP_DOWN_DURATION, target: 0 },
-            ],
-            tags: { scenario: "popular_services" },
-        },
-    };
-} else if (TEST_SCENARIO === "legacy") {
-    options.stages = [
-        { duration: RAMP_UP_DURATION, target: VIRTUAL_USERS },
-        { duration: STEADY_DURATION, target: VIRTUAL_USERS },
-        { duration: RAMP_DOWN_DURATION, target: 0 },
-    ];
-} else {
-    options.scenarios[TEST_SCENARIO] = {
-        executor: "ramping-vus",
-        stages: [
-            { duration: RAMP_UP_DURATION, target: VIRTUAL_USERS },
-            { duration: STEADY_DURATION, target: VIRTUAL_USERS },
-            { duration: RAMP_DOWN_DURATION, target: 0 },
-        ],
-        tags: { scenario: TEST_SCENARIO },
-    };
+function trimTrailingSlash(url) {
+    return url.replace(/\/+$/, "");
 }
 
 function makeApiCall(method, endpoint, payload = null, expectedStatus = 200, token = null) {
@@ -248,13 +221,15 @@ function testFirstLoginOnboarding(data) {
 
     sleep(8);
 
-    const phoneNumber = `9${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`;
-    const updatePhone = makeApiCall("PUT", `/citizen/${cpf}/phone`, {
-        ddd: "11",
-        ddi: "55",
-        valor: phoneNumber
-    }, 200, token);
-    if (!updatePhone) return;
+    if (ENABLE_PHONE_WRITES) {
+        const phoneNumber = `9${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`;
+        const updatePhone = makeApiCall("PUT", `/citizen/${cpf}/phone`, {
+            ddd: "11",
+            ddi: "55",
+            valor: phoneNumber
+        }, 200, token);
+        if (!updatePhone) return;
+    }
 
     sleep(12);
 
@@ -370,12 +345,14 @@ function testPersonalInfoUpdate(data) {
     sleep(5);
 
     const phoneNumber = `9${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`;
-    const updatePhone = makeApiCall("PUT", `/citizen/${cpf}/phone`, {
-        ddd: "11",
-        ddi: "55",
-        valor: phoneNumber
-    }, 200, token);
-    if (!updatePhone) return;
+    if (ENABLE_PHONE_WRITES) {
+        const updatePhone = makeApiCall("PUT", `/citizen/${cpf}/phone`, {
+            ddd: "11",
+            ddi: "55",
+            valor: phoneNumber
+        }, 200, token);
+        if (!updatePhone) return;
+    }
 
     sleep(8);
 
@@ -579,81 +556,49 @@ function testLegacyLoad(data) {
     }
 }
 
-export default function(data) {
-    const scenario = __ENV.K6_SCENARIO || TEST_SCENARIO;
-
-    switch (scenario) {
-        case "first_login_onboarding":
-            testFirstLoginOnboarding(data);
-            break;
-        case "home_dashboard":
-            testHomeDashboardAccess(data);
-            break;
-        case "personal_info_update":
-            testPersonalInfoUpdate(data);
-            break;
-        case "wallet_cards":
-            testWalletCardInteractions(data);
-            break;
-        case "category_browsing":
-            testLoggedOutCategoryBrowsing();
-            break;
-        case "search_experience":
-            testLoggedOutSearch();
-            break;
-        case "popular_services":
-            testLoggedOutPopularServices();
-            break;
-        case "legacy":
-            testLegacyLoad(data);
-            break;
-        case "mixed":
-            const scenarios = [
-                "first_login_onboarding",
-                "home_dashboard",
-                "personal_info_update",
-                "wallet_cards",
-                "category_browsing",
-                "search_experience",
-                "popular_services"
-            ];
-            const randomScenario = scenarios[Math.floor(Math.random() * scenarios.length)];
-            switch (randomScenario) {
-                case "first_login_onboarding":
-                    testFirstLoginOnboarding(data);
-                    break;
-                case "home_dashboard":
-                    testHomeDashboardAccess(data);
-                    break;
-                case "personal_info_update":
-                    testPersonalInfoUpdate(data);
-                    break;
-                case "wallet_cards":
-                    testWalletCardInteractions(data);
-                    break;
-                case "category_browsing":
-                    testLoggedOutCategoryBrowsing();
-                    break;
-                case "search_experience":
-                    testLoggedOutSearch();
-                    break;
-                case "popular_services":
-                    testLoggedOutPopularServices();
-                    break;
-            }
-            break;
-        default:
-            testHomeDashboardAccess(data);
-    }
-
+function runFlow(flow, data) {
+    flow(data);
     sleep(Math.floor(Math.random() * 3) + 1);
+}
+
+export function firstLoginOnboarding(data) {
+    runFlow(testFirstLoginOnboarding, data);
+}
+
+export function homeDashboard(data) {
+    runFlow(testHomeDashboardAccess, data);
+}
+
+export function personalInfoUpdate(data) {
+    runFlow(testPersonalInfoUpdate, data);
+}
+
+export function walletCards(data) {
+    runFlow(testWalletCardInteractions, data);
+}
+
+export function categoryBrowsing() {
+    runFlow(testLoggedOutCategoryBrowsing);
+}
+
+export function searchExperience() {
+    runFlow(testLoggedOutSearch);
+}
+
+export function popularServices() {
+    runFlow(testLoggedOutPopularServices);
+}
+
+export function legacy(data) {
+    runFlow(testLegacyLoad, data);
 }
 
 export function setup() {
     console.log("🚀 Setting up load tests...");
     console.log(`📝 Test scenario: ${TEST_SCENARIO}`);
     console.log(`👥 Virtual users: ${VIRTUAL_USERS}`);
-    console.log(`⏱️ Duration: ${DURATION}`);
+    console.log(`⏱️ Stages: ramp-up ${RAMP_UP_DURATION}, steady ${STEADY_DURATION}, ramp-down ${RAMP_DOWN_DURATION}`);
+    console.log(`📱 Phone writes (PUT /citizen/{cpf}/phone): ${ENABLE_PHONE_WRITES ? "enabled" : "disabled"}`);
     console.log(`🎯 Base URL RMI: ${BASE_URL_RMI}`);
     console.log(`🔍 Base URL Busca: ${BASE_URL_BUSCA}`);
     console.log(`🆔 Test CPF: ${USER}`);
