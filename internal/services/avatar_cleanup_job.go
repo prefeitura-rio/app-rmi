@@ -43,6 +43,11 @@ const (
 	// writeBufferCASAttempts bounds the compare-and-set retries on a write buffer
 	// that the API keeps rewriting.
 	writeBufferCASAttempts = 3
+	// avatarCleanupJobTimeout replaces the generic sync job timeout: one cleanup may reset
+	// many user configs and invalidate their caches.
+	avatarCleanupJobTimeout = 5 * time.Minute
+	// avatarCacheInvalidationTimeout bounds the invalidation of one batch already reset in MongoDB.
+	avatarCacheInvalidationTimeout = 30 * time.Second
 )
 
 // luaCompareAndSetKeepTTL replaces KEYS[1] by ARGV[2] only while it still holds ARGV[1],
@@ -60,6 +65,12 @@ else
 end
 return 1
 `
+
+// isAvatarCleanupJob reports whether a sync job is an avatar cleanup (data.type).
+func isAvatarCleanupJob(job *SyncJob) bool {
+	data, ok := job.Data.(map[string]interface{})
+	return ok && data["type"] == avatarCleanupJobType
+}
 
 // avatarDeletedMarkerKey is set by the cleanup of a deleted avatar; while it exists, user_config
 // sync jobs drop that avatar_id instead of writing it back to MongoDB and to the read cache.
@@ -160,11 +171,7 @@ func (w *SyncWorker) resetUserConfigsForDeletedAvatar(ctx context.Context, avata
 		modified += result.ModifiedCount
 
 		// Invalidate only after MongoDB is clean, so a concurrent read cannot cache the old value again.
-		for _, ref := range batch {
-			if ref.CPF != "" {
-				w.invalidateUserConfigAvatarCache(ctx, ref.CPF, avatarID)
-			}
-		}
+		w.invalidateUserConfigAvatarCaches(ctx, batch, avatarID)
 		batch = batch[:0]
 		return nil
 	}
@@ -185,6 +192,19 @@ func (w *SyncWorker) resetUserConfigsForDeletedAvatar(ctx context.Context, avata
 		return modified, fmt.Errorf("failed to read user configs of deleted avatar: %w", err)
 	}
 	return modified, flush()
+}
+
+// invalidateUserConfigAvatarCaches invalidates the caches of a batch already reset in MongoDB.
+// It runs detached from the job deadline: a retry would not find these documents again, so an
+// interrupted invalidation would leave their caches with the deleted avatar until they expire.
+func (w *SyncWorker) invalidateUserConfigAvatarCaches(ctx context.Context, batch []userConfigRef, avatarID string) {
+	invalidateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), avatarCacheInvalidationTimeout)
+	defer cancel()
+	for _, ref := range batch {
+		if ref.CPF != "" {
+			w.invalidateUserConfigAvatarCache(invalidateCtx, ref.CPF, avatarID)
+		}
+	}
 }
 
 // invalidateUserConfigAvatarCache deletes user_config:cache:<cpf> and removes avatarID from a

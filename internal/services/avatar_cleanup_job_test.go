@@ -376,3 +376,32 @@ func TestUserConfigSyncJob_DropsAvatarDeletedBeforeSync(t *testing.T) {
 	require.NoError(t, db.Collection(config.AppConfig.UserConfigCollection).FindOne(ctx, bson.M{"cpf": "00000000515"}).Decode(&kept))
 	assert.Equal(t, keptAvatar, kept["avatar_id"])
 }
+
+func TestSyncJobTimeout_AvatarCleanupHasItsOwnBudget(t *testing.T) {
+	job := newAvatarCleanupSyncJob("avatar-1", time.Now())
+	assert.Equal(t, avatarCleanupJobTimeout, syncJobTimeout(&job))
+	assert.Greater(t, syncJobTimeout(&job), defaultSyncJobTimeout)
+
+	userConfigWrite := &SyncJob{Type: userConfigDataType, Collection: "user_config",
+		Data: map[string]interface{}{"cpf": "00000000191", "avatar_id": "avatar-1"}}
+	assert.Equal(t, defaultSyncJobTimeout, syncJobTimeout(userConfigWrite))
+}
+
+func TestInvalidateUserConfigAvatarCaches_OutlivesJobDeadline(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	avatarID := primitive.NewObjectID().Hex()
+	const cpf = "00000000604"
+	cacheKey := "user_config:cache:" + cpf
+	require.NoError(t, worker.redis.Set(context.Background(), cacheKey, `{"avatar_id":"`+avatarID+`"}`, time.Hour).Err())
+
+	// The batch is already reset in MongoDB when the job deadline expires.
+	expired, cancel := context.WithCancel(context.Background())
+	cancel()
+	worker.invalidateUserConfigAvatarCaches(expired, []userConfigRef{{CPF: cpf}}, avatarID)
+
+	exists, err := worker.redis.Exists(context.Background(), cacheKey).Result()
+	require.NoError(t, err)
+	assert.Zero(t, exists, "the cache of a reset user config is invalidated even after the job deadline")
+}

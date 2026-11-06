@@ -744,8 +744,12 @@ func isCFLookupJob(job *SyncJob) bool {
 }
 
 // syncJobTimeout is the budget of one attempt. A cf_lookup makes several sequential MCP calls
-// and is only queued after the synchronous lookup timed out, so it needs more than the default.
+// and is only queued after the synchronous lookup timed out, so it needs more than the default;
+// an avatar cleanup may reset and invalidate many user configs (avatarCleanupJobTimeout).
 func syncJobTimeout(job *SyncJob) time.Duration {
+	if isAvatarCleanupJob(job) {
+		return avatarCleanupJobTimeout
+	}
 	if !isCFLookupJob(job) {
 		return defaultSyncJobTimeout
 	}
