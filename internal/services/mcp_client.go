@@ -88,7 +88,14 @@ func (e *MCPHTTPStatusError) Error() string {
 	if e.StatusCode >= 500 {
 		return fmt.Sprintf("server error: %d", e.StatusCode)
 	}
+	if isRedirectStatus(e.StatusCode) {
+		return fmt.Sprintf("MCP server redirected the request (status %d): MCP_SERVER_URL must be the MCP endpoint itself", e.StatusCode)
+	}
 	return fmt.Sprintf("MCP server returned status %d", e.StatusCode)
+}
+
+func isRedirectStatus(code int) bool {
+	return code >= 300 && code < 400
 }
 
 func isHandledMCPStatus(code int) bool {
@@ -97,7 +104,7 @@ func isHandledMCPStatus(code int) bool {
 		http.StatusRequestTimeout, http.StatusTooManyRequests:
 		return true
 	default:
-		return code >= 500
+		return code >= 500 || isRedirectStatus(code)
 	}
 }
 
@@ -132,13 +139,23 @@ func DefaultRetryConfig() RetryConfig {
 	}
 }
 
-// NewMCPClient creates a new MCP client instance
+// normalizeMCPServerURL drops surrounding spaces and trailing slashes from the MCP endpoint: the
+// gateway answers POST /mcp/mcp/ with a redirect to a path that does not exist.
+func normalizeMCPServerURL(raw string) string {
+	return strings.TrimRight(strings.TrimSpace(raw), "/")
+}
+
+// NewMCPClient creates a new MCP client instance. Its HTTP client does not follow redirects: a
+// redirect would resend the bearer token, even to plain HTTP, so it is reported as an error instead.
 func NewMCPClient(cfg *config.Config, logger *logging.SafeLogger) *MCPClient {
 	return &MCPClient{
-		baseURL:   cfg.MCPServerURL,
+		baseURL:   normalizeMCPServerURL(cfg.MCPServerURL),
 		authToken: cfg.MCPAuthToken,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 		logger:      logger,
 		retryConfig: DefaultRetryConfig(),
