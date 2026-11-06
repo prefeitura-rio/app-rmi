@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/handlers"
@@ -77,6 +76,13 @@ func main() {
 	// Load configuration
 	if err := config.LoadConfig(); err != nil {
 		logging.GetLogger().Fatal("failed to load config", zap.Error(err))
+	}
+	if len(config.AppConfig.CORSAllowedOrigins) == 0 {
+		logging.Logger.Warn("CORS_ALLOWED_ORIGINS is empty: cross-origin browser requests will be rejected")
+	} else {
+		logging.Logger.Info("CORS allowlist configured",
+			zap.Strings("origins", config.AppConfig.CORSAllowedOrigins),
+		)
 	}
 
 	// Initialize observability
@@ -162,7 +168,7 @@ func main() {
 		middleware.RequestLogger(),
 		middleware.RequestTracker(),
 		middleware.AuditMiddleware(), // Automatic audit logging for all write operations
-		cors.Default(),
+		middleware.CORS(config.AppConfig.CORSAllowedOrigins),
 	)
 
 	// Metrics endpoint
