@@ -347,6 +347,8 @@ func TestGetQuarantinedPhones_ActiveAndExpiredWithPagination(t *testing.T) {
 	assert.Equal(t, 2, active.Pagination.TotalPages)
 	require.Len(t, active.Data, 2)
 	assert.True(t, active.Data[0].QuarantineUntil.Before(active.Data[1].QuarantineUntil), "sorted by quarantine end")
+	assert.Equal(t, "+5521987650100", active.Data[0].PhoneNumber, "stored DDI+DDD+number is returned in E.164")
+	assert.Equal(t, "+5521987650101", active.Data[1].PhoneNumber, "stored DDI+DDD+number is returned in E.164")
 	assert.False(t, active.Data[0].Expired)
 	assert.NotEqual(t, flowCPFOwner, active.Data[0].CPF, "CPF must be masked")
 	assert.NotEmpty(t, active.Data[0].CPF)
@@ -355,6 +357,7 @@ func TestGetQuarantinedPhones_ActiveAndExpiredWithPagination(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, page2.Data, 1)
 	assert.Empty(t, page2.Data[0].CPF)
+	assert.Equal(t, "+5521987650102", page2.Data[0].PhoneNumber)
 
 	expired, err := service.GetQuarantinedPhones(ctx, 0, 1000, true)
 	require.NoError(t, err)
@@ -362,6 +365,7 @@ func TestGetQuarantinedPhones_ActiveAndExpiredWithPagination(t *testing.T) {
 	assert.Equal(t, 20, expired.Pagination.PerPage, "per_page above 100 falls back to the default")
 	require.Len(t, expired.Data, 1)
 	assert.True(t, expired.Data[0].Expired)
+	assert.Equal(t, "+5521987650103", expired.Data[0].PhoneNumber)
 }
 
 func TestGetQuarantineStats_CountsHistoryAndCPF(t *testing.T) {
