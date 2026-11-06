@@ -11,6 +11,7 @@
 #   - error messages: no CPF or phone formatted in clear with %s/%q/%v
 #   - request path/query/URL (carry CPF or phone in route params): only via observability.PathField /
 #     QueryField (or observability.MaskURLPath / MaskQuery / MaskURL), or the route (c.FullPath())
+#   - panic recovery: only middleware.Recovery() (gin.Default() and gin's recovery middlewares dump the raw request to stderr)
 # The helpers live in internal/observability/logging.go, the only file exempt from this check.
 set -eu
 
@@ -90,6 +91,12 @@ hits="$(go_lines "${emitter}[^\"]*\", *[^)]*(Request\.(URL|RequestURI)|URL\.(Pat
 request_key='([a-z0-9]+[._])*(path|query|endpoint|request_uri|http\.url|http\.target)"'
 hits="$(go_lines "${emitter}${request_key}" | grep -vE "$url_masked" || true)"
 [ -z "$hits" ] || fail "request path/query/URL field without masking. Use observability.PathField / QueryField (or observability.MaskURLPath / MaskQuery / MaskURL) or the route c.FullPath()." "$hits"
+
+# 10. Panic recovery: gin.Default() and gin's recovery middlewares dump the raw request line (path with CPF/phone)
+#     and headers to stderr. The router uses middleware.Recovery().
+gin_recovery='gin\.(Default|Recovery|RecoveryWithWriter|CustomRecovery|CustomRecoveryWithWriter)\('
+hits="$(go_lines "$gin_recovery" | sed 's#//.*$##' | grep -E "$gin_recovery" || true)"
+[ -z "$hits" ] || fail "gin.Default() or a gin recovery middleware dumps the raw request (path with CPF/phone) to stderr on panic. Use middleware.Recovery()." "$hits"
 
 if [ "$status" -ne 0 ]; then
   exit "$status"

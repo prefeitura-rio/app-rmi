@@ -156,7 +156,7 @@ func main() {
 	// Create router with middleware
 	router := gin.New()
 	router.Use(
-		gin.Recovery(),
+		middleware.Recovery(), // gin.Recovery() would dump the raw request (path with CPF/phone) to stderr
 		middleware.RequestID(),
 		middleware.RequestTiming(), // Add comprehensive timing middleware
 		middleware.RequestLogger(),
