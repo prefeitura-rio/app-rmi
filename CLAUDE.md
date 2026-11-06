@@ -101,7 +101,7 @@ just stop-deps        # Stop dependency containers
 - **Non-blocking**: RPop instead of blocking BRPop
 - **Job Limiting**: Max 3 jobs per 50ms cycle to prevent overwhelming
 - **Avatar cleanup**: `DeleteAvatar` queues a `SyncJob` (type `user_config`, `data.type = avatar_cleanup`) on `sync:queue:user_config`, dispatched to `handleAvatarCleanup` (`internal/services/avatar_cleanup_job.go`). The legacy list `user_config:write` is never consumed; on start the worker migrates `avatar_cleanup` payloads left there to the sync queue (LREM before LPUSH, up to 1000 per start)
-- **Queue list**: `syncQueueNames()` is the single list of queues; the worker consumes it and the DLQ scan (`monitoredDLQQueues`, at start and every 5 min, gauge `rmi_sync_queue_depth{queue="dlq_<fila>"}` also at 0) derives from it. A new queue goes there only
+- **Queue list**: `syncQueueNames()` is the single list of queues; the worker consumes it, the DLQ scan (`monitoredDLQQueues`, at start and every 5 min, gauge `rmi_sync_queue_depth{queue="dlq_<fila>"}` also at 0) and the backlog scan (`scanQueueDepths`, one Redis pipeline of `LLEN syncQueueKey(<fila>)` at start and every 15 s, gauge `rmi_sync_queue_depth{queue="<fila>"}` also at 0) derive from it. Backlog queries (e.g. the commented KEDA ScaledObject) filter `queue!~"dlq_.*"`. A new queue goes there only
 - **Metrics**: the worker serves `GET /metrics` on `METRICS_PORT` (default 9090, `0` disables; `observability.NewMetricsServer`) with `rmi_sync_*` and `rmi_degraded_mode_active`; the API serves `/metrics` on `PORT`. The `status` label of `app_rmi_request_duration_seconds` is the HTTP code (`strconv.Itoa`)
 
 ### Authentication & Security
