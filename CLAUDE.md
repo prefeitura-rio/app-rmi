@@ -100,6 +100,8 @@ just stop-deps        # Stop dependency containers
 - **Parallel Processing**: Round-robin across queues (rotating start index each cycle so later queues are not starved)
 - **Non-blocking**: RPop instead of blocking BRPop
 - **Job Limiting**: Max 3 jobs per 50ms cycle to prevent overwhelming
+- **Queue list**: `syncQueueNames()` is the single list of queues; the worker consumes it and the DLQ scan (`monitoredDLQQueues`, at start and every 5 min, gauge `rmi_sync_queue_depth{queue="dlq_<fila>"}` also at 0) derives from it. A new queue goes there only
+- **Metrics**: the worker serves `GET /metrics` on `METRICS_PORT` (default 9090, `0` disables; `observability.NewMetricsServer`) with `rmi_sync_*` and `rmi_degraded_mode_active`; the API serves `/metrics` on `PORT`. The `status` label of `app_rmi_request_duration_seconds` is the HTTP code (`strconv.Itoa`)
 
 ### Authentication & Security
 - **Keycloak Integration**: JWT token validation via middleware

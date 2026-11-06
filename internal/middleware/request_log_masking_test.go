@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -117,7 +118,7 @@ func TestRequestLogger_MetricLabelHasNoPersonalData(t *testing.T) {
 	observeGlobalLogger(t)
 	serve(newPIIRouter(RequestLogger()), http.MethodGet, "/v1/memory/"+syntheticPhone)
 
-	status := string(rune(http.StatusOK))
+	status := strconv.Itoa(http.StatusOK)
 	assert.False(t, observability.RequestDuration.DeleteLabelValues("/v1/memory/"+syntheticPhone, http.MethodGet, status),
 		"request duration histogram labelled with the raw phone")
 	assert.True(t, observability.RequestDuration.DeleteLabelValues("/v1/memory/***", http.MethodGet, status),
