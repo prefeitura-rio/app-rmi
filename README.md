@@ -404,7 +404,7 @@ No modo degradado:
 
 O worker (`./sync`) expõe estas métricas em `GET /metrics` na porta `METRICS_PORT` (padrão 9090):
 
-- `rmi_sync_queue_depth{queue}`: profundidade das DLQs (`queue="dlq_<fila>"`), medida na subida e a cada 5 min para todas as filas do worker
+- `rmi_sync_queue_depth{queue}`: backlog das filas principais (`queue="<fila>"`, `LLEN` de `sync:queue:<fila>`, na subida e a cada 15 s) e profundidade das DLQs (`queue="dlq_<fila>"`, na subida e a cada 5 min), para todas as filas do worker; para o backlog, filtre `queue!~"dlq_.*"`
 - `rmi_sync_operations_total{queue,status}`: operações de sync (`success`/`failure`)
 - `rmi_sync_failures_total{queue}`: falhas de sync
 - `rmi_cache_hit_ratio{cache_type}`: performance do cache
