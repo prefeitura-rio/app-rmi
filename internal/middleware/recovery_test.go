@@ -91,10 +91,12 @@ func TestRecovery_PanicLogsMaskedRequestWithoutRawDump(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(mode+"/"+tt.name, func(t *testing.T) {
 				logs := observeGlobalLogger(t)
-				router := newPanicRouter(mode)
 				recorder := httptest.NewRecorder()
 
+				// The router is built inside the capture: gin.Recovery() binds gin.DefaultErrorWriter
+				// when it is created, so a raw dump would land in the captured output.
 				output := captureProcessOutput(t, func() {
+					router := newPanicRouter(mode)
 					req := httptest.NewRequest(http.MethodGet, tt.target, nil)
 					req.Header.Set("Authorization", "Bearer token-sintetico")
 					req.Header.Set("X-Citizen-Cpf", syntheticCPF)
@@ -102,6 +104,12 @@ func TestRecovery_PanicLogsMaskedRequestWithoutRawDump(t *testing.T) {
 				})
 
 				assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+				// Checked before the log entry, so a raw dump fails the test on its own.
+				for _, raw := range syntheticPersonalData {
+					assert.NotContains(t, output, raw, "personal data written to stdout/stderr")
+				}
+				assert.NotContains(t, output, "HTTP/1.1", "raw request dumped to stdout/stderr")
+				assert.NotContains(t, output, "panic recovered")
 
 				entries := logs.FilterMessage("panic recovered").All()
 				require.Len(t, entries, 1)
@@ -114,12 +122,6 @@ func TestRecovery_PanicLogsMaskedRequestWithoutRawDump(t *testing.T) {
 				assert.Contains(t, fields["panic"], "***")
 				assert.NotEmpty(t, fields["request_id"])
 				assertNoPersonalDataInLogs(t, logs)
-
-				for _, raw := range syntheticPersonalData {
-					assert.NotContains(t, output, raw, "personal data written to stdout/stderr")
-				}
-				assert.NotContains(t, output, "HTTP/1.1", "raw request dumped to stdout/stderr")
-				assert.NotContains(t, output, "panic recovered")
 			})
 		}
 	}
@@ -187,8 +189,11 @@ func TestMaskPanicValue(t *testing.T) {
 	}{
 		{name: "runtime-like message", value: "index out of range [5] with length 3", want: "index out of range [5] with length 3"},
 		{name: "CPF digits", value: "no citizen " + syntheticCPF, want: "no citizen ***"},
-		{name: "formatted CPF after key", value: "cpf:123.456.789-01 missing", want: "*** missing"},
-		{name: "phone with DDD", value: fmt.Errorf("send to (21) 98765-4321 failed"), want: "send to (21) *** failed"},
+		{name: "formatted CPF after key", value: "cpf:123.456.789-01 missing", want: "cpf:*** missing"},
+		{name: "phone with DDD", value: fmt.Errorf("send to (21) 98765-4321 failed"), want: "send to *** failed"},
+		{name: "phone split by a space", value: "phone 98765 4321 invalid", want: "phone *** invalid"},
+		{name: "phone with DDI after colon", value: "lookup " + syntheticPhone + ": EOF", want: "lookup ***: EOF"},
+		{name: "short numbers kept", value: "slice [3:7] of 12 items, retry 2 of 5", want: "slice [3:7] of 12 items, retry 2 of 5"},
 		{name: "e-mail", value: "bad " + syntheticEmail, want: "bad ***"},
 		{name: "path with CPF", value: "GET /v1/citizen/" + syntheticCPF + "/wallet", want: "GET /v1/citizen/***/wallet"},
 		{name: "non-string value", value: 42, want: "42"},

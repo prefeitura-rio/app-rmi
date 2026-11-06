@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -57,10 +58,19 @@ func Recovery() gin.HandlerFunc {
 	}
 }
 
-// maskPanicValue renders a recovered panic value with every whitespace-separated
-// token that carries a CPF, a phone or an e-mail replaced by "***" (same rule as
-// observability.MaskURLPath, applied to each "/"-separated part of the token), since
-// a panic message may format request data.
+// digitRunPattern matches a run of digits with the separators a formatted CPF or
+// phone uses, spaces included ("123.456.789-01", "(21) 98765-4321", "98765 4321").
+var digitRunPattern = regexp.MustCompile(`[+(]?[0-9][0-9+().\- ]*[0-9]\)?`)
+
+// minPanicDigitRun is the number of digits from which a digit run of a panic value is
+// treated as personal data (same threshold as the digit-only segments of MaskURLPath).
+const minPanicDigitRun = 8
+
+// maskPanicValue renders a recovered panic value with personal data replaced by "***",
+// since a panic message may format request data: first every digit run with 8 or more
+// digits (even split by spaces), then every whitespace-separated token that
+// observability.MaskURLPath treats as a CPF, a phone or an e-mail (applied to each
+// "/"-separated part of the token).
 func maskPanicValue(recovered any) string {
 	var text string
 	switch v := recovered.(type) {
@@ -71,6 +81,18 @@ func maskPanicValue(recovered any) string {
 	default:
 		text = fmt.Sprint(v)
 	}
+	text = digitRunPattern.ReplaceAllStringFunc(text, func(run string) string {
+		digits := 0
+		for _, r := range run {
+			if r >= '0' && r <= '9' {
+				digits++
+			}
+		}
+		if digits >= minPanicDigitRun {
+			return "***"
+		}
+		return run
+	})
 	tokens := strings.Fields(text)
 	for i, token := range tokens {
 		tokens[i] = observability.MaskURLPath(token)

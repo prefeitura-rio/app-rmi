@@ -131,7 +131,7 @@ just stop-deps        # Stop dependency containers
 - MongoDB filters are never logged (`zap.Any("filter", …)`): log only the field name (`filter_field`)
 - OTP/verification codes are never logged nor recorded in spans; error messages never format a CPF or phone in clear (use `observability.MaskCPF` or leave the value out)
 - `utils.AddSpanAttribute` / `RecordErrorInSpan` / `TraceOperation` / `TraceEndpointStep` mask CPF, phone and name values by key (last dotted segment, e.g. `input.cpf`, `response.name`), mask cache keys (`cache.key`), redact OTP keys (`code`, `otp`) and raw self-declared values (`input.valor`) as `[REDACTED]`, and drop birth-date keys
-- CI/`just lint` runs `scripts/check_cpf_log_masking.sh` so new unmasked CPF, phone, name, birth-date, cache-key, request path/query, Mongo-filter or OTP logs/spans (and error messages with CPF/phone) fail the build
+- CI/`just lint` runs `scripts/check_cpf_log_masking.sh` so new unmasked CPF, phone, name, birth-date, cache-key, request path/query, Mongo-filter or OTP logs/spans (and error messages with CPF/phone, or a gin recovery middleware) fail the build
 
 ### Monitoring & Observability
 - **OpenTelemetry**: Request tracing with span context
