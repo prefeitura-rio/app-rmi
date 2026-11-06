@@ -1143,8 +1143,8 @@ func UpdateSelfDeclaredEmail(c *gin.Context) {
 	validationResult := utils.ValidateEmail(input)
 	if !validationResult.IsValid {
 		utils.RecordErrorInSpan(emailSpan, fmt.Errorf("invalid email format"), map[string]interface{}{
-			"email":  input.Valor,
-			"errors": validationResult.Errors,
+			"invalid_value_length": len(input.Valor),
+			"errors":               validationResult.Errors,
 		})
 		emailSpan.End()
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Invalid email format"})

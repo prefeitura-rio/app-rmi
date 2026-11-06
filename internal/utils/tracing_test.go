@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -766,6 +767,34 @@ func TestSpanHelpers_RedactSelfDeclaredValues(t *testing.T) {
 	}
 	if attrs["error.type"] != "validation" {
 		t.Errorf("non-personal attribute changed: %v", attrs)
+	}
+}
+
+func TestSpanHelpers_RedactEmailAddresses(t *testing.T) {
+	const email = "pessoa.sintetica@exemplo.com"
+	attrs := recordSpanAttributes(t, func(span trace.Span) {
+		AddSpanAttribute(span, "email", email)
+		AddSpanAttribute(span, "input.email_prefix", email)
+		AddSpanAttribute(span, "notify_email", email)
+		AddSpanAttribute(span, "email_status", "sent")
+		AddSpanAttribute(span, "email.length", len(email))
+		RecordErrorInSpan(span, errors.New("invalid email format"), map[string]interface{}{
+			"parse.email":   email,
+			"email_address": email,
+			"error.type":    "validation",
+		})
+	})
+
+	for _, key := range []string{"email", "input.email_prefix", "notify_email", "parse.email", "email_address"} {
+		if got := attrs[key]; got != "[REDACTED]" {
+			t.Errorf("attribute %q = %q, want [REDACTED]", key, got)
+		}
+	}
+	if attrs["email_status"] != "sent" || attrs["error.type"] != "validation" {
+		t.Errorf("non-personal attribute changed: %v", attrs)
+	}
+	if attrs["email.length"] != strconv.Itoa(len(email)) {
+		t.Errorf("email.length = %q, want %d", attrs["email.length"], len(email))
 	}
 }
 

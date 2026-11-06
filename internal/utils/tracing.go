@@ -331,13 +331,14 @@ const spanRedacted = "[REDACTED]"
 // maskSpanStringAttr masks personal data by the last dot-separated segment of
 // the attribute key, so "cpf", "input.cpf" and "response.matched_cpf" are all masked.
 // Cache keys ("cache.key") keep only their type/prefix segments; one-time codes
-// ("code", "otp") and raw self-declared values ("input.valor", "invalid_value",
+// ("code", "otp"), raw self-declared values ("input.valor", "invalid_value",
 // "validated_value", "new_gender"...: phone, e-mail, ethnicity, disability,
-// free-text gender) are never recorded.
+// free-text gender) and e-mail addresses ("email", "parse.email", "notify_email")
+// are never recorded.
 func maskSpanStringAttr(key, value string) string {
 	field := spanKeyField(key)
 	switch {
-	case isOTPSpanField(field) || isSelfDeclaredValueSpanField(field):
+	case isOTPSpanField(field) || isSelfDeclaredValueSpanField(field) || isEmailSpanField(field):
 		return spanRedacted
 	case field == "key" || field == "cache_key" || field == "keys":
 		return observability.MaskCacheKey(value)
@@ -384,6 +385,16 @@ func isSelfDeclaredValueSpanField(field string) bool {
 		return true
 	}
 	return false
+}
+
+// isEmailSpanField reports whether the field holds an e-mail address (or part of
+// one), which is personal data and is never recorded in traces.
+func isEmailSpanField(field string) bool {
+	switch field {
+	case "email", "e_mail", "email_address", "email_prefix":
+		return true
+	}
+	return strings.HasSuffix(field, "_email")
 }
 
 func isNameSpanField(field string) bool {
