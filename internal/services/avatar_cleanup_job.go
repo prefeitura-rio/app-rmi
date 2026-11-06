@@ -3,14 +3,19 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
 
 	"github.com/prefeitura-rio/app-rmi/internal/config"
+	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
 )
 
@@ -27,7 +32,202 @@ const (
 	legacyAvatarCleanupListKey = "user_config:write"
 	// legacyAvatarCleanupMigrateBatch bounds how many legacy payloads one worker start inspects.
 	legacyAvatarCleanupMigrateBatch = 1000
+	// userConfigDataType is the DataManager type of user configs: its cache keys are
+	// user_config:cache:<cpf> and user_config:write:<cpf>.
+	userConfigDataType = "user_config"
+	// avatarCleanupBatchSize bounds how many user configs one cleanup step resets.
+	avatarCleanupBatchSize = 500
+	// avatarDeletedMarkerTTL keeps the deleted-avatar marker longer than a write buffer (6h)
+	// and the retries of a pending user_config job, so none of them writes the avatar back.
+	avatarDeletedMarkerTTL = 24 * time.Hour
+	// writeBufferCASAttempts bounds the compare-and-set retries on a write buffer
+	// that the API keeps rewriting.
+	writeBufferCASAttempts = 3
 )
+
+// luaCompareAndSetKeepTTL replaces KEYS[1] by ARGV[2] only while it still holds ARGV[1],
+// keeping its remaining TTL. Returns 1 when replaced, 0 otherwise.
+const luaCompareAndSetKeepTTL = `
+local current = redis.call('GET', KEYS[1])
+if current ~= ARGV[1] then
+  return 0
+end
+local ttl = redis.call('PTTL', KEYS[1])
+if ttl > 0 then
+  redis.call('SET', KEYS[1], ARGV[2], 'PX', ttl)
+else
+  redis.call('SET', KEYS[1], ARGV[2])
+end
+return 1
+`
+
+// avatarDeletedMarkerKey is set by the cleanup of a deleted avatar; while it exists, user_config
+// sync jobs drop that avatar_id instead of writing it back to MongoDB and to the read cache.
+func avatarDeletedMarkerKey(avatarID string) string {
+	return "avatar_cleanup:deleted:" + avatarID
+}
+
+// stripAvatarFromUserConfigJSON removes avatar_id from a buffered user config JSON when it
+// references avatarID. Other fields are kept byte for byte. It returns false when the
+// document does not reference avatarID.
+func stripAvatarFromUserConfigJSON(raw string, avatarID string) (string, bool, error) {
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+		return "", false, fmt.Errorf("invalid user config JSON: %w", err)
+	}
+	current, ok := doc["avatar_id"]
+	if !ok {
+		return "", false, nil
+	}
+	var currentID *string
+	if err := json.Unmarshal(current, &currentID); err != nil || currentID == nil || *currentID != avatarID {
+		return "", false, nil
+	}
+	delete(doc, "avatar_id")
+	stripped, err := json.Marshal(doc)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to marshal user config JSON: %w", err)
+	}
+	return string(stripped), true, nil
+}
+
+// dropDeletedAvatarFromUserConfigJob removes avatar_id from a user_config sync job whose avatar
+// was deleted (marker set by the cleanup), so a job queued before the cleanup does not write
+// the avatar back to MongoDB nor to the read cache (handleSyncSuccess caches job.Data).
+// It returns true when the avatar was dropped.
+func (w *SyncWorker) dropDeletedAvatarFromUserConfigJob(ctx context.Context, job *SyncJob, bsonData map[string]interface{}) (bool, error) {
+	avatarID, ok := bsonData["avatar_id"].(string)
+	if !ok || avatarID == "" {
+		return false, nil
+	}
+	deleted, err := w.redis.Exists(ctx, avatarDeletedMarkerKey(avatarID)).Result()
+	if err != nil {
+		return false, fmt.Errorf("failed to check deleted avatar marker: %w", err)
+	}
+	if deleted == 0 {
+		return false, nil
+	}
+	delete(bsonData, "avatar_id")
+	if data, ok := job.Data.(map[string]interface{}); ok {
+		delete(data, "avatar_id")
+	}
+	w.logger.Info("dropped deleted avatar from user_config sync job",
+		zap.String("job_id", job.ID),
+		zap.String("avatar_id", avatarID),
+		observability.KeyField(job.Key))
+	return true, nil
+}
+
+// resetUserConfigsForDeletedAvatar unsets avatar_id on every user config that references
+// avatarID, in batches, and invalidates the Redis copies of each affected user config so no
+// read returns the deleted avatar. It returns how many documents were modified.
+func (w *SyncWorker) resetUserConfigsForDeletedAvatar(ctx context.Context, avatarID string) (int64, error) {
+	collection := w.mongo.Collection(config.AppConfig.UserConfigCollection)
+	filter := bson.M{"avatar_id": avatarID}
+	findOpts := options.Find().
+		SetProjection(bson.M{"_id": 1, "cpf": 1}).
+		SetLimit(avatarCleanupBatchSize)
+
+	var modified int64
+	for {
+		cursor, err := collection.Find(ctx, filter, findOpts)
+		if err != nil {
+			return modified, fmt.Errorf("failed to find user configs of deleted avatar: %w", err)
+		}
+		var docs []struct {
+			ID  interface{} `bson:"_id"`
+			CPF string      `bson:"cpf"`
+		}
+		if err := cursor.All(ctx, &docs); err != nil {
+			return modified, fmt.Errorf("failed to read user configs of deleted avatar: %w", err)
+		}
+		if len(docs) == 0 {
+			return modified, nil
+		}
+
+		ids := make([]interface{}, 0, len(docs))
+		for _, doc := range docs {
+			ids = append(ids, doc.ID)
+		}
+		// Matching _id (not cpf) guarantees progress: every found document leaves the filter.
+		result, err := collection.UpdateMany(ctx,
+			bson.M{"_id": bson.M{"$in": ids}, "avatar_id": avatarID},
+			bson.M{
+				"$unset": bson.M{"avatar_id": ""},
+				"$set":   bson.M{"updated_at": time.Now()},
+			})
+		if err != nil {
+			return modified, fmt.Errorf("failed to cleanup avatar references: %w", err)
+		}
+		modified += result.ModifiedCount
+
+		// Invalidate only after MongoDB is clean, so a concurrent read cannot cache the old value again.
+		for _, doc := range docs {
+			if doc.CPF == "" {
+				continue
+			}
+			w.invalidateUserConfigAvatarCache(ctx, doc.CPF, avatarID)
+		}
+
+		if len(docs) < avatarCleanupBatchSize {
+			return modified, nil
+		}
+	}
+}
+
+// invalidateUserConfigAvatarCache deletes user_config:cache:<cpf> and removes avatarID from a
+// pending user_config:write:<cpf>, keeping the other buffered fields and the buffer TTL.
+// Failures are logged: the read cache expires on its own (3h) and the pending job drops the avatar.
+func (w *SyncWorker) invalidateUserConfigAvatarCache(ctx context.Context, cpf string, avatarID string) {
+	cacheKey := fmt.Sprintf("%s:cache:%s", userConfigDataType, cpf)
+	if err := w.redis.Del(ctx, cacheKey).Err(); err != nil {
+		w.logger.Error("failed to invalidate user config cache after avatar cleanup",
+			zap.String("avatar_id", avatarID),
+			observability.CacheKeyField(cacheKey),
+			zap.Error(err))
+	}
+
+	writeKey := fmt.Sprintf("%s:write:%s", userConfigDataType, cpf)
+	for attempt := 0; attempt < writeBufferCASAttempts; attempt++ {
+		raw, err := w.redis.Get(ctx, writeKey).Result()
+		if errors.Is(err, redis.Nil) {
+			return
+		}
+		if err != nil {
+			w.logger.Error("failed to read user config write buffer after avatar cleanup",
+				zap.String("avatar_id", avatarID),
+				observability.CacheKeyField(writeKey),
+				zap.Error(err))
+			return
+		}
+		stripped, changed, err := stripAvatarFromUserConfigJSON(raw, avatarID)
+		if err != nil {
+			w.logger.Warn("unreadable user config write buffer left as is after avatar cleanup",
+				zap.String("avatar_id", avatarID),
+				observability.CacheKeyField(writeKey),
+				zap.Error(err))
+			return
+		}
+		if !changed {
+			return
+		}
+		replaced, err := w.redis.Eval(ctx, luaCompareAndSetKeepTTL, []string{writeKey}, raw, stripped).Int()
+		if err != nil {
+			w.logger.Error("failed to update user config write buffer after avatar cleanup",
+				zap.String("avatar_id", avatarID),
+				observability.CacheKeyField(writeKey),
+				zap.Error(err))
+			return
+		}
+		if replaced == 1 {
+			return
+		}
+		// The API rewrote the buffer meanwhile: read it again.
+	}
+	w.logger.Warn("user config write buffer kept changing during avatar cleanup",
+		zap.String("avatar_id", avatarID),
+		observability.CacheKeyField(writeKey))
+}
 
 // newAvatarCleanupSyncJob builds the SyncJob that resets user configs referencing a deleted avatar.
 func newAvatarCleanupSyncJob(avatarID string, now time.Time) SyncJob {
