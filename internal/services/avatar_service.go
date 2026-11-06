@@ -313,28 +313,16 @@ func (s *AvatarService) invalidateListCache(ctx context.Context) {
 	}
 }
 
-// queueAvatarCleanupJob adds a cleanup job for orphaned avatar references
+// queueAvatarCleanupJob queues a sync job that resets user configs referencing the deleted avatar.
 func (s *AvatarService) queueAvatarCleanupJob(ctx context.Context, avatarID string) error {
-	// Create cleanup job data
-	jobData := map[string]interface{}{
-		"type":      "avatar_cleanup",
-		"avatar_id": avatarID,
-		"timestamp": time.Now().Unix(),
-	}
-
-	jobJSON, err := json.Marshal(jobData)
+	jobID, err := enqueueAvatarCleanupJob(ctx, config.Redis, avatarID)
 	if err != nil {
-		return fmt.Errorf("failed to marshal cleanup job: %w", err)
+		return err
 	}
 
-	// Queue job in user config queue for sync worker
-	queueName := "user_config:write"
-	err = config.Redis.LPush(ctx, queueName, jobJSON).Err()
-	if err != nil {
-		return fmt.Errorf("failed to queue cleanup job: %w", err)
-	}
-
-	s.logger.Info("avatar cleanup job queued", zap.String("avatar_id", avatarID))
+	s.logger.Info("avatar cleanup job queued",
+		zap.String("avatar_id", avatarID),
+		zap.String("job_id", jobID))
 	return nil
 }
 

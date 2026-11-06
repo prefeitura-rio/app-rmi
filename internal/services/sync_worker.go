@@ -94,6 +94,7 @@ func (w *SyncWorker) SetSalesforceClient(client SalesforceCidadaoAPI) {
 func (w *SyncWorker) Start() {
 	w.logger.Info("sync worker started", zap.Int("worker_id", w.id))
 	w.recoverStaleInflightJobs()
+	w.migrateLegacyAvatarCleanupJobs(context.Background())
 
 	ticker := time.NewTicker(50 * time.Millisecond) // Reduced delay for better responsiveness
 	recoverTicker := time.NewTicker(inflightRecoverInterval)
@@ -891,7 +892,7 @@ func (w *SyncWorker) markMobilidadeInviteQueuePersistFailure(job *SyncJob, msg s
 func (w *SyncWorker) handleSpecialJobTypes(ctx context.Context, job *SyncJob) error {
 	// Check if this is an avatar cleanup job
 	if data, ok := job.Data.(map[string]interface{}); ok {
-		if jobType, exists := data["type"]; exists && jobType == "avatar_cleanup" {
+		if jobType, exists := data["type"]; exists && jobType == avatarCleanupJobType {
 			return w.handleAvatarCleanup(ctx, data)
 		}
 	}

@@ -187,7 +187,7 @@ Casos especiais:
 - **`mobilidade_invite_email`**: o status fica no vínculo (`email_status = failed`, `email_last_error`). Reprocessar reenvia o e-mail real: confirme com o time de Mobilidade antes.
 - Jobs presos em `sync:processing:{<fila>}` há mais de 5 min voltam sozinhos à fila (recuperação a cada 1 min); não mexa à mão.
 
-A lista `user_config:write` não é consumida pelo worker (jobs de limpeza de avatar ficam parados nela); não confunda com as filas `sync:queue:*`.
+Limpeza de avatar (`DELETE` de avatar): o job vai para `sync:queue:user_config` com `data.type = avatar_cleanup` e remove o `avatar_id` dos `user_config` que o usavam; na DLQ (`sync:dlq:user_config`) pode ser reprocessado, porque a limpeza é idempotente. A lista `user_config:write` é legado (versões antigas enfileiravam ali e nenhum worker a lê): ao iniciar, o worker migra para `sync:queue:user_config` os payloads `avatar_cleanup` parados nela (até 1000 por início, log `legacy avatar cleanup list processed`); o que não for `avatar_cleanup` fica na lista e é só contado em log (`unrecognized`).
 
 ### 4.3 Salesforce respondendo 401
 
