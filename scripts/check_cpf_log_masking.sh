@@ -13,6 +13,7 @@
 #     QueryField (or observability.MaskURLPath / MaskQuery / MaskURL), or the route (c.FullPath())
 #   - raw self-declared values (valor, invalid_value, validated_value, new_<field>): never logged,
 #     never set through attribute.*, never formatted into a message (only the length)
+#   - panic recovery: only middleware.Recovery() (gin.Default() and gin's recovery middlewares dump the raw request to stderr)
 # The helpers live in internal/observability/logging.go, the only file exempt from this check.
 set -eu
 
@@ -102,6 +103,12 @@ hits="$(go_lines "${emitter}${self_declared_key}")"
 
 hits="$(go_lines 'Errorf\("[^"]*%[sqv][^"]*",[^)]*\.Valor\b')"
 [ -z "$hits" ] || fail "raw self-declared value (.Valor) formatted into a message (errors end up in logs and spans). Leave the value out." "$hits"
+
+# 11. Panic recovery: gin.Default() and gin's recovery middlewares dump the raw request line (path with CPF/phone)
+#     and headers to stderr. The router uses middleware.Recovery().
+gin_recovery='gin\.(Default|Recovery|RecoveryWithWriter|CustomRecovery|CustomRecoveryWithWriter)\('
+hits="$(go_lines "$gin_recovery" | sed 's#//.*$##' | grep -E "$gin_recovery" || true)"
+[ -z "$hits" ] || fail "gin.Default() or a gin recovery middleware dumps the raw request (path with CPF/phone) to stderr on panic. Use middleware.Recovery()." "$hits"
 
 if [ "$status" -ne 0 ]; then
   exit "$status"
