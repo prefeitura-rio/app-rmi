@@ -27,17 +27,13 @@ const syntheticCFAddress = "Rua Sintetica do Teste, 4321, Bloco Z, Bairro Fictic
 // mcpHandlerWithEquipments answers the MCP handshake and replies to equipments_by_address with the given result.
 func mcpHandlerWithEquipments(cfResult map[string]interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodHead {
-			w.Header().Set("mcp-session-id", "test-session-logs")
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
 
 		var req MCPRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		switch req.Method {
 		case "initialize":
+			w.Header().Set(mcpSessionHeader, "test-session-logs")
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"result": map[string]interface{}{"protocolVersion": "2024-11-05"},
 			})
@@ -317,7 +313,7 @@ func TestInitCFLookupService_LogsMCPSessionFailure(t *testing.T) {
 	_, err := CFLookupServiceInstance.mcpClient.FindNearestCF(context.Background(), syntheticCFAddress)
 	require.Error(t, err)
 
-	entry := requireLogEntry(t, logs, "session ID acquisition failed")
+	entry := requireLogEntry(t, logs, "session initialization failed")
 	assert.Equal(t, zapcore.ErrorLevel, entry.Level)
 	assert.Equal(t, "mcp_client", entry.LoggerName)
 	assertNoAddressInLogs(t, logs, syntheticCFAddress)
