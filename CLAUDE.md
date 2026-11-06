@@ -100,6 +100,7 @@ just stop-deps        # Stop dependency containers
 - **Parallel Processing**: Round-robin across queues (rotating start index each cycle so later queues are not starved)
 - **Non-blocking**: RPop instead of blocking BRPop
 - **Job Limiting**: Max 3 jobs per 50ms cycle to prevent overwhelming
+- **Avatar cleanup**: `DeleteAvatar` queues a `SyncJob` (type `user_config`, `data.type = avatar_cleanup`) on `sync:queue:user_config`, dispatched to `handleAvatarCleanup` (`internal/services/avatar_cleanup_job.go`). The legacy list `user_config:write` is never consumed; on start the worker migrates `avatar_cleanup` payloads left there to the sync queue (LREM before LPUSH, up to 1000 per start)
 
 ### Authentication & Security
 - **Keycloak Integration**: JWT token validation via middleware
