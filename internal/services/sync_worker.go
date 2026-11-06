@@ -36,6 +36,34 @@ type SyncWorker struct {
 	salesforce   SalesforceCidadaoAPI
 }
 
+// syncQueueNames is the single list of queues the sync worker consumes. The DLQ scan
+// (monitoredDLQQueues) derives from it, so a new queue is consumed and monitored together.
+func syncQueueNames() []string {
+	return []string{
+		"citizen",
+		"phone_mapping",
+		"user_config",
+		"opt_in_history",
+		"beta_group",
+		"phone_verification",
+		"maintenance_request",
+		"self_declared_address",
+		"self_declared_email",
+		"self_declared_phone",
+		"self_declared_raca",
+		"self_declared_nome_exibicao",
+		"self_declared_genero",
+		"self_declared_renda_familiar",
+		"self_declared_escolaridade",
+		"self_declared_deficiencia",
+		"self_declared_nascimento",
+		"cf_lookup",
+		MobilidadeInviteEmailQueue,
+		SalesforceSyncQueue,
+		SalesforcePushQueue,
+	}
+}
+
 // NewSyncWorker creates a new sync worker
 func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, logger *logging.SafeLogger, metrics *Metrics, degradedMode *DegradedMode) *SyncWorker {
 	return &SyncWorker{
@@ -48,29 +76,7 @@ func NewSyncWorker(redis *redisclient.Client, mongo *mongo.Database, id int, log
 		stopChan:     make(chan struct{}),
 		emailSender:  ResolveDefaultEmailSender(logger),
 		salesforce:   nil,
-		queues: []string{
-			"citizen",
-			"phone_mapping",
-			"user_config",
-			"opt_in_history",
-			"beta_group",
-			"phone_verification",
-			"maintenance_request",
-			"self_declared_address",
-			"self_declared_email",
-			"self_declared_phone",
-			"self_declared_raca",
-			"self_declared_nome_exibicao",
-			"self_declared_genero",
-			"self_declared_renda_familiar",
-			"self_declared_escolaridade",
-			"self_declared_deficiencia",
-			"self_declared_nascimento",
-			"cf_lookup",
-			MobilidadeInviteEmailQueue,
-			SalesforceSyncQueue,
-			SalesforcePushQueue,
-		},
+		queues:       syncQueueNames(),
 	}
 }
 

@@ -83,7 +83,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | CF_LOOKUP_GLOBAL_RATE_LIMIT | Rate limit global de CF lookups por minuto | 60 | Não |
 | CF_LOOKUP_JOB_TIMEOUT | Timeout de cada tentativa de um job `cf_lookup` no worker de sync | 90s | Não |
 | LOG_LEVEL | Nível de log (debug, info, warn, error) | info | Não |
-| METRICS_PORT | Porta para métricas Prometheus | 9090 | Não |
+| METRICS_PORT | Porta do `GET /metrics` (Prometheus) do worker de sync (`./sync`); `0` desliga. A API expõe `/metrics` na própria `PORT` | 9090 | Não |
 | TRACING_ENABLED | Habilitar rastreamento OpenTelemetry | false | Não |
 | TRACING_ENDPOINT | Endpoint do coletor OpenTelemetry | http://localhost:4317 | Não |
 | AUDIT_LOGS_ENABLED | Habilitar logs de auditoria automáticos | true | Não |
@@ -402,13 +402,13 @@ No modo degradado:
 
 ### **📈 Métricas**
 
-Todas as métricas são prefixadas com `rmi_`:
+O worker (`./sync`) expõe estas métricas em `GET /metrics` na porta `METRICS_PORT` (padrão 9090):
 
-- `rmi_sync_queue_depth_{queue}`: Profundidade das filas
-- `rmi_sync_operations_total_{queue}`: Operações de sync
-- `rmi_sync_failures_total_{queue}`: Falhas de sync
-- `rmi_cache_hit_ratio_{cache_type}`: Performance do cache
-- `rmi_degraded_mode_active`: Saúde do sistema
+- `rmi_sync_queue_depth{queue}`: profundidade das DLQs (`queue="dlq_<fila>"`), medida na subida e a cada 5 min para todas as filas do worker
+- `rmi_sync_operations_total{queue,status}`: operações de sync (`success`/`failure`)
+- `rmi_sync_failures_total{queue}`: falhas de sync
+- `rmi_cache_hit_ratio{cache_type}`: performance do cache
+- `rmi_degraded_mode_active`: modo degradado (1 ativo, 0 inativo)
 
 ### **🔍 Troubleshooting**
 

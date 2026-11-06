@@ -428,6 +428,10 @@ func TestLoadConfig_Success(t *testing.T) {
 	if AppConfig.CitizenCollection != "citizens" {
 		t.Errorf("AppConfig.CitizenCollection = %v, want citizens", AppConfig.CitizenCollection)
 	}
+
+	if AppConfig.MetricsPort != 9090 {
+		t.Errorf("AppConfig.MetricsPort = %v, want 9090 (METRICS_PORT unset)", AppConfig.MetricsPort)
+	}
 }
 
 func TestLoadConfig_InvalidPort(t *testing.T) {

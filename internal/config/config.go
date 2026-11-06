@@ -156,6 +156,9 @@ type Config struct {
 	DBWorkerCount int `json:"db_worker_count"`
 	DBBatchSize   int `json:"db_batch_size"`
 
+	// MetricsPort is the port of the sync worker's Prometheus /metrics server (0 disables it).
+	MetricsPort int `json:"metrics_port"`
+
 	// Authorization configuration
 	AdminGroup            string   `json:"admin_group"`
 	TrustedServiceClients []string `json:"trusted_service_clients"`
@@ -548,6 +551,9 @@ func LoadConfig() error {
 		// Database worker configuration
 		DBWorkerCount: getEnvAsIntOrDefault("DB_WORKER_COUNT", 10),
 		DBBatchSize:   getEnvAsIntOrDefault("DB_BATCH_SIZE", 100),
+
+		// Sync worker metrics server
+		MetricsPort: getEnvAsIntOrDefault("METRICS_PORT", 9090),
 
 		// Authorization configuration
 		AdminGroup:            getEnvOrDefault("ADMIN_GROUP", "heimdall-admin"),
