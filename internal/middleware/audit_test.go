@@ -2,11 +2,14 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
 
 func TestAuditMiddleware_SkipsGETRequests(t *testing.T) {
@@ -206,5 +209,88 @@ func TestAuditMiddleware_WithUserAgent(t *testing.T) {
 
 	if w.Code != http.StatusCreated {
 		t.Errorf("AuditMiddleware() with user agent status = %v, want %v", w.Code, http.StatusCreated)
+	}
+}
+
+type capturedAuditEvent struct {
+	action   string
+	resource string
+	metadata map[string]string
+}
+
+// captureAuditEvents replaces the audit persistence for the duration of the
+// test and returns the events the middleware handed to it.
+func captureAuditEvents(t *testing.T) *[]capturedAuditEvent {
+	t.Helper()
+	var events []capturedAuditEvent
+	original := logAuditEvent
+	logAuditEvent = func(_ context.Context, _ utils.AuditContext, action, resource, _ string, _, _ interface{}, metadata map[string]string) error {
+		events = append(events, capturedAuditEvent{action: action, resource: resource, metadata: metadata})
+		return nil
+	}
+	t.Cleanup(func() { logAuditEvent = original })
+	return &events
+}
+
+func TestAuditMiddleware_ResponseStatusIsHTTPCode(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		status int
+		want   string
+	}{
+		{name: "POST 201", method: http.MethodPost, status: http.StatusCreated, want: "201"},
+		{name: "PUT 200", method: http.MethodPut, status: http.StatusOK, want: "200"},
+		{name: "PATCH 202", method: http.MethodPatch, status: http.StatusAccepted, want: "202"},
+		{name: "DELETE 204", method: http.MethodDelete, status: http.StatusNoContent, want: "204"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			events := captureAuditEvents(t)
+
+			router := gin.New()
+			router.Use(AuditMiddleware())
+			router.Handle(tt.method, "/api/resource", func(c *gin.Context) {
+				c.Status(tt.status)
+			})
+
+			req, _ := http.NewRequest(tt.method, "/api/resource", bytes.NewBufferString(`{"name":"test"}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != tt.status {
+				t.Fatalf("status = %d, want %d", w.Code, tt.status)
+			}
+			if len(*events) != 1 {
+				t.Fatalf("audit events = %d, want 1", len(*events))
+			}
+			got := (*events)[0].metadata["response_status"]
+			if got != tt.want {
+				t.Errorf("metadata[response_status] = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAuditMiddleware_NoAuditEventForNon2xx(t *testing.T) {
+	events := captureAuditEvents(t)
+
+	router := gin.New()
+	router.Use(AuditMiddleware())
+	router.POST("/api/resource", func(c *gin.Context) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid"})
+	})
+
+	req, _ := http.NewRequest(http.MethodPost, "/api/resource", bytes.NewBufferString(`{}`))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	if len(*events) != 0 {
+		t.Errorf("audit events = %d, want 0 for a 4xx response", len(*events))
 	}
 }

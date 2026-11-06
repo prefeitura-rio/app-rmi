@@ -118,6 +118,7 @@ just stop-deps        # Stop dependency containers
 - **Resource Mapping**: Automatic extraction of resource type from request path
 - **CPF Extraction**: Attempts to extract CPF from URL params, authenticated claims, or request body
 - **Status Filtering**: Only logs successful requests (2xx status codes)
+- **Response status**: `metadata.response_status` is the HTTP code as decimal text (`strconv.Itoa`, e.g. `"201"`); documents written before DEV-384 hold a Unicode character (`"È"` for 200) and were not backfilled
 - **Body storage**: Request bodies truncated to 1000 characters; **not redacted** — may contain telefone, e-mail, endereço and other PII from write payloads. CPF on the audit document stays in clear text for rastreabilidade (by design; not masked like SigNoz logs/traces)
 - **MANDATORY REQUIREMENT**: All new write endpoints (POST/PUT/DELETE/PATCH) are automatically audited - no manual audit logging needed in handlers
 - **Location**: Audit middleware at `internal/middleware/audit.go`, integrated in main router before all routes
