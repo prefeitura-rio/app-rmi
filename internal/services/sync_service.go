@@ -7,6 +7,7 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/logging"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/redisclient"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
 )
@@ -53,6 +54,9 @@ func (s *SyncService) Start() {
 
 	// Start DLQ monitoring
 	go s.monitorDLQ()
+
+	// Start main queue depth monitoring
+	go s.monitorQueueDepth(queueDepthScanInterval)
 
 	s.logger.Info("sync service started successfully")
 }
@@ -108,6 +112,50 @@ func (s *SyncService) scanDLQs() {
 				zap.String("dlq_key", observability.MaskCacheKey(dlqKey)),
 				zap.Int64("dlq_size", dlqSize))
 		}
+	}
+}
+
+// queueDepthScanInterval is how often the backlog of the main sync queues is recorded.
+const queueDepthScanInterval = 15 * time.Second
+
+// queueDepthScanTimeout bounds one scan of the main sync queues.
+const queueDepthScanTimeout = 5 * time.Second
+
+// monitorQueueDepth records the backlog of the main sync queues: once at start, then every interval.
+func (s *SyncService) monitorQueueDepth(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	s.scanQueueDepths()
+	for range ticker.C {
+		s.scanQueueDepths()
+	}
+}
+
+// scanQueueDepths records the length of every queue the worker consumes (syncQueueKey) as
+// rmi_sync_queue_depth{queue="<fila>"}, apart from the dlq_<fila> series of scanDLQs. The
+// lengths are read in one pipeline; a queue whose LLEN fails keeps its last value.
+func (s *SyncService) scanQueueDepths() {
+	ctx, cancel := context.WithTimeout(context.Background(), queueDepthScanTimeout)
+	defer cancel()
+
+	queues := syncQueueNames()
+	pipe := s.redis.Pipeline()
+	cmds := make([]*redis.IntCmd, len(queues))
+	for i, queue := range queues {
+		cmds[i] = pipe.LLen(ctx, syncQueueKey(queue))
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		s.logger.Warn("sync queue depth scan failed", zap.Error(err))
+	}
+
+	for i, queue := range queues {
+		depth, err := cmds[i].Result()
+		if err != nil {
+			continue
+		}
+		// Record the depth even when it is zero, so the gauge drops back once a queue is drained.
+		s.metrics.RecordQueueDepth(queue, depth)
 	}
 }
 

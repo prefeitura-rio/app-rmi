@@ -245,7 +245,7 @@ spec:
 #         serverAddress: http://prometheus-server.istio-system.svc.cluster.local:9090
 #         metricName: rmi_sync_queue_depth
 #         threshold: "100"
-#         query: max(rmi_sync_queue_depth) by (queue)
+#         query: max(rmi_sync_queue_depth{queue!~"dlq_.*"}) by (queue)
 #         activationThreshold: "50"
 ---
 apiVersion: v1
