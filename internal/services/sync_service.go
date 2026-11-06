@@ -72,11 +72,13 @@ func (s *SyncService) Stop() {
 	s.logger.Info("sync service stopped")
 }
 
-// monitorDLQ monitors the dead letter queue
+// monitorDLQ monitors the dead letter queues: once at start, so the gauges exist right after
+// a deploy, then every 5 minutes.
 func (s *SyncService) monitorDLQ() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
+	s.scanDLQs()
 	for range ticker.C {
 		s.scanDLQs()
 	}

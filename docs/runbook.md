@@ -73,7 +73,7 @@ O SigNoz de cada ambiente roda no próprio cluster (namespace `signoz`) e é ace
 | `msg` | Processo | Significado |
 |---|---|---|
 | `job moved to DLQ` (ERROR) | worker | Um job esgotou as tentativas ou teve erro permanente. Campos `job_id`, `type`, `error`. |
-| `DLQ has failed jobs` (WARN, a cada 5 min) | worker | Há itens na DLQ de `queue`, com `dlq_size`. |
+| `DLQ has failed jobs` (WARN, na subida e a cada 5 min) | worker | Há itens na DLQ de `queue`, com `dlq_size`. |
 | `degraded mode activated` / `deactivated` | worker | Worker parou/voltou a consumir filas (`reason`: `mongodb_down` ou `redis_memory_high`). |
 | `recovered stale inflight sync job` / `inflight recovery hit cap` | worker | Jobs presos em processamento há mais de 5 min voltaram à fila (filas confiáveis). |
 | `CF lookup failed` (WARN) | worker | Tentativa de `cf_lookup` falhou (`attempt`, `max_attempts`, `permanent`). |
@@ -89,7 +89,7 @@ Os logs mascaram CPF, telefone, nome, chaves de cache e caminhos (`observability
 ### Métricas
 
 - **API**: `GET /metrics` (formato Prometheus, porta 8080; `/v1/metrics` é só um texto fixo). Os pods não têm anotação de scrape: para consultar, use `kubectl -n rmi port-forward svc/rmi 8080:80` e `curl -s localhost:8080/metrics`. Principais séries: `app_rmi_request_duration_seconds{path,method,status}`, `app_rmi_database_operations_total`, `app_rmi_cache_hits_total`, `app_rmi_phone_verification_*`.
-- **Worker**: o `./sync` expõe `GET /metrics` na porta `METRICS_PORT` (padrão 9090; `0` desliga; log `metrics server listening` na subida). Os pods também não têm anotação de scrape: `kubectl -n rmi port-forward deploy/rmi-sync 9090:9090` e `curl -s localhost:9090/metrics`. Séries: `rmi_sync_queue_depth{queue="dlq_<fila>"}` (todas as DLQs do worker, a cada 5 min), `rmi_sync_operations_total{queue,status}`, `rmi_sync_failures_total{queue}`, `rmi_degraded_mode_active`. Junto dos logs acima e do tamanho das filas no Redis ([seção 4.2](#42-filas-e-dlq-do-sync-worker)).
+- **Worker**: o `./sync` expõe `GET /metrics` na porta `METRICS_PORT` (padrão 9090; `0` desliga; log `metrics server listening` na subida). Os pods também não têm anotação de scrape: `kubectl -n rmi port-forward deploy/rmi-sync 9090:9090` e `curl -s localhost:9090/metrics`. Séries: `rmi_sync_queue_depth{queue="dlq_<fila>"}` (todas as DLQs do worker, na subida e a cada 5 min), `rmi_sync_operations_total{queue,status}`, `rmi_sync_failures_total{queue}`, `rmi_degraded_mode_active`. Junto dos logs acima e do tamanho das filas no Redis ([seção 4.2](#42-filas-e-dlq-do-sync-worker)).
 - **Istio / Prometheus** (`prometheus-server.istio-system:9090`, o mesmo que o KEDA e a análise do canário usam). Taxa de 5xx do RMI:
 
 ```promql

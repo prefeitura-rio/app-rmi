@@ -790,3 +790,23 @@ func TestSyncService_ScanDLQ_IncludesSelfDeclaredQueues(t *testing.T) {
 		assert.Equal(t, int64(0), service.metrics.GetQueueDepth("dlq_"+queue), "drained DLQ %s", queue)
 	}
 }
+
+// TestSyncService_MonitorDLQ_ScansAtStart checks the first scan happens right away, not only
+// after the first 5-minute tick.
+func TestSyncService_MonitorDLQ_ScansAtStart(t *testing.T) {
+	service, redisClient, _, cleanup := setupSyncServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	queue := "self_declared_deficiencia"
+	dlqKey := syncDLQKey(queue)
+	_ = redisClient.Del(ctx, dlqKey)
+	defer redisClient.Del(ctx, dlqKey)
+	require.NoError(t, redisClient.LPush(ctx, dlqKey, `{"error":"test error"}`).Err())
+
+	go service.monitorDLQ()
+
+	require.Eventually(t, func() bool {
+		return service.metrics.GetQueueDepth("dlq_"+queue) == 1
+	}, 2*time.Second, 10*time.Millisecond)
+}
