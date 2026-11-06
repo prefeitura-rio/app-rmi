@@ -26,6 +26,11 @@ spec:
         sidecar.istio.io/proxyCPULimit: "1000m"
         sidecar.istio.io/proxyMemory: "1Gi"
         sidecar.istio.io/proxyMemoryLimit: "1536Mi"
+        # Scrape do GET /metrics da API (app_rmi_request_duration_seconds e afins) pelo
+        # Prometheus do istio-system (job kubernetes-pods); o Istio as serve mescladas no 15020.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
     spec:
       automountServiceAccountToken: false
       containers:
@@ -87,6 +92,12 @@ spec:
         sidecar.istio.io/proxyCPULimit: "500m"
         sidecar.istio.io/proxyMemory: "512Mi"
         sidecar.istio.io/proxyMemoryLimit: "768Mi"
+        # Scrape das métricas do worker (rmi_sync_*, rmi_degraded_mode_active; METRICS_PORT,
+        # padrão 9090) pelo Prometheus do istio-system (job kubernetes-pods); o Istio as serve
+        # mescladas no 15020. A porta 9090 não está em nenhum Service.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
     spec:
       automountServiceAccountToken: false
       containers:
