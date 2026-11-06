@@ -118,38 +118,36 @@ func (w *SyncWorker) dropDeletedAvatarFromUserConfigJob(ctx context.Context, job
 	return true, nil
 }
 
+// userConfigRef is the part of a user config the avatar cleanup reads.
+type userConfigRef struct {
+	ID  interface{} `bson:"_id"`
+	CPF string      `bson:"cpf"`
+}
+
 // resetUserConfigsForDeletedAvatar unsets avatar_id on every user config that references
-// avatarID, in batches, and invalidates the Redis copies of each affected user config so no
-// read returns the deleted avatar. It returns how many documents were modified.
+// avatarID and invalidates the Redis copies of each affected user config so no read returns
+// the deleted avatar. One cursor reads the collection once (avatar_id has no index); the
+// updates go in batches by _id. It returns how many documents were modified.
 func (w *SyncWorker) resetUserConfigsForDeletedAvatar(ctx context.Context, avatarID string) (int64, error) {
 	collection := w.mongo.Collection(config.AppConfig.UserConfigCollection)
-	filter := bson.M{"avatar_id": avatarID}
-	findOpts := options.Find().
+	cursor, err := collection.Find(ctx, bson.M{"avatar_id": avatarID}, options.Find().
 		SetProjection(bson.M{"_id": 1, "cpf": 1}).
-		SetLimit(avatarCleanupBatchSize)
+		SetBatchSize(avatarCleanupBatchSize))
+	if err != nil {
+		return 0, fmt.Errorf("failed to find user configs of deleted avatar: %w", err)
+	}
+	defer func() { _ = cursor.Close(ctx) }()
 
 	var modified int64
-	for {
-		cursor, err := collection.Find(ctx, filter, findOpts)
-		if err != nil {
-			return modified, fmt.Errorf("failed to find user configs of deleted avatar: %w", err)
+	batch := make([]userConfigRef, 0, avatarCleanupBatchSize)
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
 		}
-		var docs []struct {
-			ID  interface{} `bson:"_id"`
-			CPF string      `bson:"cpf"`
+		ids := make([]interface{}, 0, len(batch))
+		for _, ref := range batch {
+			ids = append(ids, ref.ID)
 		}
-		if err := cursor.All(ctx, &docs); err != nil {
-			return modified, fmt.Errorf("failed to read user configs of deleted avatar: %w", err)
-		}
-		if len(docs) == 0 {
-			return modified, nil
-		}
-
-		ids := make([]interface{}, 0, len(docs))
-		for _, doc := range docs {
-			ids = append(ids, doc.ID)
-		}
-		// Matching _id (not cpf) guarantees progress: every found document leaves the filter.
 		result, err := collection.UpdateMany(ctx,
 			bson.M{"_id": bson.M{"$in": ids}, "avatar_id": avatarID},
 			bson.M{
@@ -157,22 +155,36 @@ func (w *SyncWorker) resetUserConfigsForDeletedAvatar(ctx context.Context, avata
 				"$set":   bson.M{"updated_at": time.Now()},
 			})
 		if err != nil {
-			return modified, fmt.Errorf("failed to cleanup avatar references: %w", err)
+			return fmt.Errorf("failed to cleanup avatar references: %w", err)
 		}
 		modified += result.ModifiedCount
 
 		// Invalidate only after MongoDB is clean, so a concurrent read cannot cache the old value again.
-		for _, doc := range docs {
-			if doc.CPF == "" {
-				continue
+		for _, ref := range batch {
+			if ref.CPF != "" {
+				w.invalidateUserConfigAvatarCache(ctx, ref.CPF, avatarID)
 			}
-			w.invalidateUserConfigAvatarCache(ctx, doc.CPF, avatarID)
 		}
+		batch = batch[:0]
+		return nil
+	}
 
-		if len(docs) < avatarCleanupBatchSize {
-			return modified, nil
+	for cursor.Next(ctx) {
+		var ref userConfigRef
+		if err := cursor.Decode(&ref); err != nil {
+			return modified, fmt.Errorf("failed to read user config of deleted avatar: %w", err)
+		}
+		batch = append(batch, ref)
+		if len(batch) == avatarCleanupBatchSize {
+			if err := flush(); err != nil {
+				return modified, err
+			}
 		}
 	}
+	if err := cursor.Err(); err != nil {
+		return modified, fmt.Errorf("failed to read user configs of deleted avatar: %w", err)
+	}
+	return modified, flush()
 }
 
 // invalidateUserConfigAvatarCache deletes user_config:cache:<cpf> and removes avatarID from a
