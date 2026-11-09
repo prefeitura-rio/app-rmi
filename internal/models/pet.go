@@ -1,7 +1,18 @@
 package models
 
 import (
+	"errors"
 	"time"
+)
+
+// PetMaxAgeYears is the oldest age accepted for a pet birth date on registration.
+const PetMaxAgeYears = 100
+
+var (
+	// ErrPetBirthDateInFuture is returned when nascimento_data is after the current time.
+	ErrPetBirthDateInFuture = errors.New("data de nascimento do pet não pode ser no futuro")
+	// ErrPetBirthDateTooOld is returned when nascimento_data is more than PetMaxAgeYears ago.
+	ErrPetBirthDateTooOld = errors.New("data de nascimento do pet inválida")
 )
 
 // Pet represents a single pet record
@@ -165,6 +176,21 @@ type PetRegistrationRequest struct {
 	BreedName          string     `json:"raca_nome" binding:"required"`
 	SizeName           string     `json:"porte_nome" binding:"required"`
 	PhotoURL           string     `json:"foto_url,omitempty"`
+}
+
+// ValidateBirthDate checks that nascimento_data is neither after now nor more
+// than PetMaxAgeYears before it, as ParseBirthDate does for the citizen.
+func (r *PetRegistrationRequest) ValidateBirthDate(now time.Time) error {
+	if r.BirthDate == nil {
+		return nil
+	}
+	if r.BirthDate.After(now) {
+		return ErrPetBirthDateInFuture
+	}
+	if r.BirthDate.Before(now.AddDate(-PetMaxAgeYears, 0, 0)) {
+		return ErrPetBirthDateTooOld
+	}
+	return nil
 }
 
 // SelfRegisteredPet represents a pet document in the self-registered collection
