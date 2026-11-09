@@ -239,6 +239,11 @@ func (s *PetService) GetPetStats(ctx context.Context, cpf string) (*models.PetSt
 
 // RegisterPet registers a new self-registered pet for a CPF
 func (s *PetService) RegisterPet(ctx context.Context, cpf string, req *models.PetRegistrationRequest) (*models.Pet, error) {
+	if req.NeuteredIndicator == nil {
+		return nil, fmt.Errorf("indicador_castrado is required")
+	}
+	neutered := *req.NeuteredIndicator
+
 	collection := s.database.Collection(config.AppConfig.PetsSelfRegisteredCollection)
 
 	// Generate unique ID using timestamp + random ObjectID bytes
@@ -254,7 +259,7 @@ func (s *PetService) RegisterPet(ctx context.Context, cpf string, req *models.Pe
 		MicrochipNumber:    req.MicrochipNumber,
 		SexAbbreviation:    req.SexAbbreviation,
 		BirthDate:          req.BirthDate,
-		NeuteredIndicator:  req.NeuteredIndicator,
+		NeuteredIndicator:  neutered,
 		SpeciesName:        req.SpeciesName,
 		PedigreeIndicator:  req.PedigreeIndicator,
 		PedigreeOriginName: req.PedigreeOriginName,

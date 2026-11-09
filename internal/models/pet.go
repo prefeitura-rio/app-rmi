@@ -169,7 +169,7 @@ type PetRegistrationRequest struct {
 	MicrochipNumber    string     `json:"microchip_numero,omitempty"`
 	SexAbbreviation    string     `json:"sexo_sigla" binding:"required,oneof=M F"`
 	BirthDate          *time.Time `json:"nascimento_data" binding:"required"`
-	NeuteredIndicator  bool       `json:"indicador_castrado" binding:"required"`
+	NeuteredIndicator  *bool      `json:"indicador_castrado" binding:"required"`
 	SpeciesName        string     `json:"especie_nome" binding:"required"`
 	PedigreeIndicator  *bool      `json:"pedigree_indicador,omitempty"`
 	PedigreeOriginName string     `json:"pedigree_origem_nome,omitempty"`
