@@ -389,3 +389,48 @@ func TestRegisterPet_Success(t *testing.T) {
 		t.Error("RegisterPet() ID is nil")
 	}
 }
+
+func TestRegisterPet_BirthDateOutOfRange(t *testing.T) {
+	router, cleanup := setupPetHandlersTest(t)
+	defer cleanup()
+
+	tests := []struct {
+		name          string
+		birthDate     string
+		wantErrorText string
+	}{
+		{name: "future date", birthDate: "2099-01-15T00:00:00Z", wantErrorText: models.ErrPetBirthDateInFuture.Error()},
+		{name: "tomorrow", birthDate: time.Now().AddDate(0, 0, 1).UTC().Format(time.RFC3339), wantErrorText: models.ErrPetBirthDateInFuture.Error()},
+		{name: "too old", birthDate: "1800-01-01T00:00:00Z", wantErrorText: models.ErrPetBirthDateTooOld.Error()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"animal_nome":"X","sexo_sigla":"M","nascimento_data":"` + tt.birthDate + `","indicador_castrado":true,"especie_nome":"Canina","raca_nome":"SRD","porte_nome":"Pequeno"}`)
+			req, _ := http.NewRequest("POST", "/citizen/03561350712/pets", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("RegisterPet() status = %v, want %v (body: %s)", w.Code, http.StatusBadRequest, w.Body.String())
+			}
+
+			var response ErrorResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+				t.Fatalf("Failed to unmarshal response: %v", err)
+			}
+			if response.Error != tt.wantErrorText {
+				t.Errorf("RegisterPet() error = %q, want %q", response.Error, tt.wantErrorText)
+			}
+		})
+	}
+
+	count, err := config.MongoDB.Collection(config.AppConfig.PetsSelfRegisteredCollection).CountDocuments(context.Background(), bson.M{"cpf": "03561350712"})
+	if err != nil {
+		t.Fatalf("CountDocuments() error = %v", err)
+	}
+	if count != 0 {
+		t.Errorf("self-registered pets after rejected requests = %d, want 0", count)
+	}
+}
