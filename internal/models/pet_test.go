@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin/binding"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -303,13 +304,14 @@ func TestSelfRegisteredPet_ToPet_MinimalData(t *testing.T) {
 func TestPetRegistrationRequest_Structure(t *testing.T) {
 	birthDate := time.Now().AddDate(-1, 0, 0)
 	pedigreeIndicator := false
+	neuteredIndicator := true
 
 	request := PetRegistrationRequest{
 		Name:               "Max",
 		MicrochipNumber:    "XYZ789",
 		SexAbbreviation:    "M",
 		BirthDate:          &birthDate,
-		NeuteredIndicator:  true,
+		NeuteredIndicator:  &neuteredIndicator,
 		SpeciesName:        "dog",
 		PedigreeIndicator:  &pedigreeIndicator,
 		PedigreeOriginName: "USA",
@@ -326,12 +328,44 @@ func TestPetRegistrationRequest_Structure(t *testing.T) {
 		t.Errorf("PetRegistrationRequest SexAbbreviation = %v, want M", request.SexAbbreviation)
 	}
 
-	if !request.NeuteredIndicator {
+	if request.NeuteredIndicator == nil || !*request.NeuteredIndicator {
 		t.Errorf("PetRegistrationRequest NeuteredIndicator = %v, want true", request.NeuteredIndicator)
 	}
 
 	if request.PedigreeIndicator == nil || *request.PedigreeIndicator != false {
 		t.Errorf("PetRegistrationRequest PedigreeIndicator = %v, want false", request.PedigreeIndicator)
+	}
+}
+
+func TestPetRegistrationRequest_BindNeuteredIndicator(t *testing.T) {
+	const prefix = `{"animal_nome":"Rex","sexo_sigla":"M","nascimento_data":"2020-01-15T00:00:00Z",` +
+		`"especie_nome":"Canina","raca_nome":"SRD","porte_nome":"Pequeno"`
+
+	tests := []struct {
+		name    string
+		body    string
+		wantErr bool
+		want    bool
+	}{
+		{name: "false is accepted", body: prefix + `,"indicador_castrado":false}`, want: false},
+		{name: "true is accepted", body: prefix + `,"indicador_castrado":true}`, want: true},
+		{name: "missing is rejected", body: prefix + `}`, wantErr: true},
+		{name: "null is rejected", body: prefix + `,"indicador_castrado":null}`, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req PetRegistrationRequest
+			err := binding.JSON.BindBody([]byte(tt.body), &req)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "NeuteredIndicator")
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, req.NeuteredIndicator)
+			assert.Equal(t, tt.want, *req.NeuteredIndicator)
+		})
 	}
 }
 

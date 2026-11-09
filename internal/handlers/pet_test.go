@@ -309,12 +309,13 @@ func TestRegisterPet_InvalidCPF(t *testing.T) {
 
 	birthDate := time.Now().AddDate(-2, 0, 0) // 2 years old
 	pedigreeIndicator := false
+	neuteredIndicator := true
 	reqBody := models.PetRegistrationRequest{
 		Name:               "Rex",
 		SpeciesName:        "dog",
 		SexAbbreviation:    "M",
 		BirthDate:          &birthDate,
-		NeuteredIndicator:  true,
+		NeuteredIndicator:  &neuteredIndicator,
 		BreedName:          "Mixed",
 		SizeName:           "Medium",
 		PedigreeIndicator:  &pedigreeIndicator,
@@ -347,18 +348,79 @@ func TestRegisterPet_InvalidRequest(t *testing.T) {
 	}
 }
 
+func TestRegisterPet_NeuteredIndicator(t *testing.T) {
+	router, cleanup := setupPetHandlersTest(t)
+	defer cleanup()
+
+	const prefix = `{"animal_nome":"Rex","sexo_sigla":"M","nascimento_data":"2020-01-15T00:00:00Z",` +
+		`"especie_nome":"Canina","raca_nome":"SRD","porte_nome":"Pequeno"`
+
+	t.Run("false registers a non-neutered pet", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/citizen/03561350712/pets",
+			bytes.NewBufferString(prefix+`,"indicador_castrado":false}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Fatalf("RegisterPet() status = %v, want %v (body: %s)", w.Code, http.StatusCreated, w.Body.String())
+		}
+
+		var response models.Pet
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatalf("Failed to unmarshal response: %v", err)
+		}
+		if response.NeuteredIndicator == nil || *response.NeuteredIndicator {
+			t.Fatalf("RegisterPet() indicador_castrado = %v, want false", response.NeuteredIndicator)
+		}
+		if response.ID == nil {
+			t.Fatal("RegisterPet() ID is nil")
+		}
+
+		var stored models.SelfRegisteredPet
+		err := config.MongoDB.Collection(config.AppConfig.PetsSelfRegisteredCollection).
+			FindOne(context.Background(), bson.M{"_id": *response.ID}).Decode(&stored)
+		if err != nil {
+			t.Fatalf("stored pet not found: %v", err)
+		}
+		if stored.NeuteredIndicator {
+			t.Error("stored indicador_castrado = true, want false")
+		}
+	})
+
+	for _, tt := range []struct {
+		name string
+		body string
+	}{
+		{"missing is rejected", prefix + `}`},
+		{"null is rejected", prefix + `,"indicador_castrado":null}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest("POST", "/citizen/03561350712/pets", bytes.NewBufferString(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("RegisterPet() status = %v, want %v (body: %s)", w.Code, http.StatusBadRequest, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestRegisterPet_Success(t *testing.T) {
 	router, cleanup := setupPetHandlersTest(t)
 	defer cleanup()
 
 	birthDate := time.Now().AddDate(-2, 0, 0) // 2 years old
 	pedigreeIndicator := false
+	neuteredIndicator := true
 	reqBody := models.PetRegistrationRequest{
 		Name:               "Rex",
 		SpeciesName:        "dog",
 		SexAbbreviation:    "M",
 		BirthDate:          &birthDate,
-		NeuteredIndicator:  true,
+		NeuteredIndicator:  &neuteredIndicator,
 		BreedName:          "Mixed",
 		SizeName:           "Medium",
 		PedigreeIndicator:  &pedigreeIndicator,
