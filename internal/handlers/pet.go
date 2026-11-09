@@ -375,6 +375,18 @@ func RegisterPet(c *gin.Context) {
 	}
 	parseSpan.End()
 
+	ctx, birthDateSpan := utils.TraceInputValidation(ctx, "pet_birth_date", "nascimento_data")
+	if err := req.ValidateBirthDate(time.Now()); err != nil {
+		utils.RecordErrorInSpan(birthDateSpan, err, map[string]interface{}{
+			"error.type": "invalid_pet_birth_date",
+		})
+		birthDateSpan.End()
+		logger.Warn("invalid pet birth date", zap.Error(err))
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	birthDateSpan.End()
+
 	// Check if pet service is available
 	if services.PetServiceInstance == nil {
 		logger.Error("pet service not initialized")
