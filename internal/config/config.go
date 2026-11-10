@@ -21,6 +21,10 @@ type Config struct {
 	// Server configuration
 	Port        int    `json:"port"`
 	Environment string `json:"environment"`
+	// CORSAllowedOrigins is the allowlist of browser Origins (scheme+host[+port])
+	// that may receive Access-Control-* headers. Empty rejects all cross-origin
+	// browser requests. Set via CORS_ALLOWED_ORIGINS (comma-separated).
+	CORSAllowedOrigins []string `json:"cors_allowed_origins"`
 
 	// MongoDB configuration
 	MongoURI      string `json:"mongo_uri"`
@@ -424,8 +428,9 @@ func LoadConfig() error {
 
 	AppConfig = &Config{
 		// Server configuration
-		Port:        port,
-		Environment: getEnvOrDefault("ENVIRONMENT", "development"),
+		Port:               port,
+		Environment:        getEnvOrDefault("ENVIRONMENT", "development"),
+		CORSAllowedOrigins: parseCommaSeparatedList(getEnvOrDefault("CORS_ALLOWED_ORIGINS", "")),
 
 		// MongoDB configuration
 		MongoURI:      getEnvOrDefault("MONGODB_URI", "mongodb://localhost:27017"),
