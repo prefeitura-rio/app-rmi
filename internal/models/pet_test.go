@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin/binding"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -303,13 +304,14 @@ func TestSelfRegisteredPet_ToPet_MinimalData(t *testing.T) {
 func TestPetRegistrationRequest_Structure(t *testing.T) {
 	birthDate := time.Now().AddDate(-1, 0, 0)
 	pedigreeIndicator := false
+	neuteredIndicator := true
 
 	request := PetRegistrationRequest{
 		Name:               "Max",
 		MicrochipNumber:    "XYZ789",
 		SexAbbreviation:    "M",
 		BirthDate:          &birthDate,
-		NeuteredIndicator:  true,
+		NeuteredIndicator:  &neuteredIndicator,
 		SpeciesName:        "dog",
 		PedigreeIndicator:  &pedigreeIndicator,
 		PedigreeOriginName: "USA",
@@ -326,12 +328,44 @@ func TestPetRegistrationRequest_Structure(t *testing.T) {
 		t.Errorf("PetRegistrationRequest SexAbbreviation = %v, want M", request.SexAbbreviation)
 	}
 
-	if !request.NeuteredIndicator {
+	if request.NeuteredIndicator == nil || !*request.NeuteredIndicator {
 		t.Errorf("PetRegistrationRequest NeuteredIndicator = %v, want true", request.NeuteredIndicator)
 	}
 
 	if request.PedigreeIndicator == nil || *request.PedigreeIndicator != false {
 		t.Errorf("PetRegistrationRequest PedigreeIndicator = %v, want false", request.PedigreeIndicator)
+	}
+}
+
+func TestPetRegistrationRequest_BindNeuteredIndicator(t *testing.T) {
+	const prefix = `{"animal_nome":"Rex","sexo_sigla":"M","nascimento_data":"2020-01-15T00:00:00Z",` +
+		`"especie_nome":"Canina","raca_nome":"SRD","porte_nome":"Pequeno"`
+
+	tests := []struct {
+		name    string
+		body    string
+		wantErr bool
+		want    bool
+	}{
+		{name: "false is accepted", body: prefix + `,"indicador_castrado":false}`, want: false},
+		{name: "true is accepted", body: prefix + `,"indicador_castrado":true}`, want: true},
+		{name: "missing is rejected", body: prefix + `}`, wantErr: true},
+		{name: "null is rejected", body: prefix + `,"indicador_castrado":null}`, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req PetRegistrationRequest
+			err := binding.JSON.BindBody([]byte(tt.body), &req)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "NeuteredIndicator")
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, req.NeuteredIndicator)
+			assert.Equal(t, tt.want, *req.NeuteredIndicator)
+		})
 	}
 }
 
@@ -504,4 +538,51 @@ func TestRawCitizenPets_ToCitizenPets_WithTestify(t *testing.T) {
 		assert.Equal(t, "Cat1", result.Pets[1].Name)
 		assert.Equal(t, "Dog2", result.Pets[2].Name)
 	})
+}
+
+func TestPetRegistrationRequest_ValidateBirthDate(t *testing.T) {
+	now := time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
+	at := func(tm time.Time) *time.Time { return &tm }
+
+	tests := []struct {
+		name      string
+		birthDate *time.Time
+		wantErr   error
+	}{
+		{name: "two years ago is valid", birthDate: at(now.AddDate(-2, 0, 0))},
+		{name: "exactly now is valid", birthDate: at(now)},
+		{name: "earlier today is valid", birthDate: at(time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC))},
+		{name: "exactly the max age is valid", birthDate: at(now.AddDate(-PetMaxAgeYears, 0, 0))},
+		{name: "one second in the future is rejected", birthDate: at(now.Add(time.Second)), wantErr: ErrPetBirthDateInFuture},
+		{name: "tomorrow is rejected", birthDate: at(now.AddDate(0, 0, 1)), wantErr: ErrPetBirthDateInFuture},
+		{name: "year 2099 is rejected", birthDate: at(time.Date(2099, 1, 15, 0, 0, 0, 0, time.UTC)), wantErr: ErrPetBirthDateInFuture},
+		{name: "one day older than the max age is rejected", birthDate: at(now.AddDate(-PetMaxAgeYears, 0, -1)), wantErr: ErrPetBirthDateTooOld},
+		{name: "year 1800 is rejected", birthDate: at(time.Date(1800, 1, 1, 0, 0, 0, 0, time.UTC)), wantErr: ErrPetBirthDateTooOld},
+		{name: "zero time is rejected", birthDate: at(time.Time{}), wantErr: ErrPetBirthDateTooOld},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := PetRegistrationRequest{BirthDate: tt.birthDate}
+			err := req.ValidateBirthDate(now)
+			if tt.wantErr == nil {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestPetRegistrationRequest_ValidateBirthDate_OtherTimezone(t *testing.T) {
+	now := time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
+	rio := time.FixedZone("BRT", -3*60*60)
+
+	past := time.Date(2026, 11, 9, 11, 0, 0, 0, rio) // 14:00 UTC
+	req := PetRegistrationRequest{BirthDate: &past}
+	assert.NoError(t, req.ValidateBirthDate(now))
+
+	future := time.Date(2026, 11, 9, 13, 0, 0, 0, rio) // 16:00 UTC
+	req = PetRegistrationRequest{BirthDate: &future}
+	assert.ErrorIs(t, req.ValidateBirthDate(now), ErrPetBirthDateInFuture)
 }

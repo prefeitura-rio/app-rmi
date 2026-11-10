@@ -88,7 +88,14 @@ func (e *MCPHTTPStatusError) Error() string {
 	if e.StatusCode >= 500 {
 		return fmt.Sprintf("server error: %d", e.StatusCode)
 	}
+	if isRedirectStatus(e.StatusCode) {
+		return fmt.Sprintf("MCP server redirected the request (status %d): MCP_SERVER_URL must be the MCP endpoint itself", e.StatusCode)
+	}
 	return fmt.Sprintf("MCP server returned status %d", e.StatusCode)
+}
+
+func isRedirectStatus(code int) bool {
+	return code >= 300 && code < 400
 }
 
 func isHandledMCPStatus(code int) bool {
@@ -97,7 +104,7 @@ func isHandledMCPStatus(code int) bool {
 		http.StatusRequestTimeout, http.StatusTooManyRequests:
 		return true
 	default:
-		return code >= 500
+		return code >= 500 || isRedirectStatus(code)
 	}
 }
 
@@ -132,13 +139,23 @@ func DefaultRetryConfig() RetryConfig {
 	}
 }
 
-// NewMCPClient creates a new MCP client instance
+// normalizeMCPServerURL drops surrounding spaces and trailing slashes from the MCP endpoint: the
+// gateway answers POST /mcp/mcp/ with a redirect to a path that does not exist.
+func normalizeMCPServerURL(raw string) string {
+	return strings.TrimRight(strings.TrimSpace(raw), "/")
+}
+
+// NewMCPClient creates a new MCP client instance. Its HTTP client does not follow redirects: a
+// redirect would resend the bearer token, even to plain HTTP, so it is reported as an error instead.
 func NewMCPClient(cfg *config.Config, logger *logging.SafeLogger) *MCPClient {
 	return &MCPClient{
-		baseURL:   cfg.MCPServerURL,
+		baseURL:   normalizeMCPServerURL(cfg.MCPServerURL),
 		authToken: cfg.MCPAuthToken,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 		logger:      logger,
 		retryConfig: DefaultRetryConfig(),
@@ -235,56 +252,6 @@ func (c *MCPClient) isRetryableError(err error) bool {
 	return false
 }
 
-// getSessionID obtains a session ID from the MCP server
-func (c *MCPClient) getSessionID(ctx context.Context) (string, error) {
-	ctx, span := utils.TraceBusinessLogic(ctx, "mcp_get_session_id")
-	defer span.End()
-
-	var sessionID string
-
-	err := c.withRetry(ctx, "get_session_id", func() error {
-		// Try HEAD first as per specification, then fallback to GET if 405 error
-		req, err := http.NewRequestWithContext(ctx, "HEAD", c.baseURL, nil)
-		if err != nil {
-			return fmt.Errorf("failed to create session request: %w", err)
-		}
-
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
-
-		c.logger.Debug("requesting MCP session ID", zap.String("url", c.baseURL), zap.String("method", "HEAD"))
-
-		resp, err := c.client.Do(req)
-		if err != nil {
-			return fmt.Errorf("failed to get session ID: %w", err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-		// MCP server returns 405 for HEAD but includes session ID in response headers
-		// This is expected behavior - extract session ID even from 405 response
-		if resp.StatusCode == http.StatusMethodNotAllowed {
-			c.logger.Debug("HEAD method not allowed, but session ID should be in headers")
-			// Continue to extract session ID from headers
-		} else if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("session request failed with status %d", resp.StatusCode)
-		}
-
-		sessionID = resp.Header.Get("mcp-session-id")
-		if sessionID == "" {
-			return fmt.Errorf("no session ID received from MCP server")
-		}
-
-		sessionID = strings.TrimSpace(sessionID)
-		c.logger.Debug("received MCP session ID", zap.String("session_id", sessionID))
-
-		return nil
-	})
-
-	if err != nil {
-		return "", err
-	}
-
-	return sessionID, nil
-}
-
 // mcpPayloadMethod returns the JSON-RPC method of a payload, so debug logs can name the
 // request without its params (tools/call carries the citizen's address).
 func mcpPayloadMethod(payload interface{}) string {
@@ -299,14 +266,36 @@ func mcpPayloadMethod(payload interface{}) string {
 	return "unknown"
 }
 
+// mcpSessionHeader is the Streamable HTTP header that carries the MCP session ID.
+const mcpSessionHeader = "Mcp-Session-Id"
+
+// setMCPHeaders sets the headers every MCP POST carries. The session header goes only when the
+// server assigned a session: a stateless server assigns none, and a new session (initialize) has none yet.
+func (c *MCPClient) setMCPHeaders(req *http.Request, sessionID string) {
+	req.Header.Set("Authorization", "Bearer "+c.authToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	if sessionID != "" {
+		req.Header.Set(mcpSessionHeader, sessionID)
+	}
+}
+
 // makeRequest sends a JSON-RPC request to the MCP server
 func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload interface{}) (map[string]interface{}, error) {
+	result, _, err := c.doRequest(ctx, sessionID, payload)
+	return result, err
+}
+
+// doRequest sends a JSON-RPC request to the MCP server and returns the decoded body and the
+// response headers (initialize reads the session ID from them).
+func (c *MCPClient) doRequest(ctx context.Context, sessionID string, payload interface{}) (map[string]interface{}, http.Header, error) {
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	var result map[string]interface{}
+	var header http.Header
 
 	err = c.withRetry(ctx, "make_mcp_request", func() error {
 		req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL, bytes.NewBuffer(jsonData))
@@ -314,10 +303,7 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 			return fmt.Errorf("failed to create request: %w", err)
 		}
 
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json, text/event-stream")
-		req.Header.Set("mcp-session-id", sessionID)
+		c.setMCPHeaders(req, sessionID)
 
 		c.logger.Debug("sending MCP request",
 			zap.String("session_id", sessionID),
@@ -356,10 +342,12 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 			}
 		}
 
+		result = nil
 		err = json.Unmarshal([]byte(bodyStr), &result)
 		if err != nil {
 			return &MCPProtocolError{Err: fmt.Errorf("failed to unmarshal response: %w", err)}
 		}
+		header = resp.Header
 
 		_, hasError := result["error"]
 		c.logger.Debug("received MCP response", zap.Bool("has_error", hasError))
@@ -368,10 +356,10 @@ func (c *MCPClient) makeRequest(ctx context.Context, sessionID string, payload i
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return result, nil
+	return result, header, nil
 }
 
 // sendNotification sends a notification request (expects no response body)
@@ -387,10 +375,7 @@ func (c *MCPClient) sendNotification(ctx context.Context, sessionID string, payl
 			return fmt.Errorf("failed to create request: %w", err)
 		}
 
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json, text/event-stream")
-		req.Header.Set("mcp-session-id", sessionID)
+		c.setMCPHeaders(req, sessionID)
 
 		c.logger.Debug("sending MCP notification",
 			zap.String("session_id", sessionID),
@@ -415,8 +400,14 @@ func (c *MCPClient) sendNotification(ctx context.Context, sessionID string, payl
 	return err
 }
 
-// initializeSession initializes a new MCP session
-func (c *MCPClient) initializeSession(ctx context.Context, sessionID string) error {
+// initializeSession opens an MCP session as the Streamable HTTP transport defines it: a POST with
+// initialize and no session header, then notifications/initialized. A server that keeps sessions
+// returns the session ID in the Mcp-Session-Id header of the initialize response, and the later
+// requests carry it; a stateless server returns none, and the later requests go without it.
+func (c *MCPClient) initializeSession(ctx context.Context) (string, error) {
+	ctx, span := utils.TraceBusinessLogic(ctx, "mcp_initialize_session")
+	defer span.End()
+
 	// Step 1: Initialize session
 	initPayload := MCPRequest{
 		JSONRPC: "2.0",
@@ -429,15 +420,17 @@ func (c *MCPClient) initializeSession(ctx context.Context, sessionID string) err
 		},
 	}
 
-	result, err := c.makeRequest(ctx, sessionID, initPayload)
+	result, header, err := c.doRequest(ctx, "", initPayload)
 	if err != nil {
-		return fmt.Errorf("failed to initialize session: %w", err)
+		return "", fmt.Errorf("failed to initialize session: %w", err)
 	}
 
 	// Check for errors in response
 	if errorObj, exists := result["error"]; exists {
-		return fmt.Errorf("MCP initialization error: %v", errorObj)
+		return "", fmt.Errorf("MCP initialization error: %v", errorObj)
 	}
+
+	sessionID := strings.TrimSpace(header.Get(mcpSessionHeader))
 
 	// Step 2: Send initialized notification
 	notifyPayload := MCPRequest{
@@ -447,12 +440,14 @@ func (c *MCPClient) initializeSession(ctx context.Context, sessionID string) err
 
 	err = c.sendNotification(ctx, sessionID, notifyPayload)
 	if err != nil {
-		return fmt.Errorf("failed to send initialized notification: %w", err)
+		return "", fmt.Errorf("failed to send initialized notification: %w", err)
 	}
 
-	c.logger.Debug("MCP session initialized successfully", zap.String("session_id", sessionID))
+	c.logger.Debug("MCP session initialized successfully",
+		zap.String("session_id", sessionID),
+		zap.Bool("stateless", sessionID == ""))
 
-	return nil
+	return sessionID, nil
 }
 
 // loadEquipmentInstructions loads the equipment instructions (required before CF lookup)
@@ -497,27 +492,12 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 			zap.String("operation", "mcp_cf_lookup_complete"))
 	}()
 
-	// Step 1: Get session ID
-	sessionStart := time.Now()
-	sessionID, err := c.getSessionID(ctx)
-	if err != nil {
-		c.logger.Error("session ID acquisition failed",
-			zap.Error(err),
-			zap.String("operation", "get_session_id"),
-			zap.Duration("duration", time.Since(sessionStart)))
-		return nil, fmt.Errorf("failed to get session ID: %w", err)
-	}
-	c.logger.Debug("session ID acquired",
-		zap.String("session_id", sessionID),
-		zap.Duration("duration", time.Since(sessionStart)))
-
-	// Step 2: Initialize session
+	// Step 1: Open the session (initialize + notifications/initialized)
 	initStart := time.Now()
-	err = c.initializeSession(ctx, sessionID)
+	sessionID, err := c.initializeSession(ctx)
 	if err != nil {
 		c.logger.Error("session initialization failed",
 			zap.Error(err),
-			zap.String("session_id", sessionID),
 			zap.String("operation", "initialize_session"),
 			zap.Duration("duration", time.Since(initStart)))
 		return nil, fmt.Errorf("failed to initialize session: %w", err)
@@ -526,13 +506,13 @@ func (c *MCPClient) FindNearestCF(ctx context.Context, address string) (*models.
 		zap.String("session_id", sessionID),
 		zap.Duration("duration", time.Since(initStart)))
 
-	// Step 3: Load equipment instructions
+	// Step 2: Load equipment instructions
 	err = c.loadEquipmentInstructions(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load equipment instructions: %w", err)
 	}
 
-	// Step 4: Find nearest CF
+	// Step 3: Find nearest CF
 	c.logger.Info("MCP CF LOOKUP REQUEST", zap.String("tool", "equipments_by_address"))
 	cfPayload := MCPRequest{
 		JSONRPC: "2.0",
