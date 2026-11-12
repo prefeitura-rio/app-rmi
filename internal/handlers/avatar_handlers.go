@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -163,7 +164,11 @@ func (h *AvatarHandlers) DeleteAvatar(c *gin.Context) {
 	// Delete avatar
 	err := services.AvatarServiceInstance.DeleteAvatar(ctx, avatarID)
 	if err != nil {
-		if err.Error() == "avatar not found" {
+		if errors.Is(err, services.ErrInvalidAvatarID) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid avatar ID format"})
+			return
+		}
+		if errors.Is(err, services.ErrAvatarNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Avatar not found"})
 			return
 		}
@@ -472,7 +477,11 @@ func DeleteAvatar(c *gin.Context) {
 
 	err := services.AvatarServiceInstance.DeleteAvatar(ctx, avatarID)
 	if err != nil {
-		if err.Error() == "avatar not found" {
+		if errors.Is(err, services.ErrInvalidAvatarID) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid avatar ID format"})
+			return
+		}
+		if errors.Is(err, services.ErrAvatarNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Avatar not found"})
 			return
 		}

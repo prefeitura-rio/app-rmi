@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -522,6 +523,9 @@ func TestDeleteAvatar_NotFound(t *testing.T) {
 	if err == nil {
 		t.Error("DeleteAvatar() should return error for non-existent avatar")
 	}
+	if !errors.Is(err, ErrAvatarNotFound) {
+		t.Errorf("DeleteAvatar() error = %v, want ErrAvatarNotFound", err)
+	}
 }
 
 func TestDeleteAvatar_InvalidID(t *testing.T) {
@@ -534,6 +538,12 @@ func TestDeleteAvatar_InvalidID(t *testing.T) {
 	err := service.DeleteAvatar(ctx, "invalid-id")
 	if err == nil {
 		t.Error("DeleteAvatar() should return error for invalid ID")
+	}
+	if !errors.Is(err, ErrInvalidAvatarID) {
+		t.Errorf("DeleteAvatar() error = %v, want ErrInvalidAvatarID", err)
+	}
+	if errors.Is(err, ErrAvatarNotFound) {
+		t.Errorf("DeleteAvatar() invalid ID must not be reported as not found: %v", err)
 	}
 }
 
