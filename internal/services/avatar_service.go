@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -17,6 +18,13 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/models"
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
+)
+
+var (
+	// ErrInvalidAvatarID is returned when an avatar ID is not a valid ObjectID hex string
+	ErrInvalidAvatarID = errors.New("invalid avatar ID")
+	// ErrAvatarNotFound is returned when no avatar matches the given ID
+	ErrAvatarNotFound = errors.New("avatar not found")
 )
 
 // AvatarService handles avatar operations with caching
@@ -140,7 +148,7 @@ func (s *AvatarService) GetAvatarByID(ctx context.Context, avatarID string) (*mo
 	// Validate ObjectID
 	objectID, err := primitive.ObjectIDFromHex(avatarID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid avatar ID: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidAvatarID, err)
 	}
 
 	// Try cache first
@@ -233,7 +241,7 @@ func (s *AvatarService) DeleteAvatar(ctx context.Context, avatarID string) error
 	// Validate ObjectID
 	objectID, err := primitive.ObjectIDFromHex(avatarID)
 	if err != nil {
-		return fmt.Errorf("invalid avatar ID: %w", err)
+		return fmt.Errorf("%w: %w", ErrInvalidAvatarID, err)
 	}
 
 	// Soft delete by setting is_active to false
@@ -255,7 +263,7 @@ func (s *AvatarService) DeleteAvatar(ctx context.Context, avatarID string) error
 	}
 
 	if result.MatchedCount == 0 {
-		return fmt.Errorf("avatar not found")
+		return ErrAvatarNotFound
 	}
 
 	// Invalidate caches
