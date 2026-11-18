@@ -77,8 +77,9 @@ func seedProtocoloDocuments(t *testing.T) {
 	coll := config.MongoDB.Collection(config.AppConfig.ActiveMaintenanceRequestCollection())
 	source := config.AppConfig.ActiveMaintenanceRequestSource()
 	cleanup := func() {
+		_, _ = coll.DeleteMany(ctx, bson.M{"_id": bson.M{"$in": bson.A{"protocolo-test-1", "protocolo-test-2"}}})
 		_, _ = coll.DeleteMany(ctx, bson.M{"protocolo": bson.M{"$in": bson.A{protocoloTest, protocoloOtherProt}}})
-		_, _ = coll.DeleteMany(ctx, bson.M{"protocolos": bson.M{"$in": bson.A{protocoloTest, protocoloOtherProt}}})
+		_, _ = coll.DeleteMany(ctx, bson.M{"protocolos.codigo_protocolo": bson.M{"$in": bson.A{protocoloTest, protocoloOtherProt}}})
 		_ = config.Redis.Del(ctx,
 			"maintenance_request:protocolo:"+protocoloTest,
 			"maintenance_request:"+source+":protocolo:"+protocoloTest,
