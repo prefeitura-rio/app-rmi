@@ -365,6 +365,7 @@ func TestLoadConfig_Success(t *testing.T) {
 	os.Setenv("MONGODB_DATABASE", "test_db")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -389,6 +390,7 @@ func TestLoadConfig_Success(t *testing.T) {
 		os.Unsetenv("MONGODB_DATABASE")
 		os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 		os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 		os.Unsetenv("MONGODB_PET_COLLECTION")
 		os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
@@ -429,6 +431,16 @@ func TestLoadConfig_Success(t *testing.T) {
 		t.Errorf("AppConfig.CitizenCollection = %v, want citizens", AppConfig.CitizenCollection)
 	}
 
+	if AppConfig.MaintenanceRequestSGRCCollection != "maintenance_requests_sgrc" {
+		t.Errorf("AppConfig.MaintenanceRequestSGRCCollection = %v, want maintenance_requests_sgrc", AppConfig.MaintenanceRequestSGRCCollection)
+	}
+	if AppConfig.MaintenanceRequestSGRCEnabled {
+		t.Error("AppConfig.MaintenanceRequestSGRCEnabled default = true, want false")
+	}
+	if got := AppConfig.ActiveMaintenanceRequestCollection(); got != "maintenance_requests" {
+		t.Errorf("ActiveMaintenanceRequestCollection() = %v, want maintenance_requests", got)
+	}
+
 	if len(AppConfig.CORSAllowedOrigins) != 0 {
 		t.Errorf("AppConfig.CORSAllowedOrigins = %v, want empty when CORS_ALLOWED_ORIGINS unset", AppConfig.CORSAllowedOrigins)
 	}
@@ -445,6 +457,7 @@ func TestLoadConfig_CORSAllowedOrigins(t *testing.T) {
 	os.Setenv("PORT", "8080")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -463,6 +476,7 @@ func TestLoadConfig_CORSAllowedOrigins(t *testing.T) {
 		os.Unsetenv("PORT")
 		os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 		os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 		os.Unsetenv("MONGODB_PET_COLLECTION")
 		os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
@@ -584,17 +598,92 @@ func TestLoadConfig_MissingMaintenanceRequestCollection(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_MissingMaintenanceRequestSGRCCollection(t *testing.T) {
+	os.Setenv("PORT", "8080")
+	os.Setenv("REDIS_DB", "0")
+	os.Setenv("REDIS_TTL", "60m")
+	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
+	defer os.Unsetenv("PORT")
+	defer os.Unsetenv("REDIS_DB")
+	defer os.Unsetenv("REDIS_TTL")
+	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+
+	err := LoadConfig()
+	if err == nil {
+		t.Error("LoadConfig() should return error for missing MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
+	}
+	if !strings.Contains(err.Error(), "MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION") {
+		t.Errorf("LoadConfig() error = %v, want error containing 'MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION'", err)
+	}
+}
+
+func TestLoadConfig_InvalidMaintenanceRequestSGRCEnabled(t *testing.T) {
+	os.Setenv("PORT", "8080")
+	os.Setenv("REDIS_DB", "0")
+	os.Setenv("REDIS_TTL", "60m")
+	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED", "maybe")
+	defer os.Unsetenv("PORT")
+	defer os.Unsetenv("REDIS_DB")
+	defer os.Unsetenv("REDIS_TTL")
+	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED")
+
+	err := LoadConfig()
+	if err == nil {
+		t.Error("LoadConfig() should return error for invalid MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED")
+	}
+	if !strings.Contains(err.Error(), "MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED") {
+		t.Errorf("LoadConfig() error = %v, want error containing 'MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED'", err)
+	}
+}
+
+func TestActiveMaintenanceRequestCollection_SourceSelection(t *testing.T) {
+	legacy := &Config{
+		MaintenanceRequestCollection:     "maintenance_requests",
+		MaintenanceRequestSGRCCollection: "maintenance_requests_sgrc",
+		MaintenanceRequestSGRCEnabled:    false,
+	}
+	if got := legacy.ActiveMaintenanceRequestCollection(); got != "maintenance_requests" {
+		t.Errorf("flag off collection = %q, want maintenance_requests", got)
+	}
+	if got := legacy.ActiveMaintenanceRequestSource(); got != MaintenanceRequestSourceLegacy {
+		t.Errorf("flag off source = %q, want %q", got, MaintenanceRequestSourceLegacy)
+	}
+
+	sgrc := &Config{
+		MaintenanceRequestCollection:     "maintenance_requests",
+		MaintenanceRequestSGRCCollection: "maintenance_requests_sgrc",
+		MaintenanceRequestSGRCEnabled:    true,
+	}
+	if got := sgrc.ActiveMaintenanceRequestCollection(); got != "maintenance_requests_sgrc" {
+		t.Errorf("flag on collection = %q, want maintenance_requests_sgrc", got)
+	}
+	if got := sgrc.ActiveMaintenanceRequestSource(); got != MaintenanceRequestSourceSGRC {
+		t.Errorf("flag on source = %q, want %q", got, MaintenanceRequestSourceSGRC)
+	}
+}
+
 func TestLoadConfig_MissingLegalEntityCollection(t *testing.T) {
 	os.Setenv("PORT", "8080")
 	os.Setenv("REDIS_DB", "0")
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	defer os.Unsetenv("PORT")
 	defer os.Unsetenv("REDIS_DB")
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 
 	err := LoadConfig()
 	if err == nil {
@@ -612,12 +701,14 @@ func TestLoadConfig_MissingPetCollection(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	defer os.Unsetenv("PORT")
 	defer os.Unsetenv("REDIS_DB")
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 	defer os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 
 	err := LoadConfig()
@@ -636,6 +727,7 @@ func TestLoadConfig_MissingPetsSelfRegisteredCollection(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	defer os.Unsetenv("PORT")
@@ -643,6 +735,7 @@ func TestLoadConfig_MissingPetsSelfRegisteredCollection(t *testing.T) {
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 	defer os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 	defer os.Unsetenv("MONGODB_PET_COLLECTION")
 
@@ -662,6 +755,7 @@ func TestLoadConfig_MissingChatMemoryCollection(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -670,6 +764,7 @@ func TestLoadConfig_MissingChatMemoryCollection(t *testing.T) {
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 	defer os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 	defer os.Unsetenv("MONGODB_PET_COLLECTION")
 	defer os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
@@ -690,6 +785,7 @@ func TestLoadConfig_MissingDepartmentCollection(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -699,6 +795,7 @@ func TestLoadConfig_MissingDepartmentCollection(t *testing.T) {
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 	defer os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 	defer os.Unsetenv("MONGODB_PET_COLLECTION")
 	defer os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
@@ -720,6 +817,7 @@ func TestLoadConfig_MissingCNAECollection(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -730,6 +828,7 @@ func TestLoadConfig_MissingCNAECollection(t *testing.T) {
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 	defer os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 	defer os.Unsetenv("MONGODB_PET_COLLECTION")
 	defer os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
@@ -1209,6 +1308,7 @@ func setupMinimalEnv(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -1229,6 +1329,7 @@ func setupMinimalEnv(t *testing.T) {
 		os.Unsetenv("REDIS_TTL")
 		os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 		os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 		os.Unsetenv("MONGODB_PET_COLLECTION")
 		os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")

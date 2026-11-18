@@ -258,10 +258,26 @@ func InvalidateCitizenCache(ctx context.Context, cpf string) error {
 	}
 
 	// Invalidate maintenance requests cache
-	maintenanceCacheKey := fmt.Sprintf("maintenance_requests:%s", cpf)
-	if err := config.Redis.Del(ctx, maintenanceCacheKey).Err(); err != nil {
-		logger.Warn("failed to invalidate maintenance requests cache", zap.Error(err))
-		// Don't return error for maintenance cache invalidation failure
+	// Invalidate maintenance requests cache for both read sources (paginated keys include page/per_page).
+	for _, source := range []string{config.MaintenanceRequestSourceLegacy, config.MaintenanceRequestSourceSGRC} {
+		pattern := fmt.Sprintf("maintenance_requests:%s:%s:page_*", source, cpf)
+		keys, err := config.Redis.Keys(ctx, pattern).Result()
+		if err != nil {
+			logger.Warn("failed to list maintenance requests cache keys",
+				zap.Error(err),
+				zap.String("maintenance_request_source", source),
+			)
+			continue
+		}
+		if len(keys) == 0 {
+			continue
+		}
+		if err := config.Redis.Del(ctx, keys...).Err(); err != nil {
+			logger.Warn("failed to invalidate maintenance requests cache",
+				zap.Error(err),
+				zap.String("maintenance_request_source", source),
+			)
+		}
 	}
 
 	logger.Info("citizen cache invalidated successfully")

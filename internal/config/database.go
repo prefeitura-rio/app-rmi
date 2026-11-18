@@ -184,13 +184,14 @@ func configureCollectionWriteConcerns() {
 		// performance over durability. These collections are either frequently synced from
 		// external sources (CitizenCollection) or have Redis-based write buffers (PhoneMappingCollection)
 		// that provide eventual consistency recovery paths.
-		AppConfig.CitizenCollection:            {W: 0},
-		AppConfig.UserConfigCollection:         {W: 0},
-		AppConfig.PhoneMappingCollection:       {W: 0},
-		AppConfig.OptInHistoryCollection:       {W: 0},
-		AppConfig.BetaGroupCollection:          {W: 0},
-		AppConfig.PhoneVerificationCollection:  {W: 0},
-		AppConfig.MaintenanceRequestCollection: {W: 0},
+		AppConfig.CitizenCollection:                {W: 0},
+		AppConfig.UserConfigCollection:             {W: 0},
+		AppConfig.PhoneMappingCollection:           {W: 0},
+		AppConfig.OptInHistoryCollection:           {W: 0},
+		AppConfig.BetaGroupCollection:              {W: 0},
+		AppConfig.PhoneVerificationCollection:      {W: 0},
+		AppConfig.MaintenanceRequestCollection:     {W: 0},
+		AppConfig.MaintenanceRequestSGRCCollection: {W: 0},
 
 		// Data integrity collections (W=1 for consistency)
 		AppConfig.SelfDeclaredCollection: {W: 1},
@@ -580,10 +581,9 @@ func ensureCitizenIndex(ctx context.Context, logger *zap.Logger) error {
 	return nil
 }
 
-// maintenanceRequestIndexes are the non-unique indexes of the maintenance request collection:
-// cpf for the citizen listing and protocolo for the public lookup (a protocol may group
-// several chamados, so neither is unique).
-var maintenanceRequestIndexes = []struct {
+// maintenanceRequestLegacyIndexes are non-unique indexes of the legacy collection
+// (scalar protocolo). A protocol may group several chamados, so neither is unique.
+var maintenanceRequestLegacyIndexes = []struct {
 	name  string
 	field string
 }{
@@ -591,9 +591,32 @@ var maintenanceRequestIndexes = []struct {
 	{name: "protocolo_1", field: "protocolo"},
 }
 
-// ensureMaintenanceRequestIndex creates the missing indexes of the maintenance request collection
+// maintenanceRequestSGRCIndexes are non-unique indexes of the SGRC historical collection
+// (BigQuery RECORD REPEATED protocolos[{codigo_protocolo,cpf}]). Never unique on protocol.
+var maintenanceRequestSGRCIndexes = []struct {
+	name  string
+	field string
+}{
+	{name: "protocolos.cpf_1", field: "protocolos.cpf"},
+	{name: "protocolos.codigo_protocolo_1", field: "protocolos.codigo_protocolo"},
+}
+
+// ensureMaintenanceRequestIndex creates missing indexes on the legacy and SGRC collections.
 func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) error {
-	collection := MongoDB.Collection(AppConfig.MaintenanceRequestCollection)
+	if err := ensureMaintenanceRequestIndexesOn(ctx, logger, AppConfig.MaintenanceRequestCollection, maintenanceRequestLegacyIndexes); err != nil {
+		return err
+	}
+	if AppConfig.MaintenanceRequestSGRCCollection == "" {
+		return nil
+	}
+	return ensureMaintenanceRequestIndexesOn(ctx, logger, AppConfig.MaintenanceRequestSGRCCollection, maintenanceRequestSGRCIndexes)
+}
+
+func ensureMaintenanceRequestIndexesOn(ctx context.Context, logger *zap.Logger, collectionName string, indexes []struct {
+	name  string
+	field string
+}) error {
+	collection := MongoDB.Collection(collectionName)
 
 	cursor, err := collection.Indexes().List(ctx)
 	if err != nil {
@@ -613,10 +636,10 @@ func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) erro
 		}
 	}
 
-	for _, idx := range maintenanceRequestIndexes {
+	for _, idx := range indexes {
 		if existing[idx.name] {
 			logger.Debug("maintenance request collection index already exists",
-				zap.String("collection", AppConfig.MaintenanceRequestCollection),
+				zap.String("collection", collectionName),
 				zap.String("index", idx.name))
 			continue
 		}
@@ -629,19 +652,19 @@ func ensureMaintenanceRequestIndex(ctx context.Context, logger *zap.Logger) erro
 		if _, err := collection.Indexes().CreateOne(ctx, indexModel); err != nil {
 			if mongo.IsDuplicateKeyError(err) {
 				logger.Info("maintenance request index already exists (created by another instance)",
-					zap.String("collection", AppConfig.MaintenanceRequestCollection),
+					zap.String("collection", collectionName),
 					zap.String("index", idx.name))
 				continue
 			}
 			logger.Error("failed to create maintenance request index",
-				zap.String("collection", AppConfig.MaintenanceRequestCollection),
+				zap.String("collection", collectionName),
 				zap.String("index", idx.name),
 				zap.Error(err))
 			return err
 		}
 
 		logger.Info("created maintenance request collection index",
-			zap.String("collection", AppConfig.MaintenanceRequestCollection),
+			zap.String("collection", collectionName),
 			zap.String("index", idx.name))
 	}
 	return nil

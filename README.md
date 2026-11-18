@@ -41,7 +41,9 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | MONGODB_CITIZEN_COLLECTION | Nome da coleção de dados do cidadão | citizens | Não |
 | MONGODB_SELF_DECLARED_COLLECTION | Nome da coleção de dados autodeclarados | self_declared | Não |
 | MONGODB_PHONE_VERIFICATION_COLLECTION | Nome da coleção de verificação de telefone | phone_verifications | Não |
-| MONGODB_MAINTENANCE_REQUEST_COLLECTION | Nome da coleção de chamados do 1746 | - | Sim |
+| MONGODB_MAINTENANCE_REQUEST_COLLECTION | Nome da coleção legada de chamados do 1746 | - | Sim |
+| MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION | Nome da coleção histórica SGRC (`protocolos[]`) | - | Sim |
+| MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED | Se `true`, leituras usam a collection SGRC; default `false` (legado). Só na inicialização do processo | `false` | Não |
 | MONGODB_USER_CONFIG_COLLECTION | Nome da coleção de configurações do usuário | user_config | Não |
 | MONGODB_PHONE_MAPPING_COLLECTION | Nome da coleção de mapeamentos phone-CPF | phone_cpf_mappings | Não |
 | MONGODB_OPT_IN_HISTORY_COLLECTION | Nome da coleção de histórico opt-in/opt-out | opt_in_history | Não |
@@ -936,20 +938,23 @@ Recupera os dados da carteira do cidadão por CPF.
 Recupera os chamados do 1746 de um cidadão por CPF com paginação.
 - Suporta paginação com parâmetros `page` e `per_page`
 - Ordenação por data de início (mais recentes primeiro)
-- Resultados são armazenados em cache usando Redis com TTL configurável
+- Resultados são armazenados em cache usando Redis com TTL configurável (chave inclui a fonte `legacy`/`sgrc`)
 - Parâmetros de paginação:
   - `page`: Número da página (padrão: 1, mínimo: 1)
   - `per_page`: Itens por página (padrão: 10, máximo: 100)
-- Cada chamado traz `protocolo` (SGRC, `RIO-12345678-9`) quando a coleção já o tem
+- Cada chamado traz `protocolos` (`string[]`, formato SGRC `RIO-12345678-9`); o campo escalar `protocolo` não é mais exposto
+- Fonte Mongo: `MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED=false` lê a collection legada; `true` lê `MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION`
 
 ### GET /maintenance-request/{protocolo}
 Consulta pública dos chamados históricos do 1746/SGRC de um protocolo (um protocolo pode agrupar mais de um chamado).
 - Não exige autenticação (precisa de mapeamento `public` da rota no Heimdall/Cerbos)
 - Protocolo no formato `RIO-12345678-9` (400 fora do formato, 404 sem chamado)
-- Visão pública: categoria, tipo, subtipo, status, datas, `bairro`, `andamentos` (só os com `fl_publico = 1`) e `loaded_at`; nunca CPF, descrição nem logradouro
-- Titular: com `Authorization: Bearer <JWT>` cuja assinatura o RMI verifica no JWKS de `JWT_ISSUER_URL` e cujo `preferred_username` é o CPF do chamado, o chamado vem com `titular: true`, `logradouro` e `descricao`. Token inválido, expirado, de outro CPF ou não verificável (sem `JWT_ISSUER_URL`, JWKS fora do ar) recebe a visão pública
-- Campos lidos do documento Mongo (contrato com o pipeline de dados; todos opcionais): `protocolo` (string), `bairro` (string), `logradouro` (string), `andamentos` (lista de `{data, tipo, descricao, fl_publico}`), `loaded_at` (string ISO-8601 ou datetime)
-- Índice `protocolo_1` (não único) criado na inicialização
+- Retorna todos os chamados do protocolo ordenados por `data_inicio` DESC; cada chamado expõe `protocolos[]`
+- Visão pública: categoria, tipo, subtipo, status, datas, `bairro`, `andamentos` (só `fl_publico`) e `loaded_at`; nunca CPF, descrição, logradouro, número, complemento, CEP nem campos internos de andamento
+- Titular: com `Authorization: Bearer <JWT>` cuja assinatura o RMI verifica no JWKS de `JWT_ISSUER_URL` e cujo `preferred_username` é o CPF do chamado, o chamado vem com `titular: true`, `logradouro` e `descricao`. Token inválido, expirado, de outro CPF ou não verificável recebe a visão pública
+- Documento SGRC (BigQuery `chamado_protocolos_andamentos` → Airbyte; grão por chamado): `id_chamado`, `descricao_chamado`, `data_prevista_atendimento`, `protocolos[{codigo_protocolo,cpf}]`, endereço (`bairro`/`logradouro`/`numero`/`complemento`/`referencia`/`cep`), `unidade_organizacional_responsavel_atual`, `andamentos[{id_andamento,data,descricao,nome_unidade_organizacional,fl_publico}]`, `loaded_at`
+- Consulta SGRC: listagem por `protocolos.cpf`; pública por `protocolos.codigo_protocolo`
+- Índices não únicos: legado `cpf_1`/`protocolo_1`; SGRC `protocolos.cpf_1` / `protocolos.codigo_protocolo_1`
 
 ### PUT /citizen/{cpf}/address
 Atualiza ou cria o endereço autodeclarado de um cidadão.
@@ -1164,7 +1169,8 @@ A API gerencia automaticamente os índices MongoDB para garantir performance oti
 
 **Índices Gerenciados:**
 - Coleção `citizen`: Índice único no campo `cpf` (`cpf_1`)
-- Coleção `maintenance_request`: Índice no campo `cpf` (`cpf_1`)
+- Coleção legada `maintenance_requests`: índices não únicos `cpf_1` e `protocolo_1`
+- Coleção SGRC `maintenance_requests_sgrc`: índices não únicos `protocolos.cpf_1` e `protocolos.codigo_protocolo_1`
 - Coleção `self_declared`: Índice único no campo `cpf` (`cpf_1`)
 - Coleção `phone_verifications`: 
   - Índice composto único em `cpf` e `phone_number` (`cpf_1_phone_number_1`)

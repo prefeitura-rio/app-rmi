@@ -50,11 +50,15 @@ type Config struct {
 	RedisPoolTimeout  time.Duration `json:"redis_pool_timeout"`
 
 	// Collection names
-	CitizenCollection              string `json:"mongo_citizen_collection"`
-	SelfDeclaredCollection         string `json:"mongo_self_declared_collection"`
-	PhoneVerificationCollection    string `json:"mongo_phone_verification_collection"`
-	UserConfigCollection           string `json:"mongo_user_config_collection"`
-	MaintenanceRequestCollection   string `json:"mongo_maintenance_request_collection"`
+	CitizenCollection                string `json:"mongo_citizen_collection"`
+	SelfDeclaredCollection           string `json:"mongo_self_declared_collection"`
+	PhoneVerificationCollection      string `json:"mongo_phone_verification_collection"`
+	UserConfigCollection             string `json:"mongo_user_config_collection"`
+	MaintenanceRequestCollection     string `json:"mongo_maintenance_request_collection"`
+	MaintenanceRequestSGRCCollection string `json:"mongo_maintenance_request_sgrc_collection"`
+	// MaintenanceRequestSGRCEnabled selects the SGRC historical collection for reads when true.
+	// Loaded once at process start (never from client input). Default false keeps the legacy collection.
+	MaintenanceRequestSGRCEnabled  bool   `json:"mongodb_maintenance_request_sgrc_enabled"`
 	PhoneMappingCollection         string `json:"mongo_phone_mapping_collection"`
 	OptInHistoryCollection         string `json:"mongo_opt_in_history_collection"`
 	BetaGroupCollection            string `json:"mongo_beta_group_collection"`
@@ -202,6 +206,16 @@ func LoadConfig() error {
 	maintenanceRequestCollection := os.Getenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
 	if maintenanceRequestCollection == "" {
 		return fmt.Errorf("MONGODB_MAINTENANCE_REQUEST_COLLECTION environment variable is required")
+	}
+
+	maintenanceRequestSGRCCollection := os.Getenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
+	if maintenanceRequestSGRCCollection == "" {
+		return fmt.Errorf("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION environment variable is required")
+	}
+
+	maintenanceRequestSGRCEnabled, err := strconv.ParseBool(getEnvOrDefault("MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED", "false"))
+	if err != nil {
+		return fmt.Errorf("invalid MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED value: %w", err)
 	}
 
 	// Check if MONGODB_LEGAL_ENTITY_COLLECTION is set
@@ -456,30 +470,32 @@ func LoadConfig() error {
 		RedisPoolTimeout:  getEnvAsDurationOrDefault("REDIS_POOL_TIMEOUT", 4*time.Second),  // Longer wait
 
 		// Collection names
-		CitizenCollection:              citizenCollection,
-		SelfDeclaredCollection:         getEnvOrDefault("MONGODB_SELF_DECLARED_COLLECTION", "self_declared"),
-		PhoneVerificationCollection:    getEnvOrDefault("MONGODB_PHONE_VERIFICATION_COLLECTION", "phone_verifications"),
-		UserConfigCollection:           getEnvOrDefault("MONGODB_USER_CONFIG_COLLECTION", "user_config"),
-		MaintenanceRequestCollection:   maintenanceRequestCollection,
-		PhoneMappingCollection:         getEnvOrDefault("MONGODB_PHONE_MAPPING_COLLECTION", "phone_cpf_mappings"),
-		OptInHistoryCollection:         getEnvOrDefault("MONGODB_OPT_IN_HISTORY_COLLECTION", "opt_in_history"),
-		BetaGroupCollection:            getEnvOrDefault("MONGODB_BETA_GROUP_COLLECTION", "beta_groups"),
-		AuditLogsCollection:            getEnvOrDefault("MONGODB_AUDIT_LOGS_COLLECTION", "audit_logs"),
-		BairroCollection:               getEnvOrDefault("MONGODB_BAIRRO_COLLECTION", "bairro"),
-		LogradouroCollection:           getEnvOrDefault("MONGODB_LOGRADOURO_COLLECTION", "logradouro"),
-		AvatarsCollection:              getEnvOrDefault("MONGODB_AVATARS_COLLECTION", "avatars"),
-		LegalEntityCollection:          legalEntityCollection,
-		PetCollection:                  petCollection,
-		PetsSelfRegisteredCollection:   petsSelfRegisteredCollection,
-		ChatMemoryCollection:           chatMemoryCollection,
-		DepartmentCollection:           departmentCollection,
-		NotificationCategoryCollection: notificationCategoryCollection,
-		CNAECollection:                 cnaeCollection,
-		CPFSecretariaCollection:        getEnvOrDefault("MONGODB_CPF_SECRETARIA_COLLECTION", "cpf_secretaria_mappings"),
-		MobilidadeVehicleCollection:    getEnvOrDefault("MONGODB_MOBILIDADE_VEHICLE_COLLECTION", "mobilidade_vehicles"),
-		MobilidadeConductorCollection:  getEnvOrDefault("MONGODB_MOBILIDADE_CONDUCTOR_COLLECTION", "mobilidade_vehicle_conductors"),
-		MobilidadeBrandCollection:      getEnvOrDefault("MONGODB_MOBILIDADE_BRAND_COLLECTION", "mobilidade_vehicle_brands"),
-		MobilidadeModelCollection:      getEnvOrDefault("MONGODB_MOBILIDADE_MODEL_COLLECTION", "mobilidade_vehicle_models"),
+		CitizenCollection:                citizenCollection,
+		SelfDeclaredCollection:           getEnvOrDefault("MONGODB_SELF_DECLARED_COLLECTION", "self_declared"),
+		PhoneVerificationCollection:      getEnvOrDefault("MONGODB_PHONE_VERIFICATION_COLLECTION", "phone_verifications"),
+		UserConfigCollection:             getEnvOrDefault("MONGODB_USER_CONFIG_COLLECTION", "user_config"),
+		MaintenanceRequestCollection:     maintenanceRequestCollection,
+		MaintenanceRequestSGRCCollection: maintenanceRequestSGRCCollection,
+		MaintenanceRequestSGRCEnabled:    maintenanceRequestSGRCEnabled,
+		PhoneMappingCollection:           getEnvOrDefault("MONGODB_PHONE_MAPPING_COLLECTION", "phone_cpf_mappings"),
+		OptInHistoryCollection:           getEnvOrDefault("MONGODB_OPT_IN_HISTORY_COLLECTION", "opt_in_history"),
+		BetaGroupCollection:              getEnvOrDefault("MONGODB_BETA_GROUP_COLLECTION", "beta_groups"),
+		AuditLogsCollection:              getEnvOrDefault("MONGODB_AUDIT_LOGS_COLLECTION", "audit_logs"),
+		BairroCollection:                 getEnvOrDefault("MONGODB_BAIRRO_COLLECTION", "bairro"),
+		LogradouroCollection:             getEnvOrDefault("MONGODB_LOGRADOURO_COLLECTION", "logradouro"),
+		AvatarsCollection:                getEnvOrDefault("MONGODB_AVATARS_COLLECTION", "avatars"),
+		LegalEntityCollection:            legalEntityCollection,
+		PetCollection:                    petCollection,
+		PetsSelfRegisteredCollection:     petsSelfRegisteredCollection,
+		ChatMemoryCollection:             chatMemoryCollection,
+		DepartmentCollection:             departmentCollection,
+		NotificationCategoryCollection:   notificationCategoryCollection,
+		CNAECollection:                   cnaeCollection,
+		CPFSecretariaCollection:          getEnvOrDefault("MONGODB_CPF_SECRETARIA_COLLECTION", "cpf_secretaria_mappings"),
+		MobilidadeVehicleCollection:      getEnvOrDefault("MONGODB_MOBILIDADE_VEHICLE_COLLECTION", "mobilidade_vehicles"),
+		MobilidadeConductorCollection:    getEnvOrDefault("MONGODB_MOBILIDADE_CONDUCTOR_COLLECTION", "mobilidade_vehicle_conductors"),
+		MobilidadeBrandCollection:        getEnvOrDefault("MONGODB_MOBILIDADE_BRAND_COLLECTION", "mobilidade_vehicle_brands"),
+		MobilidadeModelCollection:        getEnvOrDefault("MONGODB_MOBILIDADE_MODEL_COLLECTION", "mobilidade_vehicle_models"),
 
 		// Data Relay (optional — when unset, invite emails are logged only)
 		DataRelayBaseURL: getEnvOrDefault("DATA_RELAY_BASE_URL", ""),
@@ -600,6 +616,33 @@ func getEnvAsDurationOrDefault(key string, defaultValue time.Duration) time.Dura
 }
 
 const syncJobBearerAES256KeySize = 32
+
+// MaintenanceRequestSourceLegacy and MaintenanceRequestSourceSGRC label which collection
+// backs maintenance-request reads (logs, metrics, cache keys). Never include PII.
+const (
+	MaintenanceRequestSourceLegacy = "legacy"
+	MaintenanceRequestSourceSGRC   = "sgrc"
+)
+
+// ActiveMaintenanceRequestCollection returns the Mongo collection used for maintenance-request
+// reads. Selection is fixed at process start from MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED.
+func (c *Config) ActiveMaintenanceRequestCollection() string {
+	if c != nil && c.MaintenanceRequestSGRCEnabled {
+		return c.MaintenanceRequestSGRCCollection
+	}
+	if c == nil {
+		return ""
+	}
+	return c.MaintenanceRequestCollection
+}
+
+// ActiveMaintenanceRequestSource returns "sgrc" or "legacy" for the active read source.
+func (c *Config) ActiveMaintenanceRequestSource() string {
+	if c != nil && c.MaintenanceRequestSGRCEnabled {
+		return MaintenanceRequestSourceSGRC
+	}
+	return MaintenanceRequestSourceLegacy
+}
 
 // parseSyncJobBearerEncryptionKey accepts a 32-byte AES-256 key as 64 hex characters.
 func parseSyncJobBearerEncryptionKey(raw string) ([]byte, error) {

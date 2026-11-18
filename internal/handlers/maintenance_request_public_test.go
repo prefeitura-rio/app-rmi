@@ -74,15 +74,22 @@ func (i *protocoloTestIssuer) token(t *testing.T, key *rsa.PrivateKey, preferred
 func seedProtocoloDocuments(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	coll := config.MongoDB.Collection(config.AppConfig.MaintenanceRequestCollection)
+	coll := config.MongoDB.Collection(config.AppConfig.ActiveMaintenanceRequestCollection())
+	source := config.AppConfig.ActiveMaintenanceRequestSource()
 	cleanup := func() {
 		_, _ = coll.DeleteMany(ctx, bson.M{"protocolo": bson.M{"$in": bson.A{protocoloTest, protocoloOtherProt}}})
-		_ = config.Redis.Del(ctx, "maintenance_request:protocolo:"+protocoloTest).Err()
+		_, _ = coll.DeleteMany(ctx, bson.M{"protocolos": bson.M{"$in": bson.A{protocoloTest, protocoloOtherProt}}})
+		_ = config.Redis.Del(ctx,
+			"maintenance_request:protocolo:"+protocoloTest,
+			"maintenance_request:"+source+":protocolo:"+protocoloTest,
+			"maintenance_request:legacy:protocolo:"+protocoloTest,
+			"maintenance_request:sgrc:protocolo:"+protocoloTest,
+		).Err()
 	}
 	cleanup()
 	t.Cleanup(cleanup)
 
-	_, err := coll.InsertMany(ctx, []interface{}{
+	docs := []interface{}{
 		bson.M{
 			"_id": "protocolo-test-1", "cpf": protocoloOwnerCPF, "id": "9000001", "protocolo": protocoloTest,
 			"categoria": "Serviço", "tipo": "Iluminação Pública", "status": "Aberto",
@@ -100,8 +107,33 @@ func seedProtocoloDocuments(t *testing.T) {
 			"data_inicio": "2025-01-09T10:00:00", "descricao": "segunda descricao", "bairro": "Centro",
 			"logradouro": "Rua Sintetica, 1",
 		},
-	})
-	if err != nil {
+	}
+	if config.AppConfig.MaintenanceRequestSGRCEnabled {
+		docs = []interface{}{
+			bson.M{
+				"_id": "protocolo-test-1", "id_chamado": int64(9000001),
+				"protocolos": []bson.M{{"codigo_protocolo": protocoloTest, "cpf": protocoloOwnerCPF}},
+				"categoria":  "Serviço", "tipo": "Iluminação Pública", "status": "Aberto",
+				"data_inicio": "2025-01-10T10:00:00", "descricao_chamado": "descricao do titular",
+				"bairro": "Centro", "logradouro": "Rua Sintetica, 1", "numero": "1", "cep": "20000000",
+				"unidade_organizacional_responsavel_atual": "RIOLUZ",
+				"loaded_at": time.Date(2025, 11, 3, 3, 0, 0, 0, time.UTC),
+				"andamentos": bson.A{
+					bson.M{"id_andamento": int64(1), "data": "2025-01-10T10:05:00", "descricao": "andamento publico", "fl_publico": true, "nome_unidade_organizacional": "RIOLUZ"},
+					bson.M{"id_andamento": int64(2), "data": "2025-01-11T10:05:00", "descricao": "andamento interno", "fl_publico": false},
+				},
+			},
+			bson.M{
+				"_id": "protocolo-test-2", "id_chamado": int64(9000002),
+				"protocolos": []bson.M{{"codigo_protocolo": protocoloTest, "cpf": protocoloOwnerCPF}},
+				"categoria":  "Serviço", "tipo": "Conservação", "status": "Fechado",
+				"data_inicio": "2025-01-09T10:00:00", "descricao_chamado": "segunda descricao", "bairro": "Centro",
+				"logradouro": "Rua Sintetica, 1",
+			},
+		}
+	}
+
+	if _, err := coll.InsertMany(ctx, docs); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 }
@@ -135,7 +167,10 @@ func assertPublicView(t *testing.T, raw string, body models.PublicMaintenanceReq
 	if body.Protocolo != protocoloTest || len(body.Chamados) != 2 {
 		t.Fatalf("body = %s, want the two chamados of %s", raw, protocoloTest)
 	}
-	for _, leaked := range []string{protocoloOwnerCPF, "descricao do titular", "segunda descricao", "Rua Sintetica", "andamento interno", "logradouro", "endereco", "\"cpf\""} {
+	if body.Chamados[0].IDChamado != "9000001" || body.Chamados[1].IDChamado != "9000002" {
+		t.Fatalf("chamados not ordered by data_inicio DESC: %+v", body.Chamados)
+	}
+	for _, leaked := range []string{protocoloOwnerCPF, "descricao do titular", "segunda descricao", "Rua Sintetica", "andamento interno", "logradouro", "endereco", "\"cpf\"", "\"numero\"", "id_andamento"} {
 		if strings.Contains(raw, leaked) {
 			t.Fatalf("public response leaks %q: %s", leaked, raw)
 		}
@@ -143,6 +178,9 @@ func assertPublicView(t *testing.T, raw string, body models.PublicMaintenanceReq
 	first := body.Chamados[0]
 	if first.IDChamado != "9000001" || first.Bairro != "Centro" || first.LoadedAt != "2025-11-03T03:00:00Z" || first.Titular {
 		t.Fatalf("first chamado = %+v", first)
+	}
+	if len(first.Protocolos) != 1 || first.Protocolos[0] != protocoloTest {
+		t.Fatalf("protocolos = %v, want [%s]", first.Protocolos, protocoloTest)
 	}
 	if len(first.Andamentos) != 1 || first.Andamentos[0].Descricao != "andamento publico" {
 		t.Fatalf("andamentos = %+v, want only the public one", first.Andamentos)
@@ -239,6 +277,31 @@ func TestGetMaintenanceRequestByProtocolo(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestGetMaintenanceRequestByProtocolo_SGRCCollection(t *testing.T) {
+	if config.AppConfig == nil || config.MongoDB == nil || config.Redis == nil {
+		t.Skip("requires test Mongo/Redis fixtures")
+	}
+	prevEnabled := config.AppConfig.MaintenanceRequestSGRCEnabled
+	prevSGRC := config.AppConfig.MaintenanceRequestSGRCCollection
+	config.AppConfig.MaintenanceRequestSGRCEnabled = true
+	if config.AppConfig.MaintenanceRequestSGRCCollection == "" {
+		config.AppConfig.MaintenanceRequestSGRCCollection = "maintenance_requests_sgrc"
+	}
+	t.Cleanup(func() {
+		config.AppConfig.MaintenanceRequestSGRCEnabled = prevEnabled
+		config.AppConfig.MaintenanceRequestSGRCCollection = prevSGRC
+	})
+
+	seedProtocoloDocuments(t)
+	SetMaintenanceRequestJWTVerifier(nil)
+	r := protocoloRouter()
+	code, body, raw := getProtocolo(t, r, protocoloTest, "")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", code, raw)
+	}
+	assertPublicView(t, raw, body)
 }
 
 func TestNormalizeProtocoloSGRC(t *testing.T) {

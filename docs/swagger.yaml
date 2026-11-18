@@ -1406,6 +1406,8 @@ definitions:
     type: object
   models.MaintenanceRequest:
     properties:
+      bairro:
+        type: string
       categoria:
         type: string
       cpf:
@@ -1419,21 +1421,25 @@ definitions:
       descricao:
         type: string
       endereco:
-        description: Pre-built address string
         type: string
       id:
         type: string
       id_chamado:
-        description: Maps from MongoDB "id" field
         type: string
       indicador:
         type: boolean
+      logradouro:
+        type: string
       nome_unidade_organizacional:
+        type: string
+      numero:
         type: string
       origem_ocorrencia:
         type: string
-      protocolo:
-        type: string
+      protocolos:
+        items:
+          type: string
+        type: array
       status:
         type: string
       subtipo:
@@ -1865,8 +1871,10 @@ definitions:
         type: string
       origem_ocorrencia:
         type: string
-      protocolo:
-        type: string
+      protocolos:
+        items:
+          type: string
+        type: array
       status:
         type: string
       subtipo:
@@ -4878,7 +4886,8 @@ paths:
       consumes:
       - application/json
       description: Recupera os chamados do 1746 de um cidadão por CPF com paginação.
-        Cada documento representa um chamado individual.
+        Cada documento representa um chamado; a resposta expõe protocolos[] (nunca
+        o campo escalar protocolo).
       parameters:
       - description: CPF do cidadão (11 dígitos)
         in: path
@@ -6279,9 +6288,9 @@ paths:
       - config
   /cpf-secretaria/{cpf}:
     get:
-      description: Retorna a lista de cd_uas vinculados ao CPF na base de apoio. Acesso:
-        CPF próprio, admin, ou service account com azp em TRUSTED_SERVICE_CLIENTS
-        (app-go-api).
+      description: 'Retorna a lista de cd_uas vinculados ao CPF na base de apoio.
+        Acesso: CPF próprio, admin, ou service account com azp em TRUSTED_SERVICE_CLIENTS
+        (app-go-api).'
       parameters:
       - description: CPF do usuário (11 dígitos)
         in: path
@@ -6438,7 +6447,8 @@ paths:
         jurídica) pelo CNPJ. O acesso é permitido para administradores ou se o CPF
         do JWT estiver como responsável ou sócio da entidade.
       parameters:
-      - description: CNPJ da entidade (14 caracteres, 12 alfanuméricos A-Z/0-9 e 2 dígitos verificadores; numérico ou alfanumérico da Receita Federal)
+      - description: CNPJ da entidade (14 caracteres, 12 alfanuméricos A-Z/0-9 e 2
+          dígitos verificadores; numérico ou alfanumérico da Receita Federal)
         in: path
         maxLength: 14
         minLength: 14
@@ -6484,12 +6494,13 @@ paths:
   /maintenance-request/{protocolo}:
     get:
       description: Consulta pública dos chamados históricos do 1746/SGRC de um protocolo
-        (um protocolo pode ter mais de um chamado). Sem autenticação, ou com o JWT
-        de outra pessoa, a resposta traz categoria, tipo, status, datas, bairro, andamentos
-        públicos (fl_publico = 1) e loaded_at, e nunca CPF, descrição nem logradouro.
-        Com um JWT do Keycloak de assinatura válida cujo preferred_username é o CPF
-        do chamado, o chamado vem com titular = true, logradouro e descrição. Token
-        inválido, expirado ou não verificável é tratado como anônimo.
+        (um protocolo pode ter mais de um chamado; cada chamado expõe protocolos[]).
+        Sem autenticação, ou com o JWT de outra pessoa, a resposta traz categoria,
+        tipo, status, datas, bairro, andamentos públicos e loaded_at, e nunca CPF,
+        descrição, logradouro nem número. Com um JWT do Keycloak de assinatura válida
+        cujo preferred_username é o CPF do chamado, o chamado vem com titular = true,
+        logradouro e descrição. Token inválido, expirado ou não verificável é tratado
+        como anônimo. Ordenação obrigatória por data_inicio DESC.
       parameters:
       - description: Protocolo do SGRC (formato RIO-12345678-9)
         in: path

@@ -283,7 +283,7 @@ if [[ "$protocolo_invalid_status" -eq 400 ]]; then
 else
     print_result "Get Maintenance Request by Protocolo (Invalid format)" "FAIL" "Status: $protocolo_invalid_status (expected 400)"
 fi
-maintenance_protocolo=$(jq -r '[.data[]? | select(.protocolo != null and .protocolo != "") | .protocolo][0] // empty' \
+maintenance_protocolo=$(jq -r '[.data[]? | .protocolos[]? // empty] | map(select(. != null and . != "")) | .[0] // empty' \
     "/tmp/api_response_Get_Maintenance_Requests__with_Address_Verification_" 2>/dev/null)
 if [[ -n "$maintenance_protocolo" ]]; then
     anon_body=$(curl -s -w "\n%{http_code}" "$API_BASE_URL/maintenance-request/$maintenance_protocolo")

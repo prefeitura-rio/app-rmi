@@ -291,156 +291,7 @@ type CitizenWallet struct {
 	Educacao          *Educacao          `json:"educacao" bson:"educacao,omitempty"`
 }
 
-// MaintenanceRequestDocument represents the new document structure for 1746 calls
-type MaintenanceRequestDocument struct {
-	ID                        string `json:"_id" bson:"_id"`
-	CPF                       string `json:"cpf" bson:"cpf"`
-	CPFParticao               int64  `json:"cpf_particao" bson:"cpf_particao"`
-	Categoria                 string `json:"categoria" bson:"categoria"`
-	DataAlvoFinalizacao       string `json:"data_alvo_finalizacao" bson:"data_alvo_finalizacao"`
-	DataFim                   string `json:"data_fim" bson:"data_fim"`
-	DataInicio                string `json:"data_inicio" bson:"data_inicio"`
-	Descricao                 string `json:"descricao" bson:"descricao"`
-	IDChamado                 string `json:"id" bson:"id"` // Renamed from id_chamado to id
-	Indicador                 bool   `json:"indicador" bson:"indicador"`
-	NomeUnidadeOrganizacional string `json:"nome_unidade_organizacional" bson:"nome_unidade_organizacional"`
-	OrigemOcorrencia          string `json:"origem_ocorrencia" bson:"origem_ocorrencia"`
-	Status                    string `json:"status" bson:"status"`
-	Subtipo                   string `json:"subtipo" bson:"subtipo"`
-	Tipo                      string `json:"tipo" bson:"tipo"`
-	Endereco                  string `json:"endereco" bson:"endereco"` // Pre-built address string
-	TotalChamados             int    `json:"total_chamados" bson:"total_chamados"`
-	TotalFechados             int    `json:"total_fechados" bson:"total_fechados"`
-	// Protocolo is the SGRC protocol (RIO-12345678-9); one protocol may group several chamados.
-	Protocolo string `json:"protocolo,omitempty" bson:"protocolo,omitempty"`
-}
-
-// MaintenanceRequestProtocolDocument is a chamado read by the public lookup by protocol; the
-// fields added by the data pipeline (bairro, logradouro, andamentos, loaded_at) are optional.
-type MaintenanceRequestProtocolDocument struct {
-	CPF                       string                        `bson:"cpf"`
-	IDChamado                 string                        `bson:"id"`
-	Protocolo                 string                        `bson:"protocolo"`
-	Categoria                 string                        `bson:"categoria"`
-	Tipo                      string                        `bson:"tipo"`
-	Subtipo                   string                        `bson:"subtipo"`
-	Status                    string                        `bson:"status"`
-	OrigemOcorrencia          string                        `bson:"origem_ocorrencia"`
-	NomeUnidadeOrganizacional string                        `bson:"nome_unidade_organizacional"`
-	DataInicio                string                        `bson:"data_inicio"`
-	DataFim                   string                        `bson:"data_fim"`
-	DataAlvoFinalizacao       string                        `bson:"data_alvo_finalizacao"`
-	Descricao                 string                        `bson:"descricao"`
-	Bairro                    string                        `bson:"bairro"`
-	Logradouro                string                        `bson:"logradouro"`
-	Andamentos                []MaintenanceRequestAndamento `bson:"andamentos"`
-	LoadedAt                  BSONTimeString                `bson:"loaded_at"`
-}
-
-// MaintenanceRequestAndamento is one progress entry of a chamado as loaded from SGRC.
-type MaintenanceRequestAndamento struct {
-	Data      BSONTimeString `bson:"data"`
-	Tipo      string         `bson:"tipo"`
-	Descricao string         `bson:"descricao"`
-	FlPublico BSONFlag       `bson:"fl_publico"`
-}
-
-// PublicMaintenanceRequestAndamento is a progress entry exposed by the public lookup.
-type PublicMaintenanceRequestAndamento struct {
-	Data      string `json:"data,omitempty"`
-	Tipo      string `json:"tipo,omitempty"`
-	Descricao string `json:"descricao,omitempty"`
-}
-
-// PublicMaintenanceRequest is one chamado of the public lookup by protocol. Logradouro and
-// Descricao are filled only for the owner of the chamado (verified JWT whose
-// preferred_username equals the chamado CPF); the CPF itself is never exposed.
-type PublicMaintenanceRequest struct {
-	IDChamado                 string                              `json:"id_chamado"`
-	Protocolo                 string                              `json:"protocolo"`
-	Categoria                 string                              `json:"categoria,omitempty"`
-	Tipo                      string                              `json:"tipo,omitempty"`
-	Subtipo                   string                              `json:"subtipo,omitempty"`
-	Status                    string                              `json:"status,omitempty"`
-	OrigemOcorrencia          string                              `json:"origem_ocorrencia,omitempty"`
-	NomeUnidadeOrganizacional string                              `json:"nome_unidade_organizacional,omitempty"`
-	DataInicio                *time.Time                          `json:"data_inicio,omitempty"`
-	DataFim                   *time.Time                          `json:"data_fim,omitempty"`
-	DataAlvoFinalizacao       *time.Time                          `json:"data_alvo_finalizacao,omitempty"`
-	Bairro                    string                              `json:"bairro,omitempty"`
-	Andamentos                []PublicMaintenanceRequestAndamento `json:"andamentos"`
-	LoadedAt                  string                              `json:"loaded_at,omitempty"`
-	Titular                   bool                                `json:"titular"`
-	Logradouro                string                              `json:"logradouro,omitempty"`
-	Descricao                 string                              `json:"descricao,omitempty"`
-}
-
-// PublicMaintenanceRequestResponse is the response of GET /v1/maintenance-request/{protocolo}.
-type PublicMaintenanceRequestResponse struct {
-	Protocolo string                     `json:"protocolo"`
-	Chamados  []PublicMaintenanceRequest `json:"chamados"`
-}
-
-// ToPublicMaintenanceRequest projects a chamado for the public lookup. ownerCPF is the CPF of a
-// verified caller ("" for anonymous); only when it equals the chamado CPF are the street and
-// the description of the chamado included. Progress entries are kept only when fl_publico = 1.
-func (doc *MaintenanceRequestProtocolDocument) ToPublicMaintenanceRequest(ownerCPF string) PublicMaintenanceRequest {
-	andamentos := make([]PublicMaintenanceRequestAndamento, 0, len(doc.Andamentos))
-	for _, a := range doc.Andamentos {
-		if !a.FlPublico.IsSet() {
-			continue
-		}
-		andamentos = append(andamentos, PublicMaintenanceRequestAndamento{
-			Data:      string(a.Data),
-			Tipo:      a.Tipo,
-			Descricao: a.Descricao,
-		})
-	}
-
-	out := PublicMaintenanceRequest{
-		IDChamado:                 doc.IDChamado,
-		Protocolo:                 doc.Protocolo,
-		Categoria:                 doc.Categoria,
-		Tipo:                      doc.Tipo,
-		Subtipo:                   doc.Subtipo,
-		Status:                    doc.Status,
-		OrigemOcorrencia:          doc.OrigemOcorrencia,
-		NomeUnidadeOrganizacional: doc.NomeUnidadeOrganizacional,
-		DataInicio:                parseMaintenanceRequestTime(doc.DataInicio),
-		DataFim:                   parseMaintenanceRequestTime(doc.DataFim),
-		DataAlvoFinalizacao:       parseMaintenanceRequestTime(doc.DataAlvoFinalizacao),
-		Bairro:                    doc.Bairro,
-		Andamentos:                andamentos,
-		LoadedAt:                  string(doc.LoadedAt),
-	}
-
-	if ownerCPF != "" && doc.CPF != "" && ownerCPF == doc.CPF {
-		out.Titular = true
-		out.Logradouro = doc.Logradouro
-		out.Descricao = doc.Descricao
-	}
-	return out
-}
-
-// parseMaintenanceRequestTime parses the date strings of the maintenance request collection.
-func parseMaintenanceRequestTime(timeStr string) *time.Time {
-	if timeStr == "" {
-		return nil
-	}
-	formats := []string{
-		time.RFC3339,
-		"2006-01-02T15:04:05Z07:00",
-		"2006-01-02T15:04:05",
-		"2006-01-02 15:04:05",
-		"2006-01-02",
-	}
-	for _, format := range formats {
-		if t, err := time.Parse(format, timeStr); err == nil {
-			return &t
-		}
-	}
-	return nil
-}
+// Maintenance request document types live in maintenance_request.go (SGRC BigQuery contract).
 
 // MaintenanceRequestChamados represents maintenance request calls
 type MaintenanceRequestChamados struct {
@@ -517,7 +368,7 @@ type MaintenanceRequestStatus struct {
 type MaintenanceRequest struct {
 	ID                        string     `json:"id"`
 	CPF                       string     `json:"cpf"`
-	IDChamado                 string     `json:"id_chamado"` // Maps from MongoDB "id" field
+	IDChamado                 string     `json:"id_chamado"`
 	Categoria                 string     `json:"categoria"`
 	DataAlvoFinalizacao       *time.Time `json:"data_alvo_finalizacao,omitempty"`
 	DataFim                   *time.Time `json:"data_fim,omitempty"`
@@ -529,20 +380,21 @@ type MaintenanceRequest struct {
 	Status                    string     `json:"status"`
 	Subtipo                   string     `json:"subtipo"`
 	Tipo                      string     `json:"tipo"`
-	Endereco                  *string    `json:"endereco,omitempty"` // Pre-built address string
+	Endereco                  *string    `json:"endereco,omitempty"`
+	Bairro                    string     `json:"bairro,omitempty"`
+	Logradouro                string     `json:"logradouro,omitempty"`
+	Numero                    string     `json:"numero,omitempty"`
 	TotalChamados             int        `json:"total_chamados"`
 	TotalFechados             int        `json:"total_fechados"`
-	Protocolo                 string     `json:"protocolo,omitempty"`
+	Protocolos                []string   `json:"protocolos"`
 }
 
-// ConvertToMaintenanceRequest converts a MaintenanceRequestDocument to a MaintenanceRequest for backward compatibility
+// ConvertToMaintenanceRequest converts a MaintenanceRequestDocument to a MaintenanceRequest for the API.
 func (doc *MaintenanceRequestDocument) ConvertToMaintenanceRequest() *MaintenanceRequest {
-	// Helper function to parse time from string
 	parseTime := func(timeStr string) *time.Time {
 		if timeStr == "" {
 			return nil
 		}
-		// Try multiple time formats
 		formats := []string{
 			time.RFC3339,
 			"2006-01-02T15:04:05Z07:00",
@@ -558,7 +410,6 @@ func (doc *MaintenanceRequestDocument) ConvertToMaintenanceRequest() *Maintenanc
 		return nil
 	}
 
-	// Helper function to safely handle string to pointer
 	stringPtr := func(s string) *string {
 		if s == "" {
 			return nil
@@ -566,11 +417,13 @@ func (doc *MaintenanceRequestDocument) ConvertToMaintenanceRequest() *Maintenanc
 		return &s
 	}
 
-	// Map from new simplified MongoDB structure to API response
+	protocolos := doc.Protocolos()
+	cpf := doc.OwnerCPF()
+
 	return &MaintenanceRequest{
 		ID:                        doc.ID,
-		CPF:                       doc.CPF,
-		IDChamado:                 doc.IDChamado, // MongoDB "id" field maps to "id_chamado" in API
+		CPF:                       cpf,
+		IDChamado:                 doc.IDChamado,
 		Categoria:                 doc.Categoria,
 		DataAlvoFinalizacao:       parseTime(doc.DataAlvoFinalizacao),
 		DataFim:                   parseTime(doc.DataFim),
@@ -583,9 +436,12 @@ func (doc *MaintenanceRequestDocument) ConvertToMaintenanceRequest() *Maintenanc
 		Subtipo:                   doc.Subtipo,
 		Tipo:                      doc.Tipo,
 		Endereco:                  stringPtr(doc.Endereco),
+		Bairro:                    doc.Bairro,
+		Logradouro:                doc.Logradouro,
+		Numero:                    doc.Numero,
 		TotalChamados:             doc.TotalChamados,
 		TotalFechados:             doc.TotalFechados,
-		Protocolo:                 doc.Protocolo,
+		Protocolos:                protocolos,
 	}
 }
 
