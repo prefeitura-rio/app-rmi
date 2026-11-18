@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -303,32 +304,38 @@ func TestCFRateLimiterManager_CleanupOldEntries_AllOld(t *testing.T) {
 }
 
 func TestRateLimiter_Concurrent_Allow(t *testing.T) {
+	const (
+		maxTokens = 100
+		requests  = 150
+	)
+
 	logger := logging.GetLogger()
-	rl := NewRateLimiter(100, 10*time.Millisecond, logger)
+	// The refill interval is far longer than the test, so no token comes back while it
+	// runs: with a short interval (it used to be 10ms) a slow scheduler, such as the CI
+	// runner under -race, legitimately refills a token and lets request 101 through.
+	rl := NewRateLimiter(maxTokens, time.Hour, logger)
 	ctx := context.Background()
 
-	// Run concurrent requests
-	done := make(chan bool)
-	allowedCount := 0
-	deniedCount := 0
-	results := make(chan bool, 150)
+	start := make(chan struct{})
+	results := make(chan bool, requests)
+	var wg sync.WaitGroup
+	wg.Add(requests)
 
-	for i := 0; i < 150; i++ {
+	for i := 0; i < requests; i++ {
 		go func() {
-			allowed := rl.Allow(ctx, "concurrent_test")
-			results <- allowed
-			done <- true
+			defer wg.Done()
+			<-start
+			results <- rl.Allow(ctx, "concurrent_test")
 		}()
 	}
 
-	// Wait for all goroutines
-	for i := 0; i < 150; i++ {
-		<-done
-	}
-
+	// Release every goroutine at once so the calls contend for the mutex.
+	close(start)
+	wg.Wait()
 	close(results)
 
-	// Count results
+	allowedCount := 0
+	deniedCount := 0
 	for allowed := range results {
 		if allowed {
 			allowedCount++
@@ -337,19 +344,16 @@ func TestRateLimiter_Concurrent_Allow(t *testing.T) {
 		}
 	}
 
-	// We started with 100 tokens, so at most 100 should be allowed
-	if allowedCount > 100 {
-		t.Errorf("Concurrent Allow() allowed = %v, should not exceed 100", allowedCount)
+	if allowedCount != maxTokens {
+		t.Errorf("Concurrent Allow() allowed = %d, want exactly %d", allowedCount, maxTokens)
 	}
 
-	// At least 50 should be denied (150 requests - 100 tokens)
-	if deniedCount < 50 {
-		t.Errorf("Concurrent Allow() denied = %v, should be at least 50", deniedCount)
+	if deniedCount != requests-maxTokens {
+		t.Errorf("Concurrent Allow() denied = %d, want exactly %d", deniedCount, requests-maxTokens)
 	}
 
-	// Total should be 150
-	if allowedCount+deniedCount != 150 {
-		t.Errorf("Concurrent Allow() total = %v, want 150", allowedCount+deniedCount)
+	if tokens, _ := rl.GetStatus(); tokens != 0 {
+		t.Errorf("GetStatus() tokens after concurrent Allow() = %d, want 0", tokens)
 	}
 }
 
