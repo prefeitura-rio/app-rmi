@@ -105,17 +105,17 @@ func TestToPublicMaintenanceRequest_EmptyAndamentosIsEmptySlice(t *testing.T) {
 func TestMaintenanceRequestProtocolDocument_DecodesBigQueryShape(t *testing.T) {
 	loadedAt := time.Date(2025, 11, 3, 3, 0, 0, 0, time.UTC)
 	raw, err := bson.Marshal(bson.M{
-		"id_chamado":                              int64(1234567),
-		"descricao_chamado":                       "texto livre de quem abriu o chamado",
-		"data_inicio":                             time.Date(2025, 1, 10, 10, 0, 0, 0, time.UTC),
-		"data_prevista_atendimento":               time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC),
+		"id_chamado":                               int64(1234567),
+		"descricao_chamado":                        "texto livre de quem abriu o chamado",
+		"data_inicio":                              time.Date(2025, 1, 10, 10, 0, 0, 0, time.UTC),
+		"data_prevista_atendimento":                time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC),
 		"unidade_organizacional_responsavel_atual": "RIOLUZ",
-		"bairro":                                  "Centro",
-		"logradouro":                              "Rua Exemplo",
-		"numero":                                  "10",
-		"complemento":                             "ap 1",
-		"cep":                                     "20000000",
-		"loaded_at":                               loadedAt,
+		"bairro":      "Centro",
+		"logradouro":  "Rua Exemplo",
+		"numero":      "10",
+		"complemento": "ap 1",
+		"cep":         "20000000",
+		"loaded_at":   loadedAt,
 		"protocolos": bson.A{
 			bson.M{"codigo_protocolo": "RIO-12345678-9", "cpf": testOwnerCPF},
 			bson.M{"codigo_protocolo": "RIO-87654321-0", "cpf": testOwnerCPF},
