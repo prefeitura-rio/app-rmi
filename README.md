@@ -1000,7 +1000,12 @@ Valida números de telefone internacionais usando a biblioteca libphonenumber do
 - Decomposição automática em DDI, DDD e número
 - Validação de formato E.164
 - Detecção automática de região
-- Não requer autenticação
+- Requer JWT (`Authorization: Bearer`); sem token, 401
+
+### POST /validate/email
+Valida o formato de um endereço de e-mail.
+- Retorna o endereço normalizado e suas partes quando válido
+- Requer JWT (`Authorization: Bearer`); sem token, 401
 
 ### POST /citizen/{cpf}/phone/validate
 Valida um número de telefone usando um código de verificação.
@@ -1057,14 +1062,14 @@ Verifica o status de um número de telefone.
 - Retorna informações sobre mapeamento phone-CPF
 - Inclui status de quarentena (se aplicável)
 - Inclui informações de whitelist beta (se aplicável)
-- Não requer autenticação
+- Requer JWT (`Authorization: Bearer`); sem token, 401
 - Dados sensíveis (CPF, nome) são mascarados
 
 ### GET /phone/{phone_number}/beta-status
 Verifica se um número de telefone está na whitelist beta.
 - Retorna status beta e informações do grupo
 - Cache Redis para performance
-- Não requer autenticação
+- Requer JWT (`Authorization: Bearer`); sem token, 401
 
 ## Configuration Endpoints
 
@@ -1737,20 +1742,20 @@ Sistema de whitelist para chatbot beta que permite gerenciar grupos de teste e c
 - **Cache**: Cache Redis para verificações rápidas de status
 
 #### Verificação de Status
-- **Endpoint Público**: Verificação rápida se um telefone está na whitelist
+- **Endpoint Autenticado**: Verificação rápida se um telefone está na whitelist (requer JWT)
 - **Cache TTL**: Cache configurável (padrão: 24 horas)
 - **Invalidação Automática**: Cache limpo quando associações mudam
 - **Informações Completas**: Inclui ID e nome do grupo
 
 ### Endpoints da API
 
-#### Endpoints Públicos
+#### Endpoint de Status
 
 ##### GET /phone/{phone_number}/beta-status
 Verifica se um número de telefone está na whitelist beta.
 - **Resposta**: Status beta, ID do grupo, nome do grupo
 - **Cache**: Resultados cacheados por 24 horas
-- **Autenticação**: Não requerida
+- **Autenticação**: Requer JWT (`Authorization: Bearer`); sem token, 401
 
 #### Endpoints Administrativos
 

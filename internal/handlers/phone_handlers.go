@@ -52,8 +52,10 @@ func isPhoneParsingError(err error) bool {
 // @Tags phone
 // @Produce json
 // @Param phone_number path string true "Número do telefone"
+// @Security BearerAuth
 // @Success 200 {object} models.PhoneStatusResponse "Status do telefone obtido com sucesso"
 // @Failure 400 {object} ErrorResponse "Formato de telefone inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 404 {object} ErrorResponse "Telefone não encontrado no sistema"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
