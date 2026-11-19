@@ -35,7 +35,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | Variável | Descrição | Padrão | Obrigatório |
 |----------|-----------|---------|------------|
 | PORT | Porta do servidor | 8080 | Não |
-| CORS_ALLOWED_ORIGINS | Origens de browser permitidas no CORS (lista separada por vírgula, sem barra final). Ex.: `https://app.example.com,https://admin.example.com`. Vazio = fail-closed (nenhuma origem cross-origin recebe headers CORS). Valores reais ficam só no Infisical/`rmi-secrets` | - | Sim* |
+| CORS_ALLOWED_ORIGINS | Origens de browser permitidas no CORS (lista separada por vírgula, sem barra final). Ex.: `https://app.example.com,https://admin.example.com`. Preenchida, substitui a lista padrão; ausente ou vazia, vale a lista padrão | `https://pref.rio,https://admin.pref.rio,https://staging.app.dados.rio,https://admin.staging.app.dados.rio` | Não* |
 | MONGODB_URI | String de conexão MongoDB | mongodb://localhost:27017 | Sim |
 | MONGODB_DATABASE | Nome do banco de dados MongoDB | citizen_data | Não |
 | MONGODB_CITIZEN_COLLECTION | Nome da coleção de dados do cidadão | citizens | Não |
@@ -98,7 +98,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | WHATSAPP_COD_PARAMETER | Parâmetro do código no template HSM do WhatsApp | COD | Não |
 
 **Notas:**
-- `*` `CORS_ALLOWED_ORIGINS` deve ser configurado em staging/produção via Infisical/`rmi-secrets` com as origens dos frontends autorizados. Sem a variável (ou com origem fora da lista), requests cross-origin não recebem `Access-Control-*` (gin-contrib responde 403).
+- `*` `CORS_ALLOWED_ORIGINS`: a lista padrão (`config.DefaultCORSAllowedOrigins`) cobre o Superapp/pref.rio e o portal interno, de produção e de staging. Defina a variável (Infisical/`rmi-secrets`, ou localmente, ex.: `http://localhost:3000`) só para trocar a lista. Requests cross-origin de origem fora da lista não recebem `Access-Control-*` (gin-contrib responde 403).
 - `*` MCP_AUTH_TOKEN é obrigatório apenas se a funcionalidade de CF lookup estiver habilitada
 - `*` DATA_RELAY_BASE_URL e DATA_RELAY_API_KEY devem ser ambos definidos para envio real de e-mails (convites Mobilidade). Sem eles, o sync worker apenas registra o e-mail em log.
 - `*` SALESFORCE_BASE_URL habilita a integração. Proxies `/v1/salesforce/*` e push usam o JWT do usuário. JWTs só entram na fila Redis cifrados (`SYNC_JOB_BEARER_ENCRYPTION_KEY`); sem a chave o token não é capturado e `salesforce_push` não é enfileirado. O webhook `POST /v1/webhooks/salesforce/cidadao` exige JWT Keycloak cujo `azp` está em `SALESFORCE_WEBHOOK_CLIENTS` (token do client Salesforce). Para `evento=atualizacao` (default): `cpf` + `dados` (**delta**; ausente=não alterar, null=limpar, string vazia=valor vazio) + `updatedAt` opcional. Para `evento=anonimizacao`: só `cpf` + `evento` + `updatedAt` (opcional); `dados` é ignorado — o RMI limpa o espelho SF por inteiro (`self_declared` PII + `salesforce_consentimentos`). Não altera `citizens` nem o opt-in global do RMI. Resposta **202** com CPF mascarado; retry idempotente via `updatedAt`. Sem GET de volta ao SF.
@@ -1000,7 +1000,12 @@ Valida números de telefone internacionais usando a biblioteca libphonenumber do
 - Decomposição automática em DDI, DDD e número
 - Validação de formato E.164
 - Detecção automática de região
-- Não requer autenticação
+- Requer JWT (`Authorization: Bearer`); sem token, 401
+
+### POST /validate/email
+Valida o formato de um endereço de e-mail.
+- Retorna o endereço normalizado e suas partes quando válido
+- Requer JWT (`Authorization: Bearer`); sem token, 401
 
 ### POST /citizen/{cpf}/phone/validate
 Valida um número de telefone usando um código de verificação.
@@ -1057,14 +1062,14 @@ Verifica o status de um número de telefone.
 - Retorna informações sobre mapeamento phone-CPF
 - Inclui status de quarentena (se aplicável)
 - Inclui informações de whitelist beta (se aplicável)
-- Não requer autenticação
+- Requer JWT (`Authorization: Bearer`); sem token, 401
 - Dados sensíveis (CPF, nome) são mascarados
 
 ### GET /phone/{phone_number}/beta-status
 Verifica se um número de telefone está na whitelist beta.
 - Retorna status beta e informações do grupo
 - Cache Redis para performance
-- Não requer autenticação
+- Requer JWT (`Authorization: Bearer`); sem token, 401
 
 ## Configuration Endpoints
 
@@ -1737,20 +1742,20 @@ Sistema de whitelist para chatbot beta que permite gerenciar grupos de teste e c
 - **Cache**: Cache Redis para verificações rápidas de status
 
 #### Verificação de Status
-- **Endpoint Público**: Verificação rápida se um telefone está na whitelist
+- **Endpoint Autenticado**: Verificação rápida se um telefone está na whitelist (requer JWT)
 - **Cache TTL**: Cache configurável (padrão: 24 horas)
 - **Invalidação Automática**: Cache limpo quando associações mudam
 - **Informações Completas**: Inclui ID e nome do grupo
 
 ### Endpoints da API
 
-#### Endpoints Públicos
+#### Endpoint de Status
 
 ##### GET /phone/{phone_number}/beta-status
 Verifica se um número de telefone está na whitelist beta.
 - **Resposta**: Status beta, ID do grupo, nome do grupo
 - **Cache**: Resultados cacheados por 24 horas
-- **Autenticação**: Não requerida
+- **Autenticação**: Requer JWT (`Authorization: Bearer`); sem token, 401
 
 #### Endpoints Administrativos
 

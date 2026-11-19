@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -77,13 +78,10 @@ func main() {
 	if err := config.LoadConfig(); err != nil {
 		logging.GetLogger().Fatal("failed to load config", zap.Error(err))
 	}
-	if len(config.AppConfig.CORSAllowedOrigins) == 0 {
-		logging.Logger.Warn("CORS_ALLOWED_ORIGINS is empty: cross-origin browser requests will be rejected")
-	} else {
-		logging.Logger.Info("CORS allowlist configured",
-			zap.Strings("origins", config.AppConfig.CORSAllowedOrigins),
-		)
-	}
+	logging.Logger.Info("CORS allowlist configured",
+		zap.Strings("origins", config.AppConfig.CORSAllowedOrigins),
+		zap.Bool("defaults", slices.Equal(config.AppConfig.CORSAllowedOrigins, config.DefaultCORSAllowedOrigins)),
+	)
 
 	// Initialize observability
 	observability.InitTracer()
@@ -317,19 +315,13 @@ func main() {
 			avatarAdmin.DELETE("/:id", handlers.DeleteAvatar) // Delete avatar
 		}
 
-		// Public validation endpoints (no auth required)
-		validationGroup := v1.Group("/validate")
-		{
-			validationGroup.POST("/phone", handlers.ValidatePhoneNumber)
-			validationGroup.POST("/email", handlers.ValidateEmailAddress)
-		}
-
-		// Phone routes (public)
-		phoneGroup := v1.Group("/phone")
-		{
-			phoneGroup.GET("/:phone_number/status", phoneHandlers.GetPhoneStatus)
-			phoneGroup.GET("/:phone_number/beta-status", betaGroupHandlers.GetBetaStatus)
-		}
+		// Phone status and contact validation routes (protected)
+		registerPhoneLookupRoutes(v1, phoneLookupHandlers{
+			PhoneStatus:   phoneHandlers.GetPhoneStatus,
+			BetaStatus:    betaGroupHandlers.GetBetaStatus,
+			ValidatePhone: handlers.ValidatePhoneNumber,
+			ValidateEmail: handlers.ValidateEmailAddress,
+		})
 
 		// Phone routes (protected)
 		protectedPhoneGroup := v1.Group("/phone")
@@ -491,4 +483,33 @@ func main() {
 	}
 
 	logging.GetLogger().Info("server exiting")
+}
+
+// phoneLookupHandlers are the handlers of the phone status and contact validation routes.
+type phoneLookupHandlers struct {
+	PhoneStatus   gin.HandlerFunc
+	BetaStatus    gin.HandlerFunc
+	ValidatePhone gin.HandlerFunc
+	ValidateEmail gin.HandlerFunc
+}
+
+// registerPhoneLookupRoutes registers GET /phone/:phone_number/status,
+// GET /phone/:phone_number/beta-status, POST /validate/phone and POST /validate/email.
+// They require a JWT (AuthMiddleware), as the gateway already does: without login,
+// /phone/:phone_number/status would tell about any number whether it is bound to a
+// CPF, opted in or quarantined.
+func registerPhoneLookupRoutes(v1 *gin.RouterGroup, h phoneLookupHandlers) {
+	validationGroup := v1.Group("/validate")
+	validationGroup.Use(middleware.AuthMiddleware())
+	{
+		validationGroup.POST("/phone", h.ValidatePhone)
+		validationGroup.POST("/email", h.ValidateEmail)
+	}
+
+	phoneGroup := v1.Group("/phone")
+	phoneGroup.Use(middleware.AuthMiddleware())
+	{
+		phoneGroup.GET("/:phone_number/status", h.PhoneStatus)
+		phoneGroup.GET("/:phone_number/beta-status", h.BetaStatus)
+	}
 }

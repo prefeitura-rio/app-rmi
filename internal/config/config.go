@@ -16,14 +16,25 @@ const (
 	VerificationProviderSalesforce = "salesforce"
 )
 
+// DefaultCORSAllowedOrigins are the browser Origins of the known frontends
+// (Superapp/pref.rio and the internal portal, production and staging) allowed
+// when CORS_ALLOWED_ORIGINS is unset or blank.
+var DefaultCORSAllowedOrigins = []string{
+	"https://pref.rio",
+	"https://admin.pref.rio",
+	"https://staging.app.dados.rio",
+	"https://admin.staging.app.dados.rio",
+}
+
 // Config holds all configuration values
 type Config struct {
 	// Server configuration
 	Port        int    `json:"port"`
 	Environment string `json:"environment"`
 	// CORSAllowedOrigins is the allowlist of browser Origins (scheme+host[+port])
-	// that may receive Access-Control-* headers. Empty rejects all cross-origin
-	// browser requests. Set via CORS_ALLOWED_ORIGINS (comma-separated).
+	// that may receive Access-Control-* headers. CORS_ALLOWED_ORIGINS
+	// (comma-separated) replaces DefaultCORSAllowedOrigins; unset or blank keeps
+	// the defaults.
 	CORSAllowedOrigins []string `json:"cors_allowed_origins"`
 
 	// MongoDB configuration
@@ -430,7 +441,7 @@ func LoadConfig() error {
 		// Server configuration
 		Port:               port,
 		Environment:        getEnvOrDefault("ENVIRONMENT", "development"),
-		CORSAllowedOrigins: parseCommaSeparatedList(getEnvOrDefault("CORS_ALLOWED_ORIGINS", "")),
+		CORSAllowedOrigins: corsAllowedOrigins(os.Getenv("CORS_ALLOWED_ORIGINS")),
 
 		// MongoDB configuration
 		MongoURI:      getEnvOrDefault("MONGODB_URI", "mongodb://localhost:27017"),
@@ -612,6 +623,15 @@ func parseSyncJobBearerEncryptionKey(raw string) ([]byte, error) {
 		return nil, fmt.Errorf("must be 64 hex characters (32-byte AES-256 key)")
 	}
 	return decoded, nil
+}
+
+// corsAllowedOrigins returns the Origins listed in value, or a copy of
+// DefaultCORSAllowedOrigins when value lists none.
+func corsAllowedOrigins(value string) []string {
+	if origins := parseCommaSeparatedList(value); len(origins) > 0 {
+		return origins
+	}
+	return append([]string(nil), DefaultCORSAllowedOrigins...)
 }
 
 // parseCommaSeparatedList parses a comma-separated string into a slice of strings

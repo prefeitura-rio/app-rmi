@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -429,8 +430,8 @@ func TestLoadConfig_Success(t *testing.T) {
 		t.Errorf("AppConfig.CitizenCollection = %v, want citizens", AppConfig.CitizenCollection)
 	}
 
-	if len(AppConfig.CORSAllowedOrigins) != 0 {
-		t.Errorf("AppConfig.CORSAllowedOrigins = %v, want empty when CORS_ALLOWED_ORIGINS unset", AppConfig.CORSAllowedOrigins)
+	if !reflect.DeepEqual(AppConfig.CORSAllowedOrigins, DefaultCORSAllowedOrigins) {
+		t.Errorf("AppConfig.CORSAllowedOrigins = %v, want DefaultCORSAllowedOrigins %v when CORS_ALLOWED_ORIGINS unset", AppConfig.CORSAllowedOrigins, DefaultCORSAllowedOrigins)
 	}
 
 	if AppConfig.MetricsPort != 9090 {
@@ -495,6 +496,43 @@ func TestLoadConfig_CORSAllowedOrigins(t *testing.T) {
 		if AppConfig.CORSAllowedOrigins[i] != origin {
 			t.Errorf("CORSAllowedOrigins[%d] = %q, want %q", i, AppConfig.CORSAllowedOrigins[i], origin)
 		}
+	}
+}
+
+func TestCORSAllowedOrigins(t *testing.T) {
+	wantDefaults := []string{
+		"https://pref.rio",
+		"https://admin.pref.rio",
+		"https://staging.app.dados.rio",
+		"https://admin.staging.app.dados.rio",
+	}
+	if !reflect.DeepEqual(DefaultCORSAllowedOrigins, wantDefaults) {
+		t.Fatalf("DefaultCORSAllowedOrigins = %v, want %v", DefaultCORSAllowedOrigins, wantDefaults)
+	}
+
+	tests := []struct {
+		name  string
+		value string
+		want  []string
+	}{
+		{name: "unset uses defaults", value: "", want: wantDefaults},
+		{name: "blank uses defaults", value: "  ,  , ", want: wantDefaults},
+		{name: "env replaces defaults", value: "https://app.example.com, https://admin.example.com", want: []string{"https://app.example.com", "https://admin.example.com"}},
+		{name: "single origin replaces defaults", value: "http://localhost:3000", want: []string{"http://localhost:3000"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := corsAllowedOrigins(tt.value)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("corsAllowedOrigins(%q) = %v, want %v", tt.value, got, tt.want)
+			}
+		})
+	}
+
+	got := corsAllowedOrigins("")
+	got[0] = "https://evil.example"
+	if DefaultCORSAllowedOrigins[0] != "https://pref.rio" {
+		t.Errorf("corsAllowedOrigins must return a copy; DefaultCORSAllowedOrigins[0] = %q", DefaultCORSAllowedOrigins[0])
 	}
 }
 

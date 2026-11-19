@@ -54,8 +54,10 @@ var errInvalidEmailAddress = errors.New("invalid email address")
 // @Accept json
 // @Produce json
 // @Param data body EmailValidationRequest true "Email a ser validado"
+// @Security BearerAuth
 // @Success 200 {object} EmailValidationResponse "Email validado com sucesso"
 // @Failure 400 {object} ErrorResponse "Campo email é obrigatório ou formato inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /validate/email [post]
