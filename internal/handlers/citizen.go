@@ -3332,7 +3332,7 @@ func GetCitizenWallet(c *gin.Context) {
 
 // GetMaintenanceRequests godoc
 // @Summary Obter chamados do 1746 do cidadão
-// @Description Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado individual.
+// @Description Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado; a resposta expõe protocolos[] e, na transição, também o escalar protocolo (preenchido quando há exatamente um código).
 // @Tags citizen
 // @Accept json
 // @Produce json
@@ -3354,15 +3354,21 @@ func GetMaintenanceRequests(c *gin.Context) {
 
 	cpf := c.Param("cpf")
 	logger := observability.Logger().With(observability.CPFField(cpf))
+	source := config.AppConfig.ActiveMaintenanceRequestSource()
+	collectionName := config.AppConfig.ActiveMaintenanceRequestCollection()
 
 	// Add CPF to span attributes
 	span.SetAttributes(
 		observability.CPFAttr(cpf),
 		attribute.String("operation", "get_maintenance_requests"),
 		attribute.String("service", "citizen"),
+		attribute.String("maintenance_request.source", source),
 	)
 
-	logger.Debug("GetMaintenanceRequests called", observability.CPFField(cpf))
+	logger.Debug("GetMaintenanceRequests called",
+		observability.CPFField(cpf),
+		zap.String("maintenance_request_source", source),
+	)
 
 	// Parse pagination parameters with tracing
 	ctx, paginationSpan := utils.TraceInputParsing(ctx, "pagination_parameters")
@@ -3401,9 +3407,9 @@ func GetMaintenanceRequests(c *gin.Context) {
 	utils.AddSpanAttribute(paginationSpan, "skip", skip)
 	paginationSpan.End()
 
-	// Try to get from cache first (include pagination in cache key) with tracing
-	ctx, cacheSpan := utils.TraceCacheGet(ctx, fmt.Sprintf("maintenance_requests:%s:page_%d_per_%d", cpf, page, perPage))
-	cacheKey := fmt.Sprintf("maintenance_requests:%s:page_%d_per_%d", cpf, page, perPage)
+	// Cache key includes the active source so a flag toggle never mixes contracts.
+	cacheKey := fmt.Sprintf("maintenance_requests:%s:%s:page_%d_per_%d", source, cpf, page, perPage)
+	ctx, cacheSpan := utils.TraceCacheGet(ctx, cacheKey)
 	cachedData, err := config.Redis.Get(ctx, cacheKey).Result()
 	if err == nil {
 		utils.AddSpanAttribute(cacheSpan, "cache.hit", true)
@@ -3421,6 +3427,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 			totalDuration := time.Since(startTime)
 			logger.Debug("GetMaintenanceRequests completed (cache hit)",
 				observability.CPFField(cpf),
+				zap.String("maintenance_request_source", source),
 				zap.Int("page", page),
 				zap.Int("per_page", perPage),
 				zap.Int("total_count", response.Pagination.Total),
@@ -3434,13 +3441,20 @@ func GetMaintenanceRequests(c *gin.Context) {
 	utils.AddSpanAttribute(cacheSpan, "cache.hit", false)
 	cacheSpan.End()
 
+	cpfFilter := bson.M{"cpf": cpf}
+	cpfFilterField := "cpf"
+	if config.AppConfig.MaintenanceRequestSGRCEnabled {
+		cpfFilter = bson.M{"protocolos.cpf": cpf}
+		cpfFilterField = "protocolos.cpf"
+	}
+
 	// Get total count with tracing
-	ctx, countSpan := utils.TraceDatabaseCount(ctx, config.AppConfig.MaintenanceRequestCollection, "cpf")
-	total, err := config.MongoDB.Collection(config.AppConfig.MaintenanceRequestCollection).CountDocuments(ctx, bson.M{"cpf": cpf})
+	ctx, countSpan := utils.TraceDatabaseCount(ctx, collectionName, cpfFilterField)
+	total, err := config.MongoDB.Collection(collectionName).CountDocuments(ctx, cpfFilter)
 	if err != nil {
 		utils.RecordErrorInSpan(countSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.MaintenanceRequestCollection,
-			"db.filter":     "cpf",
+			"db.collection": collectionName,
+			"db.filter":     cpfFilterField,
 		})
 		countSpan.End()
 		observability.DatabaseOperations.WithLabelValues("count", "error").Inc()
@@ -3452,17 +3466,17 @@ func GetMaintenanceRequests(c *gin.Context) {
 	countSpan.End()
 
 	// Get maintenance request documents with pagination with tracing
-	ctx, findSpan := utils.TraceDatabaseFind(ctx, config.AppConfig.MaintenanceRequestCollection, "cpf_paginated")
+	ctx, findSpan := utils.TraceDatabaseFind(ctx, collectionName, "cpf_paginated")
 	opts := options.Find().
 		SetSkip(int64(skip)).
 		SetLimit(int64(perPage)).
 		SetSort(bson.D{{Key: "data_inicio", Value: -1}}) // Sort by data_inicio descending (newest first)
 
-	cursor, err := config.MongoDB.Collection(config.AppConfig.MaintenanceRequestCollection).Find(ctx, bson.M{"cpf": cpf}, opts)
+	cursor, err := config.MongoDB.Collection(collectionName).Find(ctx, cpfFilter, opts)
 	if err != nil {
 		utils.RecordErrorInSpan(findSpan, err, map[string]interface{}{
-			"db.collection": config.AppConfig.MaintenanceRequestCollection,
-			"db.filter":     "cpf",
+			"db.collection": collectionName,
+			"db.filter":     cpfFilterField,
 			"db.skip":       skip,
 			"db.limit":      perPage,
 		})
@@ -3542,6 +3556,7 @@ func GetMaintenanceRequests(c *gin.Context) {
 	totalDuration := time.Since(startTime)
 	logger.Debug("GetMaintenanceRequests completed",
 		observability.CPFField(cpf),
+		zap.String("maintenance_request_source", source),
 		zap.Int("page", page),
 		zap.Int("per_page", perPage),
 		zap.Int("total_count", int(total)),

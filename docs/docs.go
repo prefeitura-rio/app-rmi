@@ -3523,7 +3523,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado individual.",
+                "description": "Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado; a resposta expõe protocolos[] e, na transição, também o escalar protocolo (preenchido quando há exatamente um código).",
                 "consumes": [
                     "application/json"
                 ],
@@ -5740,7 +5740,7 @@ const docTemplate = `{
         },
         "/maintenance-request/{protocolo}": {
             "get": {
-                "description": "Consulta pública dos chamados históricos do 1746/SGRC de um protocolo (um protocolo pode ter mais de um chamado). Sem autenticação, ou com o JWT de outra pessoa, a resposta traz categoria, tipo, status, datas, bairro, andamentos públicos (fl_publico = 1) e loaded_at, e nunca CPF, descrição nem logradouro. Com um JWT do Keycloak de assinatura válida cujo preferred_username é o CPF do chamado, o chamado vem com titular = true, logradouro e descrição. Token inválido, expirado ou não verificável é tratado como anônimo.",
+                "description": "Consulta pública dos chamados históricos do 1746/SGRC de um protocolo (um protocolo pode ter mais de um chamado; cada chamado expõe protocolos[]). Sem autenticação, ou com o JWT de outra pessoa, a resposta traz categoria, tipo, status, datas, bairro, andamentos públicos e loaded_at, e nunca CPF, descrição, logradouro nem número. Com um JWT do Keycloak de assinatura válida cujo preferred_username é o CPF do chamado, o chamado vem com titular = true, logradouro e descrição. Token inválido, expirado ou não verificável é tratado como anônimo. Ordenação obrigatória por data_inicio DESC.",
                 "produces": [
                     "application/json"
                 ],
@@ -10041,6 +10041,9 @@ const docTemplate = `{
         "models.MaintenanceRequest": {
             "type": "object",
             "properties": {
+                "bairro": {
+                    "type": "string"
+                },
                 "categoria": {
                     "type": "string"
                 },
@@ -10060,27 +10063,38 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "endereco": {
-                    "description": "Pre-built address string",
                     "type": "string"
                 },
                 "id": {
                     "type": "string"
                 },
                 "id_chamado": {
-                    "description": "Maps from MongoDB \"id\" field",
                     "type": "string"
                 },
                 "indicador": {
                     "type": "boolean"
                 },
+                "logradouro": {
+                    "type": "string"
+                },
                 "nome_unidade_organizacional": {
+                    "type": "string"
+                },
+                "numero": {
                     "type": "string"
                 },
                 "origem_ocorrencia": {
                     "type": "string"
                 },
                 "protocolo": {
+                    "description": "Protocolo is kept during the SGRC transition for consumers that still read the\nscalar field. It is set when Protocolos has exactly one code; otherwise \"\".",
                     "type": "string"
+                },
+                "protocolos": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "status": {
                     "type": "string"
@@ -10738,8 +10752,11 @@ const docTemplate = `{
                 "origem_ocorrencia": {
                     "type": "string"
                 },
-                "protocolo": {
-                    "type": "string"
+                "protocolos": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "status": {
                     "type": "string"

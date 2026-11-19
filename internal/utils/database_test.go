@@ -1696,29 +1696,32 @@ func TestInvalidateCitizenCache_Success(t *testing.T) {
 	ctx := context.Background()
 	cpf := "11122233344"
 
-	// Set up cache entries
+	// Set up cache entries (maintenance keys include source + pagination).
 	citizenKey := fmt.Sprintf("citizen:%s", cpf)
 	walletKey := fmt.Sprintf("citizen_wallet:%s", cpf)
-	maintenanceKey := fmt.Sprintf("maintenance_requests:%s", cpf)
+	maintenanceLegacyKey := fmt.Sprintf("maintenance_requests:legacy:%s:page_1_per_10", cpf)
+	maintenanceSGRCKey := fmt.Sprintf("maintenance_requests:sgrc:%s:page_1_per_10", cpf)
 
 	err := config.Redis.Set(ctx, citizenKey, "citizen_data", 0).Err()
 	require.NoError(t, err)
 	err = config.Redis.Set(ctx, walletKey, "wallet_data", 0).Err()
 	require.NoError(t, err)
-	err = config.Redis.Set(ctx, maintenanceKey, "maintenance_data", 0).Err()
+	err = config.Redis.Set(ctx, maintenanceLegacyKey, "maintenance_data", 0).Err()
+	require.NoError(t, err)
+	err = config.Redis.Set(ctx, maintenanceSGRCKey, "maintenance_data_sgrc", 0).Err()
 	require.NoError(t, err)
 
 	// Verify keys exist
-	exists, err := config.Redis.Exists(ctx, citizenKey, walletKey, maintenanceKey).Result()
+	exists, err := config.Redis.Exists(ctx, citizenKey, walletKey, maintenanceLegacyKey, maintenanceSGRCKey).Result()
 	require.NoError(t, err)
-	assert.Equal(t, int64(3), exists, "All cache keys should exist")
+	assert.Equal(t, int64(4), exists, "All cache keys should exist")
 
 	// Invalidate cache
 	err = InvalidateCitizenCache(ctx, cpf)
 	require.NoError(t, err, "InvalidateCitizenCache should succeed")
 
 	// Verify keys were deleted
-	exists, err = config.Redis.Exists(ctx, citizenKey, walletKey, maintenanceKey).Result()
+	exists, err = config.Redis.Exists(ctx, citizenKey, walletKey, maintenanceLegacyKey, maintenanceSGRCKey).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), exists, "All cache keys should be deleted")
 }

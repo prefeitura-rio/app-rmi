@@ -54,7 +54,7 @@ func NormalizeProtocoloSGRC(raw string) (string, bool) {
 
 // GetMaintenanceRequestByProtocolo godoc
 // @Summary Consultar chamado do 1746 (SGRC) por protocolo
-// @Description Consulta pública dos chamados históricos do 1746/SGRC de um protocolo (um protocolo pode ter mais de um chamado). Sem autenticação, ou com o JWT de outra pessoa, a resposta traz categoria, tipo, status, datas, bairro, andamentos públicos (fl_publico = 1) e loaded_at, e nunca CPF, descrição nem logradouro. Com um JWT do Keycloak de assinatura válida cujo preferred_username é o CPF do chamado, o chamado vem com titular = true, logradouro e descrição. Token inválido, expirado ou não verificável é tratado como anônimo.
+// @Description Consulta pública dos chamados históricos do 1746/SGRC de um protocolo (um protocolo pode ter mais de um chamado; cada chamado expõe protocolos[]). Sem autenticação, ou com o JWT de outra pessoa, a resposta traz categoria, tipo, status, datas, bairro, andamentos públicos e loaded_at, e nunca CPF, descrição, logradouro nem número. Com um JWT do Keycloak de assinatura válida cujo preferred_username é o CPF do chamado, o chamado vem com titular = true, logradouro e descrição. Token inválido, expirado ou não verificável é tratado como anônimo. Ordenação obrigatória por data_inicio DESC.
 // @Tags maintenance-request
 // @Produce json
 // @Param protocolo path string true "Protocolo do SGRC (formato RIO-12345678-9)"
@@ -74,7 +74,11 @@ func GetMaintenanceRequestByProtocolo(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid protocolo format (expected RIO-12345678-9)"})
 		return
 	}
-	span.SetAttributes(attribute.String("operation", "get_maintenance_request_by_protocolo"))
+	source := config.AppConfig.ActiveMaintenanceRequestSource()
+	span.SetAttributes(
+		attribute.String("operation", "get_maintenance_request_by_protocolo"),
+		attribute.String("maintenance_request.source", source),
+	)
 
 	docs, err := findMaintenanceRequestsByProtocolo(ctx, protocolo)
 	if err != nil {
@@ -125,7 +129,9 @@ func verifiedCallerCPF(ctx context.Context, authHeader string) string {
 }
 
 func findMaintenanceRequestsByProtocolo(ctx context.Context, protocolo string) ([]models.MaintenanceRequestProtocolDocument, error) {
-	cacheKey := fmt.Sprintf("maintenance_request:protocolo:%s", protocolo)
+	source := config.AppConfig.ActiveMaintenanceRequestSource()
+	collectionName := config.AppConfig.ActiveMaintenanceRequestCollection()
+	cacheKey := fmt.Sprintf("maintenance_request:%s:protocolo:%s", source, protocolo)
 	if cached, err := config.Redis.Get(ctx, cacheKey).Result(); err == nil {
 		var docs []models.MaintenanceRequestProtocolDocument
 		if err := json.Unmarshal([]byte(cached), &docs); err == nil {
@@ -134,11 +140,16 @@ func findMaintenanceRequestsByProtocolo(ctx context.Context, protocolo string) (
 		}
 	}
 
+	filter := bson.M{"protocolo": protocolo}
+	if config.AppConfig.MaintenanceRequestSGRCEnabled {
+		// SGRC: protocolos is RECORD REPEATED {codigo_protocolo, cpf}
+		filter = bson.M{"protocolos.codigo_protocolo": protocolo}
+	}
 	opts := options.Find().
 		SetLimit(maxChamadosPerProtocolo).
 		SetSort(bson.D{{Key: "data_inicio", Value: -1}})
-	cursor, err := config.MongoDB.Collection(config.AppConfig.MaintenanceRequestCollection).
-		Find(ctx, bson.M{"protocolo": protocolo}, opts)
+	cursor, err := config.MongoDB.Collection(collectionName).
+		Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
 	}

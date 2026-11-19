@@ -366,6 +366,7 @@ func TestLoadConfig_Success(t *testing.T) {
 	os.Setenv("MONGODB_DATABASE", "test_db")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -390,6 +391,7 @@ func TestLoadConfig_Success(t *testing.T) {
 		os.Unsetenv("MONGODB_DATABASE")
 		os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 		os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 		os.Unsetenv("MONGODB_PET_COLLECTION")
 		os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
@@ -430,6 +432,16 @@ func TestLoadConfig_Success(t *testing.T) {
 		t.Errorf("AppConfig.CitizenCollection = %v, want citizens", AppConfig.CitizenCollection)
 	}
 
+	if AppConfig.MaintenanceRequestSGRCCollection != "maintenance_requests_sgrc" {
+		t.Errorf("AppConfig.MaintenanceRequestSGRCCollection = %v, want maintenance_requests_sgrc", AppConfig.MaintenanceRequestSGRCCollection)
+	}
+	if AppConfig.MaintenanceRequestSGRCEnabled {
+		t.Error("AppConfig.MaintenanceRequestSGRCEnabled default = true, want false")
+	}
+	if got := AppConfig.ActiveMaintenanceRequestCollection(); got != "maintenance_requests" {
+		t.Errorf("ActiveMaintenanceRequestCollection() = %v, want maintenance_requests", got)
+	}
+
 	if !reflect.DeepEqual(AppConfig.CORSAllowedOrigins, DefaultCORSAllowedOrigins) {
 		t.Errorf("AppConfig.CORSAllowedOrigins = %v, want DefaultCORSAllowedOrigins %v when CORS_ALLOWED_ORIGINS unset", AppConfig.CORSAllowedOrigins, DefaultCORSAllowedOrigins)
 	}
@@ -446,6 +458,7 @@ func TestLoadConfig_CORSAllowedOrigins(t *testing.T) {
 	os.Setenv("PORT", "8080")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -464,6 +477,7 @@ func TestLoadConfig_CORSAllowedOrigins(t *testing.T) {
 		os.Unsetenv("PORT")
 		os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 		os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 		os.Unsetenv("MONGODB_PET_COLLECTION")
 		os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
@@ -622,17 +636,133 @@ func TestLoadConfig_MissingMaintenanceRequestCollection(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_DefaultMaintenanceRequestSGRCCollection(t *testing.T) {
+	originalConfig := AppConfig
+	defer func() { AppConfig = originalConfig }()
+
+	os.Setenv("PORT", "8080")
+	os.Setenv("ENVIRONMENT", "test")
+	os.Setenv("MONGODB_URI", "mongodb://localhost:27017")
+	os.Setenv("MONGODB_DATABASE", "test_db")
+	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
+	os.Setenv("MONGODB_PET_COLLECTION", "pets")
+	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
+	os.Setenv("MONGODB_CHAT_MEMORY_COLLECTION", "chat_memory")
+	os.Setenv("MONGODB_DEPARTMENT_COLLECTION", "departments")
+	os.Setenv("MONGODB_CNAE_COLLECTION", "cnae")
+	os.Setenv("REDIS_URI", "localhost:6379")
+	os.Setenv("REDIS_DB", "0")
+	os.Setenv("REDIS_TTL", "60m")
+	os.Setenv("WHATSAPP_API_BASE_URL", "https://example.com")
+	os.Setenv("WHATSAPP_API_USERNAME", "user")
+	os.Setenv("WHATSAPP_API_PASSWORD", "pass")
+	os.Setenv("WHATSAPP_HSM_ID", "hsm")
+	os.Setenv("WHATSAPP_COST_CENTER_ID", "cc")
+	os.Setenv("WHATSAPP_CAMPAIGN_NAME", "campaign")
+	os.Setenv("CF_LOOKUP_ENABLED", "false")
+	os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
+	defer func() {
+		os.Unsetenv("PORT")
+		os.Unsetenv("ENVIRONMENT")
+		os.Unsetenv("MONGODB_URI")
+		os.Unsetenv("MONGODB_DATABASE")
+		os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
+		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+		os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
+		os.Unsetenv("MONGODB_PET_COLLECTION")
+		os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
+		os.Unsetenv("MONGODB_CHAT_MEMORY_COLLECTION")
+		os.Unsetenv("MONGODB_DEPARTMENT_COLLECTION")
+		os.Unsetenv("MONGODB_CNAE_COLLECTION")
+		os.Unsetenv("REDIS_URI")
+		os.Unsetenv("REDIS_DB")
+		os.Unsetenv("REDIS_TTL")
+		os.Unsetenv("WHATSAPP_API_BASE_URL")
+		os.Unsetenv("WHATSAPP_API_USERNAME")
+		os.Unsetenv("WHATSAPP_API_PASSWORD")
+		os.Unsetenv("WHATSAPP_HSM_ID")
+		os.Unsetenv("WHATSAPP_COST_CENTER_ID")
+		os.Unsetenv("WHATSAPP_CAMPAIGN_NAME")
+		os.Unsetenv("CF_LOOKUP_ENABLED")
+	}()
+
+	if err := LoadConfig(); err != nil {
+		t.Fatalf("LoadConfig() with unset SGRC collection = %v, want nil (default)", err)
+	}
+	if AppConfig.MaintenanceRequestSGRCCollection != "maintenance_requests_sgrc" {
+		t.Errorf("MaintenanceRequestSGRCCollection = %q, want maintenance_requests_sgrc default", AppConfig.MaintenanceRequestSGRCCollection)
+	}
+	if AppConfig.MaintenanceRequestSGRCEnabled {
+		t.Error("MaintenanceRequestSGRCEnabled default = true, want false")
+	}
+}
+
+func TestLoadConfig_InvalidMaintenanceRequestSGRCEnabled(t *testing.T) {
+	os.Setenv("PORT", "8080")
+	os.Setenv("REDIS_DB", "0")
+	os.Setenv("REDIS_TTL", "60m")
+	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED", "maybe")
+	defer os.Unsetenv("PORT")
+	defer os.Unsetenv("REDIS_DB")
+	defer os.Unsetenv("REDIS_TTL")
+	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED")
+
+	err := LoadConfig()
+	if err == nil {
+		t.Error("LoadConfig() should return error for invalid MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED")
+	}
+	if !strings.Contains(err.Error(), "MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED") {
+		t.Errorf("LoadConfig() error = %v, want error containing 'MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED'", err)
+	}
+}
+
+func TestActiveMaintenanceRequestCollection_SourceSelection(t *testing.T) {
+	legacy := &Config{
+		MaintenanceRequestCollection:     "maintenance_requests",
+		MaintenanceRequestSGRCCollection: "maintenance_requests_sgrc",
+		MaintenanceRequestSGRCEnabled:    false,
+	}
+	if got := legacy.ActiveMaintenanceRequestCollection(); got != "maintenance_requests" {
+		t.Errorf("flag off collection = %q, want maintenance_requests", got)
+	}
+	if got := legacy.ActiveMaintenanceRequestSource(); got != MaintenanceRequestSourceLegacy {
+		t.Errorf("flag off source = %q, want %q", got, MaintenanceRequestSourceLegacy)
+	}
+
+	sgrc := &Config{
+		MaintenanceRequestCollection:     "maintenance_requests",
+		MaintenanceRequestSGRCCollection: "maintenance_requests_sgrc",
+		MaintenanceRequestSGRCEnabled:    true,
+	}
+	if got := sgrc.ActiveMaintenanceRequestCollection(); got != "maintenance_requests_sgrc" {
+		t.Errorf("flag on collection = %q, want maintenance_requests_sgrc", got)
+	}
+	if got := sgrc.ActiveMaintenanceRequestSource(); got != MaintenanceRequestSourceSGRC {
+		t.Errorf("flag on source = %q, want %q", got, MaintenanceRequestSourceSGRC)
+	}
+}
+
 func TestLoadConfig_MissingLegalEntityCollection(t *testing.T) {
 	os.Setenv("PORT", "8080")
 	os.Setenv("REDIS_DB", "0")
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	defer os.Unsetenv("PORT")
 	defer os.Unsetenv("REDIS_DB")
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 
 	err := LoadConfig()
 	if err == nil {
@@ -650,12 +780,14 @@ func TestLoadConfig_MissingPetCollection(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	defer os.Unsetenv("PORT")
 	defer os.Unsetenv("REDIS_DB")
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 	defer os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 
 	err := LoadConfig()
@@ -674,6 +806,7 @@ func TestLoadConfig_MissingPetsSelfRegisteredCollection(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	defer os.Unsetenv("PORT")
@@ -681,6 +814,7 @@ func TestLoadConfig_MissingPetsSelfRegisteredCollection(t *testing.T) {
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 	defer os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 	defer os.Unsetenv("MONGODB_PET_COLLECTION")
 
@@ -700,6 +834,7 @@ func TestLoadConfig_MissingChatMemoryCollection(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -708,6 +843,7 @@ func TestLoadConfig_MissingChatMemoryCollection(t *testing.T) {
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 	defer os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 	defer os.Unsetenv("MONGODB_PET_COLLECTION")
 	defer os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
@@ -728,6 +864,7 @@ func TestLoadConfig_MissingDepartmentCollection(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -737,6 +874,7 @@ func TestLoadConfig_MissingDepartmentCollection(t *testing.T) {
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 	defer os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 	defer os.Unsetenv("MONGODB_PET_COLLECTION")
 	defer os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
@@ -758,6 +896,7 @@ func TestLoadConfig_MissingCNAECollection(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -768,6 +907,7 @@ func TestLoadConfig_MissingCNAECollection(t *testing.T) {
 	defer os.Unsetenv("REDIS_TTL")
 	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 	defer os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 	defer os.Unsetenv("MONGODB_PET_COLLECTION")
 	defer os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
@@ -1247,6 +1387,7 @@ func setupMinimalEnv(t *testing.T) {
 	os.Setenv("REDIS_TTL", "60m")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
 	os.Setenv("MONGODB_PET_COLLECTION", "pets")
 	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
@@ -1267,6 +1408,7 @@ func setupMinimalEnv(t *testing.T) {
 		os.Unsetenv("REDIS_TTL")
 		os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
 		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
 		os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
 		os.Unsetenv("MONGODB_PET_COLLECTION")
 		os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")

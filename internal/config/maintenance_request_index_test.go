@@ -29,15 +29,30 @@ func TestEnsureMaintenanceRequestIndex_CreatesCPFAndProtocoloIndexes(t *testing.
 	prevDB, prevConfig := MongoDB, AppConfig
 	t.Cleanup(func() { MongoDB, AppConfig = prevDB, prevConfig })
 
-	collectionName := "maintenance_requests_index_test"
+	legacyName := "maintenance_requests_index_test"
+	sgrcName := "maintenance_requests_sgrc_index_test"
 	MongoDB = client.Database("rmi_test")
-	AppConfig = &Config{MaintenanceRequestCollection: collectionName}
-	coll := MongoDB.Collection(collectionName)
-	_ = coll.Drop(ctx)
-	t.Cleanup(func() { _ = coll.Drop(context.Background()) })
+	AppConfig = &Config{
+		MaintenanceRequestCollection:     legacyName,
+		MaintenanceRequestSGRCCollection: sgrcName,
+	}
+	legacyColl := MongoDB.Collection(legacyName)
+	sgrcColl := MongoDB.Collection(sgrcName)
+	_ = legacyColl.Drop(ctx)
+	_ = sgrcColl.Drop(ctx)
+	t.Cleanup(func() {
+		_ = legacyColl.Drop(context.Background())
+		_ = sgrcColl.Drop(context.Background())
+	})
 
-	if _, err := coll.InsertOne(ctx, bson.M{"cpf": "11144477735", "protocolo": "RIO-12345678-9"}); err != nil {
-		t.Fatalf("seed: %v", err)
+	if _, err := legacyColl.InsertOne(ctx, bson.M{"cpf": "11144477735", "protocolo": "RIO-12345678-9"}); err != nil {
+		t.Fatalf("seed legacy: %v", err)
+	}
+	if _, err := sgrcColl.InsertOne(ctx, bson.M{
+		"id_chamado": int64(1),
+		"protocolos": []bson.M{{"codigo_protocolo": "RIO-12345678-9", "cpf": "11144477735"}},
+	}); err != nil {
+		t.Fatalf("seed sgrc: %v", err)
 	}
 
 	for run := 1; run <= 2; run++ {
@@ -46,34 +61,45 @@ func TestEnsureMaintenanceRequestIndex_CreatesCPFAndProtocoloIndexes(t *testing.
 		}
 	}
 
+	assertNonUniqueIndex(t, legacyColl, ctx, "cpf_1", "cpf")
+	assertNonUniqueIndex(t, legacyColl, ctx, "protocolo_1", "protocolo")
+	assertNonUniqueIndex(t, sgrcColl, ctx, "protocolos.cpf_1", "protocolos.cpf")
+	assertNonUniqueIndex(t, sgrcColl, ctx, "protocolos.codigo_protocolo_1", "protocolos.codigo_protocolo")
+
+	if _, err := legacyColl.InsertOne(ctx, bson.M{"cpf": "11144477735", "protocolo": "RIO-12345678-9"}); err != nil {
+		t.Fatalf("second chamado of the same protocolo rejected on legacy: %v", err)
+	}
+	if _, err := sgrcColl.InsertOne(ctx, bson.M{
+		"id_chamado": int64(2),
+		"protocolos": []bson.M{{"codigo_protocolo": "RIO-12345678-9", "cpf": "22233344456"}},
+	}); err != nil {
+		t.Fatalf("second chamado of the same protocolo rejected on sgrc: %v", err)
+	}
+}
+
+func assertNonUniqueIndex(t *testing.T, coll *mongo.Collection, ctx context.Context, name, field string) {
+	t.Helper()
 	cursor, err := coll.Indexes().List(ctx)
 	if err != nil {
-		t.Fatalf("list indexes: %v", err)
+		t.Fatalf("list indexes on %s: %v", coll.Name(), err)
 	}
 	var indexes []bson.M
 	if err := cursor.All(ctx, &indexes); err != nil {
-		t.Fatalf("decode indexes: %v", err)
+		t.Fatalf("decode indexes on %s: %v", coll.Name(), err)
 	}
-
 	found := map[string]bson.M{}
 	for _, idx := range indexes {
 		found[idx["name"].(string)] = idx
 	}
-	for name, field := range map[string]string{"cpf_1": "cpf", "protocolo_1": "protocolo"} {
-		idx, ok := found[name]
-		if !ok {
-			t.Fatalf("index %s missing; indexes = %v", name, indexes)
-		}
-		key, _ := idx["key"].(bson.M)
-		if _, ok := key[field]; !ok || len(key) != 1 {
-			t.Fatalf("index %s key = %v, want {%s: 1}", name, key, field)
-		}
-		if unique, _ := idx["unique"].(bool); unique {
-			t.Fatalf("index %s must not be unique: a protocolo may group several chamados", name)
-		}
+	idx, ok := found[name]
+	if !ok {
+		t.Fatalf("index %s missing on %s; indexes = %v", name, coll.Name(), indexes)
 	}
-
-	if _, err := coll.InsertOne(ctx, bson.M{"cpf": "11144477735", "protocolo": "RIO-12345678-9"}); err != nil {
-		t.Fatalf("second chamado of the same protocolo rejected: %v", err)
+	key, _ := idx["key"].(bson.M)
+	if _, ok := key[field]; !ok || len(key) != 1 {
+		t.Fatalf("index %s key = %v, want {%s: 1}", name, key, field)
+	}
+	if unique, _ := idx["unique"].(bool); unique {
+		t.Fatalf("index %s must not be unique: a protocolo may group several chamados", name)
 	}
 }

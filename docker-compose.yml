@@ -15,6 +15,8 @@ services:
       - REDIS_URI=redis:6379
       - MONGODB_CITIZEN_COLLECTION=citizens
       - MONGODB_MAINTENANCE_REQUEST_COLLECTION=maintenance_requests
+      - MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION=maintenance_requests_sgrc
+      - MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED=false
       - WHATSAPP_ENABLED=false
       - WHATSAPP_API_BASE_URL=http://localhost:8080
       - WHATSAPP_API_USERNAME=test
@@ -52,6 +54,8 @@ services:
       - REDIS_URI=redis:6379
       - MONGODB_CITIZEN_COLLECTION=citizens
       - MONGODB_MAINTENANCE_REQUEST_COLLECTION=maintenance_requests
+      - MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION=maintenance_requests_sgrc
+      - MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED=false
       - WHATSAPP_ENABLED=false
       - WHATSAPP_API_BASE_URL=http://localhost:8080
       - WHATSAPP_API_USERNAME=test

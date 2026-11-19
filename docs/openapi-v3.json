@@ -3410,6 +3410,106 @@
         }
       }
     },
+    "/citizen/{cpf}/birth-date": {
+      "put": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Atualiza ou define a data de nascimento autodeclarada do cidadão. Bloqueado se já houver data oficial.",
+        "tags": [
+          "citizen"
+        ],
+        "summary": "Atualizar data de nascimento autodeclarada",
+        "parameters": [
+          {
+            "description": "CPF do cidadão (11 dígitos)",
+            "name": "cpf",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 11
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/models.SelfDeclaredBirthDateInput"
+              }
+            }
+          },
+          "description": "Data de nascimento autodeclarada (YYYY-MM-DD)",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Data de nascimento atualizada com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Formato de CPF ou data inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado - permissões insuficientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Data de nascimento oficial não pode ser alterada por autodeclaração",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/citizen/{cpf}/disability": {
       "put": {
         "security": [
@@ -4451,7 +4551,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado individual.",
+        "description": "Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado; a resposta expõe protocolos[] e, na transição, também o escalar protocolo (preenchido quando há exatamente um código).",
         "tags": [
           "citizen"
         ],
@@ -7312,7 +7412,7 @@
     },
     "/maintenance-request/{protocolo}": {
       "get": {
-        "description": "Consulta pública dos chamados históricos do 1746/SGRC de um protocolo (um protocolo pode ter mais de um chamado). Sem autenticação, ou com o JWT de outra pessoa, a resposta traz categoria, tipo, status, datas, bairro, andamentos públicos (fl_publico = 1) e loaded_at, e nunca CPF, descrição nem logradouro. Com um JWT do Keycloak de assinatura válida cujo preferred_username é o CPF do chamado, o chamado vem com titular = true, logradouro e descrição. Token inválido, expirado ou não verificável é tratado como anônimo.",
+        "description": "Consulta pública dos chamados históricos do 1746/SGRC de um protocolo (um protocolo pode ter mais de um chamado; cada chamado expõe protocolos[]). Sem autenticação, ou com o JWT de outra pessoa, a resposta traz categoria, tipo, status, datas, bairro, andamentos públicos e loaded_at, e nunca CPF, descrição, logradouro nem número. Com um JWT do Keycloak de assinatura válida cujo preferred_username é o CPF do chamado, o chamado vem com titular = true, logradouro e descrição. Token inválido, expirado ou não verificável é tratado como anônimo. Ordenação obrigatória por data_inicio DESC.",
         "tags": [
           "maintenance-request"
         ],
@@ -7377,7 +7477,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/memory/{phone_number}": {
@@ -8118,6 +8223,11 @@
     },
     "/phone/{phone_number}/beta-status": {
       "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Verifica se um número de telefone está na whitelist beta (com cache)",
         "tags": [
           "Beta Whitelist"
@@ -8185,12 +8295,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/phone/{phone_number}/bind": {
@@ -9250,6 +9355,11 @@
     },
     "/phone/{phone_number}/status": {
       "get": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Obtém o status de um número de telefone (quarentena, CPF vinculado, opt-in/opt-out, etc.)",
         "tags": [
           "phone"
@@ -9327,12 +9437,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/phone/{phone_number}/validate-registration": {
@@ -9450,7 +9555,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Proxy para GET /api/private/anonimizacao/{numeroSolicitacao}.",
+        "description": "Proxy GET /api/private/anonimizacao/{numeroSolicitacao}. 403 se não houver prova de posse: CPF no payload do Salesforce deve ser o do caller; se o upstream omitir CPF, só quem criou a solicitação neste API (POST anonimizar) consegue ler.",
         "tags": [
           "salesforce"
         ],
@@ -9479,6 +9584,16 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Solicitação não pertence ao usuário autenticado",
             "content": {
               "application/json": {
                 "schema": {
@@ -9660,7 +9775,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Proxy para POST /api/private/cidadao/{cpf}/anonimizar (assíncrono). 202 enfileirado; 409 se já houver solicitação aberta.",
+        "description": "Proxy POST /api/private/cidadao/{cpf}/anonimizar (assíncrono). 202 enfileirado; 409 se já houver solicitação aberta. Em 202 e 409 o RMI associa numeroSolicitacao ao CPF autenticado para o polling.",
         "tags": [
           "salesforce"
         ],
@@ -9747,7 +9862,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Proxy para PATCH /api/private/cidadao/{cpf}/consentimento. Encaminha o JWT do usuário. categoria deve ser valor de picklist SF (ex. PREF_Lembrete_Pagamento). motivo obrigatório quando acao=optout.",
+        "description": "Proxy PATCH /api/private/cidadao/{cpf}/consentimento com o JWT do usuário. categoria é picklist SF (ex. PREF_Lembrete_Pagamento). motivo obrigatório se acao=optout. Espelho no RMI grava só salesforce_consentimentos; não altera opt_in nem category_opt_ins.",
         "tags": [
           "salesforce"
         ],
@@ -9776,7 +9891,7 @@
         },
         "responses": {
           "200": {
-            "description": "Consentimento atualizado (sem corpo)"
+            "description": "Consentimento atualizado (sem corpo). 409 do Salesforce (já no status) é tratado como 200."
           },
           "400": {
             "description": "Bad Request",
@@ -9810,16 +9925,6 @@
           },
           "404": {
             "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/clients.SalesforceErrorBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -9940,6 +10045,11 @@
     },
     "/validate/email": {
       "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Valida formato e estrutura de endereços de email, retornando informações detalhadas sobre o endereço quando válido.",
         "tags": [
           "validation"
@@ -10007,16 +10117,16 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/validate/phone": {
       "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Valida DDI, DDD e número para qualquer telefone internacional.",
         "tags": [
           "validation"
@@ -10084,12 +10194,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/webhooks/salesforce/cidadao": {
@@ -10156,6 +10261,16 @@
               }
             }
           },
+          "500": {
+            "description": "Falha ao enfileirar salesforce_sync (Redis)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Integração Salesforce não configurada",
             "content": {
@@ -10196,7 +10311,7 @@
       "name": "health"
     },
     {
-      "description": "Integração Salesforce Person Account: login sync, webhook inbound (delta), proxies CRM e push assíncrono RMI→SF via sync worker",
+      "description": "Integração Salesforce Person Account: login sync, webhook inbound (delta em self_declared, sem gravar citizens), proxies CRM e push assíncrono RMI→SF via sync worker",
       "name": "salesforce"
     }
   ],
@@ -10982,12 +11097,14 @@
             "type": "string"
           },
           "consentimento": {
+            "description": "Só salesforce_consentimentos; null limpa o mapa SF (não mexe no opt-in RMI)",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/clients.SalesforceConsentimento"
             }
           },
           "dataNascimento": {
+            "description": "Ignorado: não altera a coleção citizens",
             "type": "string"
           },
           "deficiencia": {
@@ -11018,12 +11135,14 @@
             "type": "string"
           },
           "nome": {
+            "description": "Ignorado: não altera a coleção citizens",
             "type": "string"
           },
           "nomeExibicao": {
             "type": "string"
           },
           "nomeSocial": {
+            "description": "Ignorado: não altera a coleção citizens",
             "type": "string"
           },
           "passaporte": {
@@ -12353,6 +12472,9 @@
       "models.MaintenanceRequest": {
         "type": "object",
         "properties": {
+          "bairro": {
+            "type": "string"
+          },
           "categoria": {
             "type": "string"
           },
@@ -12372,27 +12494,38 @@
             "type": "string"
           },
           "endereco": {
-            "description": "Pre-built address string",
             "type": "string"
           },
           "id": {
             "type": "string"
           },
           "id_chamado": {
-            "description": "Maps from MongoDB \"id\" field",
             "type": "string"
           },
           "indicador": {
             "type": "boolean"
           },
+          "logradouro": {
+            "type": "string"
+          },
           "nome_unidade_organizacional": {
+            "type": "string"
+          },
+          "numero": {
             "type": "string"
           },
           "origem_ocorrencia": {
             "type": "string"
           },
           "protocolo": {
+            "description": "Protocolo is kept during the SGRC transition for consumers that still read the\nscalar field. It is set when Protocolos has exactly one code; otherwise \"\".",
             "type": "string"
+          },
+          "protocolos": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "status": {
             "type": "string"
@@ -12423,10 +12556,16 @@
           "municipio_id": {
             "type": "string"
           },
+          "origem": {
+            "type": "string"
+          },
           "pais": {
             "type": "string"
           },
           "pais_id": {
+            "type": "string"
+          },
+          "sistema": {
             "type": "string"
           },
           "uf": {
@@ -13044,8 +13183,11 @@
           "origem_ocorrencia": {
             "type": "string"
           },
-          "protocolo": {
-            "type": "string"
+          "protocolos": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "status": {
             "type": "string"
@@ -13295,6 +13437,17 @@
             "type": "string"
           },
           "tipo_logradouro": {
+            "type": "string"
+          }
+        }
+      },
+      "models.SelfDeclaredBirthDateInput": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string"
+          },
+          "valor": {
             "type": "string"
           }
         }

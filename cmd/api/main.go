@@ -143,6 +143,10 @@ func main() {
 	if config.AppConfig.JWTIssuerURL == "" {
 		observability.Logger().Warn("JWT_ISSUER_URL not set: GET /v1/maintenance-request/{protocolo} serves only the public view")
 	}
+	observability.Logger().Info("maintenance request read source selected",
+		zap.String("source", config.AppConfig.ActiveMaintenanceRequestSource()),
+		zap.Bool("sgrc_enabled", config.AppConfig.MaintenanceRequestSGRCEnabled),
+	)
 
 	// Initialize handlers
 	phoneHandlers := handlers.NewPhoneHandlers(observability.Logger(), phoneMappingService, configService)

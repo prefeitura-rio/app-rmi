@@ -30,6 +30,33 @@ func (s *BSONTimeString) UnmarshalBSONValue(t bsontype.Type, data []byte) error 
 	return nil
 }
 
+// BSONStringish decodes identifiers written as BSON string, integer or double into a string
+// (BigQuery INTEGER fields such as id_chamado / id_andamento often land as numbers in Mongo).
+type BSONStringish string
+
+// UnmarshalBSONValue implements bson.ValueUnmarshaler.
+func (s *BSONStringish) UnmarshalBSONValue(t bsontype.Type, data []byte) error {
+	raw := bson.RawValue{Type: t, Value: data}
+	switch t {
+	case bson.TypeNull, bson.TypeUndefined:
+		*s = ""
+	case bson.TypeString:
+		*s = BSONStringish(raw.StringValue())
+	case bson.TypeInt32:
+		*s = BSONStringish(strconv.FormatInt(int64(raw.Int32()), 10))
+	case bson.TypeInt64:
+		*s = BSONStringish(strconv.FormatInt(raw.Int64(), 10))
+	case bson.TypeDouble:
+		*s = BSONStringish(strconv.FormatInt(int64(raw.Double()), 10))
+	default:
+		return fmt.Errorf("unsupported BSON type %s for stringish id", t)
+	}
+	return nil
+}
+
+// String returns the decoded value.
+func (s BSONStringish) String() string { return string(s) }
+
 // BSONFlag decodes a 0/1 flag written as a BSON integer, double, boolean or string.
 // Anything other than 1 (or true) is unset, so an unexpected value never marks an entry public.
 type BSONFlag bool

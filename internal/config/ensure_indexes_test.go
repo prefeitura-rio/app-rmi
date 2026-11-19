@@ -33,36 +33,37 @@ var (
 // index tests, so they never touch the collections used by other packages.
 func indexTestCollections() *Config {
 	return &Config{
-		MongoDatabase:                  "rmi_test",
-		CitizenCollection:              "idx_test_citizens",
-		SelfDeclaredCollection:         "idx_test_self_declared",
-		PhoneVerificationCollection:    "idx_test_phone_verifications",
-		UserConfigCollection:           "idx_test_user_config",
-		MaintenanceRequestCollection:   "idx_test_maintenance_requests",
-		PhoneMappingCollection:         "idx_test_phone_mapping",
-		OptInHistoryCollection:         "idx_test_opt_in_history",
-		BetaGroupCollection:            "idx_test_beta_groups",
-		AuditLogsCollection:            "idx_test_audit_logs",
-		LegalEntityCollection:          "idx_test_legal_entities",
-		PetCollection:                  "idx_test_pets",
-		PetsSelfRegisteredCollection:   "idx_test_pets_self_registered",
-		ChatMemoryCollection:           "idx_test_chat_memory",
-		DepartmentCollection:           "idx_test_departments",
-		NotificationCategoryCollection: "idx_test_notification_categories",
-		CNAECollection:                 "idx_test_cnae",
-		CFLookupCollection:             "idx_test_cf_lookups",
-		MobilidadeVehicleCollection:    "idx_test_mobilidade_vehicles",
-		MobilidadeConductorCollection:  "idx_test_mobilidade_conductors",
-		MobilidadeBrandCollection:      "idx_test_mobilidade_brands",
-		MobilidadeModelCollection:      "idx_test_mobilidade_models",
-		IndexMaintenanceInterval:       time.Hour,
+		MongoDatabase:                    "rmi_test",
+		CitizenCollection:                "idx_test_citizens",
+		SelfDeclaredCollection:           "idx_test_self_declared",
+		PhoneVerificationCollection:      "idx_test_phone_verifications",
+		UserConfigCollection:             "idx_test_user_config",
+		MaintenanceRequestCollection:     "idx_test_maintenance_requests",
+		MaintenanceRequestSGRCCollection: "idx_test_maintenance_requests_sgrc",
+		PhoneMappingCollection:           "idx_test_phone_mapping",
+		OptInHistoryCollection:           "idx_test_opt_in_history",
+		BetaGroupCollection:              "idx_test_beta_groups",
+		AuditLogsCollection:              "idx_test_audit_logs",
+		LegalEntityCollection:            "idx_test_legal_entities",
+		PetCollection:                    "idx_test_pets",
+		PetsSelfRegisteredCollection:     "idx_test_pets_self_registered",
+		ChatMemoryCollection:             "idx_test_chat_memory",
+		DepartmentCollection:             "idx_test_departments",
+		NotificationCategoryCollection:   "idx_test_notification_categories",
+		CNAECollection:                   "idx_test_cnae",
+		CFLookupCollection:               "idx_test_cf_lookups",
+		MobilidadeVehicleCollection:      "idx_test_mobilidade_vehicles",
+		MobilidadeConductorCollection:    "idx_test_mobilidade_conductors",
+		MobilidadeBrandCollection:        "idx_test_mobilidade_brands",
+		MobilidadeModelCollection:        "idx_test_mobilidade_models",
+		IndexMaintenanceInterval:         time.Hour,
 	}
 }
 
 func indexTestCollectionNames(cfg *Config) []string {
 	return []string{
 		cfg.CitizenCollection, cfg.SelfDeclaredCollection, cfg.PhoneVerificationCollection,
-		cfg.UserConfigCollection, cfg.MaintenanceRequestCollection, cfg.PhoneMappingCollection,
+		cfg.UserConfigCollection, cfg.MaintenanceRequestCollection, cfg.MaintenanceRequestSGRCCollection, cfg.PhoneMappingCollection,
 		cfg.OptInHistoryCollection, cfg.BetaGroupCollection, cfg.AuditLogsCollection,
 		cfg.LegalEntityCollection, cfg.PetCollection, cfg.PetsSelfRegisteredCollection,
 		cfg.ChatMemoryCollection, cfg.DepartmentCollection, cfg.NotificationCategoryCollection,
@@ -192,6 +193,8 @@ func TestEnsureIndexes_CreatesRequiredIndexesIdempotently(t *testing.T) {
 	requireIndex(t, cfg.OptInHistoryCollection, "phone_number_1", false)
 	requireIndex(t, cfg.OptInHistoryCollection, "cpf_1", false)
 	requireIndex(t, cfg.MaintenanceRequestCollection, "protocolo_1", false)
+	requireIndex(t, cfg.MaintenanceRequestSGRCCollection, "protocolos.cpf_1", false)
+	requireIndex(t, cfg.MaintenanceRequestSGRCCollection, "protocolos.codigo_protocolo_1", false)
 	requireIndex(t, cfg.PetCollection, "idx_pets_cpf", false)
 	requireIndex(t, cfg.PetsSelfRegisteredCollection, "idx_self_registered_pets_cpf", false)
 	requireIndex(t, cfg.NotificationCategoryCollection, "idx_notification_category_active_order", false)
