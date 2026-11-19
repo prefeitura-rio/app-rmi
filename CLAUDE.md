@@ -106,7 +106,7 @@ just stop-deps        # Stop dependency containers
 
 ### Authentication & Security
 - **Keycloak Integration**: JWT token validation via middleware
-- **CORS allowlist**: `CORS_ALLOWED_ORIGINS` (comma-separated) via `middleware.CORS` — replaces open `cors.Default()`; unknown origins get no `Access-Control-*` headers (403 from gin-contrib/cors)
+- **CORS allowlist**: `middleware.CORS` with `config.DefaultCORSAllowedOrigins` (`https://pref.rio`, `https://admin.pref.rio`, `https://staging.app.dados.rio`, `https://admin.staging.app.dados.rio`); `CORS_ALLOWED_ORIGINS` (comma-separated) replaces the defaults, unset or blank keeps them — replaces open `cors.Default()`; unknown origins get no `Access-Control-*` headers (403 from gin-contrib/cors)
 - **Route Protection**: Protected citizen data; `GET /v1/phone/{phone}/status`, `GET /v1/phone/{phone}/beta-status`, `POST /v1/validate/phone` and `POST /v1/validate/email` also require a JWT (`registerPhoneLookupRoutes` in `cmd/api/main.go`), as the gateway does. Public without token: health, `/v1/config/*`, `/v1/citizen/*/options`, `GET /v1/avatars`, departments, CNAE, notification categories and `GET /v1/maintenance-request/{protocolo}`
 - **Audit Trail**: Comprehensive logging with async workers
 - **Input Validation**: CPF, phone number, data format validation
