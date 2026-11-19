@@ -374,7 +374,7 @@ func TestOptIn_NewPhone(t *testing.T) {
 	ctx := context.Background()
 
 	// Test opt-in for new phone
-	response, err := service.OptIn(ctx, "+5521987651234", "03561350712", "whatsapp")
+	response, err := service.OptIn(ctx, "+5521987651234", "03561350712", "whatsapp", false)
 	if err != nil {
 		t.Errorf("OptIn() error = %v, want nil", err)
 	}
@@ -426,7 +426,7 @@ func TestOptIn_AlreadyOptedIn(t *testing.T) {
 	_, _ = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(ctx, mapping)
 
 	// Try to opt-in again with same CPF
-	response, err := service.OptIn(ctx, "+5521987651235", "03561350712", "whatsapp")
+	response, err := service.OptIn(ctx, "+5521987651235", "03561350712", "whatsapp", false)
 	if err != nil {
 		t.Errorf("OptIn() error = %v, want nil", err)
 	}

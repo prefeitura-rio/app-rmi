@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -360,7 +361,7 @@ func (h *PhoneHandlers) ValidateRegistration(c *gin.Context) {
 // @Failure 400 {object} ErrorResponse "Formato de telefone inválido ou dados de opt-in incorretos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
-// @Failure 409 {object} ErrorResponse "Conflito - telefone já possui opt-in ativo"
+// @Failure 409 {object} ErrorResponse "Conflito - telefone já vinculado (ativo) a outro CPF; só admin ou service account confiável reatribui"
 // @Failure 422 {object} ErrorResponse "Dados não processáveis - telefone em quarentena ou bloqueado"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
@@ -423,13 +424,18 @@ func (h *PhoneHandlers) OptIn(c *gin.Context) {
 
 	// Process opt-in with tracing
 	ctx, serviceSpan := utils.TraceExternalService(ctx, "phone_mapping_service", "opt_in")
-	response, err := h.phoneMappingService.OptIn(ctx, phoneNumber, req.CPF, req.Channel)
+	response, err := h.phoneMappingService.OptIn(ctx, phoneNumber, req.CPF, req.Channel, h.canReassignPhone(c))
 	if err != nil {
 		utils.RecordErrorInSpan(serviceSpan, err, map[string]interface{}{
 			"service.name":      "phone_mapping_service",
 			"service.operation": "opt_in",
 		})
 		serviceSpan.End()
+		if errors.Is(err, services.ErrPhoneBoundToAnotherCPF) {
+			h.logger.Warn("opt-in refused: phone bound to another CPF", observability.PhoneField(phoneNumber))
+			c.JSON(http.StatusConflict, ErrorResponse{Error: phoneBoundToAnotherCPFMessage})
+			return
+		}
 		h.logger.Error("failed to process opt-in", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
@@ -683,7 +689,7 @@ func (h *PhoneHandlers) RejectRegistration(c *gin.Context) {
 // @Failure 400 {object} ErrorResponse "Formato de telefone inválido ou dados de vinculação incorretos"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
-// @Failure 409 {object} ErrorResponse "Conflito - telefone já está vinculado a outro CPF"
+// @Failure 409 {object} ErrorResponse "Conflito - telefone já vinculado (ativo) a outro CPF; só admin ou service account confiável reatribui"
 // @Failure 422 {object} ErrorResponse "Dados não processáveis - CPF ou telefone inválido"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
@@ -746,13 +752,18 @@ func (h *PhoneHandlers) BindPhoneToCPF(c *gin.Context) {
 
 	// Process binding with tracing
 	ctx, serviceSpan := utils.TraceExternalService(ctx, "phone_mapping_service", "bind_phone_to_cpf")
-	response, err := h.phoneMappingService.BindPhoneToCPF(ctx, phoneNumber, req.CPF, req.Channel)
+	response, err := h.phoneMappingService.BindPhoneToCPF(ctx, phoneNumber, req.CPF, req.Channel, h.canReassignPhone(c))
 	if err != nil {
 		utils.RecordErrorInSpan(serviceSpan, err, map[string]interface{}{
 			"service.name":      "phone_mapping_service",
 			"service.operation": "bind_phone_to_cpf",
 		})
 		serviceSpan.End()
+		if errors.Is(err, services.ErrPhoneBoundToAnotherCPF) {
+			h.logger.Warn("bind refused: phone bound to another CPF", observability.PhoneField(phoneNumber))
+			c.JSON(http.StatusConflict, ErrorResponse{Error: phoneBoundToAnotherCPFMessage})
+			return
+		}
 		h.logger.Error("failed to bind phone to CPF", zap.Error(err), observability.PhoneField(phoneNumber))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Erro interno do servidor"})
 		return
@@ -1220,6 +1231,17 @@ func (h *PhoneHandlers) validateCPFAccess(c *gin.Context, targetCPF string) erro
 		return fmt.Errorf("%w: CPF does not belong to the authenticated user", middleware.ErrAccessDenied)
 	}
 	return nil
+}
+
+// phoneBoundToAnotherCPFMessage is the 409 answer to an opt-in or bind on a phone with
+// an active binding to another CPF. It never names the bound CPF.
+const phoneBoundToAnotherCPFMessage = "Telefone já vinculado a outro CPF"
+
+// canReassignPhone reports whether the caller may move a phone with an active binding
+// to another CPF: only admins and trusted service clients (the bot). A citizen gets 409.
+func (h *PhoneHandlers) canReassignPhone(c *gin.Context) bool {
+	isAdmin, err := middleware.IsAdmin(c)
+	return err == nil && isAdmin
 }
 
 // validateBoundCPFAccess checks, for callers without admin privileges, that the CPF

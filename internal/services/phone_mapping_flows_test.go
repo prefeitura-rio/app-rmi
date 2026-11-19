@@ -82,7 +82,7 @@ func TestBindPhoneToCPF_NewPhoneCreatesActiveMappingWithoutOptIn(t *testing.T) {
 	service, cleanup := setupPhoneFlowsTest(t)
 	defer cleanup()
 
-	resp, err := service.BindPhoneToCPF(context.Background(), "+5521987650001", flowCPFOwner, "whatsapp")
+	resp, err := service.BindPhoneToCPF(context.Background(), "+5521987650001", flowCPFOwner, "whatsapp", false)
 	require.NoError(t, err)
 	assert.Equal(t, "bound", resp.Status)
 	assert.False(t, resp.OptIn)
@@ -114,7 +114,7 @@ func TestBindPhoneToCPF_ExistingQuarantinedPhoneIsReleasedAndRebound(t *testing.
 	})
 	require.NoError(t, err)
 
-	resp, err := service.BindPhoneToCPF(ctx, "+5521987650002", flowCPFOwner, "web")
+	resp, err := service.BindPhoneToCPF(ctx, "+5521987650002", flowCPFOwner, "web", false)
 	require.NoError(t, err)
 	assert.Equal(t, "bound", resp.Status)
 
@@ -132,10 +132,10 @@ func TestBindPhoneToCPF_RejectsInvalidInput(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	_, err := service.BindPhoneToCPF(ctx, "abc", flowCPFOwner, "whatsapp")
+	_, err := service.BindPhoneToCPF(ctx, "abc", flowCPFOwner, "whatsapp", false)
 	assert.ErrorContains(t, err, "invalid phone number")
 
-	_, err = service.BindPhoneToCPF(ctx, "+5521987650003", "11111111111", "whatsapp")
+	_, err = service.BindPhoneToCPF(ctx, "+5521987650003", "11111111111", "whatsapp", false)
 	assert.ErrorContains(t, err, "invalid CPF")
 
 	n, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).CountDocuments(ctx, bson.M{})
@@ -148,7 +148,7 @@ func TestGetBoundCPF(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	_, err := service.BindPhoneToCPF(ctx, "+5521987650004", flowCPFOwner, "whatsapp")
+	_, err := service.BindPhoneToCPF(ctx, "+5521987650004", flowCPFOwner, "whatsapp", false)
 	require.NoError(t, err)
 	_, err = service.OptOut(ctx, "+5521987650005", "Não quero receber", "whatsapp")
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestOptIn_RebindsPhoneOfAnotherCPFAndReleasesQuarantine(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	resp, err := service.OptIn(ctx, "+5521987650006", flowCPFOwner, "whatsapp")
+	resp, err := service.OptIn(ctx, "+5521987650006", flowCPFOwner, "whatsapp", false)
 	require.NoError(t, err)
 	assert.Equal(t, "opted_in", resp.Status)
 
@@ -205,9 +205,9 @@ func TestOptIn_RejectsInvalidInput(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	_, err := service.OptIn(ctx, "12", flowCPFOwner, "whatsapp")
+	_, err := service.OptIn(ctx, "12", flowCPFOwner, "whatsapp", false)
 	assert.ErrorContains(t, err, "invalid phone number")
-	_, err = service.OptIn(ctx, "+5521987650007", "00000000000", "whatsapp")
+	_, err = service.OptIn(ctx, "+5521987650007", "00000000000", "whatsapp", false)
 	assert.ErrorContains(t, err, "invalid CPF")
 	assert.Zero(t, countHistory(t, bson.M{}), "invalid opt-in must not record history")
 }
@@ -217,7 +217,7 @@ func TestOptOut_BoundPhoneBlocksMappingAndRecordsHistory(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	_, err := service.OptIn(ctx, "+5521987650008", flowCPFOwner, "whatsapp")
+	_, err := service.OptIn(ctx, "+5521987650008", flowCPFOwner, "whatsapp", false)
 	require.NoError(t, err)
 
 	resp, err := service.OptOut(ctx, "+5521987650008", "Mensagem era engano", "whatsapp")
@@ -247,7 +247,7 @@ func TestRejectRegistration(t *testing.T) {
 	assert.Equal(t, "not_found", resp.Status, "rejecting an unknown phone is not an error")
 	assert.Zero(t, countHistory(t, bson.M{"phone_number": "5521987650009"}))
 
-	_, err = service.BindPhoneToCPF(ctx, "+5521987650009", flowCPFOwner, "whatsapp")
+	_, err = service.BindPhoneToCPF(ctx, "+5521987650009", flowCPFOwner, "whatsapp", false)
 	require.NoError(t, err)
 
 	resp, err = service.RejectRegistration(ctx, "+5521987650009", flowCPFOwner)
@@ -435,7 +435,7 @@ func TestFindCPFByPhone_EdgeCases(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, resp.Found, "mapping without CPF")
 
-	_, err = service.BindPhoneToCPF(ctx, "+5521987650403", flowCPFOther, "whatsapp")
+	_, err = service.BindPhoneToCPF(ctx, "+5521987650403", flowCPFOther, "whatsapp", false)
 	require.NoError(t, err)
 	resp, err = service.FindCPFByPhone(ctx, "+5521987650403")
 	require.NoError(t, err)
@@ -443,4 +443,105 @@ func TestFindCPFByPhone_EdgeCases(t *testing.T) {
 
 	_, err = service.FindCPFByPhone(ctx, "zzz")
 	assert.ErrorContains(t, err, "invalid phone number")
+}
+
+func insertFlowMapping(t *testing.T, storagePhone, cpf, status string) {
+	t.Helper()
+	now := time.Now()
+	_, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).InsertOne(context.Background(), models.PhoneCPFMapping{
+		PhoneNumber: storagePhone,
+		CPF:         cpf,
+		Status:      status,
+		CreatedAt:   &now,
+		UpdatedAt:   &now,
+	})
+	require.NoError(t, err)
+}
+
+func TestOptIn_ActivePhoneOfAnotherCPF_RefusedWithoutReassign(t *testing.T) {
+	service, cleanup := setupPhoneFlowsTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertFlowMapping(t, "5521987650501", flowCPFOther, models.MappingStatusActive)
+
+	_, err := service.OptIn(ctx, "+5521987650501", flowCPFOwner, "whatsapp", false)
+	require.ErrorIs(t, err, ErrPhoneBoundToAnotherCPF)
+	assert.NotContains(t, err.Error(), flowCPFOther)
+
+	mapping := findMapping(t, "5521987650501")
+	assert.Equal(t, flowCPFOther, mapping.CPF)
+	assert.Equal(t, models.MappingStatusActive, mapping.Status)
+	assert.Zero(t, countHistory(t, bson.M{}), "a refused opt-in must not record history")
+
+	resp, err := service.OptIn(ctx, "+5521987650501", flowCPFOwner, "whatsapp", true)
+	require.NoError(t, err)
+	assert.Equal(t, "opted_in", resp.Status)
+	assert.Equal(t, flowCPFOwner, findMapping(t, "5521987650501").CPF, "admins may reassign")
+}
+
+func TestBindPhoneToCPF_ActivePhoneOfAnotherCPF_RefusedWithoutReassign(t *testing.T) {
+	service, cleanup := setupPhoneFlowsTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertFlowMapping(t, "5521987650502", flowCPFOther, models.MappingStatusActive)
+
+	_, err := service.BindPhoneToCPF(ctx, "+5521987650502", flowCPFOwner, "whatsapp", false)
+	require.ErrorIs(t, err, ErrPhoneBoundToAnotherCPF)
+	assert.Equal(t, flowCPFOther, findMapping(t, "5521987650502").CPF)
+
+	resp, err := service.BindPhoneToCPF(ctx, "+5521987650502", flowCPFOwner, "whatsapp", true)
+	require.NoError(t, err)
+	assert.Equal(t, "bound", resp.Status)
+	assert.Equal(t, flowCPFOwner, findMapping(t, "5521987650502").CPF, "admins may reassign")
+}
+
+func TestBindPhoneToCPF_ReleasedOrOwnOrUnboundPhone_AllowedWithoutReassign(t *testing.T) {
+	service, cleanup := setupPhoneFlowsTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertFlowMapping(t, "5521987650503", flowCPFOther, models.MappingStatusBlocked)
+	insertFlowMapping(t, "5521987650504", flowCPFOwner, models.MappingStatusActive)
+	insertFlowMapping(t, "5521987650505", "", models.MappingStatusActive)
+
+	for _, phone := range []string{"5521987650503", "5521987650504", "5521987650505"} {
+		_, err := service.BindPhoneToCPF(ctx, "+"+phone, flowCPFOwner, "whatsapp", false)
+		require.NoError(t, err, phone)
+		mapping := findMapping(t, phone)
+		assert.Equal(t, flowCPFOwner, mapping.CPF, phone)
+		assert.Equal(t, models.MappingStatusActive, mapping.Status, phone)
+	}
+}
+
+func TestOptIn_AnyActiveMappingOfAnotherCPF_Refused(t *testing.T) {
+	service, cleanup := setupPhoneFlowsTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	// Two mappings of the same phone: the caller's own released one and an active one
+	// of another CPF. The active binding wins whichever document FindOne returns.
+	insertFlowMapping(t, "5521987650506", flowCPFOwner, models.MappingStatusBlocked)
+	insertFlowMapping(t, "5521987650506", flowCPFOther, models.MappingStatusActive)
+
+	_, err := service.OptIn(ctx, "+5521987650506", flowCPFOwner, "whatsapp", false)
+	require.ErrorIs(t, err, ErrPhoneBoundToAnotherCPF)
+
+	n, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).CountDocuments(ctx,
+		bson.M{"phone_number": "5521987650506", "status": models.MappingStatusActive, "cpf": flowCPFOther})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+	assert.Zero(t, countHistory(t, bson.M{}))
+}
+
+func TestUpdateBinding_GuardsAgainstBindingMadeAfterTheCheck(t *testing.T) {
+	service, cleanup := setupPhoneFlowsTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertFlowMapping(t, "5521987650507", flowCPFOther, models.MappingStatusActive)
+
+	update := bson.M{"$set": bson.M{"cpf": flowCPFOwner, "status": models.MappingStatusActive}}
+	err := service.updateBinding(ctx, "5521987650507", flowCPFOwner, update, false)
+	require.ErrorIs(t, err, ErrPhoneBoundToAnotherCPF)
+	assert.Equal(t, flowCPFOther, findMapping(t, "5521987650507").CPF)
+
+	require.NoError(t, service.updateBinding(ctx, "5521987650507", flowCPFOwner, update, true))
+	assert.Equal(t, flowCPFOwner, findMapping(t, "5521987650507").CPF)
 }
