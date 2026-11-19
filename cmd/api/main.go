@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -77,13 +78,10 @@ func main() {
 	if err := config.LoadConfig(); err != nil {
 		logging.GetLogger().Fatal("failed to load config", zap.Error(err))
 	}
-	if len(config.AppConfig.CORSAllowedOrigins) == 0 {
-		logging.Logger.Warn("CORS_ALLOWED_ORIGINS is empty: cross-origin browser requests will be rejected")
-	} else {
-		logging.Logger.Info("CORS allowlist configured",
-			zap.Strings("origins", config.AppConfig.CORSAllowedOrigins),
-		)
-	}
+	logging.Logger.Info("CORS allowlist configured",
+		zap.Strings("origins", config.AppConfig.CORSAllowedOrigins),
+		zap.Bool("from_env", strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS")) != ""),
+	)
 
 	// Initialize observability
 	observability.InitTracer()
