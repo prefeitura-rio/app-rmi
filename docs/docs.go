@@ -6475,7 +6475,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "Conflito - telefone já está vinculado a outro CPF",
+                        "description": "Conflito - telefone já vinculado (ativo) a outro CPF; só admin ou service account confiável reatribui",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -6869,7 +6869,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "Conflito - telefone já possui opt-in ativo",
+                        "description": "Conflito - telefone já vinculado (ativo) a outro CPF; só admin ou service account confiável reatribui",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
