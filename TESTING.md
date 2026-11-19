@@ -1,213 +1,75 @@
-# Testing Guide
+# Testes
 
-This document explains how to run the comprehensive test suite for the RMI application.
+Documento único de testes do RMI: como rodar, como funciona o gate de cobertura, a cobertura atual por pacote, as lacunas que ainda importam e os testes de carga (k6).
 
-## Test Coverage Progress
+## Como rodar
 
-**Overall Coverage: 8.6%** (Target: 70%+)
+Os testes de integração usam MongoDB e Redis reais (sem mocks). Suba as dependências antes:
 
-### Current Coverage by Module:
-- ✅ **Models**: 37.6% coverage
-- ✅ **Utils**: 24.7% coverage
-  - Validation: 100% coverage (all 13 functions fully tested)
-  - CPF/CNPJ: 91%+ coverage
-  - Phone parsing: 89-100% coverage
-  - Name extraction/masking: 91-100% coverage
-  - UUID/Verification/Bool: 80-100% coverage
-
-## Test Types
-
-### 1. Unit Tests (No Dependencies)
-Pure function tests that don't require external services:
-- Validation logic
-- CPF/CNPJ validation
-- Phone number parsing
-- Name extraction and masking
-- Model validation functions
-- JWT claim parsing
-
-### 2. Integration Tests (Require Services)
-Tests that interact with real MongoDB and Redis:
-- MongoDB utility functions (`internal/utils/mongodb_test.go`)
-- Redis pipeline operations (`internal/utils/redis_pipeline_test.go`)
-
-## Running Tests
-
-### Quick Test (Unit Tests Only)
 ```bash
-# Run all unit tests (no external dependencies needed)
-just test
-
-# Run with coverage
-just test-coverage
-
-# Run with race detection
-just test-race
+just start-deps      # MongoDB (27017) e Redis (6379) em containers
+just test            # go test -v ./... com MONGODB_DATABASE=rmi_test e integrações externas desligadas
+just test-ci         # mesmas variáveis do job "Unit Tests" do CI (go test -v -race -coverprofile=coverage.out ./...)
+just test-coverage   # gera coverage.out e abre o relatório HTML
+just test-race       # detector de corrida
+just lint            # golangci-lint + scripts/check_cpf_log_masking.sh (máscara de CPF/telefone em logs e spans)
+just stop-deps
 ```
 
-### Integration Tests (Requires MongoDB + Redis)
+- Sem MongoDB, `internal/handlers`, `internal/services` e `internal/utils` falham no `TestMain` (conexão recusada); os testes de integração dos outros pacotes se pulam quando `MONGODB_URI` não está definida.
+- Um pacote ou teste: `go test ./internal/services/ -run TestNome -v`.
+- Para medir como o CI: `just test-ci` e `go tool cover -func=coverage.out` (a linha `total` é o número que o gate compara).
+- E2E (`tests/e2e`): rodam contra um ambiente implantado com `just test-e2e` e as variáveis `TEST_BASE_URL`, `TEST_KEYCLOAK_URL`, `TEST_KEYCLOAK_REALM`, `TEST_KEYCLOAK_CLIENT_ID`, `TEST_USERNAME`, `TEST_PASSWORD` e `TEST_CPF` (veja `tests/e2e/README.md`). O `deploy-staging.yaml` os roda contra o preview blue-green antes de promover o Rollout; falha aborta a promoção.
+- Teste manual da API: `./scripts/test_api.sh <CPF> --auto-token --skip-phone`.
 
-**Step 1: Start Dependencies**
-```bash
-# Using docker-compose
-docker-compose up -d mongodb redis
+## Gate de cobertura (baseline)
 
-# OR using Just command
-just start-deps
-```
+- **Baseline** (`.github/workflows/coverage-baseline.yaml`): a cada push na `main`, roda `go test -race -coverprofile=coverage.out ./...` com MongoDB e Redis como service containers, extrai o total com `scripts/get-coverage.sh` e grava na branch `gh-pages` os arquivos `coverage-baseline.txt` (o número), `coverage-badge.json` (badge do README) e `coverage-updated.txt` (data e commit).
+- **Gate** (job `Unit Tests` do `.github/workflows/pr-quality-gate.yaml`, em todo PR para a `main`): roda a mesma suíte (até 3 tentativas), compara o total do PR com o `coverage-baseline.txt` do `gh-pages` e **falha se a cobertura cair mais de 0,1 ponto percentual**. O `coverage.out` do PR fica no artefato `coverage-report` e o resumo do run mostra baseline, PR e diferença.
+- Consequência: todo PR precisa manter (ou subir) a cobertura total; código novo sem teste derruba o check.
 
-**Step 2: Run Integration Tests**
-```bash
-# Set environment variables
-export MONGODB_URI="mongodb://root:password@localhost:27017"
-export REDIS_ADDR="localhost:6380"
-export REDIS_PASSWORD=""
+## Cobertura atual por pacote
 
-# Run all tests including integration tests
-go test -v ./...
+Medida em **2026-11-19** no commit `467d362` da `main` (artefato `coverage-report` do job `Unit Tests` do PR #124, mesma árvore do commit), com MongoDB e Redis. **Total: 72,3%** (15.687 statements); o `coverage-baseline.yaml` do mesmo commit registrou 72,0% no `gh-pages` (a suíte com `-race` varia alguns décimos entre execuções).
 
-# Run only MongoDB integration tests
-go test -v -run TestMongoDB ./internal/utils/
+| Pacote | Statements | Cobertura |
+|---|---:|---:|
+| `internal/pii` | 57 | 98,2% |
+| `internal/observability` | 104 | 95,2% |
+| `internal/circuitbreaker` | 95 | 88,4% |
+| `internal/models` | 335 | 86,0% |
+| `internal/redisclient` | 282 | 84,8% |
+| `internal/middleware` | 425 | 84,5% |
+| `internal/retry` | 68 | 83,8% |
+| `internal/clients` | 397 | 80,4% |
+| `internal/services` | 5.805 | 80,2% |
+| `internal/logging` | 37 | 75,7% |
+| `internal/utils` | 1.140 | 74,8% |
+| `internal/handlers` | 5.258 | 67,6% |
+| `internal/config` | 1.083 | 66,9% |
+| `cmd/sync` | 44 | 36,4% |
+| `cmd/api` | 214 | sem teste (inicialização do binário) |
+| `internal/utils/httpclient` | 24 | sem teste |
+| `scripts/seed_*`, `tests`, `tests/config`, `tests/fixtures`, `docs` | 319 | não se aplica (scripts, helpers de teste, swagger gerado) |
 
-# Run only Redis integration tests
-go test -v -run TestRedisPipeline ./internal/utils/
-```
+O badge do README mostra o baseline mais recente.
 
-### CI-Style Testing (Like GitHub Actions)
-```bash
-# This sets all required environment variables and runs tests
-just test-ci
-```
+## Lacunas que ainda importam
 
-## Test Organization
+Arquivos com mais statements sem teste, na mesma medição:
 
-### Utils Layer (`internal/utils/*_test.go`)
-- `cpf_test.go` - CPF and CNPJ validation (23 test cases)
-- `phone_parsing_test.go` - Phone number parsing (12 test cases)
-- `name_extraction_test.go` - Name extraction and masking (22 test cases)
-- `bool_test.go` - Boolean helper functions
-- `uuid_test.go` - UUID generation (3 test cases)
-- `verification_test.go` - Verification code generation (4 test cases)
-- `validation_test.go` - **100% coverage** - Input validation and sanitization (65+ test cases)
-- `mongodb_test.go` - MongoDB utility integration tests (11 test scenarios)
-- `redis_pipeline_test.go` - Redis pipeline integration tests (6 test scenarios)
+| Arquivo | Cobertura | Por que importa |
+|---|---:|---|
+| `internal/handlers/memory_handlers.go` | 0% | memória do bot de WhatsApp indexada por telefone (dado pessoal) |
+| `internal/handlers/beta_group_handlers.go` | 28,3% | administração de grupos beta (rotas de admin) |
+| `internal/utils/whatsapp.go` | 13,3% | envio de mensagens de verificação |
+| `internal/utils/audit.go` | 37,4% | trilha de auditoria das escritas |
+| `internal/services/pet_service.go` | 37,3% | cadastro de pets |
+| `internal/handlers/vehicle.go` | 56,2% | Mobilidade (veículos e condutores) |
+| `internal/config/database.go` | 61,1% | conexões, pools e índices do MongoDB |
+| `internal/handlers/citizen.go` | 73,9% | maior volume sem teste (436 statements) nas rotas de dados do cidadão |
 
-### Models Layer (`internal/models/*_test.go`)
-- `citizen_test.go` - Citizen model validation and conversion (14 test functions)
-- `jwt_test.go` - JWT claims parsing (7 test cases)
-- `errors_test.go` - Error constant validation
-- `phone_mapping_test.go` - Phone mapping constants
-
-## Writing New Tests
-
-### Test Naming Convention
-```go
-func TestFunctionName(t *testing.T) {
-    tests := []struct {
-        name  string
-        input YourInput
-        want  YourExpected
-        wantErr bool
-    }{
-        {
-            name: "Description of test case",
-            input: YourInput{...},
-            want: YourExpected{...},
-            wantErr: false,
-        },
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            result := YourFunction(tt.input)
-            // assertions...
-        })
-    }
-}
-```
-
-### Integration Test Pattern
-```go
-func TestYourIntegration(t *testing.T) {
-    // Check for required environment variables
-    requiredVar := os.Getenv("REQUIRED_VAR")
-    if requiredVar == "" {
-        t.Skip("Skipping integration test: REQUIRED_VAR not set")
-    }
-
-    // Setup
-    // ... initialize connections
-
-    // Cleanup
-    defer func() {
-        // ... cleanup resources
-    }()
-
-    // Run tests
-    t.Run("Test scenario", func(t *testing.T) {
-        // test code
-    })
-}
-```
-
-## Test Principles
-
-### TDD Approach
-Following Test-Driven Development principles as outlined in `CLAUDE.md`:
-
-1. **Tests define correct behavior** - Write tests first to specify how code should work
-2. **Fix the code, not the test** - If tests fail, the implementation is wrong (not the test)
-3. **No false positives** - Tests must have meaningful assertions
-4. **No silent failures** - Never use `except: pass` or similar patterns
-5. **Complete test setup** - Set up proper fixtures and dependencies
-
-### Test Coverage Goals
-
-According to `UNIT_TEST_PLAN.md`:
-- **Utils Layer**: 90%+ coverage (currently 24.7%, needs more integration tests)
-- **Models Layer**: 80%+ coverage (currently 37.6%, on track)
-- **Services Layer**: 75%+ coverage (pending)
-- **Middleware Layer**: 70%+ coverage (pending)
-- **Handlers Layer**: 60%+ coverage (pending)
-- **Overall**: 70%+ coverage (currently 8.6%)
-
-## Troubleshooting
-
-### MongoDB Connection Issues
-```bash
-# Check if MongoDB is running
-docker ps | grep mongodb
-
-# Check MongoDB logs
-docker logs rmi-mongodb
-
-# Test connection
-mongosh "mongodb://root:password@localhost:27017"
-```
-
-### Redis Connection Issues
-```bash
-# Check if Redis is running
-docker ps | grep redis
-
-# Check Redis logs
-docker logs rmi-redis
-
-# Test connection
-redis-cli -p 6380 ping
-```
-
-### Test Failures
-```bash
-# Run specific test with verbose output
-go test -v -run TestSpecificFunction ./internal/utils/
-
-# Run with race detection
-go test -race -v -run TestSpecificFunction ./internal/utils/
-
-# Clean test cache
-go clean -testcache
-```
+`cmd/api/main.go` (montagem das rotas e middlewares) não tem teste unitário; é exercitado só pelos E2E do deploy de staging.
 
 ## Testes de carga (k6)
 
@@ -267,13 +129,6 @@ O k6-operator (namespace `k6-operator-system`) é instalado pelo Terraform do `s
 
 O resultado sai no resumo do run (configuração e status do `TestRun`) e nos logs dos runners (o sumário de fim de teste de cada um dos 10 runners, sem agregação). As métricas levam a tag `scenario` com o nome do cenário.
 
-## Next Steps
+### Resultado de referência (staging)
 
-To reach 70%+ coverage, we need to:
-1. ✅ Complete MongoDB integration tests
-2. ✅ Complete Redis integration tests
-3. ⏳ Test middleware functions (with Gin test context)
-4. ⏳ Test service layer (with real MongoDB/Redis)
-5. ⏳ Test handlers (integration tests with full setup)
-
-See `UNIT_TEST_PLAN.md` for the complete testing roadmap.
+Ainda não há: o workflow `Load tests` não tem nenhuma execução registrada no GitHub (conferido em 2026-11-19). A correção do script e do workflow (DEV-366, PR #106) já está na `main`; a primeira execução em staging deve registrar aqui a data, o commit, o cenário, os VUs, a duração, o p95 de `http_req_duration`, as requisições por segundo (`http_reqs`) e a taxa de erro (`http_req_failed`).
