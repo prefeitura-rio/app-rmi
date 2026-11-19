@@ -528,8 +528,10 @@ func (h *BetaGroupHandlers) DeleteGroup(c *gin.Context) {
 // @Tags Beta Whitelist
 // @Produce json
 // @Param phone_number path string true "Número de telefone"
+// @Security BearerAuth
 // @Success 200 {object} models.BetaStatusResponse "Status beta verificado com sucesso"
 // @Failure 400 {object} ErrorResponse "Número de telefone é obrigatório ou inválido"
+// @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /phone/{phone_number}/beta-status [get]

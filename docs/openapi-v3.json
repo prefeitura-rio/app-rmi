@@ -8155,6 +8155,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Muitas requisições - limite de taxa excedido",
             "content": {
@@ -9277,6 +9287,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Telefone não encontrado no sistema",
             "content": {
@@ -9957,6 +9977,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Muitas requisições - limite de taxa excedido",
             "content": {
@@ -10016,6 +10046,16 @@
           },
           "400": {
             "description": "Campo telefone é obrigatório ou formato inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
