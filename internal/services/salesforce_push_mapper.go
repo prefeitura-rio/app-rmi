@@ -10,7 +10,8 @@ import (
 
 // buildSalesforceSnapshotPatch builds a partial PATCH from data RMI actually has.
 // Same contract as Salesforce inbound: omitted key = do not change, JSON null = clear.
-func buildSalesforceSnapshotPatch(citizen *models.Citizen, sd *models.SelfDeclaredData, uc *models.UserConfig, citizenFound, selfDeclaredFound bool) *clients.SalesforceCidadaoPatchRequest {
+// avatar is the active catalog entry for uc.AvatarID, or nil when there is none.
+func buildSalesforceSnapshotPatch(citizen *models.Citizen, sd *models.SelfDeclaredData, uc *models.UserConfig, avatar *models.Avatar, citizenFound, selfDeclaredFound bool) *clients.SalesforceCidadaoPatchRequest {
 	patch := clients.NewSalesforcePatch()
 
 	if citizenFound {
@@ -42,6 +43,7 @@ func buildSalesforceSnapshotPatch(citizen *models.Citizen, sd *models.SelfDeclar
 	}
 
 	putConsentimento(patch, uc)
+	putString(patch, "avatarUrl", rmiAvatarURL(uc, avatar))
 
 	putString(patch, "email", rmiEmail(sd, citizen, selfDeclaredFound))
 	tel1 := rmiTelefonePrincipal(sd, citizen, selfDeclaredFound)
@@ -62,8 +64,8 @@ func buildSalesforceSnapshotPatch(citizen *models.Citizen, sd *models.SelfDeclar
 	return patch
 }
 
-func buildSalesforceCreate(citizen *models.Citizen, sd *models.SelfDeclaredData, uc *models.UserConfig, citizenFound, selfDeclaredFound bool, contaOrigem string) *clients.SalesforceCidadaoCreateRequest {
-	patch := buildSalesforceSnapshotPatch(citizen, sd, uc, citizenFound, selfDeclaredFound)
+func buildSalesforceCreate(citizen *models.Citizen, sd *models.SelfDeclaredData, uc *models.UserConfig, avatar *models.Avatar, citizenFound, selfDeclaredFound bool, contaOrigem string) *clients.SalesforceCidadaoCreateRequest {
+	patch := buildSalesforceSnapshotPatch(citizen, sd, uc, avatar, citizenFound, selfDeclaredFound)
 	fields := patch.Fields()
 
 	req := &clients.SalesforceCidadaoCreateRequest{
@@ -99,6 +101,7 @@ func buildSalesforceCreate(citizen *models.Citizen, sd *models.SelfDeclaredData,
 	req.Cidade = stringField(fields, "cidade")
 	req.CanalOrigem = stringField(fields, "canalOrigem")
 	req.CanalUltimaModificacao = stringField(fields, "canalUltimaModificacao")
+	req.AvatarURL = stringField(fields, "avatarUrl")
 	if idioma, ok := fields["idioma"].([]string); ok && len(idioma) > 0 {
 		req.Idioma = idioma
 	}
@@ -126,6 +129,18 @@ func putString(patch *clients.SalesforceCidadaoPatchRequest, key string, v rmiSt
 		return
 	}
 	patch.Put(key, v.value)
+}
+
+// rmiAvatarURL mirrors GET /citizen/{cpf}/avatar: no user_config leaves Salesforce untouched,
+// no chosen avatar (or one no longer active in the catalog) clears it.
+func rmiAvatarURL(uc *models.UserConfig, avatar *models.Avatar) rmiStringValue {
+	if uc == nil {
+		return rmiStringValue{}
+	}
+	if uc.AvatarID == nil || strings.TrimSpace(*uc.AvatarID) == "" || avatar == nil || strings.TrimSpace(avatar.URL) == "" {
+		return rmiStringValue{set: true, clear: true}
+	}
+	return rmiStringValue{set: true, value: strings.TrimSpace(avatar.URL)}
 }
 
 func putIdioma(patch *clients.SalesforceCidadaoPatchRequest, sd *models.SelfDeclaredData, selfDeclaredFound bool) {

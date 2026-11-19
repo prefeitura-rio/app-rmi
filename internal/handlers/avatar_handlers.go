@@ -351,7 +351,7 @@ func (h *AvatarHandlers) UpdateUserAvatar(c *gin.Context) {
 	userConfig.UpdatedAt = time.Now()
 
 	// Save via cache service
-	err = h.cacheService.UpdateUserConfig(ctx, cpf, &userConfig)
+	err = h.cacheService.UpdateUserAvatar(ctx, cpf, &userConfig)
 	if err != nil {
 		h.logger.Error("failed to update user avatar", zap.Error(err), observability.CPFField(cpf))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update avatar"})
@@ -610,7 +610,7 @@ func UpdateUserAvatar(c *gin.Context) {
 	userConfig.UpdatedAt = time.Now()
 
 	cacheService := services.NewCacheService()
-	err = cacheService.UpdateUserConfig(ctx, cpf, &userConfig)
+	err = cacheService.UpdateUserAvatar(ctx, cpf, &userConfig)
 	if err != nil {
 		observability.Logger().Error("failed to update user avatar", zap.Error(err), observability.CPFField(cpf))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update avatar"})

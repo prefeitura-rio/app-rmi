@@ -73,6 +73,14 @@ func (op *PhoneMappingDataOperation) GetType() string {
 type UserConfigDataOperation struct {
 	UserID string
 	Data   *models.UserConfig
+	// SalesforcePush mirrors this write to Salesforce after sync. user_config holds
+	// opt-ins and bot-driven preferences too, so only the avatar change sets it.
+	SalesforcePush bool
+}
+
+// RequestsSalesforcePush reports whether the sync job must trigger an outbound SF push.
+func (op *UserConfigDataOperation) RequestsSalesforcePush() bool {
+	return op.SalesforcePush
 }
 
 // GetKey returns the user ID as the key

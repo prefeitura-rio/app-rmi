@@ -31,6 +31,12 @@ type DataOperation interface {
 	GetType() string
 }
 
+// salesforcePushRequester is an optional DataOperation extension: a write whose job type
+// does not push to Salesforce on its own can still ask for a push after it syncs.
+type salesforcePushRequester interface {
+	RequestsSalesforcePush() bool
+}
+
 // DataManager handles Redis/MongoDB operations with multi-level caching
 type DataManager struct {
 	redis          *redisclient.Client
@@ -113,6 +119,9 @@ func (dm *DataManager) Write(ctx context.Context, op DataOperation) error {
 		RetryCount:  0,
 		MaxRetries:  3,
 		BearerToken: sealed,
+	}
+	if p, ok := op.(salesforcePushRequester); ok {
+		syncJob.SalesforcePush = p.RequestsSalesforcePush()
 	}
 
 	//nolint:gosec // G117: internal job payload serialization; token not logged
