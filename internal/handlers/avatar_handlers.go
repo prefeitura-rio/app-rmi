@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -163,7 +164,11 @@ func (h *AvatarHandlers) DeleteAvatar(c *gin.Context) {
 	// Delete avatar
 	err := services.AvatarServiceInstance.DeleteAvatar(ctx, avatarID)
 	if err != nil {
-		if err.Error() == "avatar not found" {
+		if errors.Is(err, services.ErrInvalidAvatarID) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid avatar ID format"})
+			return
+		}
+		if errors.Is(err, services.ErrAvatarNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Avatar not found"})
 			return
 		}
@@ -267,11 +272,9 @@ func (h *AvatarHandlers) GetUserAvatar(c *gin.Context) {
 // @Param data body models.UserAvatarRequest true "Seleção de avatar"
 // @Security BearerAuth
 // @Success 200 {object} models.UserAvatarResponse "Avatar do usuário atualizado com sucesso"
-// @Failure 400 {object} ErrorResponse "Formato de CPF inválido ou ID de avatar inválido"
+// @Failure 400 {object} ErrorResponse "Formato de CPF inválido, corpo inválido, ID de avatar inválido ou avatar inexistente ou inativo"
 // @Failure 401 {object} ErrorResponse "Token de autenticação não fornecido ou inválido"
 // @Failure 403 {object} ErrorResponse "Acesso negado - permissões insuficientes"
-// @Failure 404 {object} ErrorResponse "Usuário ou avatar não encontrado"
-// @Failure 422 {object} ErrorResponse "Dados não processáveis - avatar inexistente ou inativo"
 // @Failure 429 {object} ErrorResponse "Muitas requisições - limite de taxa excedido"
 // @Failure 500 {object} ErrorResponse "Erro interno do servidor"
 // @Router /citizen/{cpf}/avatar [put]
@@ -472,7 +475,11 @@ func DeleteAvatar(c *gin.Context) {
 
 	err := services.AvatarServiceInstance.DeleteAvatar(ctx, avatarID)
 	if err != nil {
-		if err.Error() == "avatar not found" {
+		if errors.Is(err, services.ErrInvalidAvatarID) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid avatar ID format"})
+			return
+		}
+		if errors.Is(err, services.ErrAvatarNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Avatar not found"})
 			return
 		}

@@ -2616,7 +2616,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Formato de CPF inválido ou ID de avatar inválido",
+                        "description": "Formato de CPF inválido, corpo inválido, ID de avatar inválido ou avatar inexistente ou inativo",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -2629,18 +2629,6 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Acesso negado - permissões insuficientes",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Usuário ou avatar não encontrado",
-                        "schema": {
-                            "$ref": "#/definitions/handlers.ErrorResponse"
-                        }
-                    },
-                    "422": {
-                        "description": "Dados não processáveis - avatar inexistente ou inativo",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }

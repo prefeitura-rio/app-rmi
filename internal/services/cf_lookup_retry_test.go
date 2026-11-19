@@ -22,17 +22,13 @@ const (
 
 func mcpHandlerWithToolResponse(toolResponse map[string]interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodHead {
-			w.Header().Set("mcp-session-id", "test-session")
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
 		var req MCPRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		switch req.Method {
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusAccepted)
 		case "initialize":
+			w.Header().Set(mcpSessionHeader, "test-session")
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{}})
 		case "tools/call":
 			params, _ := req.Params.(map[string]interface{})
@@ -263,17 +259,13 @@ func TestHandleCFLookupJob_ToolErrorIsNotRetried(t *testing.T) {
 
 func TestHandleCFLookupJob_RateLimitedToolCallIsRetryable(t *testing.T) {
 	useCFLookupServiceWithMCP(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodHead {
-			w.Header().Set("mcp-session-id", "test-session")
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
 		var req MCPRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		switch req.Method {
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusAccepted)
 		case "initialize":
+			w.Header().Set(mcpSessionHeader, "test-session")
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{}})
 		default:
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -291,17 +283,13 @@ func TestHandleCFLookupJob_RateLimitedToolCallIsRetryable(t *testing.T) {
 
 func TestHandleCFLookupJob_UnreadableToolResponseIsRetryable(t *testing.T) {
 	useCFLookupServiceWithMCP(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodHead {
-			w.Header().Set("mcp-session-id", "test-session")
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
 		var req MCPRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		switch req.Method {
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusAccepted)
 		case "initialize":
+			w.Header().Set(mcpSessionHeader, "test-session")
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": map[string]interface{}{}})
 		default:
 			w.WriteHeader(http.StatusBadRequest)

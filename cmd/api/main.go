@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/prefeitura-rio/app-rmi/internal/config"
 	"github.com/prefeitura-rio/app-rmi/internal/handlers"
@@ -78,6 +78,10 @@ func main() {
 	if err := config.LoadConfig(); err != nil {
 		logging.GetLogger().Fatal("failed to load config", zap.Error(err))
 	}
+	logging.Logger.Info("CORS allowlist configured",
+		zap.Strings("origins", config.AppConfig.CORSAllowedOrigins),
+		zap.Bool("defaults", slices.Equal(config.AppConfig.CORSAllowedOrigins, config.DefaultCORSAllowedOrigins)),
+	)
 
 	// Initialize observability
 	observability.InitTracer()
@@ -156,13 +160,13 @@ func main() {
 	// Create router with middleware
 	router := gin.New()
 	router.Use(
-		gin.Recovery(),
+		middleware.Recovery(), // gin.Recovery() would dump the raw request (path with CPF/phone) to stderr
 		middleware.RequestID(),
 		middleware.RequestTiming(), // Add comprehensive timing middleware
 		middleware.RequestLogger(),
 		middleware.RequestTracker(),
 		middleware.AuditMiddleware(), // Automatic audit logging for all write operations
-		cors.Default(),
+		middleware.CORS(config.AppConfig.CORSAllowedOrigins),
 	)
 
 	// Metrics endpoint

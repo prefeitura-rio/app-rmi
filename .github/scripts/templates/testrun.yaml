@@ -10,7 +10,7 @@ spec:
       name: k6-test-script
       file: script.js
   runner:
-    image: grafana/k6:latest
+    image: grafana/k6:2.3.0
     env:
       - name: KEYCLOAK_CLIENT_ID
         value: ""

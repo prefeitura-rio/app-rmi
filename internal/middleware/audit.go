@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +12,10 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
+
+// logAuditEvent persists the audit record; a package variable so tests can
+// read the metadata the middleware hands to the audit trail.
+var logAuditEvent = utils.LogAuditEvent
 
 // AuditMiddleware logs all PUT/POST/DELETE/PATCH requests automatically.
 // This ensures a comprehensive audit trail for all write operations.
@@ -99,10 +104,10 @@ func AuditMiddleware() gin.HandlerFunc {
 		status := c.Writer.Status()
 		if status >= 200 && status < 300 {
 			// Add response status to metadata
-			metadata["response_status"] = string(rune(status))
+			metadata["response_status"] = strconv.Itoa(status)
 
 			// Log audit event asynchronously
-			if err := utils.LogAuditEvent(c.Request.Context(), auditCtx, action, resource, resourceID, nil, nil, metadata); err != nil {
+			if err := logAuditEvent(c.Request.Context(), auditCtx, action, resource, resourceID, nil, nil, metadata); err != nil {
 				observability.Logger().Warn("failed to log audit event",
 					zap.Error(err),
 					zap.String("endpoint", observability.MaskURLPath(path)),

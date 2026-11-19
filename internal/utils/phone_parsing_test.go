@@ -350,6 +350,38 @@ func TestExtractPhoneFromComponents_Format(t *testing.T) {
 	assert.Contains(t, result, "987654321")
 }
 
+func TestStoragePhoneToE164(t *testing.T) {
+	tests := []struct {
+		name   string
+		stored string
+		want   string
+	}{
+		{"brazilian mobile in storage format", "5521987654321", "+5521987654321"},
+		{"brazilian landline in storage format", "552133334444", "+552133334444"},
+		{"already E.164", "+5521987654321", "+5521987654321"},
+		{"surrounding spaces", " 5521987654321 ", "+5521987654321"},
+		{"international number", "14155552671", "+14155552671"},
+		{"single digit does not panic", "5", "+5"},
+		{"empty", "", ""},
+		{"only plus", "+", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, StoragePhoneToE164(tt.stored))
+		})
+	}
+}
+
+func TestStoragePhoneToE164_RoundTripsStorageFormat(t *testing.T) {
+	components, err := ParsePhoneNumber("+5521987654321")
+	require.NoError(t, err)
+
+	stored := FormatPhoneForStorage(components.DDI, components.DDD, components.Valor)
+
+	assert.Equal(t, components.Full, StoragePhoneToE164(stored))
+}
+
 func TestPhoneComponents_Structure(t *testing.T) {
 	components := &PhoneComponents{
 		DDI:   "55",

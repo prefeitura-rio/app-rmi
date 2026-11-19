@@ -767,15 +767,63 @@ func TestCreateAvatar_NameTooLong(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code, "CreateAvatar() name too long should return 400")
 }
 
+// malformedAvatarIDs are path values that are not a 24-character ObjectID hex string
+var malformedAvatarIDs = []string{
+	"invalid-id",
+	"abc",
+	"zzzzzzzzzzzzzzzzzzzzzzzz",
+	"0123456789abcdef0123456",
+	"0123456789abcdef012345678",
+}
+
+func assertDeleteAvatarRejectsMalformedIDs(t *testing.T, router *gin.Engine) {
+	t.Helper()
+	for _, id := range malformedAvatarIDs {
+		t.Run(id, func(t *testing.T) {
+			req, _ := http.NewRequest("DELETE", "/avatars/"+id, nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code, "DeleteAvatar() malformed ID should return 400")
+			var body map[string]string
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+			assert.Equal(t, "Invalid avatar ID format", body["error"])
+		})
+	}
+}
+
 func TestDeleteAvatar_InvalidID(t *testing.T) {
 	_, router, cleanup := setupAvatarHandlersTest(t)
 	defer cleanup()
 
-	req, _ := http.NewRequest("DELETE", "/avatars/invalid-id", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
+	assertDeleteAvatarRejectsMalformedIDs(t, router)
+}
 
-	assert.Equal(t, http.StatusInternalServerError, w.Code, "DeleteAvatar() invalid ID should return 500")
+func TestLegacyHandlers_DeleteAvatar_InvalidID(t *testing.T) {
+	_, _, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	legacyRouter := gin.New()
+	legacyRouter.DELETE("/avatars/:id", DeleteAvatar)
+
+	assertDeleteAvatarRejectsMalformedIDs(t, legacyRouter)
+}
+
+func TestLegacyHandlers_DeleteAvatar_NotFound(t *testing.T) {
+	_, _, cleanup := setupAvatarHandlersTest(t)
+	defer cleanup()
+
+	legacyRouter := gin.New()
+	legacyRouter.DELETE("/avatars/:id", DeleteAvatar)
+
+	req, _ := http.NewRequest("DELETE", "/avatars/"+primitive.NewObjectID().Hex(), nil)
+	w := httptest.NewRecorder()
+	legacyRouter.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code, "Legacy DeleteAvatar() not found should return 404")
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Equal(t, "Avatar not found", body["error"])
 }
 
 func TestLegacyHandlers_ListAvatars(t *testing.T) {

@@ -16,11 +16,26 @@ const (
 	VerificationProviderSalesforce = "salesforce"
 )
 
+// DefaultCORSAllowedOrigins are the browser Origins of the known frontends
+// (Superapp/pref.rio and the internal portal, production and staging) allowed
+// when CORS_ALLOWED_ORIGINS is unset or blank.
+var DefaultCORSAllowedOrigins = []string{
+	"https://pref.rio",
+	"https://admin.pref.rio",
+	"https://staging.app.dados.rio",
+	"https://admin.staging.app.dados.rio",
+}
+
 // Config holds all configuration values
 type Config struct {
 	// Server configuration
 	Port        int    `json:"port"`
 	Environment string `json:"environment"`
+	// CORSAllowedOrigins is the allowlist of browser Origins (scheme+host[+port])
+	// that may receive Access-Control-* headers. CORS_ALLOWED_ORIGINS
+	// (comma-separated) replaces DefaultCORSAllowedOrigins; unset or blank keeps
+	// the defaults.
+	CORSAllowedOrigins []string `json:"cors_allowed_origins"`
 
 	// MongoDB configuration
 	MongoURI      string `json:"mongo_uri"`
@@ -155,6 +170,9 @@ type Config struct {
 	// Database worker configuration
 	DBWorkerCount int `json:"db_worker_count"`
 	DBBatchSize   int `json:"db_batch_size"`
+
+	// MetricsPort is the port of the sync worker's Prometheus /metrics server (0 disables it).
+	MetricsPort int `json:"metrics_port"`
 
 	// Authorization configuration
 	AdminGroup            string   `json:"admin_group"`
@@ -421,8 +439,9 @@ func LoadConfig() error {
 
 	AppConfig = &Config{
 		// Server configuration
-		Port:        port,
-		Environment: getEnvOrDefault("ENVIRONMENT", "development"),
+		Port:               port,
+		Environment:        getEnvOrDefault("ENVIRONMENT", "development"),
+		CORSAllowedOrigins: corsAllowedOrigins(os.Getenv("CORS_ALLOWED_ORIGINS")),
 
 		// MongoDB configuration
 		MongoURI:      getEnvOrDefault("MONGODB_URI", "mongodb://localhost:27017"),
@@ -549,6 +568,9 @@ func LoadConfig() error {
 		DBWorkerCount: getEnvAsIntOrDefault("DB_WORKER_COUNT", 10),
 		DBBatchSize:   getEnvAsIntOrDefault("DB_BATCH_SIZE", 100),
 
+		// Sync worker metrics server
+		MetricsPort: getEnvAsIntOrDefault("METRICS_PORT", 9090),
+
 		// Authorization configuration
 		AdminGroup:            getEnvOrDefault("ADMIN_GROUP", "heimdall-admin"),
 		TrustedServiceClients: parseCommaSeparatedList(getEnvOrDefault("TRUSTED_SERVICE_CLIENTS", "")),
@@ -601,6 +623,15 @@ func parseSyncJobBearerEncryptionKey(raw string) ([]byte, error) {
 		return nil, fmt.Errorf("must be 64 hex characters (32-byte AES-256 key)")
 	}
 	return decoded, nil
+}
+
+// corsAllowedOrigins returns the Origins listed in value, or a copy of
+// DefaultCORSAllowedOrigins when value lists none.
+func corsAllowedOrigins(value string) []string {
+	if origins := parseCommaSeparatedList(value); len(origins) > 0 {
+		return origins
+	}
+	return append([]string(nil), DefaultCORSAllowedOrigins...)
 }
 
 // parseCommaSeparatedList parses a comma-separated string into a slice of strings

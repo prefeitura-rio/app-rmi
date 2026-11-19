@@ -122,3 +122,15 @@ func FormatPhoneForStorage(ddi, ddd, valor string) string {
 func ExtractPhoneFromComponents(ddi, ddd, valor string) string {
 	return fmt.Sprintf("+%s%s%s", ddi, ddd, valor)
 }
+
+// StoragePhoneToE164 converts a phone stored as DDI+DDD+number (the
+// FormatPhoneForStorage format, e.g. "5521987654321") to E.164
+// ("+5521987654321"). A value that already carries the leading "+" is kept
+// as is, and an empty value stays empty.
+func StoragePhoneToE164(stored string) string {
+	digits := strings.TrimPrefix(strings.TrimSpace(stored), "+")
+	if digits == "" {
+		return ""
+	}
+	return "+" + digits
+}

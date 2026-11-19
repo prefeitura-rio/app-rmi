@@ -11,9 +11,9 @@ export USER="$7"
 export TEST_SCENARIO="$8"
 export DURATION="$9"
 export VIRTUAL_USERS="${10}"
-export RAMP_UP_DURATION="${11:-5m}"
-export STEADY_DURATION="${12:-10m}"
-export RAMP_DOWN_DURATION="${13:-2m}"
+export RAMP_UP_DURATION="${11:-}"
+export STEADY_DURATION="${12:-}"
+export RAMP_DOWN_DURATION="${13:-}"
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 COMMIT_SHA="${GITHUB_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')}"
@@ -28,15 +28,15 @@ yq eval '.metadata.name = env(TEST_RUN_NAME) |
          .spec.runner.env[0].value = env(KEYCLOAK_CLIENT_ID) |
          .spec.runner.env[1].value = env(KEYCLOAK_CLIENT_SECRET) |
          .spec.runner.env[2].value = env(KEYCLOAK_ISSUER) |
-         .spec.runner.env[3].value = env(BASE_URL_RMI) |
-         .spec.runner.env[4].value = env(BASE_URL_BUSCA) |
-         .spec.runner.env[5].value = (env(USER) | tostring) |
-         .spec.runner.env[6].value = env(TEST_SCENARIO) |
-         .spec.runner.env[7].value = env(DURATION) |
-         .spec.runner.env[8].value = (env(VIRTUAL_USERS) | tostring) |
-         .spec.runner.env[9].value = env(RAMP_UP_DURATION) |
-         .spec.runner.env[10].value = env(STEADY_DURATION) |
-         .spec.runner.env[11].value = env(RAMP_DOWN_DURATION)' "$TEMPLATE_FILE" | \
+         .spec.runner.env[3].value = strenv(BASE_URL_RMI) |
+         .spec.runner.env[4].value = strenv(BASE_URL_BUSCA) |
+         .spec.runner.env[5].value = strenv(USER) |
+         .spec.runner.env[6].value = strenv(TEST_SCENARIO) |
+         .spec.runner.env[7].value = strenv(DURATION) |
+         .spec.runner.env[8].value = strenv(VIRTUAL_USERS) |
+         .spec.runner.env[9].value = strenv(RAMP_UP_DURATION) |
+         .spec.runner.env[10].value = strenv(STEADY_DURATION) |
+         .spec.runner.env[11].value = strenv(RAMP_DOWN_DURATION)' "$TEMPLATE_FILE" | \
     kubectl apply -f -
 
 echo "TEST_RUN_NAME=$TEST_RUN_NAME" >> "$GITHUB_ENV"

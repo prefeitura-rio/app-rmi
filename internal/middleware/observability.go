@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -35,8 +36,7 @@ func RequestLogger() gin.HandlerFunc {
 		observability.RequestDuration.WithLabelValues(
 			observability.MaskURLPath(path),
 			c.Request.Method,
-			//nolint:gosec // G115: bounded conversion for metrics/status/memory counters
-			string(rune(status)),
+			strconv.Itoa(status),
 		).Observe(latency.Seconds())
 	}
 }

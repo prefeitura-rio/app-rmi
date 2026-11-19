@@ -429,7 +429,7 @@ func (s *PhoneMappingService) GetQuarantinedPhones(ctx context.Context, page, pe
 		}
 
 		quarantinedPhone := models.QuarantinedPhone{
-			PhoneNumber:     utils.ExtractPhoneFromComponents("55", mapping.PhoneNumber[:2], mapping.PhoneNumber[2:]),
+			PhoneNumber:     utils.StoragePhoneToE164(mapping.PhoneNumber),
 			QuarantineUntil: *mapping.QuarantineUntil,
 			Expired:         mapping.QuarantineUntil.Before(now),
 		}

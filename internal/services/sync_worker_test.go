@@ -81,6 +81,7 @@ func setupSyncWorkerTest(t *testing.T) (*SyncWorker, *mongo.Database, func()) {
 			"phone_verification:*",
 			"maintenance_request:*",
 			"cf_lookup:*",
+			"avatar_cleanup:*",
 		}
 
 		for _, pattern := range patterns {
