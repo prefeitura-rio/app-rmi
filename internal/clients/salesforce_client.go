@@ -143,6 +143,7 @@ type SalesforceCidadaoCreateRequest struct {
 	Cidade                 string              `json:"cidade,omitempty"`
 	CanalOrigem            string              `json:"canalOrigem,omitempty"`
 	CanalUltimaModificacao string              `json:"canalUltimaModificacao,omitempty"`
+	AvatarURL              string              `json:"avatarUrl,omitempty"`
 	ContaOrigem            string              `json:"contaOrigem,omitempty"`
 }
 

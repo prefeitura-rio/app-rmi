@@ -156,6 +156,18 @@ func (s *CacheService) UpdateUserConfig(ctx context.Context, userID string, user
 	return dataManager.Write(ctx, op)
 }
 
+// UpdateUserAvatar saves user configuration after an avatar change and mirrors the avatar to Salesforce.
+func (s *CacheService) UpdateUserAvatar(ctx context.Context, userID string, userConfig *models.UserConfig) error {
+	op := &UserConfigDataOperation{
+		UserID:         userID,
+		Data:           userConfig,
+		SalesforcePush: true,
+	}
+
+	dataManager := NewDataManager(config.Redis, config.MongoDB, s.logger)
+	return dataManager.Write(ctx, op)
+}
+
 // UpdateOptInHistory updates opt-in history via cache system
 func (s *CacheService) UpdateOptInHistory(ctx context.Context, id string, optInHistory *models.OptInHistory) error {
 	op := &OptInHistoryDataOperation{

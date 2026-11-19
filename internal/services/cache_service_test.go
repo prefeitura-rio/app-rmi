@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -231,6 +232,42 @@ func TestUpdateUserConfig(t *testing.T) {
 	if err != nil {
 		t.Errorf("UpdateUserConfig() error = %v", err)
 	}
+	if job := lastQueuedUserConfigJob(t, ctx); job.SalesforcePush {
+		t.Errorf("UpdateUserConfig() queued job with SalesforcePush = true, want false")
+	}
+}
+
+func TestUpdateUserAvatar_RequestsSalesforcePush(t *testing.T) {
+	service, cleanup := setupCacheServiceTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	avatarID := "68c032d1c676a026198725fd"
+
+	err := service.UpdateUserAvatar(ctx, "03561350712", &models.UserConfig{CPF: "03561350712", AvatarID: &avatarID})
+	if err != nil {
+		t.Fatalf("UpdateUserAvatar() error = %v", err)
+	}
+	job := lastQueuedUserConfigJob(t, ctx)
+	if job.Type != "user_config" || job.Key != "03561350712" {
+		t.Errorf("UpdateUserAvatar() queued %s/%s, want user_config/03561350712", job.Type, job.Key)
+	}
+	if !job.SalesforcePush {
+		t.Errorf("UpdateUserAvatar() queued job with SalesforcePush = false, want true")
+	}
+}
+
+func lastQueuedUserConfigJob(t *testing.T, ctx context.Context) SyncJob {
+	t.Helper()
+	raw, err := config.Redis.LRange(ctx, "sync:queue:user_config", 0, 0).Result()
+	if err != nil || len(raw) != 1 {
+		t.Fatalf("reading sync:queue:user_config: %v (items: %d)", err, len(raw))
+	}
+	var job SyncJob
+	if err := json.Unmarshal([]byte(raw[0]), &job); err != nil {
+		t.Fatalf("decoding queued job: %v", err)
+	}
+	return job
 }
 
 func TestUpdateOptInHistory(t *testing.T) {
