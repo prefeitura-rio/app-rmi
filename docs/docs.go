@@ -6368,6 +6368,11 @@ const docTemplate = `{
         },
         "/phone/{phone_number}/beta-status": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Verifica se um número de telefone está na whitelist beta (com cache)",
                 "produces": [
                     "application/json"
@@ -6394,6 +6399,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Número de telefone é obrigatório ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -6475,7 +6486,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "Conflito - telefone já está vinculado a outro CPF",
+                        "description": "Conflito - telefone já vinculado (ativo) a outro CPF; só admin ou service account confiável reatribui",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -6869,7 +6880,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "Conflito - telefone já possui opt-in ativo",
+                        "description": "Conflito - telefone já vinculado (ativo) a outro CPF; só admin ou service account confiável reatribui",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -7214,6 +7225,11 @@ const docTemplate = `{
         },
         "/phone/{phone_number}/status": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Obtém o status de um número de telefone (quarentena, CPF vinculado, opt-in/opt-out, etc.)",
                 "produces": [
                     "application/json"
@@ -7240,6 +7256,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Formato de telefone inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
@@ -7721,6 +7743,11 @@ const docTemplate = `{
         },
         "/validate/email": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Valida formato e estrutura de endereços de email, retornando informações detalhadas sobre o endereço quando válido.",
                 "consumes": [
                     "application/json"
@@ -7756,6 +7783,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
                     "429": {
                         "description": "Muitas requisições - limite de taxa excedido",
                         "schema": {
@@ -7773,6 +7806,11 @@ const docTemplate = `{
         },
         "/validate/phone": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Valida DDI, DDD e número para qualquer telefone internacional.",
                 "consumes": [
                     "application/json"
@@ -7804,6 +7842,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Campo telefone é obrigatório ou formato inválido",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
                         }

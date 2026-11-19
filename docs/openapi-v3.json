@@ -8155,6 +8155,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Muitas requisições - limite de taxa excedido",
             "content": {
@@ -8259,7 +8269,7 @@
             }
           },
           "409": {
-            "description": "Conflito - telefone já está vinculado a outro CPF",
+            "description": "Conflito - telefone já vinculado (ativo) a outro CPF; só admin ou service account confiável reatribui",
             "content": {
               "application/json": {
                 "schema": {
@@ -8768,7 +8778,7 @@
             }
           },
           "409": {
-            "description": "Conflito - telefone já possui opt-in ativo",
+            "description": "Conflito - telefone já vinculado (ativo) a outro CPF; só admin ou service account confiável reatribui",
             "content": {
               "application/json": {
                 "schema": {
@@ -9269,6 +9279,16 @@
           },
           "400": {
             "description": "Formato de telefone inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
@@ -9957,6 +9977,16 @@
               }
             }
           },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Muitas requisições - limite de taxa excedido",
             "content": {
@@ -10016,6 +10046,16 @@
           },
           "400": {
             "description": "Campo telefone é obrigatório ou formato inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/handlers.ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de autenticação não fornecido ou inválido",
             "content": {
               "application/json": {
                 "schema": {
