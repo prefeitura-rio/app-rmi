@@ -3332,7 +3332,7 @@ func GetCitizenWallet(c *gin.Context) {
 
 // GetMaintenanceRequests godoc
 // @Summary Obter chamados do 1746 do cidadão
-// @Description Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado; a resposta expõe protocolos[] (nunca o campo escalar protocolo).
+// @Description Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado; a resposta expõe protocolos[] e, na transição, também o escalar protocolo (preenchido quando há exatamente um código).
 // @Tags citizen
 // @Accept json
 // @Produce json

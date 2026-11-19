@@ -3523,7 +3523,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado; a resposta expõe protocolos[] (nunca o campo escalar protocolo).",
+                "description": "Recupera os chamados do 1746 de um cidadão por CPF com paginação. Cada documento representa um chamado; a resposta expõe protocolos[] e, na transição, também o escalar protocolo (preenchido quando há exatamente um código).",
                 "consumes": [
                     "application/json"
                 ],
@@ -10084,6 +10084,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "origem_ocorrencia": {
+                    "type": "string"
+                },
+                "protocolo": {
+                    "description": "Protocolo is kept during the SGRC transition for consumers that still read the\nscalar field. It is set when Protocolos has exactly one code; otherwise \"\".",
                     "type": "string"
                 },
                 "protocolos": {

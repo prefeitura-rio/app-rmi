@@ -386,7 +386,10 @@ type MaintenanceRequest struct {
 	Numero                    string     `json:"numero,omitempty"`
 	TotalChamados             int        `json:"total_chamados"`
 	TotalFechados             int        `json:"total_fechados"`
-	Protocolos                []string   `json:"protocolos"`
+	// Protocolo is kept during the SGRC transition for consumers that still read the
+	// scalar field. It is set when Protocolos has exactly one code; otherwise "".
+	Protocolo  string   `json:"protocolo"`
+	Protocolos []string `json:"protocolos"`
 }
 
 // ConvertToMaintenanceRequest converts a MaintenanceRequestDocument to a MaintenanceRequest for the API.
@@ -418,6 +421,10 @@ func (doc *MaintenanceRequestDocument) ConvertToMaintenanceRequest() *Maintenanc
 	}
 
 	protocolos := doc.Protocolos()
+	protocolo := ""
+	if len(protocolos) == 1 {
+		protocolo = protocolos[0]
+	}
 	cpf := doc.OwnerCPF()
 
 	return &MaintenanceRequest{
@@ -441,6 +448,7 @@ func (doc *MaintenanceRequestDocument) ConvertToMaintenanceRequest() *Maintenanc
 		Numero:                    doc.Numero,
 		TotalChamados:             doc.TotalChamados,
 		TotalFechados:             doc.TotalFechados,
+		Protocolo:                 protocolo,
 		Protocolos:                protocolos,
 	}
 }

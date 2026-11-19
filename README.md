@@ -42,7 +42,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | MONGODB_SELF_DECLARED_COLLECTION | Nome da coleção de dados autodeclarados | self_declared | Não |
 | MONGODB_PHONE_VERIFICATION_COLLECTION | Nome da coleção de verificação de telefone | phone_verifications | Não |
 | MONGODB_MAINTENANCE_REQUEST_COLLECTION | Nome da coleção legada de chamados do 1746 | - | Sim |
-| MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION | Nome da coleção histórica SGRC (`protocolos[]`) | - | Sim |
+| MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION | Nome da coleção histórica SGRC (`protocolos[]`); só lida com a flag ligada | `maintenance_requests_sgrc` | Não |
 | MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED | Se `true`, leituras usam a collection SGRC; default `false` (legado). Só na inicialização do processo | `false` | Não |
 | MONGODB_USER_CONFIG_COLLECTION | Nome da coleção de configurações do usuário | user_config | Não |
 | MONGODB_PHONE_MAPPING_COLLECTION | Nome da coleção de mapeamentos phone-CPF | phone_cpf_mappings | Não |
@@ -942,8 +942,8 @@ Recupera os chamados do 1746 de um cidadão por CPF com paginação.
 - Parâmetros de paginação:
   - `page`: Número da página (padrão: 1, mínimo: 1)
   - `per_page`: Itens por página (padrão: 10, máximo: 100)
-- Cada chamado traz `protocolos` (`string[]`, formato SGRC `RIO-12345678-9`); o campo escalar `protocolo` não é mais exposto
-- Fonte Mongo: `MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED=false` lê a collection legada; `true` lê `MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION`
+- Cada chamado traz `protocolos` (`string[]`, formato SGRC `RIO-12345678-9`) e, na transição, o escalar `protocolo` (preenchido quando há exatamente um código; `""` caso contrário) para não quebrar consumidores legados
+- Fonte Mongo: `MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED=false` lê a collection legada; `true` lê `MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION` (default `maintenance_requests_sgrc`)
 
 ### GET /maintenance-request/{protocolo}
 Consulta pública dos chamados históricos do 1746/SGRC de um protocolo (um protocolo pode agrupar mais de um chamado).

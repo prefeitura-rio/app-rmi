@@ -219,10 +219,9 @@ func LoadConfig() error {
 		return fmt.Errorf("MONGODB_MAINTENANCE_REQUEST_COLLECTION environment variable is required")
 	}
 
-	maintenanceRequestSGRCCollection := os.Getenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
-	if maintenanceRequestSGRCCollection == "" {
-		return fmt.Errorf("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION environment variable is required")
-	}
+	// Default keeps boot safe when Infisical has not yet set the key; reads only
+	// switch to this collection when MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED=true.
+	maintenanceRequestSGRCCollection := getEnvOrDefault("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION", "maintenance_requests_sgrc")
 
 	maintenanceRequestSGRCEnabled, err := strconv.ParseBool(getEnvOrDefault("MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED", "false"))
 	if err != nil {

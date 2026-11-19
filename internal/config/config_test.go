@@ -636,25 +636,66 @@ func TestLoadConfig_MissingMaintenanceRequestCollection(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_MissingMaintenanceRequestSGRCCollection(t *testing.T) {
+func TestLoadConfig_DefaultMaintenanceRequestSGRCCollection(t *testing.T) {
+	originalConfig := AppConfig
+	defer func() { AppConfig = originalConfig }()
+
 	os.Setenv("PORT", "8080")
-	os.Setenv("REDIS_DB", "0")
-	os.Setenv("REDIS_TTL", "60m")
+	os.Setenv("ENVIRONMENT", "test")
+	os.Setenv("MONGODB_URI", "mongodb://localhost:27017")
+	os.Setenv("MONGODB_DATABASE", "test_db")
 	os.Setenv("MONGODB_CITIZEN_COLLECTION", "citizens")
 	os.Setenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION", "maintenance_requests")
+	os.Setenv("MONGODB_LEGAL_ENTITY_COLLECTION", "legal_entities")
+	os.Setenv("MONGODB_PET_COLLECTION", "pets")
+	os.Setenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION", "pets_self_registered")
+	os.Setenv("MONGODB_CHAT_MEMORY_COLLECTION", "chat_memory")
+	os.Setenv("MONGODB_DEPARTMENT_COLLECTION", "departments")
+	os.Setenv("MONGODB_CNAE_COLLECTION", "cnae")
+	os.Setenv("REDIS_URI", "localhost:6379")
+	os.Setenv("REDIS_DB", "0")
+	os.Setenv("REDIS_TTL", "60m")
+	os.Setenv("WHATSAPP_API_BASE_URL", "https://example.com")
+	os.Setenv("WHATSAPP_API_USERNAME", "user")
+	os.Setenv("WHATSAPP_API_PASSWORD", "pass")
+	os.Setenv("WHATSAPP_HSM_ID", "hsm")
+	os.Setenv("WHATSAPP_COST_CENTER_ID", "cc")
+	os.Setenv("WHATSAPP_CAMPAIGN_NAME", "campaign")
+	os.Setenv("CF_LOOKUP_ENABLED", "false")
 	os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
-	defer os.Unsetenv("PORT")
-	defer os.Unsetenv("REDIS_DB")
-	defer os.Unsetenv("REDIS_TTL")
-	defer os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
-	defer os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+	defer func() {
+		os.Unsetenv("PORT")
+		os.Unsetenv("ENVIRONMENT")
+		os.Unsetenv("MONGODB_URI")
+		os.Unsetenv("MONGODB_DATABASE")
+		os.Unsetenv("MONGODB_CITIZEN_COLLECTION")
+		os.Unsetenv("MONGODB_MAINTENANCE_REQUEST_COLLECTION")
+		os.Unsetenv("MONGODB_LEGAL_ENTITY_COLLECTION")
+		os.Unsetenv("MONGODB_PET_COLLECTION")
+		os.Unsetenv("MONGODB_PETS_SELF_REGISTERED_COLLECTION")
+		os.Unsetenv("MONGODB_CHAT_MEMORY_COLLECTION")
+		os.Unsetenv("MONGODB_DEPARTMENT_COLLECTION")
+		os.Unsetenv("MONGODB_CNAE_COLLECTION")
+		os.Unsetenv("REDIS_URI")
+		os.Unsetenv("REDIS_DB")
+		os.Unsetenv("REDIS_TTL")
+		os.Unsetenv("WHATSAPP_API_BASE_URL")
+		os.Unsetenv("WHATSAPP_API_USERNAME")
+		os.Unsetenv("WHATSAPP_API_PASSWORD")
+		os.Unsetenv("WHATSAPP_HSM_ID")
+		os.Unsetenv("WHATSAPP_COST_CENTER_ID")
+		os.Unsetenv("WHATSAPP_CAMPAIGN_NAME")
+		os.Unsetenv("CF_LOOKUP_ENABLED")
+	}()
 
-	err := LoadConfig()
-	if err == nil {
-		t.Error("LoadConfig() should return error for missing MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION")
+	if err := LoadConfig(); err != nil {
+		t.Fatalf("LoadConfig() with unset SGRC collection = %v, want nil (default)", err)
 	}
-	if !strings.Contains(err.Error(), "MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION") {
-		t.Errorf("LoadConfig() error = %v, want error containing 'MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION'", err)
+	if AppConfig.MaintenanceRequestSGRCCollection != "maintenance_requests_sgrc" {
+		t.Errorf("MaintenanceRequestSGRCCollection = %q, want maintenance_requests_sgrc default", AppConfig.MaintenanceRequestSGRCCollection)
+	}
+	if AppConfig.MaintenanceRequestSGRCEnabled {
+		t.Error("MaintenanceRequestSGRCEnabled default = true, want false")
 	}
 }
 

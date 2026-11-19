@@ -200,14 +200,32 @@ func TestConvertToMaintenanceRequest_IncludesProtocolos(t *testing.T) {
 	if len(got.Protocolos) != 1 || got.Protocolos[0] != "RIO-12345678-9" {
 		t.Fatalf("protocolos = %v, want [RIO-12345678-9]", got.Protocolos)
 	}
+	if got.Protocolo != "RIO-12345678-9" {
+		t.Fatalf("scalar protocolo = %q, want RIO-12345678-9 (compat for single-code docs)", got.Protocolo)
+	}
 
 	legacy := MaintenanceRequestDocument{ID: "y", CPF: testOwnerCPF, ProtocoloLinks: nil}
 	body, _ := json.Marshal(legacy.ConvertToMaintenanceRequest())
-	if strings.Contains(string(body), `"protocolo":`) {
-		t.Fatalf("response must not use scalar protocolo: %s", body)
+	if !strings.Contains(string(body), `"protocolo":""`) {
+		t.Fatalf("empty scalar protocolo must still serialize for consumers: %s", body)
 	}
 	if !strings.Contains(string(body), `"protocolos":[]`) {
 		t.Fatalf("empty protocolos must serialize as []: %s", body)
+	}
+
+	multi := MaintenanceRequestDocument{
+		ID: "m", CPF: testOwnerCPF,
+		ProtocoloLinks: []MaintenanceRequestProtocoloLink{
+			{CodigoProtocolo: "RIO-11111111-1", CPF: testOwnerCPF},
+			{CodigoProtocolo: "RIO-22222222-2", CPF: testOwnerCPF},
+		},
+	}
+	multiGot := multi.ConvertToMaintenanceRequest()
+	if multiGot.Protocolo != "" {
+		t.Fatalf("scalar protocolo with multiple codes = %q, want empty", multiGot.Protocolo)
+	}
+	if len(multiGot.Protocolos) != 2 {
+		t.Fatalf("protocolos = %v, want 2 codes", multiGot.Protocolos)
 	}
 }
 
@@ -234,6 +252,9 @@ func TestConvertToMaintenanceRequest_SGRCDocument(t *testing.T) {
 	}
 	if len(got.Protocolos) != 1 || got.Protocolos[0] != "RIO-11111111-1" {
 		t.Fatalf("protocolos = %v", got.Protocolos)
+	}
+	if got.Protocolo != "RIO-11111111-1" {
+		t.Fatalf("scalar protocolo = %q, want RIO-11111111-1", got.Protocolo)
 	}
 	if got.Descricao == nil || *got.Descricao != "desc" {
 		t.Fatalf("descricao_chamado = %v", got.Descricao)
