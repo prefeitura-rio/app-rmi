@@ -62,9 +62,9 @@ The script now supports **non-interactive phone verification**:
 #### Public Endpoints (No Auth Required)
 - ✅ Health Check (`GET /health`)
 - ✅ Get Ethnicity Options (`GET /citizen/ethnicity/options`)
-- ✅ Validate Phone Number (`POST /validate/phone`)
 
 #### Protected Endpoints (Auth Required)
+- ✅ Validate Phone Number (`POST /validate/phone`)
 - ✅ Get Citizen Data (`GET /citizen/{cpf}`)
 - ✅ Get Citizen Wallet (`GET /citizen/{cpf}/wallet`)
 - ✅ Get Maintenance Requests (`GET /citizen/{cpf}/maintenance-request`)

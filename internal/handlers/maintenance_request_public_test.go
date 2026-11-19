@@ -71,28 +71,55 @@ func (i *protocoloTestIssuer) token(t *testing.T, key *rsa.PrivateKey, preferred
 	return signed
 }
 
+const (
+	protocoloSeedID1 = "protocolo-test-1"
+	protocoloSeedID2 = "protocolo-test-2"
+)
+
+// cleanupProtocoloSeedDocs removes fixtures from both legacy and SGRC collections so a flag
+// toggle (or a previous failed run) cannot leave _id collisions for the next seed.
+func cleanupProtocoloSeedDocs(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	ids := bson.M{"_id": bson.M{"$in": bson.A{protocoloSeedID1, protocoloSeedID2}}}
+	protocolos := bson.A{protocoloTest, protocoloOtherProt}
+
+	collections := []string{config.AppConfig.MaintenanceRequestCollection}
+	if name := config.AppConfig.MaintenanceRequestSGRCCollection; name != "" {
+		collections = append(collections, name)
+	}
+	for _, name := range collections {
+		coll := config.MongoDB.Collection(name)
+		if _, err := coll.DeleteMany(ctx, ids); err != nil {
+			t.Fatalf("cleanup %s by _id: %v", name, err)
+		}
+		if _, err := coll.DeleteMany(ctx, bson.M{"protocolo": bson.M{"$in": protocolos}}); err != nil {
+			t.Fatalf("cleanup %s by protocolo: %v", name, err)
+		}
+		if _, err := coll.DeleteMany(ctx, bson.M{"protocolos.codigo_protocolo": bson.M{"$in": protocolos}}); err != nil {
+			t.Fatalf("cleanup %s by protocolos.codigo_protocolo: %v", name, err)
+		}
+	}
+
+	_ = config.Redis.Del(ctx,
+		"maintenance_request:protocolo:"+protocoloTest,
+		"maintenance_request:legacy:protocolo:"+protocoloTest,
+		"maintenance_request:sgrc:protocolo:"+protocoloTest,
+		"maintenance_request:"+config.AppConfig.ActiveMaintenanceRequestSource()+":protocolo:"+protocoloTest,
+	).Err()
+}
+
 func seedProtocoloDocuments(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
 	coll := config.MongoDB.Collection(config.AppConfig.ActiveMaintenanceRequestCollection())
-	source := config.AppConfig.ActiveMaintenanceRequestSource()
-	cleanup := func() {
-		_, _ = coll.DeleteMany(ctx, bson.M{"_id": bson.M{"$in": bson.A{"protocolo-test-1", "protocolo-test-2"}}})
-		_, _ = coll.DeleteMany(ctx, bson.M{"protocolo": bson.M{"$in": bson.A{protocoloTest, protocoloOtherProt}}})
-		_, _ = coll.DeleteMany(ctx, bson.M{"protocolos.codigo_protocolo": bson.M{"$in": bson.A{protocoloTest, protocoloOtherProt}}})
-		_ = config.Redis.Del(ctx,
-			"maintenance_request:protocolo:"+protocoloTest,
-			"maintenance_request:"+source+":protocolo:"+protocoloTest,
-			"maintenance_request:legacy:protocolo:"+protocoloTest,
-			"maintenance_request:sgrc:protocolo:"+protocoloTest,
-		).Err()
-	}
-	cleanup()
-	t.Cleanup(cleanup)
+
+	cleanupProtocoloSeedDocs(t)
+	t.Cleanup(func() { cleanupProtocoloSeedDocs(t) })
 
 	docs := []interface{}{
 		bson.M{
-			"_id": "protocolo-test-1", "cpf": protocoloOwnerCPF, "id": "9000001", "protocolo": protocoloTest,
+			"_id": protocoloSeedID1, "cpf": protocoloOwnerCPF, "id": "9000001", "protocolo": protocoloTest,
 			"categoria": "Serviço", "tipo": "Iluminação Pública", "status": "Aberto",
 			"data_inicio": "2025-01-10T10:00:00", "descricao": "descricao do titular",
 			"endereco": "Rua Sintetica, 1 - Centro", "bairro": "Centro", "logradouro": "Rua Sintetica, 1",
@@ -103,7 +130,7 @@ func seedProtocoloDocuments(t *testing.T) {
 			},
 		},
 		bson.M{
-			"_id": "protocolo-test-2", "cpf": protocoloOwnerCPF, "id": "9000002", "protocolo": protocoloTest,
+			"_id": protocoloSeedID2, "cpf": protocoloOwnerCPF, "id": "9000002", "protocolo": protocoloTest,
 			"categoria": "Serviço", "tipo": "Conservação", "status": "Fechado",
 			"data_inicio": "2025-01-09T10:00:00", "descricao": "segunda descricao", "bairro": "Centro",
 			"logradouro": "Rua Sintetica, 1",
@@ -112,7 +139,7 @@ func seedProtocoloDocuments(t *testing.T) {
 	if config.AppConfig.MaintenanceRequestSGRCEnabled {
 		docs = []interface{}{
 			bson.M{
-				"_id": "protocolo-test-1", "id_chamado": int64(9000001),
+				"_id": protocoloSeedID1, "id_chamado": int64(9000001),
 				"protocolos": []bson.M{{"codigo_protocolo": protocoloTest, "cpf": protocoloOwnerCPF}},
 				"categoria":  "Serviço", "tipo": "Iluminação Pública", "status": "Aberto",
 				"data_inicio": "2025-01-10T10:00:00", "descricao_chamado": "descricao do titular",
@@ -125,7 +152,7 @@ func seedProtocoloDocuments(t *testing.T) {
 				},
 			},
 			bson.M{
-				"_id": "protocolo-test-2", "id_chamado": int64(9000002),
+				"_id": protocoloSeedID2, "id_chamado": int64(9000002),
 				"protocolos": []bson.M{{"codigo_protocolo": protocoloTest, "cpf": protocoloOwnerCPF}},
 				"categoria":  "Serviço", "tipo": "Conservação", "status": "Fechado",
 				"data_inicio": "2025-01-09T10:00:00", "descricao_chamado": "segunda descricao", "bairro": "Centro",
@@ -135,7 +162,7 @@ func seedProtocoloDocuments(t *testing.T) {
 	}
 
 	if _, err := coll.InsertMany(ctx, docs); err != nil {
-		t.Fatalf("seed: %v", err)
+		t.Fatalf("seed into %s: %v", coll.Name(), err)
 	}
 }
 
@@ -286,14 +313,15 @@ func TestGetMaintenanceRequestByProtocolo_SGRCCollection(t *testing.T) {
 	}
 	prevEnabled := config.AppConfig.MaintenanceRequestSGRCEnabled
 	prevSGRC := config.AppConfig.MaintenanceRequestSGRCCollection
-	config.AppConfig.MaintenanceRequestSGRCEnabled = true
-	if config.AppConfig.MaintenanceRequestSGRCCollection == "" {
-		config.AppConfig.MaintenanceRequestSGRCCollection = "maintenance_requests_sgrc"
-	}
+	// Register restore first so it runs after seed cleanup (t.Cleanup is LIFO).
 	t.Cleanup(func() {
 		config.AppConfig.MaintenanceRequestSGRCEnabled = prevEnabled
 		config.AppConfig.MaintenanceRequestSGRCCollection = prevSGRC
 	})
+	config.AppConfig.MaintenanceRequestSGRCEnabled = true
+	if config.AppConfig.MaintenanceRequestSGRCCollection == "" {
+		config.AppConfig.MaintenanceRequestSGRCCollection = "maintenance_requests_sgrc"
+	}
 
 	seedProtocoloDocuments(t)
 	SetMaintenanceRequestJWTVerifier(nil)

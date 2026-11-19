@@ -6922,6 +6922,10 @@ paths:
           description: Número de telefone é obrigatório ou inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "429":
           description: Muitas requisições - limite de taxa excedido
           schema:
@@ -6930,6 +6934,8 @@ paths:
           description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Verificar status beta
       tags:
       - Beta Whitelist
@@ -6970,7 +6976,8 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "409":
-          description: Conflito - telefone já está vinculado a outro CPF
+          description: Conflito - telefone já vinculado (ativo) a outro CPF; só admin
+            ou service account confiável reatribui
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "422":
@@ -7228,7 +7235,8 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "409":
-          description: Conflito - telefone já possui opt-in ativo
+          description: Conflito - telefone já vinculado (ativo) a outro CPF; só admin
+            ou service account confiável reatribui
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
         "422":
@@ -7476,6 +7484,10 @@ paths:
           description: Formato de telefone inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "404":
           description: Telefone não encontrado no sistema
           schema:
@@ -7488,6 +7500,8 @@ paths:
           description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Obter status do telefone
       tags:
       - phone
@@ -7816,6 +7830,10 @@ paths:
           description: Campo email é obrigatório ou formato inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "429":
           description: Muitas requisições - limite de taxa excedido
           schema:
@@ -7824,6 +7842,8 @@ paths:
           description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Valida endereço de email
       tags:
       - validation
@@ -7850,6 +7870,10 @@ paths:
           description: Campo telefone é obrigatório ou formato inválido
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+        "401":
+          description: Token de autenticação não fornecido ou inválido
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
         "429":
           description: Muitas requisições - limite de taxa excedido
           schema:
@@ -7858,6 +7882,8 @@ paths:
           description: Erro interno do servidor
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Valida número de telefone
       tags:
       - validation

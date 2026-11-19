@@ -379,3 +379,100 @@ func TestPhoneAccess_GetCitizenByThirdPartyPhone_AdminAllowed(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
+
+// A citizen may not take over, with their own CPF, a phone with an active binding to
+// another CPF (DEV-245): opt-in and bind answer 409 and leave the binding untouched.
+func TestPhoneAccess_OptInOwnCPFOnPhoneBoundToAnotherCPF_Conflict(t *testing.T) {
+	router, cleanup := setupPhoneAccessRouter(t, ownerClaims())
+	defer cleanup()
+	insertTestPhoneMapping(t, accessPhone, accessOtherCPF, true, models.MappingStatusActive)
+
+	w := doPhoneRequest(t, router, http.MethodPost, "/phone/"+accessPhone+"/opt-in",
+		models.OptInRequest{CPF: accessOwnerCPF, Channel: models.ChannelWhatsApp})
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	assert.NotContains(t, w.Body.String(), accessOtherCPF, "the bound CPF must not be disclosed")
+	mapping, found := storedMapping(t, accessPhone)
+	require.True(t, found)
+	assert.Equal(t, accessOtherCPF, mapping.CPF, "the binding of the other CPF must be kept")
+	assert.Equal(t, models.MappingStatusActive, mapping.Status)
+	assert.Equal(t, int64(0), optInHistoryCount(t), "no opt-in may be recorded")
+}
+
+func TestPhoneAccess_BindOwnCPFOnPhoneBoundToAnotherCPF_Conflict(t *testing.T) {
+	router, cleanup := setupPhoneAccessRouter(t, ownerClaims())
+	defer cleanup()
+	insertTestPhoneMapping(t, accessPhone, accessOtherCPF, false, models.MappingStatusActive)
+
+	w := doPhoneRequest(t, router, http.MethodPost, "/phone/"+accessPhone+"/bind",
+		models.BindRequest{CPF: accessOwnerCPF, Channel: models.ChannelWhatsApp})
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	assert.NotContains(t, w.Body.String(), accessOtherCPF, "the bound CPF must not be disclosed")
+	mapping, found := storedMapping(t, accessPhone)
+	require.True(t, found)
+	assert.Equal(t, accessOtherCPF, mapping.CPF, "the binding of the other CPF must be kept")
+	assert.Equal(t, models.MappingStatusActive, mapping.Status)
+}
+
+func TestPhoneAccess_OptInOnPhoneBoundToAnotherCPF_AdminReassigns(t *testing.T) {
+	router, cleanup := setupPhoneAccessRouter(t, adminClaims())
+	defer cleanup()
+	insertTestPhoneMapping(t, accessPhone, accessOtherCPF, true, models.MappingStatusActive)
+
+	w := doPhoneRequest(t, router, http.MethodPost, "/phone/"+accessPhone+"/opt-in",
+		models.OptInRequest{CPF: accessOwnerCPF, Channel: models.ChannelWhatsApp})
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	mapping, found := storedMapping(t, accessPhone)
+	require.True(t, found)
+	assert.Equal(t, accessOwnerCPF, mapping.CPF)
+	assert.Equal(t, models.MappingStatusActive, mapping.Status)
+}
+
+func TestPhoneAccess_BindOnPhoneBoundToAnotherCPF_TrustedServiceReassigns(t *testing.T) {
+	previousTrusted := config.AppConfig.TrustedServiceClients
+	config.AppConfig.TrustedServiceClients = []string{"trusted-service"}
+	t.Cleanup(func() { config.AppConfig.TrustedServiceClients = previousTrusted })
+
+	router, cleanup := setupPhoneAccessRouter(t, &models.JWTClaims{AZP: "trusted-service", PreferredUsername: "service-account-trusted-service"})
+	defer cleanup()
+	insertTestPhoneMapping(t, accessPhone, accessOtherCPF, false, models.MappingStatusActive)
+
+	w := doPhoneRequest(t, router, http.MethodPost, "/phone/"+accessPhone+"/bind",
+		models.BindRequest{CPF: accessOwnerCPF, Channel: models.ChannelWhatsApp})
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	mapping, found := storedMapping(t, accessPhone)
+	require.True(t, found)
+	assert.Equal(t, accessOwnerCPF, mapping.CPF)
+}
+
+func TestPhoneAccess_OptInOwnCPFOnPhoneBlockedByAnotherCPF_Allowed(t *testing.T) {
+	router, cleanup := setupPhoneAccessRouter(t, ownerClaims())
+	defer cleanup()
+	insertTestPhoneMapping(t, accessPhone, accessOtherCPF, false, models.MappingStatusBlocked)
+
+	w := doPhoneRequest(t, router, http.MethodPost, "/phone/"+accessPhone+"/opt-in",
+		models.OptInRequest{CPF: accessOwnerCPF, Channel: models.ChannelWhatsApp})
+
+	assert.Equal(t, http.StatusOK, w.Code, "a binding released by its owner (opt-out/reject) is free")
+	mapping, found := storedMapping(t, accessPhone)
+	require.True(t, found)
+	assert.Equal(t, accessOwnerCPF, mapping.CPF)
+	assert.Equal(t, models.MappingStatusActive, mapping.Status)
+}
+
+func TestPhoneAccess_OptInOwnCPFOnOwnActivePhone_AlreadyOptedIn(t *testing.T) {
+	router, cleanup := setupPhoneAccessRouter(t, ownerClaims())
+	defer cleanup()
+	insertTestPhoneMapping(t, accessPhone, accessOwnerCPF, true, models.MappingStatusActive)
+
+	w := doPhoneRequest(t, router, http.MethodPost, "/phone/"+accessPhone+"/opt-in",
+		models.OptInRequest{CPF: accessOwnerCPF, Channel: models.ChannelWhatsApp})
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var response models.OptInResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, "already_opted_in", response.Status)
+}

@@ -8148,6 +8148,11 @@
         },
         "/phone/{phone_number}/beta-status": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Verifica se um número de telefone está na whitelist beta (com cache)",
                 "tags": [
                     "Beta Whitelist"
@@ -8177,6 +8182,16 @@
                     },
                     "400": {
                         "description": "Número de telefone é obrigatório ou inválido",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -8284,7 +8299,7 @@
                         }
                     },
                     "409": {
-                        "description": "Conflito - telefone já está vinculado a outro CPF",
+                        "description": "Conflito - telefone já vinculado (ativo) a outro CPF; só admin ou service account confiável reatribui",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -8793,7 +8808,7 @@
                         }
                     },
                     "409": {
-                        "description": "Conflito - telefone já possui opt-in ativo",
+                        "description": "Conflito - telefone já vinculado (ativo) a outro CPF; só admin ou service account confiável reatribui",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -9265,6 +9280,11 @@
         },
         "/phone/{phone_number}/status": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Obtém o status de um número de telefone (quarentena, CPF vinculado, opt-in/opt-out, etc.)",
                 "tags": [
                     "phone"
@@ -9294,6 +9314,16 @@
                     },
                     "400": {
                         "description": "Formato de telefone inválido",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -9940,6 +9970,11 @@
         },
         "/validate/email": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Valida formato e estrutura de endereços de email, retornando informações detalhadas sobre o endereço quando válido.",
                 "tags": [
                     "validation"
@@ -9977,6 +10012,16 @@
                             }
                         }
                     },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    },
                     "429": {
                         "description": "Muitas requisições - limite de taxa excedido",
                         "content": {
@@ -10002,6 +10047,11 @@
         },
         "/validate/phone": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Valida DDI, DDD e número para qualquer telefone internacional.",
                 "tags": [
                     "validation"
@@ -10031,6 +10081,16 @@
                     },
                     "400": {
                         "description": "Campo telefone é obrigatório ou formato inválido",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handlers.ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Token de autenticação não fornecido ou inválido",
                         "content": {
                             "application/json": {
                                 "schema": {

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -18,6 +19,11 @@ import (
 	"github.com/prefeitura-rio/app-rmi/internal/observability"
 	"github.com/prefeitura-rio/app-rmi/internal/utils"
 )
+
+// ErrPhoneBoundToAnotherCPF is returned by OptIn and BindPhoneToCPF when reassignment
+// is not allowed and the phone number has an active binding to a CPF other than the
+// requested one.
+var ErrPhoneBoundToAnotherCPF = errors.New("phone number is bound to another CPF")
 
 type PhoneMappingService struct {
 	logger *logging.SafeLogger
@@ -282,8 +288,10 @@ func (s *PhoneMappingService) ReleaseQuarantine(ctx context.Context, phoneNumber
 	}, nil
 }
 
-// BindPhoneToCPF binds a phone number to a CPF without setting opt-in
-func (s *PhoneMappingService) BindPhoneToCPF(ctx context.Context, phoneNumber, cpf, channel string) (*models.BindResponse, error) {
+// BindPhoneToCPF binds a phone number to a CPF without setting opt-in. Without
+// allowReassign (callers without admin privileges), a phone with an active binding to
+// another CPF is left untouched and ErrPhoneBoundToAnotherCPF is returned.
+func (s *PhoneMappingService) BindPhoneToCPF(ctx context.Context, phoneNumber, cpf, channel string, allowReassign bool) (*models.BindResponse, error) {
 	// Parse phone number for storage format
 	components, err := utils.ParsePhoneNumber(phoneNumber)
 	if err != nil {
@@ -335,6 +343,12 @@ func (s *PhoneMappingService) BindPhoneToCPF(ctx context.Context, phoneNumber, c
 		return nil, fmt.Errorf("failed to check existing phone mapping: %w", err)
 	}
 
+	if !allowReassign {
+		if err := s.ensureNotBoundToAnotherCPF(ctx, storagePhone, cpf); err != nil {
+			return nil, err
+		}
+	}
+
 	// Update existing mapping
 	update := bson.M{
 		"$set": bson.M{
@@ -358,14 +372,8 @@ func (s *PhoneMappingService) BindPhoneToCPF(ctx context.Context, phoneNumber, c
 		}
 	}
 
-	_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
-		ctx,
-		bson.M{"phone_number": storagePhone},
-		update,
-	)
-	if err != nil {
-		s.logger.Error("failed to update phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
-		return nil, fmt.Errorf("failed to update phone mapping: %w", err)
+	if err := s.updateBinding(ctx, storagePhone, cpf, update, allowReassign); err != nil {
+		return nil, err
 	}
 
 	return &models.BindResponse{
@@ -375,6 +383,57 @@ func (s *PhoneMappingService) BindPhoneToCPF(ctx context.Context, phoneNumber, c
 		OptIn:       false,
 		Message:     "Phone number bound to CPF without opt-in",
 	}, nil
+}
+
+// boundToAnotherCPFFilter matches the mappings of storagePhone with an active binding
+// to a CPF other than cpf (raw or normalized). A mapping without CPF is not bound.
+func boundToAnotherCPFFilter(storagePhone, cpf string) bson.M {
+	return bson.M{
+		"phone_number": storagePhone,
+		"status":       models.MappingStatusActive,
+		"cpf":          bson.M{"$nin": bson.A{cpf, utils.NormalizeCPF(cpf), "", nil}},
+	}
+}
+
+// ensureNotBoundToAnotherCPF returns ErrPhoneBoundToAnotherCPF when storagePhone has an
+// active binding to a CPF other than cpf.
+func (s *PhoneMappingService) ensureNotBoundToAnotherCPF(ctx context.Context, storagePhone, cpf string) error {
+	count, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).CountDocuments(
+		ctx,
+		boundToAnotherCPFFilter(storagePhone, cpf),
+		options.Count().SetLimit(1),
+	)
+	if err != nil {
+		s.logger.Error("failed to check phone binding", zap.Error(err), observability.PhoneField(storagePhone))
+		return fmt.Errorf("failed to check phone binding: %w", err)
+	}
+	if count > 0 {
+		return ErrPhoneBoundToAnotherCPF
+	}
+	return nil
+}
+
+// updateBinding applies update to the mapping of storagePhone. Without allowReassign the
+// filter also excludes an active binding to another CPF, so a binding made between the
+// check and the write is not overwritten either: no match returns
+// ErrPhoneBoundToAnotherCPF.
+func (s *PhoneMappingService) updateBinding(ctx context.Context, storagePhone, cpf string, update bson.M, allowReassign bool) error {
+	filter := bson.M{"phone_number": storagePhone}
+	if !allowReassign {
+		guard := boundToAnotherCPFFilter(storagePhone, cpf)
+		delete(guard, "phone_number")
+		filter["$nor"] = bson.A{guard}
+	}
+
+	result, err := config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(ctx, filter, update)
+	if err != nil {
+		s.logger.Error("failed to update phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
+		return fmt.Errorf("failed to update phone mapping: %w", err)
+	}
+	if !allowReassign && result.MatchedCount == 0 {
+		return ErrPhoneBoundToAnotherCPF
+	}
+	return nil
 }
 
 // GetQuarantinedPhones returns a paginated list of quarantined phone numbers
@@ -741,8 +800,10 @@ func (s *PhoneMappingService) ValidateRegistration(ctx context.Context, phoneNum
 	}, nil
 }
 
-// OptIn processes opt-in for a phone number
-func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, channel string) (*models.OptInResponse, error) {
+// OptIn processes opt-in for a phone number. Without allowReassign (callers without
+// admin privileges), a phone with an active binding to another CPF is left untouched,
+// no history is recorded and ErrPhoneBoundToAnotherCPF is returned.
+func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, channel string, allowReassign bool) (*models.OptInResponse, error) {
 	// Parse phone number for storage format
 	components, err := utils.ParsePhoneNumber(phoneNumber)
 	if err != nil {
@@ -807,6 +868,12 @@ func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, chann
 		}, nil
 	}
 
+	if !allowReassign {
+		if err := s.ensureNotBoundToAnotherCPF(ctx, storagePhone, cpf); err != nil {
+			return nil, err
+		}
+	}
+
 	// Update existing mapping
 	update := bson.M{
 		"$set": bson.M{
@@ -830,14 +897,8 @@ func (s *PhoneMappingService) OptIn(ctx context.Context, phoneNumber, cpf, chann
 		}
 	}
 
-	_, err = config.MongoDB.Collection(config.AppConfig.PhoneMappingCollection).UpdateOne(
-		ctx,
-		bson.M{"phone_number": storagePhone},
-		update,
-	)
-	if err != nil {
-		s.logger.Error("failed to update phone mapping", zap.Error(err), observability.PhoneField(storagePhone))
-		return nil, fmt.Errorf("failed to update phone mapping: %w", err)
+	if err := s.updateBinding(ctx, storagePhone, cpf, update, allowReassign); err != nil {
+		return nil, err
 	}
 
 	// Record opt-in history
