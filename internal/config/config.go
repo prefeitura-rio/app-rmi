@@ -625,7 +625,6 @@ func parseSyncJobBearerEncryptionKey(raw string) ([]byte, error) {
 	return decoded, nil
 }
 
-// parseCommaSeparatedList parses a comma-separated string into a slice of strings
 // corsAllowedOrigins returns the Origins listed in value, or a copy of
 // DefaultCORSAllowedOrigins when value lists none.
 func corsAllowedOrigins(value string) []string {
@@ -635,6 +634,7 @@ func corsAllowedOrigins(value string) []string {
 	return append([]string(nil), DefaultCORSAllowedOrigins...)
 }
 
+// parseCommaSeparatedList parses a comma-separated string into a slice of strings
 func parseCommaSeparatedList(value string) []string {
 	parts := strings.Split(value, ",")
 	result := make([]string, 0, len(parts))

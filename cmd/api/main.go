@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
+	"slices"
 	"syscall"
 	"time"
 
@@ -80,7 +80,7 @@ func main() {
 	}
 	logging.Logger.Info("CORS allowlist configured",
 		zap.Strings("origins", config.AppConfig.CORSAllowedOrigins),
-		zap.Bool("from_env", strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS")) != ""),
+		zap.Bool("defaults", slices.Equal(config.AppConfig.CORSAllowedOrigins, config.DefaultCORSAllowedOrigins)),
 	)
 
 	// Initialize observability
