@@ -1,0 +1,116 @@
+# Regras de alerta mínimas de produção do RMI (DEV-700).
+#
+# Formato: arquivo de regras do Prometheus (`groups:`), o que o chart `prometheus` do
+# istio-system carrega em `serverFiles.alerting_rules.yml` e o que vai, sem mudança, no
+# `spec` de uma PrometheusRule. Este arquivo NÃO está em k8s/<env>/kustomization.yaml:
+# levar as regras ao Prometheus, o Alertmanager e o roteamento são da raia Infra
+# (prefeitura-rio/infra, superapp/modules/k8s/istio.tf).
+#
+# Séries de que dependem:
+#   - app_rmi_request_duration_seconds (API, GET /metrics na 8080) e rmi_sync_queue_depth
+#     (worker, GET /metrics na METRICS_PORT, padrão 9090): exigem o scrape dos pods
+#     (anotações prometheus.io/* no Rollout rmi e no Deployment rmi-sync).
+#   - kube_pod_container_status_restarts_total e kube_pod_container_status_waiting_reason:
+#     exigem o kube-state-metrics.
+#
+# Provas: `just test-alerts` (promtool check rules + promtool test rules com
+# rmi-alerts.test.yml) e TestAlertRules (go test ./internal/observability/).
+groups:
+  - name: rmi-api
+    rules:
+      # Taxa de 5xx acima de 2% das requisições da API na janela de 5 min.
+      - alert: RMIHighErrorRate
+        expr: |
+          (
+            sum by (namespace) (rate(app_rmi_request_duration_seconds_count{status=~"5.."}[5m]))
+            /
+            sum by (namespace) (rate(app_rmi_request_duration_seconds_count[5m]))
+          ) > 0.02
+        for: 1m
+        labels:
+          severity: critical
+          service: rmi
+        annotations:
+          summary: "RMI: mais de 2% de respostas 5xx em 5 min ({{ $labels.namespace }})"
+          description: "A fração de respostas 5xx da API do RMI passou de 2% na janela de 5 min. Veja o health, os logs `request completed` com status 5xx no SigNoz e se houve deploy recente."
+          runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#3-alertas-e-primeiro-passo"
+
+      # Latência p95 acima de 1 s na janela de 10 min, nas rotas servidas aos clientes
+      # (todas, menos o /metrics do scrape e o /v1/health das probes).
+      - alert: RMIHighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (namespace, le) (
+              rate(app_rmi_request_duration_seconds_bucket{path!~"/metrics|/v1/health"}[10m])
+            )
+          ) > 1
+        for: 1m
+        labels:
+          severity: warning
+          service: rmi
+        annotations:
+          summary: "RMI: latência p95 acima de 1 s em 10 min ({{ $labels.namespace }})"
+          description: "O p95 da duração das requisições da API do RMI passou de 1 s na janela de 10 min. Veja réplicas e KEDA, os logs de pool do Redis/Mongo e as dependências (runbook, seção 4.4)."
+          runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#44-dependência-fora-do-ar"
+
+  - name: rmi-pods
+    rules:
+      # Mais de 3 reinícios de um container do namespace rmi em 15 min.
+      - alert: RMIPodRestarting
+        expr: |
+          increase(kube_pod_container_status_restarts_total{namespace="rmi"}[15m]) > 3
+        for: 0m
+        labels:
+          severity: critical
+          service: rmi
+        annotations:
+          summary: "RMI: {{ $labels.pod }}/{{ $labels.container }} reiniciou mais de 3 vezes em 15 min"
+          description: "O container {{ $labels.container }} do pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) reiniciou mais de 3 vezes em 15 min. Veja `kubectl -n rmi describe pod` e os logs com `--previous`."
+          runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#4-rotina-de-incidente"
+
+      # Container em CrashLoopBackOff há 5 min.
+      - alert: RMIPodCrashLooping
+        expr: |
+          max by (namespace, pod, container) (
+            kube_pod_container_status_waiting_reason{namespace="rmi", reason="CrashLoopBackOff"}
+          ) > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: rmi
+        annotations:
+          summary: "RMI: {{ $labels.pod }}/{{ $labels.container }} em CrashLoopBackOff"
+          description: "O container {{ $labels.container }} do pod {{ $labels.pod }} (namespace {{ $labels.namespace }}) está em CrashLoopBackOff há 5 min. Veja `kubectl -n rmi describe pod` e os logs com `--previous`."
+          runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#4-rotina-de-incidente"
+
+  - name: rmi-sync
+    rules:
+      # Backlog de uma fila do worker acima do limite durante 10 min.
+      # Limite calibrável: troque o 100 abaixo (ponto de partida, o mesmo do threshold do
+      # ScaledObject comentado do rmi-sync) e o número do summary.
+      - alert: RMISyncQueueBacklog
+        expr: |
+          max by (namespace, queue) (rmi_sync_queue_depth{queue!~"dlq_.*"}) > 100
+        for: 10m
+        labels:
+          severity: warning
+          service: rmi
+        annotations:
+          summary: "RMI: fila {{ $labels.queue }} do sync com mais de 100 itens há 10 min"
+          description: "A fila sync:queue:{{ $labels.queue }} ({{ $labels.namespace }}) está acima do limite há 10 min: o worker não está drenando. Veja `degraded mode activated`, réplicas do rmi-sync e o Mongo (runbook, seção 4.2)."
+          runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#42-filas-e-dlq-do-sync-worker"
+
+      # Qualquer item novo numa DLQ do worker nos últimos 15 min (a DLQ é medida na subida
+      # do worker e a cada 5 min; o max por fila junta as réplicas, que leem o mesmo Redis).
+      - alert: RMISyncDLQNewItems
+        expr: |
+          max by (namespace, queue) (rmi_sync_queue_depth{queue=~"dlq_.*"})
+            > max by (namespace, queue) (rmi_sync_queue_depth{queue=~"dlq_.*"} offset 15m)
+        for: 0m
+        labels:
+          severity: warning
+          service: rmi
+        annotations:
+          summary: "RMI: item novo na {{ $labels.queue }} nos últimos 15 min"
+          description: "A {{ $labels.queue }} ({{ $labels.namespace }}) cresceu nos últimos 15 min: jobs do worker que não serão mais tentados. Ache a fila e o erro e corrija a causa antes de reprocessar (runbook, seção 4.2)."
+          runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#42-filas-e-dlq-do-sync-worker"

@@ -1,0 +1,193 @@
+# Testes unitários das regras de rmi-alerts.rules.yml (promtool test rules; `just test-alerts`).
+# Cada caso tem séries que devem disparar o alerta e séries que não devem.
+rule_files:
+  - rmi-alerts.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 5xx: 3% dispara; 1% não dispara.
+  - interval: 1m
+    input_series:
+      - series: 'app_rmi_request_duration_seconds_count{namespace="rmi",path="/v1/citizen/:cpf",method="GET",status="200"}'
+        values: '0+97x20'
+      - series: 'app_rmi_request_duration_seconds_count{namespace="rmi",path="/v1/citizen/:cpf",method="GET",status="500"}'
+        values: '0+3x20'
+      - series: 'app_rmi_request_duration_seconds_count{namespace="rmi-ok",path="/v1/citizen/:cpf",method="GET",status="200"}'
+        values: '0+99x20'
+      - series: 'app_rmi_request_duration_seconds_count{namespace="rmi-ok",path="/v1/citizen/:cpf",method="GET",status="503"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RMIHighErrorRate
+        exp_alerts:
+          - exp_labels:
+              namespace: rmi
+              severity: critical
+              service: rmi
+            exp_annotations:
+              summary: "RMI: mais de 2% de respostas 5xx em 5 min (rmi)"
+              description: "A fração de respostas 5xx da API do RMI passou de 2% na janela de 5 min. Veja o health, os logs `request completed` com status 5xx no SigNoz e se houve deploy recente."
+              runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#3-alertas-e-primeiro-passo"
+
+  # 5xx: sem 5xx nenhum, nada dispara.
+  - interval: 1m
+    input_series:
+      - series: 'app_rmi_request_duration_seconds_count{namespace="rmi",path="/v1/health",method="GET",status="200"}'
+        values: '0+100x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RMIHighErrorRate
+        exp_alerts: []
+
+  # Latência: p95 entre 1 e 2,5 s dispara; rotas rápidas não; /v1/health lento é ignorado.
+  - interval: 1m
+    input_series:
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi",path="/v1/citizen/:cpf",method="GET",status="200",le="0.5"}'
+        values: '0x20'
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi",path="/v1/citizen/:cpf",method="GET",status="200",le="1"}'
+        values: '0x20'
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi",path="/v1/citizen/:cpf",method="GET",status="200",le="2.5"}'
+        values: '0+10x20'
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi",path="/v1/citizen/:cpf",method="GET",status="200",le="+Inf"}'
+        values: '0+10x20'
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi-fast",path="/v1/citizen/:cpf",method="GET",status="200",le="0.5"}'
+        values: '0+10x20'
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi-fast",path="/v1/citizen/:cpf",method="GET",status="200",le="1"}'
+        values: '0+10x20'
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi-fast",path="/v1/citizen/:cpf",method="GET",status="200",le="2.5"}'
+        values: '0+10x20'
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi-fast",path="/v1/citizen/:cpf",method="GET",status="200",le="+Inf"}'
+        values: '0+10x20'
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi-fast",path="/v1/health",method="GET",status="200",le="0.5"}'
+        values: '0x20'
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi-fast",path="/v1/health",method="GET",status="200",le="1"}'
+        values: '0x20'
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi-fast",path="/v1/health",method="GET",status="200",le="2.5"}'
+        values: '0x20'
+      - series: 'app_rmi_request_duration_seconds_bucket{namespace="rmi-fast",path="/v1/health",method="GET",status="200",le="+Inf"}'
+        values: '0+50x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: RMIHighLatencyP95
+        exp_alerts:
+          - exp_labels:
+              namespace: rmi
+              severity: warning
+              service: rmi
+            exp_annotations:
+              summary: "RMI: latência p95 acima de 1 s em 10 min (rmi)"
+              description: "O p95 da duração das requisições da API do RMI passou de 1 s na janela de 10 min. Veja réplicas e KEDA, os logs de pool do Redis/Mongo e as dependências (runbook, seção 4.4)."
+              runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#44-dependência-fora-do-ar"
+
+  # Reinícios: 1 por minuto dispara; 2 em 15 min não; outro namespace não.
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="rmi",pod="rmi-sync-a",container="rmi-sync"}'
+        values: '0+1x20'
+      - series: 'kube_pod_container_status_restarts_total{namespace="rmi",pod="rmi-b",container="rmi"}'
+        values: '0x9 1x4 2x5'
+      - series: 'kube_pod_container_status_restarts_total{namespace="outro",pod="x-a",container="x"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 18m
+        alertname: RMIPodRestarting
+        exp_alerts:
+          - exp_labels:
+              namespace: rmi
+              pod: rmi-sync-a
+              container: rmi-sync
+              severity: critical
+              service: rmi
+            exp_annotations:
+              summary: "RMI: rmi-sync-a/rmi-sync reiniciou mais de 3 vezes em 15 min"
+              description: "O container rmi-sync do pod rmi-sync-a (namespace rmi) reiniciou mais de 3 vezes em 15 min. Veja `kubectl -n rmi describe pod` e os logs com `--previous`."
+              runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#4-rotina-de-incidente"
+
+  # CrashLoopBackOff: 10 min seguidos dispara; 3 min não; outro motivo não.
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting_reason{namespace="rmi",pod="rmi-a",container="rmi",reason="CrashLoopBackOff"}'
+        values: '1x20'
+      - series: 'kube_pod_container_status_waiting_reason{namespace="rmi",pod="rmi-b",container="rmi",reason="CrashLoopBackOff"}'
+        values: '0x4 1x2 0x13'
+      - series: 'kube_pod_container_status_waiting_reason{namespace="rmi",pod="rmi-c",container="rmi",reason="ContainerCreating"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RMIPodCrashLooping
+        exp_alerts:
+          - exp_labels:
+              namespace: rmi
+              pod: rmi-a
+              container: rmi
+              severity: critical
+              service: rmi
+            exp_annotations:
+              summary: "RMI: rmi-a/rmi em CrashLoopBackOff"
+              description: "O container rmi do pod rmi-a (namespace rmi) está em CrashLoopBackOff há 5 min. Veja `kubectl -n rmi describe pod` e os logs com `--previous`."
+              runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#4-rotina-de-incidente"
+
+  # Backlog: acima de 100 por 10 min dispara (um alerta por fila, mesmo com duas réplicas);
+  # abaixo do limite, acima só por 5 min ou numa DLQ não dispara.
+  - interval: 1m
+    input_series:
+      - series: 'rmi_sync_queue_depth{namespace="rmi",pod="rmi-sync-a",queue="citizen"}'
+        values: '150x20'
+      - series: 'rmi_sync_queue_depth{namespace="rmi",pod="rmi-sync-b",queue="citizen"}'
+        values: '150x20'
+      - series: 'rmi_sync_queue_depth{namespace="rmi",pod="rmi-sync-a",queue="phone_mapping"}'
+        values: '50x20'
+      - series: 'rmi_sync_queue_depth{namespace="rmi",pod="rmi-sync-a",queue="user_config"}'
+        values: '0x4 200x4 0x11'
+      - series: 'rmi_sync_queue_depth{namespace="rmi",pod="rmi-sync-a",queue="dlq_citizen"}'
+        values: '500x20'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: RMISyncQueueBacklog
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: RMISyncQueueBacklog
+        exp_alerts:
+          - exp_labels:
+              namespace: rmi
+              queue: citizen
+              severity: warning
+              service: rmi
+            exp_annotations:
+              summary: "RMI: fila citizen do sync com mais de 100 itens há 10 min"
+              description: "A fila sync:queue:citizen (rmi) está acima do limite há 10 min: o worker não está drenando. Veja `degraded mode activated`, réplicas do rmi-sync e o Mongo (runbook, seção 4.2)."
+              runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#42-filas-e-dlq-do-sync-worker"
+
+  # DLQ: item novo dispara por 15 min e some depois; DLQ parada (mesmo cheia) ou drenada não.
+  - interval: 1m
+    input_series:
+      - series: 'rmi_sync_queue_depth{namespace="rmi",pod="rmi-sync-a",queue="dlq_citizen"}'
+        values: '2x20 3x30'
+      - series: 'rmi_sync_queue_depth{namespace="rmi",pod="rmi-sync-b",queue="dlq_citizen"}'
+        values: '2x20 3x30'
+      - series: 'rmi_sync_queue_depth{namespace="rmi",pod="rmi-sync-a",queue="dlq_phone_mapping"}'
+        values: '5x50'
+      - series: 'rmi_sync_queue_depth{namespace="rmi",pod="rmi-sync-a",queue="dlq_cf_lookup"}'
+        values: '4x20 0x30'
+      - series: 'rmi_sync_queue_depth{namespace="rmi",pod="rmi-sync-a",queue="citizen"}'
+        values: '0x20 50x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RMISyncDLQNewItems
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: RMISyncDLQNewItems
+        exp_alerts:
+          - exp_labels:
+              namespace: rmi
+              queue: dlq_citizen
+              severity: warning
+              service: rmi
+            exp_annotations:
+              summary: "RMI: item novo na dlq_citizen nos últimos 15 min"
+              description: "A dlq_citizen (rmi) cresceu nos últimos 15 min: jobs do worker que não serão mais tentados. Ache a fila e o erro e corrija a causa antes de reprocessar (runbook, seção 4.2)."
+              runbook_url: "https://github.com/prefeitura-rio/app-rmi/blob/main/docs/runbook.md#42-filas-e-dlq-do-sync-worker"
+      - eval_time: 40m
+        alertname: RMISyncDLQNewItems
+        exp_alerts: []

@@ -115,6 +115,19 @@ Não há dashboard do RMI versionado no repositório nem no `prefeitura-rio/infr
 | Logs de pool do Redis/Mongo | SigNoz | Pool perto do limite; latência e timeouts em seguida. | Veja réplicas e carga (Istio), conexões no servidor (`INFO clients`, `db.serverStatus().connections`). Ajuste `REDIS_POOL_SIZE`/limites só pelo caminho de configuração (seção 7). |
 | Argo CD `OutOfSync`/`Degraded` no Application `rmi` | Argo CD | Manifest de `k8s/` não aplicou ou pod não fica pronto. | `kubectl -n argocd get application rmi -o yaml` (condições e `operationState`), eventos do namespace. |
 
+### Regras de alerta do Prometheus
+
+As regras mínimas de produção ficam versionadas em `internal/observability/alerts/rmi-alerts.rules.yml` (formato de arquivo de regras do Prometheus, o mesmo `groups:` do `spec` de uma PrometheusRule), com testes em `rmi-alerts.test.yml` (`just test-alerts`, com o `promtool` 3.x no `PATH`). O arquivo **não** está no `kustomization.yaml` de `k8s/<env>`: carregá-lo no Prometheus do `istio-system`, o Alertmanager e o roteamento das notificações são da raia Infra (`superapp/modules/k8s/istio.tf` do `infra`). As regras de API e do worker dependem do scrape dos pods (anotações `prometheus.io/*`); as de pod, do kube-state-metrics.
+
+| Alerta | Severidade | Dispara quando | Primeiro passo |
+|---|---|---|---|
+| `RMIHighErrorRate` | critical | Respostas 5xx acima de 2% das requisições da API em 5 min (`app_rmi_request_duration_seconds_count`, `status=~"5.."`). | Health, logs `request completed` com status 5xx, deploy recente (seção 4). |
+| `RMIHighLatencyP95` | warning | p95 de `app_rmi_request_duration_seconds` acima de 1 s em 10 min, em todas as rotas menos `/metrics` e `/v1/health`. | Réplicas e KEDA, logs de pool do Redis/Mongo, dependências ([seção 4.4](#44-dependência-fora-do-ar)). |
+| `RMIPodRestarting` | critical | Um container do namespace `rmi` reiniciou mais de 3 vezes em 15 min. | `kubectl -n rmi describe pod <pod>` e `kubectl -n rmi logs <pod> -c <container> --previous`. |
+| `RMIPodCrashLooping` | critical | Um container do namespace `rmi` está em `CrashLoopBackOff` há 5 min. | Idem. |
+| `RMISyncQueueBacklog` | warning | `rmi_sync_queue_depth` de uma fila (não DLQ) acima de 100 itens por 10 min. O limite é calibrável: troque o `100` da expressão (e do `summary`) e o caso do teste. | `degraded mode activated`, réplicas do `rmi-sync`, Mongo ([seção 4.2](#42-filas-e-dlq-do-sync-worker)). |
+| `RMISyncDLQNewItems` | warning | Uma DLQ (`rmi_sync_queue_depth{queue="dlq_<fila>"}`) está maior que há 15 min. A DLQ é medida a cada 5 min, então o alerta chega em até 5 min e some 15 min depois do último item novo. | Fila e erro do item, corrigir a causa antes de reprocessar ([seção 4.2](#42-filas-e-dlq-do-sync-worker)). |
+
 ## 4. Rotina de incidente
 
 1. **Delimite**: health dos dois ambientes, versão (`version` do health), fase do Rollout, pods da API e do worker, eventos `Warning`.

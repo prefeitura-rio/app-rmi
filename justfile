@@ -82,6 +82,17 @@ test:
     SFMC_ENABLED=false \
     go test -v ./...
 
+# Check the Prometheus alert rules and run their unit tests (needs promtool 3.x in PATH)
+test-alerts:
+    #!/usr/bin/env sh
+    set -e
+    if ! command -v promtool > /dev/null; then
+        echo "promtool not found: put the promtool of a Prometheus 3.x release (https://prometheus.io/download/) in PATH"
+        exit 1
+    fi
+    promtool check rules internal/observability/alerts/rmi-alerts.rules.yml
+    cd internal/observability/alerts && promtool test rules rmi-alerts.test.yml
+
 # Run tests with coverage
 test-coverage:
     go test -v -coverprofile=coverage.out ./...
