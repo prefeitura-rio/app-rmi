@@ -73,6 +73,46 @@ jobs:
           go-package: ./...
           output-format: text
 
+  # Pinned to the Prometheus of istio-system (infra: superapp/modules/k8s/yamls/istio/prometheus.yaml).
+  alert-rules:
+    name: Alert Rules (promtool)
+    runs-on: ubuntu-latest
+    env:
+      PROMETHEUS_VERSION: "3.2.1"
+      PROMETHEUS_SHA256: a622e3007c9109a7f470e1433cbd29bf392596715cf7eea8b81b37fa9d26b7be
+      JUST_VERSION: "1.40.0"
+      JUST_SHA256: 181b91d0ceebe8a57723fb648ed2ce1a44d849438ce2e658339df4f8db5f1263
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install promtool and just (pinned, checksum verified)
+        run: |
+          set -euo pipefail
+          BIN="$RUNNER_TEMP/bin"
+          mkdir -p "$BIN"
+          cd "$RUNNER_TEMP"
+
+          PROM="prometheus-${PROMETHEUS_VERSION}.linux-amd64"
+          curl -fsSL -o prometheus.tar.gz \
+            "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/${PROM}.tar.gz"
+          echo "${PROMETHEUS_SHA256}  prometheus.tar.gz" | sha256sum -c -
+          tar -xzf prometheus.tar.gz "${PROM}/promtool"
+          install -m 0755 "${PROM}/promtool" "$BIN/promtool"
+
+          curl -fsSL -o just.tar.gz \
+            "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          echo "${JUST_SHA256}  just.tar.gz" | sha256sum -c -
+          tar -xzf just.tar.gz just
+          install -m 0755 just "$BIN/just"
+
+          echo "$BIN" >> "$GITHUB_PATH"
+
+      - name: Check and test alert rules
+        run: |
+          promtool --version
+          just test-alerts
+
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -274,7 +314,7 @@ jobs:
   build:
     name: Docker Build Dry Run
     runs-on: ubuntu-latest
-    needs: [lint, security-scan, govulncheck, test]
+    needs: [lint, security-scan, govulncheck, alert-rules, test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -324,7 +364,7 @@ jobs:
   summary:
     name: Quality Gate Summary
     runs-on: ubuntu-latest
-    needs: [lint, security-scan, govulncheck, test, build]
+    needs: [lint, security-scan, govulncheck, alert-rules, test, build]
     if: always()
     permissions:
       pull-requests: write
@@ -351,6 +391,7 @@ jobs:
             | Code Linting | ${{ needs.lint.result == 'success' && '✅ Passed' || needs.lint.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
             | Security Scanning | ${{ needs.security-scan.result == 'success' && '✅ Passed' || needs.security-scan.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
             | Go Vulnerability Check | ${{ needs.govulncheck.result == 'success' && '✅ Passed' || needs.govulncheck.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
+            | Alert Rules (promtool) | ${{ needs.alert-rules.result == 'success' && '✅ Passed' || needs.alert-rules.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
             | Unit Tests | ${{ needs.test.result == 'success' && '✅ Passed' || needs.test.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
             | **Coverage** | **${{ needs.test.outputs.coverage_current }}%** (${{ needs.test.outputs.coverage_diff }}%) ${{ needs.test.outputs.coverage_status }} |
             | Docker Build | ${{ needs.build.result == 'success' && '✅ Passed' || needs.build.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |
@@ -362,7 +403,7 @@ jobs:
 
             ---
 
-            ${{ needs.lint.result == 'success' && needs.security-scan.result == 'success' && needs.govulncheck.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' && '### ✅ All quality checks passed - PR is ready to merge' || '### ❌ Quality gate failed - PR is not ready to merge' }}
+            ${{ needs.lint.result == 'success' && needs.security-scan.result == 'success' && needs.govulncheck.result == 'success' && needs.alert-rules.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' && '### ✅ All quality checks passed - PR is ready to merge' || '### ❌ Quality gate failed - PR is not ready to merge' }}
 
             **Commit**: ${{ github.event.pull_request.head.sha }}
             **Run**: [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
@@ -372,6 +413,7 @@ jobs:
           if [ "${{ needs.lint.result }}" != "success" ] || \
              [ "${{ needs.security-scan.result }}" != "success" ] || \
              [ "${{ needs.govulncheck.result }}" != "success" ] || \
+             [ "${{ needs.alert-rules.result }}" != "success" ] || \
              [ "${{ needs.test.result }}" != "success" ] || \
              [ "${{ needs.build.result }}" != "success" ]; then
             exit 1
