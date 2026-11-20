@@ -361,6 +361,8 @@ Antes: corrija a causa do erro (seção 4.2) e confira que o worker está consum
 
    Sucesso: `sync job succeeded - cache updated and write buffer cleaned` com esse `job_id` (no SigNoz, `k8s.container.name = rmi-sync` e `job_id = <job_id>`). Um novo `job moved to DLQ` com o mesmo `job_id` quer dizer que a causa continua: não insista.
 
+   Job de `citizen` ou `self_declared_*` reprocessado grava no Mongo, mas **não** sincroniza com o Salesforce: a DLQ retira o JWT do job, e o worker registra `skipping salesforce push enqueue: ...` (sem token no job) em vez de enfileirar o `salesforce_push`. É esperado; a próxima alteração ou o próximo login do cidadão (`/v1/auth/validate`) sincroniza de novo.
+
 5. **Mais de um item**: repita os passos 2 a 4 um por vez, olhando o resultado de cada um antes do próximo.
 
 6. **Ao terminar**: `unset VK_PASS ITEM JOB` e feche o terminal. Registre no incidente a fila, os `job_id`, a quantidade e o resultado, sem dados pessoais.
