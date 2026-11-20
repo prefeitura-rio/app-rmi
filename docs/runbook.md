@@ -198,7 +198,7 @@ Os comandos de ponta a ponta (sem colar senha nem dado pessoal no terminal) est�
 
 Casos especiais:
 
-- **`salesforce_push`**: o JWT do cidadão é retirado do job ao ir para a DLQ, e o push exige o token (`bearer token absent on job`). **Esses jobs não podem ser reprocessados**; a próxima alteração do cidadão (ou o próximo login, por `/v1/auth/validate`) volta a sincronizar. Descarte os itens depois de registrar a contagem e o erro.
+- **`salesforce_push`**: o JWT do cidadão é retirado do job ao ir para a DLQ, e o push exige o token (`bearer token absent on job`). **Esses jobs não podem ser reprocessados**; só a próxima alteração do cidadão no RMI enfileira um push novo. O login (`/v1/auth/validate`) não reenvia esses dados: ele só confere o cadastro no Salesforce (no máximo atualiza o e-mail do JWT ou cria a conta com nome e e-mail). Descarte os itens depois de registrar a contagem e o erro.
 - **`cf_lookup`**: pode ser descartado; a próxima consulta da carteira refaz o lookup (o dedupe por CPF, `cf_lookup:pending:<cpf>`, dura 1 h).
 - **`mobilidade_invite_email`**: o status fica no vínculo (`email_status = failed`, `email_last_error`). Reprocessar reenvia o e-mail real: confirme com o time de Mobilidade antes.
 - Jobs presos em `sync:processing:{<fila>}` há mais de 5 min voltam sozinhos à fila (recuperação a cada 1 min); não mexa à mão.
@@ -213,7 +213,7 @@ O RMI não tem credencial própria no Salesforce: todas as chamadas usam o **JWT
 |---|---|---|
 | Proxies `/v1/salesforce/...` repassam 401 ao app | Token do cidadão expirado ou recusado pela política de JWT do Mule (a resposta vem do Mule, sem o formato `errors[]` do Salesforce). | Caso isolado: o app renova o login. Em massa: o Mule deixou de aceitar tokens do realm (issuer, audiência, JWKS). Confirme com um token recém-emitido; se persistir, acione o time do Salesforce/Mule com horário, rota e quantidade (sem tokens nem CPFs). |
 | `/v1/auth/validate` responde 502 com `salesforce auth validate failed` | Mesma causa, no GET/PATCH/POST do login. | Igual acima. |
-| `job moved to DLQ` em `salesforce_push` com `salesforce patch failed` (401) ou `bearer token expired` | O JWT capturado na escrita expirou antes do worker processar o push (fila parada ou atrasada) ou foi recusado. São erros permanentes: vão direto para a DLQ. | Veja se a fila `sync:queue:{salesforce_push}` estava represada (modo degradado, worker parado). Não reprocesse (4.2); a próxima alteração ou login sincroniza de novo. |
+| `job moved to DLQ` em `salesforce_push` com `salesforce patch failed` (401) ou `bearer token expired` | O JWT capturado na escrita expirou antes do worker processar o push (fila parada ou atrasada) ou foi recusado. São erros permanentes: vão direto para a DLQ. | Veja se a fila `sync:queue:{salesforce_push}` estava represada (modo degradado, worker parado). Não reprocesse (4.2); só a próxima alteração do cidadão no RMI envia os dados de novo (o login não reenvia). |
 | Webhook SF→RMI recebe 401/403 | 401: chamada sem JWT ou token inválido. 403: `azp` fora de `SALESFORCE_WEBHOOK_CLIENTS` (log `salesforce webhook client rejected`). 503: lista não configurada. | 401: o Salesforce precisa obter token do client de serviço no Keycloak. 403/503: ajuste `SALESFORCE_WEBHOOK_CLIENTS` pelo caminho de configuração (seção 7). |
 
 ### 4.4 Dependência fora do ar
@@ -361,7 +361,7 @@ Antes: corrija a causa do erro (seção 4.2) e confira que o worker está consum
 
    Sucesso: `sync job succeeded - cache updated and write buffer cleaned` com esse `job_id` (no SigNoz, `k8s.container.name = rmi-sync` e `job_id = <job_id>`). Um novo `job moved to DLQ` com o mesmo `job_id` quer dizer que a causa continua: não insista.
 
-   Job de `citizen` ou `self_declared_*` reprocessado grava no Mongo, mas **não** sincroniza com o Salesforce: a DLQ retira o JWT do job, e o worker registra `skipping salesforce push enqueue: ...` (sem token no job) em vez de enfileirar o `salesforce_push`. É esperado; a próxima alteração ou o próximo login do cidadão (`/v1/auth/validate`) sincroniza de novo.
+   Job de `citizen` ou `self_declared_*` reprocessado grava no Mongo, mas **não** sincroniza com o Salesforce: a DLQ retira o JWT do job, e o worker registra `skipping salesforce push enqueue: ...` (sem token no job) em vez de enfileirar o `salesforce_push`. É esperado: só a próxima alteração do cidadão no RMI envia esses dados ao Salesforce. O login (`/v1/auth/validate`) não os reenvia; ele só confere o cadastro (no máximo atualiza o e-mail do JWT ou cria a conta com nome e e-mail).
 
 5. **Mais de um item**: repita os passos 2 a 4 um por vez, olhando o resultado de cada um antes do próximo.
 
