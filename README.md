@@ -4,7 +4,7 @@
 
 API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autodeclaração de informações e verificação de contato.
 
-**Operação e incidentes:** [docs/runbook.md](docs/runbook.md) (dependências, onde olhar, alertas, rollback, DLQ e filas do sync worker, Salesforce 401, variáveis críticas).
+**Operação e incidentes:** [docs/runbook.md](docs/runbook.md) (dependências, onde olhar, alertas, rollback, DLQ e filas do sync worker, Salesforce 401, variáveis críticas, passo a passo de rollback e de reprocessamento da DLQ em staging).
 
 ## Funcionalidades
 

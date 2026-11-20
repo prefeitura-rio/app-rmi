@@ -21,6 +21,7 @@ Guia para quem está de plantão quando o RMI dá problema: o que o serviço faz
 - Salesforce (client de serviço do Keycloak): webhook `POST /v1/webhooks/salesforce/cidadao`.
 - Público sem login: `GET /v1/maintenance-request/{protocolo}`, listas de opções, `/v1/health`.
 - Administradores (grupo `ADMIN_GROUP`) e clients de serviço confiáveis (`TRUSTED_SERVICE_CLIENTS`): rotas `/v1/admin/...`.
+- **app-go-api** (service account do Keycloak, com o `azp` em `TRUSTED_SERVICE_CLIENTS`): chama `GET /v1/cpf-secretaria/{cpf}` (rota com `RequireOwnCPF`, que aceita o client de serviço confiável). O RMI **não chama** o go-api: ele é consumidor, não dependência. Se o `azp` dele sair de `TRUSTED_SERVICE_CLIENTS`, as chamadas dele passam a receber 403.
 
 **De quem depende**
 
@@ -155,7 +156,7 @@ As regras mínimas de produção ficam versionadas em `internal/observability/al
 **Staging (blue-green)**
 
 - Falha de E2E já aborta sozinha (o ativo não muda).
-- Para tirar de staging algo que passou: reverta o commit na `main` por PR; o push dispara `deploy-staging.yaml` com a imagem do revert.
+- Para tirar de staging algo que passou: reverta o commit na `main` por PR; o push dispara `deploy-staging.yaml` com a imagem do revert. Comandos de ponta a ponta na [seção 8.1](#81-rollback-em-staging).
 
 **Mudança só em `k8s/`** (o deploy de staging pula o build quando só `k8s/` mudou): reverta o commit por PR; o Argo CD aplica o estado anterior.
 
@@ -191,7 +192,9 @@ Para varrer todas: `SCAN 0 MATCH sync:dlq:* COUNT 1000` (nunca `KEYS *` em produ
 
 1. Confira se o dado do job ainda é o mais recente. O worker grava `original_job.data` com `$set` e upsert, sem comparar versão: se o cidadão alterou o mesmo campo depois da falha, reprocessar o job antigo **sobrescreve o dado novo**. Compare o `original_job.timestamp` (hora em que o job foi enfileirado; o `original_job.data` dos autodeclarados também traz `updated_at`) com o `updated_at` do documento no Mongo antes de devolver.
 2. Devolva um job por vez: pegue o JSON de `original_job`, zere `retry_count`, remova `available_at` e faça `LPUSH` na fila de origem (`sync:queue:<fila>` ou `sync:queue:{<fila>}`), então remova esse item da DLQ (`LREM <dlq> 1 '<json exato do item>'`). Faça a cópia antes de remover.
-3. Acompanhe nos logs `sync job succeeded` ou um novo `job moved to DLQ` para o mesmo `job_id`.
+3. Acompanhe nos logs `sync job succeeded - cache updated and write buffer cleaned` ou um novo `job moved to DLQ` para o mesmo `job_id`.
+
+Os comandos de ponta a ponta (sem colar senha nem dado pessoal no terminal) estão na [seção 8.2](#82-reprocessar-um-job-da-dlq-em-staging).
 
 Casos especiais:
 
@@ -263,3 +266,101 @@ A configuração vem toda de variáveis de ambiente (`internal/config/config.go`
 | `LOG_LEVEL` | `info` | `debug` mostra o ciclo das filas; não deixe ligado em produção. |
 
 **Ajustes de comportamento**: `DB_WORKER_COUNT` (workers do sync, 10), `CF_LOOKUP_SYNC_TIMEOUT` (15s), `CF_LOOKUP_JOB_TIMEOUT` (90s), `CF_LOOKUP_GLOBAL_RATE_LIMIT`, `PHONE_VERIFICATION_TTL` (5m), `PHONE_QUARANTINE_TTL` (4320h), `REDIS_TTL`, `INDEX_MAINTENANCE_INTERVAL` (1h).
+
+## 8. Passo a passo em staging (para quem não é do time)
+
+Roteiro para fazer, só com este documento, um rollback e o reprocessamento de uma fila em **staging**. Pré-requisitos: `gcloud` autenticado com acesso ao projeto `rj-superapp-staging` (com permissão de `exec` no namespace `rmi` e de leitura do Secret `rmi-secrets`), `kubectl`, `gh` autenticado com permissão de abrir PR no `prefeitura-rio/app-rmi`, `git` e `jq`. Em produção os passos de rollback são os da [seção 4.1](#41-rollback).
+
+### 8.1 Rollback em staging
+
+1. **Veja o que está implantado** e ache o commit que causou o problema (cada PR entra na `main` como um commit):
+
+   ```bash
+   curl -s https://services.staging.app.dados.rio/rmi/v1/health | jq '{status, version}'   # version = commit curto em staging
+   gh run list -R prefeitura-rio/app-rmi --workflow deploy-staging.yaml --limit 5
+   git clone https://github.com/prefeitura-rio/app-rmi.git && cd app-rmi
+   git log --oneline -10 origin/main
+   ```
+
+2. **Abra o PR de revert** (nunca faça push direto na `main`):
+
+   ```bash
+   SHA=<commit a reverter>
+   git switch -c "revert-${SHA:0:7}" origin/main
+   git revert --no-edit "$SHA"            # commit de merge ("Merge pull request #..."): git revert --no-edit -m 1 "$SHA"
+   git push origin "revert-${SHA:0:7}"
+   gh pr create -R prefeitura-rio/app-rmi --base main --head "revert-${SHA:0:7}" \
+     --title "revert: <título do PR revertido>" --body "Reverte $SHA em staging: <motivo, sem dados pessoais>."
+   ```
+
+   O PR segue as regras da `main` (CI e revisão). Depois do merge, o push dispara o `deploy-staging.yaml`.
+
+3. **Acompanhe o deploy e confira**:
+
+   ```bash
+   gh run list -R prefeitura-rio/app-rmi --workflow deploy-staging.yaml --limit 1     # o run do merge do revert
+   gh run watch <run-id> -R prefeitura-rio/app-rmi                                   # termina em "Promote to Stable"
+   curl -s https://services.staging.app.dados.rio/rmi/v1/health | jq '{status, version}'
+   gcloud container clusters get-credentials application --dns-endpoint --region us-central1 --project rj-superapp-staging
+   kubectl -n rmi get rollout rmi -o wide                                            # Healthy
+   kubectl -n rmi get deploy rmi-sync -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+   ```
+
+   Pronto quando o run terminou com sucesso, `version` é o commit curto do merge do revert (`git rev-parse --short <sha do merge>`), o Rollout está `Healthy` e o `rmi-sync` usa a imagem `:<sha do merge>`.
+
+   - Run com falha no E2E: o workflow já abortou o Rollout e o staging continua na versão anterior; leia o job "Run E2E Tests Against Preview".
+   - **Atalho de emergência** (até o revert entrar): `gh run rerun <run-id de um deploy bom> -R prefeitura-rio/app-rmi` reconstrói e promove aquela versão em staging. O GitHub só reexecuta runs de até 30 dias, e o próximo push na `main` volta a implantar o que está nela: o PR de revert continua necessário.
+   - Não use `kubectl argo rollouts undo` nem edite o Rollout ou o Application à mão (o Argo CD desfaz, seção 4.1).
+
+### 8.2 Reprocessar um job da DLQ em staging
+
+Antes: corrija a causa do erro (seção 4.2) e confira que o worker está consumindo (`kubectl -n rmi get pods -l app=rmi-sync`, sem `degraded mode activated` recente). Não reprocesse `salesforce_push` (não tem mais o token) nem `mobilidade_invite_email` (reenvia e-mail real); `cf_lookup` pode ser descartado (seção 4.2).
+
+1. **Conecte no cluster de staging e prepare o acesso ao Valkey.** A senha é a `REDIS_PASSWORD` do Secret `rmi-secrets` (a mesma que a API usa). Ela vai para uma variável e entra no `valkey-cli` pela entrada padrão, nunca como argumento (os argumentos do `kubectl exec` ficam no log de auditoria do cluster). Não dê `echo` nela e não rode com `set -x`.
+
+   ```bash
+   gcloud container clusters get-credentials application --dns-endpoint --region us-central1 --project rj-superapp-staging
+   kubectl config current-context                       # confira que é o rj-superapp-staging antes de seguir
+   VK_POD="$(kubectl -n rmi get pods -o name | grep redis-master | head -n1)"
+   VK_PASS="$(kubectl -n rmi get secret rmi-secrets -o jsonpath='{.data.REDIS_PASSWORD}' | base64 -d)"
+   rcli()  { printf '%s\n' "$VK_PASS" | kubectl -n rmi exec -i "$VK_POD" -c redis-master -- sh -c 'IFS= read -r VALKEYCLI_AUTH; export VALKEYCLI_AUTH REDISCLI_AUTH="$VALKEYCLI_AUTH"; exec valkey-cli --raw "$@"' sh "$@"; }
+   rclix() { { printf '%s\n' "$VK_PASS"; cat; } | kubectl -n rmi exec -i "$VK_POD" -c redis-master -- sh -c 'IFS= read -r VALKEYCLI_AUTH; export VALKEYCLI_AUTH REDISCLI_AUTH="$VALKEYCLI_AUTH"; exec valkey-cli --raw -x "$@"' sh "$@"; }
+   rcli PING                                            # PONG
+   ```
+
+   O Valkey é o Deployment `redis-master` (chart `valkey`, definido em `superapp/modules/k8s/rmi.tf` do `infra`); o container do servidor também se chama `redis-master` (o outro, `metrics`, é o exporter). `rclix` manda a entrada padrão como último argumento do comando (`-x`), o que evita problemas de aspas com o JSON do job.
+
+2. **Escolha a fila e olhe o item mais antigo da DLQ** (sem imprimir `original_job.data` nem `original_job.key`, que têm dados pessoais):
+
+   ```bash
+   FILA=citizen                       # nome da seção 4.2; filas confiáveis com chaves: FILA='{salesforce_sync}'
+   rcli LLEN "sync:dlq:$FILA"
+   ITEM="$(rcli LRANGE "sync:dlq:$FILA" -1 -1)"       # a DLQ recebe LPUSH: o fim da lista é o mais antigo
+   printf '%s' "$ITEM" | jq '{job_id: .original_job.id, type: .original_job.type, retry_count: .original_job.retry_count, enfileirado: .original_job.timestamp, failed_at, error}'
+   ```
+
+   Se o erro ainda não foi corrigido, pare aqui. Confira também o passo 1 do reprocessamento da seção 4.2 (o job antigo sobrescreve um dado mais novo).
+
+3. **Devolva o job à fila e tire da DLQ**, nessa ordem:
+
+   ```bash
+   JOB="$(printf '%s' "$ITEM" | jq -c '.original_job | .retry_count = 0 | del(.available_at)')"
+   printf '%s' "$JOB"  | rclix LPUSH "sync:queue:$FILA"     # responde o novo tamanho da fila
+   printf '%s' "$ITEM" | rclix LREM "sync:dlq:$FILA" 1       # responde 1 (0: o item já tinha saído da DLQ)
+   ```
+
+   O `ITEM` fica na variável até o fim: é a cópia para refazer o passo se algo der errado (`printf '%s' "$ITEM" | rclix LPUSH "sync:dlq:$FILA"` devolve o item à DLQ).
+
+4. **Confira o resultado** pelo `job_id` do passo 2:
+
+   ```bash
+   rcli LLEN "sync:queue:$FILA"                              # volta a 0 em segundos com o worker consumindo
+   rcli LLEN "sync:dlq:$FILA"
+   kubectl -n rmi logs deploy/rmi-sync --since=10m | grep '<job_id>'
+   ```
+
+   Sucesso: `sync job succeeded - cache updated and write buffer cleaned` com esse `job_id` (no SigNoz, `k8s.container.name = rmi-sync` e `job_id = <job_id>`). Um novo `job moved to DLQ` com o mesmo `job_id` quer dizer que a causa continua: não insista.
+
+5. **Mais de um item**: repita os passos 2 a 4 um por vez, olhando o resultado de cada um antes do próximo.
+
+6. **Ao terminar**: `unset VK_PASS ITEM JOB` e feche o terminal. Registre no incidente a fila, os `job_id`, a quantidade e o resultado, sem dados pessoais.
