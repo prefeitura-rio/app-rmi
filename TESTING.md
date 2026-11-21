@@ -48,9 +48,11 @@ Medida em **2026-11-19** no commit `467d362` da `main` (artefato `coverage-repor
 | `internal/handlers` | 5.258 | 67,6% |
 | `internal/config` | 1.083 | 66,9% |
 | `cmd/sync` | 44 | 36,4% |
-| `cmd/api` | 214 | sem teste (inicialização do binário) |
+| `cmd/api` | 218 | 3,7% (só `registerPhoneLookupRoutes`; remedido em 2026-11-21) |
 | `internal/utils/httpclient` | 24 | sem teste |
 | `scripts/seed_*`, `tests`, `tests/config`, `tests/fixtures`, `docs` | 319 | não se aplica (scripts, helpers de teste, swagger gerado) |
+
+A linha `cmd/api` foi remedida em **2026-11-21** no commit `cda9c2a` da `main` (`go test -coverprofile=coverage.out ./cmd/api/`, sem dependências), depois de o PR #125 acrescentar `cmd/api/main_test.go`; o total e as outras linhas são da medição de 2026-11-19.
 
 O badge do README mostra o baseline mais recente.
 
@@ -69,7 +71,7 @@ Arquivos com mais statements sem teste, na mesma medição:
 | `internal/config/database.go` | 61,1% | conexões, pools e índices do MongoDB |
 | `internal/handlers/citizen.go` | 73,9% | maior volume sem teste (436 statements) nas rotas de dados do cidadão |
 
-`cmd/api/main.go` (montagem das rotas e middlewares) não tem teste unitário; é exercitado só pelos E2E do deploy de staging.
+`cmd/api/main.go` (montagem das rotas e middlewares) só tem teste unitário em `registerPhoneLookupRoutes` (`cmd/api/main_test.go`: JWT exigido nas rotas de consulta de telefone e validação); o resto da montagem é exercitado só pelos E2E do deploy de staging.
 
 ## Testes de carga (k6)
 
