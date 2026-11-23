@@ -92,8 +92,21 @@ func GetMaintenanceRequestByProtocolo(c *gin.Context) {
 		return
 	}
 
-	ownerCPF := verifiedCallerCPF(ctx, c.GetHeader("Authorization"))
-	span.SetAttributes(attribute.Bool("caller.verified", ownerCPF != ""))
+	authHeader := c.GetHeader("Authorization")
+	ownerCPF, verifyReason := verifiedCallerCPF(ctx, authHeader)
+	span.SetAttributes(
+		attribute.Bool("caller.verified", ownerCPF != ""),
+		attribute.Bool("caller.authorization_present", middleware.BearerToken(authHeader) != ""),
+		attribute.String("caller.verify_reason", verifyReason),
+	)
+	if ownerCPF == "" && middleware.BearerToken(authHeader) != "" {
+		// Bearer was sent but the owner view stayed locked — visible at info so staging
+		// can tell JWT_ISSUER_URL / JWKS / gateway issues apart from a true anonymous call.
+		logger.Info("maintenance request owner view not unlocked",
+			zap.String("verify_reason", verifyReason),
+			zap.String("maintenance_request_source", source),
+		)
+	}
 
 	response := models.PublicMaintenanceRequestResponse{
 		Protocolo: protocolo,
@@ -103,6 +116,8 @@ func GetMaintenanceRequestByProtocolo(c *gin.Context) {
 		response.Chamados = append(response.Chamados, docs[i].ToPublicMaintenanceRequest(ownerCPF))
 	}
 
+	// Homologation requires private,no-store so a titular response is never reused by another
+	// browser/CDN user. Gateways may append no-cache/must-revalidate; keep private explicit.
 	c.Header("Cache-Control", "private, no-store")
 	c.JSON(http.StatusOK, response)
 }
@@ -111,21 +126,28 @@ func GetMaintenanceRequestByProtocolo(c *gin.Context) {
 // and expiry were verified against the Keycloak JWKS, or "" when there is no token, no
 // verifier configured, or the token does not verify. Never decode the token without verifying:
 // on a public gateway action nothing upstream checked it.
-func verifiedCallerCPF(ctx context.Context, authHeader string) string {
+//
+// reason is a stable label for logs/spans (no token material): no_bearer, verifier_disabled,
+// verify_failed, ok.
+func verifiedCallerCPF(ctx context.Context, authHeader string) (cpf string, reason string) {
 	token := middleware.BearerToken(authHeader)
 	if token == "" {
-		return ""
+		return "", "no_bearer"
 	}
 	verifier := getMaintenanceRequestJWTVerifier()
 	if verifier == nil {
-		return ""
+		observability.Logger().Warn("maintenance request bearer ignored: JWT verifier disabled (JWT_ISSUER_URL empty or unset)")
+		return "", "verifier_disabled"
 	}
 	cpf, err := verifier.VerifiedPreferredUsername(ctx, token)
 	if err != nil {
-		observability.Logger().Debug("bearer token not verified on public maintenance request lookup", zap.Error(err))
-		return ""
+		observability.Logger().Warn("maintenance request bearer not verified",
+			zap.Error(err),
+			zap.String("verify_reason", "verify_failed"),
+		)
+		return "", "verify_failed"
 	}
-	return cpf
+	return cpf, "ok"
 }
 
 func findMaintenanceRequestsByProtocolo(ctx context.Context, protocolo string) ([]models.MaintenanceRequestProtocolDocument, error) {

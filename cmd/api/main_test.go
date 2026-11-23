@@ -111,3 +111,17 @@ func TestPhoneLookupRoutes_ValidTokenReachesHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestJWTIssuerHost(t *testing.T) {
+	cases := map[string]string{
+		"https://auth.example.test/auth/realms/example": "auth.example.test/auth/realms/example",
+		"https://auth.example/realms/x/":                "auth.example/realms/x",
+		"not a url":                                     "(unparseable)",
+		"":                                              "(unparseable)",
+	}
+	for in, want := range cases {
+		if got := jwtIssuerHost(in); got != want {
+			t.Errorf("jwtIssuerHost(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -3510,6 +3510,9 @@ func GetMaintenanceRequests(c *gin.Context) {
 	var requests []models.MaintenanceRequest
 	for _, doc := range docs {
 		request := doc.ConvertToMaintenanceRequest()
+		// Always echo the path CPF: OwnerCPF() can pick another person's CPF when
+		// protocolos[] has multiple links. This list is already scoped to :cpf.
+		request.CPF = cpf
 		requests = append(requests, *request)
 	}
 	utils.AddSpanAttribute(convertSpan, "converted_requests_count", len(requests))
