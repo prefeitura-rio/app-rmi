@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -139,13 +141,19 @@ func main() {
 	services.InitCFLookupService()
 
 	// Owner view of the public SGRC lookup by protocol needs a locally verified JWT
-	handlers.SetMaintenanceRequestJWTVerifier(middleware.NewJWTVerifier(config.AppConfig.JWTIssuerURL, nil))
-	if config.AppConfig.JWTIssuerURL == "" {
+	jwtVerifier := middleware.NewJWTVerifier(config.AppConfig.JWTIssuerURL, nil)
+	handlers.SetMaintenanceRequestJWTVerifier(jwtVerifier)
+	if jwtVerifier == nil {
 		observability.Logger().Warn("JWT_ISSUER_URL not set: GET /v1/maintenance-request/{protocolo} serves only the public view")
+	} else {
+		observability.Logger().Info("JWT verifier enabled for public maintenance-request owner view",
+			zap.String("jwt_issuer_host", jwtIssuerHost(config.AppConfig.JWTIssuerURL)),
+		)
 	}
 	observability.Logger().Info("maintenance request read source selected",
 		zap.String("source", config.AppConfig.ActiveMaintenanceRequestSource()),
 		zap.Bool("sgrc_enabled", config.AppConfig.MaintenanceRequestSGRCEnabled),
+		zap.Bool("jwt_verifier_enabled", jwtVerifier != nil),
 	)
 
 	// Initialize handlers
@@ -495,6 +503,15 @@ type phoneLookupHandlers struct {
 	BetaStatus    gin.HandlerFunc
 	ValidatePhone gin.HandlerFunc
 	ValidateEmail gin.HandlerFunc
+}
+
+// jwtIssuerHost returns host[/path] of the Keycloak issuer for startup logs (no query/fragment).
+func jwtIssuerHost(issuer string) string {
+	u, err := url.Parse(strings.TrimSpace(issuer))
+	if err != nil || u.Host == "" {
+		return "(unparseable)"
+	}
+	return u.Host + strings.TrimRight(u.Path, "/")
 }
 
 // registerPhoneLookupRoutes registers GET /phone/:phone_number/status,

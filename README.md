@@ -77,7 +77,7 @@ API para gerenciamento de dados de cidadãos do Rio de Janeiro, incluindo autode
 | SALESFORCE_BASE_URL | URL base da API Salesforce CRM (host; o client acrescenta `/api/private/...`) | - | Não* |
 | SALESFORCE_TIMEOUT | Timeout HTTP do Salesforce CRM | 30s | Não |
 | SALESFORCE_WEBHOOK_CLIENTS | Client IDs Keycloak (`azp`) autorizados no webhook SF→RMI (lista separada por vírgula) | - | Não* |
-| JWT_ISSUER_URL | Issuer do realm Keycloak (`https://<host>/realms/<realm>`); o RMI verifica a assinatura do JWT pelo JWKS desse issuer na consulta pública de chamados por protocolo. Sem ele, essa rota só serve a visão pública | - | Não |
+| JWT_ISSUER_URL | Issuer do realm Keycloak (deve ser o `iss` exato do token, ex. `https://auth.example.test/auth/realms/example`); JWKS desse issuer destrava titular em `GET /maintenance-request/{protocolo}`. Vazio = só visão pública | - | Não |
 | TRUSTED_SERVICE_CLIENTS | Client IDs Keycloak (`azp`) com privilégio de service account (RequireOwnCPF/RequireAdmin). Só vale para token de service account (client credentials) do próprio client: `preferred_username` = `service-account-<azp>` ou claim `client_id`/`clientId` = `azp`; token de login de cidadão nunca é aceito, mesmo com o `azp` listado. Não liste clients de login público (ex.: `superapp`) | - | Não* |
 | SYNC_JOB_BEARER_ENCRYPTION_KEY | Chave AES-256 em hex (64 caracteres) para cifrar JWTs nas filas de sync. Sem a chave o token não é gravado; `salesforce_push` exige a chave. | - | Não* |
 | CF_LOOKUP_COLLECTION | Nome da coleção de lookups de CF | cf_lookups | Não |

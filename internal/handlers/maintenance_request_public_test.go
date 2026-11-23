@@ -281,6 +281,15 @@ func TestGetMaintenanceRequestByProtocolo(t *testing.T) {
 		}
 	})
 
+	t.Run("sets Cache-Control private, no-store", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/maintenance-request/"+protocoloTest, nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
+			t.Fatalf("Cache-Control = %q, want private, no-store", got)
+		}
+	})
+
 	t.Run("owner without verifier configured gets public view", func(t *testing.T) {
 		token := issuer.token(t, issuer.key, protocoloOwnerCPF)
 		SetMaintenanceRequestJWTVerifier(nil)

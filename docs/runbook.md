@@ -245,6 +245,8 @@ A configuração vem toda de variáveis de ambiente (`internal/config/config.go`
 
 **Migração SGRC (histórico 1746):** `MONGODB_MAINTENANCE_REQUEST_SGRC_ENABLED` (default `false`) escolhe a collection de **leitura** na subida do processo — `false` → `MONGODB_MAINTENANCE_REQUEST_COLLECTION` (legado); `true` → `MONGODB_MAINTENANCE_REQUEST_SGRC_COLLECTION` (default `maintenance_requests_sgrc`; **não** é obrigatória no boot — o merge para main não exige a chave no Infisical). Não vem de query/header/payload. Antes de ligar a flag em staging/prod, confirme no Infisical o nome da collection (se diferente do default) e que a collection existe com dados/índices. Rollback operacional: Infisical → `false` → reload dos pods. As duas collections precisam existir com leitura durante a transição; a carga Airbyte alimenta só a SGRC.
 
+**Visão titular em `GET /v1/maintenance-request/{protocolo}`:** exige `JWT_ISSUER_URL` = issuer exato do token (ex. `https://auth.example.test/auth/realms/example`, **com** `/auth` se o `iss` tiver). Sem a var, o pod loga `JWT_ISSUER_URL not set` / `jwt_verifier_enabled=false` e **todo** Bearer cai na visão pública. Com Bearer presente e titular ainda `false`, o log traz `maintenance request owner view not unlocked` + `verify_reason` (`verifier_disabled` | `verify_failed` | `no_bearer`). Diagnóstico rápido: Infisical/`rmi-secrets` → `JWT_ISSUER_URL`; log de startup; `kubectl port-forward svc/rmi 8080:80` e repetir o curl em `http://localhost:8080/v1/...` (titular=true no bypass ⇒ gateway não repassa `Authorization`; false ⇒ config/JWKS do pod). `Cache-Control` da API é `private, no-store`; o gateway pode reescrever para `no-cache, no-store, must-revalidate` — se sumir `private`, tratar no Istio/gateway, não no handler.
+
 **Conexão**: `MONGODB_URI`, `MONGODB_DATABASE` (padrão `rmi`), `REDIS_URI`, `REDIS_PASSWORD`, `REDIS_CLUSTER_ENABLED`, `REDIS_POOL_SIZE` (200), `REDIS_MIN_IDLE_CONNS` (50), timeouts `REDIS_*_TIMEOUT`.
 
 **Chaves de funcionalidade** (não há serviço de feature flag; são variáveis):
@@ -259,7 +261,7 @@ A configuração vem toda de variáveis de ambiente (`internal/config/config.go`
 | `SALESFORCE_WEBHOOK_CLIENTS` | vazio | `azp` aceitos no webhook; vazio responde 503. |
 | `SYNC_JOB_BEARER_ENCRYPTION_KEY` | vazio | Sem ela o JWT não é guardado nos jobs e `salesforce_push` não é enfileirado. |
 | `DATA_RELAY_BASE_URL` + `DATA_RELAY_API_KEY` | vazio | Sem os dois, e-mails de convite só vão para o log. |
-| `JWT_ISSUER_URL` | vazio | Sem ele, a consulta pública de chamados só mostra a visão pública. |
+| `JWT_ISSUER_URL` | vazio | Sem ele, a consulta pública de chamados só mostra a visão pública (titular nunca destrava). Deve ser o `iss` exato do Keycloak. |
 | `TRUSTED_SERVICE_CLIENTS` / `ADMIN_GROUP` | vazio / `heimdall-admin` | Quem tem privilégio de administrador ou de client de serviço. |
 | `AUDIT_LOGS_ENABLED` | `true` | Auditoria automática das escritas (coleção `audit_logs`). |
 | `TRACING_ENABLED` / `TRACING_ENDPOINT` | `false` / `localhost:4317` | Envio de traces OTLP ao SigNoz. |
