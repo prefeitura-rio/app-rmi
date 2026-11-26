@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -30,6 +31,102 @@ func TestShouldEnqueueSalesforcePush(t *testing.T) {
 	assert.True(t, shouldEnqueueSalesforcePush(&SyncJob{Type: "self_declared_email"}))
 	assert.True(t, shouldEnqueueSalesforcePush(&SyncJob{Type: "citizen"}))
 	assert.True(t, shouldEnqueueSalesforcePush(&SyncJob{Type: "self_declared_genero"}))
+	assert.False(t, shouldEnqueueSalesforcePush(&SyncJob{Type: "user_config"}))
+	assert.True(t, shouldEnqueueSalesforcePush(&SyncJob{Type: "user_config", SalesforcePush: true}))
+	assert.False(t, shouldEnqueueSalesforcePush(&SyncJob{Type: "user_config", SalesforcePush: true, Origin: SyncOriginSalesforce}))
+}
+
+func TestBuildSalesforceSnapshotPatch_AvatarURL(t *testing.T) {
+	avatarID := "68c032d1c676a026198725fd"
+	empty := ""
+	active := &models.Avatar{URL: "https://storage.googleapis.com/bucket/avatars/avatar26.png"}
+
+	tests := []struct {
+		name      string
+		uc        *models.UserConfig
+		avatar    *models.Avatar
+		wantKey   bool
+		wantValue any
+	}{
+		{name: "no user_config leaves Salesforce untouched", uc: nil, avatar: nil, wantKey: false},
+		{name: "chosen active avatar sends its URL", uc: &models.UserConfig{AvatarID: &avatarID}, avatar: active, wantKey: true, wantValue: active.URL},
+		{name: "avatar removed clears", uc: &models.UserConfig{AvatarID: nil}, avatar: nil, wantKey: true, wantValue: nil},
+		{name: "empty avatar id clears", uc: &models.UserConfig{AvatarID: &empty}, avatar: nil, wantKey: true, wantValue: nil},
+		{name: "avatar no longer active clears", uc: &models.UserConfig{AvatarID: &avatarID}, avatar: nil, wantKey: true, wantValue: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fields := buildSalesforceSnapshotPatch(nil, nil, tt.uc, tt.avatar, false, false).Fields()
+			value, ok := fields["avatarUrl"]
+			require.Equal(t, tt.wantKey, ok)
+			if tt.wantKey {
+				assert.Equal(t, tt.wantValue, value)
+			}
+		})
+	}
+
+	req := buildSalesforceCreate(nil, nil, &models.UserConfig{AvatarID: &avatarID}, active, false, false, SalesforceContaOrigem)
+	assert.Equal(t, active.URL, req.AvatarURL)
+}
+
+func TestHandleSalesforcePushJob_SendsActiveAvatarURL(t *testing.T) {
+	worker, _, cleanup := setupSyncWorkerTest(t)
+	defer cleanup()
+
+	prevAvatars := config.AppConfig.AvatarsCollection
+	config.AppConfig.AvatarsCollection = "test_avatars"
+	defer func() {
+		_ = worker.mongo.Collection("test_avatars").Drop(context.Background())
+		config.AppConfig.AvatarsCollection = prevAvatars
+	}()
+
+	ctx := context.Background()
+	activeAvatar := models.Avatar{ID: primitive.NewObjectID(), URL: "https://storage.googleapis.com/bucket/avatars/avatar12.png", IsActive: true}
+	inactiveAvatar := models.Avatar{ID: primitive.NewObjectID(), URL: "https://storage.googleapis.com/bucket/avatars/avatar13.png", IsActive: false}
+	_, err := worker.mongo.Collection("test_avatars").InsertMany(ctx, []interface{}{activeAvatar, inactiveAvatar})
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		avatarID  string
+		wantValue any
+	}{
+		{name: "active avatar", avatarID: activeAvatar.ID.Hex(), wantValue: activeAvatar.URL},
+		{name: "inactive avatar", avatarID: inactiveAvatar.ID.Hex(), wantValue: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cpf := "14202478754"
+			_ = worker.mongo.Collection(config.AppConfig.UserConfigCollection).Drop(ctx)
+			avatarID := tt.avatarID
+			_, err := worker.mongo.Collection(config.AppConfig.UserConfigCollection).InsertOne(ctx, models.UserConfig{CPF: cpf, AvatarID: &avatarID})
+			require.NoError(t, err)
+
+			var body map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPatch {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"cpf":"14202478754","accountId":"001abc"}`))
+			}))
+			defer srv.Close()
+			worker.SetSalesforceClient(clients.NewSalesforceClient(srv.URL, time.Second, clients.StaticBearerToken("jwt")))
+
+			err = worker.handleSalesforcePushJob(ctx, &SyncJob{
+				Type:        SalesforcePushQueue,
+				Key:         cpf,
+				BearerToken: "jwt",
+				Data:        SalesforcePushPayload{CPF: cpf, BearerToken: "jwt"},
+			})
+			require.NoError(t, err)
+			value, ok := body["avatarUrl"]
+			require.True(t, ok, "avatarUrl must be sent when user_config exists")
+			assert.Equal(t, tt.wantValue, value)
+		})
+	}
 }
 
 func TestMapRMIGeneroToSalesforce(t *testing.T) {
@@ -191,7 +288,7 @@ func TestBuildSalesforceSnapshotPatch(t *testing.T) {
 		Idioma: []string{"Portugues_Brasil"},
 	}
 
-	patch := buildSalesforceSnapshotPatch(citizen, sd, nil, true, true)
+	patch := buildSalesforceSnapshotPatch(citizen, sd, nil, nil, true, true)
 	fields := patch.Fields()
 	assert.Equal(t, "maria@test.com", fields["email"])
 	assert.Equal(t, "5521988888888", fields["telefone1"])
@@ -215,7 +312,7 @@ func TestBuildSalesforceSnapshotPatch(t *testing.T) {
 
 func TestBuildSalesforceSnapshotPatch_OmitsIdiomaWhenUnset(t *testing.T) {
 	sd := &models.SelfDeclaredData{CPF: "14202478754"}
-	patch := buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
+	patch := buildSalesforceSnapshotPatch(nil, sd, nil, nil, false, true)
 	fields := patch.Fields()
 	assert.NotContains(t, fields, "idioma")
 	assert.NotContains(t, fields, "isTourist")
@@ -233,7 +330,7 @@ func TestBuildSalesforceSnapshotPatch_IncludesConsentimentoFromUserConfig(t *tes
 			},
 		},
 	}
-	patch := buildSalesforceSnapshotPatch(nil, nil, uc, false, false)
+	patch := buildSalesforceSnapshotPatch(nil, nil, uc, nil, false, false)
 	fields := patch.Fields()
 	items, ok := fields["consentimento"].([]clients.SalesforceConsentimento)
 	require.True(t, ok)
@@ -250,7 +347,7 @@ func TestBuildSalesforceSnapshotPatch_MirrorsTelefonePrincipal(t *testing.T) {
 			Principal: &models.TelefonePrincipal{DDI: &ddi, DDD: &ddd, Valor: &valor},
 		},
 	}
-	patch := buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
+	patch := buildSalesforceSnapshotPatch(nil, sd, nil, nil, false, true)
 	fields := patch.Fields()
 	assert.Equal(t, "5521988888888", fields["telefone1"])
 	assert.Equal(t, "5521988888888", fields["telefonePrincipal"])
@@ -262,7 +359,7 @@ func TestBuildSalesforceSnapshotPatch_OmitsAbsentSelfDeclaredFields(t *testing.T
 		CPF:    "14202478754",
 		Genero: &genero,
 	}
-	patch := buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
+	patch := buildSalesforceSnapshotPatch(nil, sd, nil, nil, false, true)
 	fields := patch.Fields()
 	assert.Equal(t, "Homem_cisgenero", fields["genero"])
 	assert.NotContains(t, fields, "escolaridade")
@@ -272,7 +369,7 @@ func TestBuildSalesforceSnapshotPatch_OmitsAbsentSelfDeclaredFields(t *testing.T
 	assert.NotContains(t, fields, "endereco")
 
 	sd.Genero = nil
-	patch = buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
+	patch = buildSalesforceSnapshotPatch(nil, sd, nil, nil, false, true)
 	fields = patch.Fields()
 	assert.NotContains(t, fields, "genero")
 }
@@ -290,7 +387,7 @@ func TestBuildSalesforceSnapshotPatch_ClearsExplicitEmpty(t *testing.T) {
 		},
 		Endereco: &models.Endereco{Principal: &models.EnderecoPrincipal{}},
 	}
-	patch := buildSalesforceSnapshotPatch(nil, sd, nil, false, true)
+	patch := buildSalesforceSnapshotPatch(nil, sd, nil, nil, false, true)
 	raw, err := json.Marshal(patch)
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), `"genero":null`)
@@ -314,7 +411,7 @@ func TestBuildSalesforceSnapshotPatch_UsesCitizenWhenSelfDeclaredLacksField(t *t
 		},
 	}
 	sd := &models.SelfDeclaredData{CPF: "14202478754"}
-	patch := buildSalesforceSnapshotPatch(citizen, sd, nil, true, true)
+	patch := buildSalesforceSnapshotPatch(citizen, sd, nil, nil, true, true)
 	fields := patch.Fields()
 	assert.Equal(t, "Branca", fields["raca"])
 	assert.Equal(t, "5521988888888", fields["telefone1"])
@@ -324,7 +421,7 @@ func TestBuildSalesforceSnapshotPatch_UsesCitizenWhenSelfDeclaredLacksField(t *t
 }
 
 func TestBuildSalesforceSnapshotPatch_OmitsWhenNoMongoDoc(t *testing.T) {
-	patch := buildSalesforceSnapshotPatch(nil, nil, nil, false, false)
+	patch := buildSalesforceSnapshotPatch(nil, nil, nil, nil, false, false)
 	fields := patch.Fields()
 	assert.NotContains(t, fields, "genero")
 	assert.NotContains(t, fields, "email")

@@ -22,6 +22,9 @@ type SyncJob struct {
 	AvailableAt time.Time   `json:"available_at,omitempty"` // deferred retry; zero = process immediately
 	Origin      string      `json:"origin,omitempty"`       // e.g. SyncOriginSalesforce — skip outbound SF push
 	BearerToken string      `json:"bearer_token,omitempty"` // AES-GCM sealed JWT on the work queue; stripped in DLQ
+	// SalesforcePush asks for an outbound SF push after this job syncs, for writes whose
+	// job type does not push on its own (e.g. an avatar change on user_config).
+	SalesforcePush bool `json:"salesforce_push,omitempty"`
 
 	// Transient fields for reliable-queue ack (not persisted in Redis payload JSON).
 	rawRedisPayload string `json:"-"`

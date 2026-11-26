@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
 
@@ -259,6 +260,9 @@ func shouldEnqueueSalesforcePush(job *SyncJob) bool {
 	if job.Origin == SyncOriginSalesforce {
 		return false
 	}
+	if job.SalesforcePush {
+		return true
+	}
 	switch job.Type {
 	case "citizen",
 		"self_declared_address",
@@ -433,8 +437,12 @@ func (w *SyncWorker) handleSalesforcePushJob(ctx context.Context, job *SyncJob) 
 	if err != nil {
 		return err
 	}
+	avatar, err := w.loadActiveAvatar(ctx, userConfig)
+	if err != nil {
+		return err
+	}
 
-	patch := buildSalesforceSnapshotPatch(citizen, selfDeclared, userConfig, citizenFound, selfDeclaredFound)
+	patch := buildSalesforceSnapshotPatch(citizen, selfDeclared, userConfig, avatar, citizenFound, selfDeclaredFound)
 
 	_, err = sf.PatchCidadao(ctx, cpf, patch)
 	if err == nil {
@@ -449,7 +457,7 @@ func (w *SyncWorker) handleSalesforcePushJob(ctx context.Context, job *SyncJob) 
 		return newNonRetryableSyncError(fmt.Errorf("salesforce patch failed: %w", err))
 	}
 	if errors.As(err, &apiErr) && apiErr.IsNotFound() {
-		createReq := buildSalesforceCreate(citizen, selfDeclared, userConfig, citizenFound, selfDeclaredFound, SalesforceContaOrigem)
+		createReq := buildSalesforceCreate(citizen, selfDeclared, userConfig, avatar, citizenFound, selfDeclaredFound, SalesforceContaOrigem)
 		_, createErr := sf.CreateOrUpdateCidadao(ctx, createReq)
 		if createErr != nil {
 			wrapped := fmt.Errorf("salesforce create-or-update after 404 failed: %w", createErr)
@@ -502,6 +510,27 @@ func (w *SyncWorker) loadUserConfig(ctx context.Context, cpf string) (*models.Us
 		return nil, false, fmt.Errorf("failed to load user_config: %w", err)
 	}
 	return &uc, true, nil
+}
+
+// loadActiveAvatar returns the catalog avatar chosen in uc, applying the same is_active
+// rule as GET /citizen/{cpf}/avatar. A missing, malformed or inactive id yields nil.
+func (w *SyncWorker) loadActiveAvatar(ctx context.Context, uc *models.UserConfig) (*models.Avatar, error) {
+	if uc == nil || uc.AvatarID == nil || config.AppConfig == nil || strings.TrimSpace(config.AppConfig.AvatarsCollection) == "" {
+		return nil, nil
+	}
+	objectID, err := primitive.ObjectIDFromHex(strings.TrimSpace(*uc.AvatarID))
+	if err != nil {
+		return nil, nil
+	}
+	var avatar models.Avatar
+	err = w.mongo.Collection(config.AppConfig.AvatarsCollection).FindOne(ctx, bson.M{"_id": objectID, "is_active": true}).Decode(&avatar)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to load avatar: %w", err)
+	}
+	return &avatar, nil
 }
 
 func parseSalesforceSyncPayload(data interface{}) (*SalesforceSyncPayload, error) {
