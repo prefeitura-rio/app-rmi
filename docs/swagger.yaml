@@ -1830,6 +1830,7 @@ definitions:
       code:
         type: string
       ddd:
+        description: DDD é obrigatório somente quando o DDI é 55 (Brasil)
         type: string
       ddi:
         type: string
@@ -1837,7 +1838,6 @@ definitions:
         type: string
     required:
     - code
-    - ddd
     - ddi
     - valor
     type: object

@@ -10680,7 +10680,6 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "code",
-                "ddd",
                 "ddi",
                 "valor"
             ],
@@ -10689,6 +10688,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "ddd": {
+                    "description": "DDD é obrigatório somente quando o DDI é 55 (Brasil)",
                     "type": "string"
                 },
                 "ddi": {
